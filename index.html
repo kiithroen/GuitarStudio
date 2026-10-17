@@ -231,9 +231,10 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 
 /* 6현 타브 (TAB) 악보 렌더링 스타일 */
 .tab-stave-wrap{position:relative;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-top:2px}
-.tab-stave-side{width:36px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:25px 2px 5px 4px;background:var(--surface-2);border-right:1px solid var(--line);user-select:none}
-.tab-badge-title{font-family:var(--font-num);font-weight:900;font-size:10px;letter-spacing:.05em;color:var(--accent);line-height:1;margin-bottom:2px}
-.tab-str-names{display:flex;flex-direction:column;justify-content:space-between;height:90px;font-family:var(--font-num);font-size:9.5px;font-weight:700;color:var(--muted);line-height:1;width:100%;text-align:center}
+.tab-stave-side{width:36px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:3px 2px 2px;background:var(--surface-2);border-right:1px solid var(--line);user-select:none;position:relative}
+.tab-badge-title{height:20px;display:flex;align-items:center;justify-content:center;font-family:var(--font-num);font-weight:900;font-size:11px;letter-spacing:.06em;color:var(--accent);line-height:1}
+.tab-str-names{position:relative;width:100%;height:90px;margin-top:2px}
+.tab-str-names span{position:absolute;left:0;right:0;transform:translateY(-50%);text-align:center;font-family:var(--font-num);font-size:9.5px;font-weight:800;color:var(--muted);line-height:1}
 .tab-stave-body{position:relative;flex:1;min-width:0}
 .tab-lines-bg{position:absolute;left:0;right:0;top:25px;height:90px;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none}
 .tab-line-h{height:1px;background:var(--line);opacity:.75}
@@ -3290,9 +3291,10 @@ registerProcessor('onset', OnsetProc);
         sideTitle.textContent = 'TAB';
         var strNames = document.createElement('div');
         strNames.className = 'tab-str-names';
-        ['1e', '2B', '3G', '4D', '5A', '6E'].forEach(function(s){
+        ['1E', '2B', '3G', '4D', '5A', '6E'].forEach(function(s, idx){
           var sn = document.createElement('span');
           sn.textContent = s;
+          sn.style.top = (idx * 20) + '%';
           strNames.appendChild(sn);
         });
         side.appendChild(sideTitle);
