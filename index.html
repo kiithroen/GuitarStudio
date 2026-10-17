@@ -207,19 +207,18 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .beat-cell.arp-sub .b-note{font-size:12px;font-weight:600}
 .beat-cell.arp-group-start{margin-left:3px;box-shadow:-3px 0 0 -1px var(--line)}
 
-/* 박자·리듬 카드 친절한 오선지 뷰 스타일 */
-.b-rhythm-head{display:flex;align-items:center;justify-content:space-between;width:100%;padding:0 2px;margin-bottom:2px;font-size:10px;line-height:1}
-.b-idx-badge{font-family:var(--font-num);font-weight:700;color:var(--muted);background:rgba(128,128,128,.12);padding:1px 4px;border-radius:4px}
-.b-dur-badge{font-family:var(--font-num);font-weight:700;color:var(--accent);font-size:10.5px}
-.b-ko-main{font-size:17px;font-weight:800;color:var(--accent);line-height:1.15;margin:1px 0}
-.b-ko-main.b-rest-sym{font-size:15px;color:var(--muted);font-weight:500}
-.b-note-sub{font-size:10px;color:var(--muted);font-weight:500;line-height:1;margin-bottom:3px;white-space:nowrap}
-.b-str-tag{display:inline-block;padding:1px 5px;border-radius:4px;background:var(--surface-2);border:1px solid var(--line);font-size:10px;color:var(--muted);font-family:var(--font-num);font-weight:600;margin-bottom:2px}
+/* 박자·리듬 카드 친절한 오선지 뷰 스타일 (운지 정보 제외, 박자·리듬·계이름 전용) */
+.beat-cell:not(.tab-cell){padding:8px 4px;min-height:82px;justify-content:space-between}
+.b-rhythm-head{display:flex;align-items:center;justify-content:space-between;width:100%;padding:0 2px;margin-bottom:4px;font-size:11px;line-height:1;white-space:nowrap;gap:2px}
+.b-idx-badge{font-family:var(--font-num);font-weight:700;color:var(--muted);background:rgba(128,128,128,.12);padding:2px 4px;border-radius:4px;white-space:nowrap;flex-shrink:0}
+.b-dur-badge{font-family:var(--font-num);font-weight:700;color:var(--accent);font-size:11px;white-space:nowrap;flex-shrink:0}
+.b-ko-main{font-size:20px;font-weight:800;color:var(--accent);line-height:1.15;margin:2px 0;white-space:nowrap}
+.b-ko-main.b-rest-sym{font-size:15px;color:var(--muted);font-weight:600;margin:4px 0}
+.b-note-sub{font-size:11px;color:var(--muted);font-weight:600;line-height:1.1;margin-bottom:2px;white-space:nowrap}
 .beat-cell.active-beat .b-idx-badge{background:rgba(255,255,255,.25);color:var(--accent-ink)}
 .beat-cell.active-beat .b-dur-badge{color:var(--accent-ink)}
 .beat-cell.active-beat .b-ko-main{color:var(--accent-ink)}
 .beat-cell.active-beat .b-note-sub{color:var(--accent-ink)}
-.beat-cell.active-beat .b-str-tag{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.4);color:var(--accent-ink)}
 .beat-cell.is-rest{opacity:.75}
 .beat-cell.is-rest:hover{opacity:1}
 
@@ -3038,9 +3037,8 @@ registerProcessor('onset', OnsetProc);
     if (!b || !b.midi){
       return {
         isRest: true,
-        durSymbol: '𝄽',
-        durName: isCompound ? '8분 쉼' : '4분 쉼',
-        shortName: '쉼'
+        label: isCompound ? '8분 쉼' : '쉼표',
+        durName: isCompound ? '8분 쉼표' : '4분 쉼표'
       };
     }
     var span = 1;
@@ -3049,17 +3047,17 @@ registerProcessor('onset', OnsetProc);
       span++;
     }
     if (isCompound){
-      if (span === 1) return { isRest: false, durSymbol: '♪', durName: '8분음표', shortName: '8분' };
-      if (span === 2) return { isRest: false, durSymbol: '♩', durName: '4분음표', shortName: '4분' };
-      if (span === 3) return { isRest: false, durSymbol: '♩.', durName: '점4분음표', shortName: '점4분' };
-      if (span >= 6) return { isRest: false, durSymbol: '𝅗.', durName: '점2분음표', shortName: '점2분' };
-      return { isRest: false, durSymbol: span + '박', durName: span + '박', shortName: span + '박' };
+      if (span === 1) return { isRest: false, label: '♪ 8분', durName: '8분음표' };
+      if (span === 2) return { isRest: false, label: '♩ 4분', durName: '4분음표' };
+      if (span === 3) return { isRest: false, label: '점4분', durName: '점4분음표 (1박)' };
+      if (span >= 6) return { isRest: false, label: '점2분', durName: '점2분음표 (2박)' };
+      return { isRest: false, label: span + '박', durName: span + '박' };
     }
-    if (span === 1) return { isRest: false, durSymbol: '♩', durName: '4분음표', shortName: '4분' };
-    if (span === 2) return { isRest: false, durSymbol: '𝅗', durName: '2분음표', shortName: '2분' };
-    if (span === 3) return { isRest: false, durSymbol: '𝅗.', durName: '점2분음표', shortName: '점2분' };
-    if (span >= 4) return { isRest: false, durSymbol: '𝅝', durName: '온음표', shortName: '온음표' };
-    return { isRest: false, durSymbol: span + '박', durName: span + '박', shortName: span + '박' };
+    if (span === 1) return { isRest: false, label: '♩ 4분', durName: '4분음표 (1박)' };
+    if (span === 2) return { isRest: false, label: '2분음', durName: '2분음표 (2박)' };
+    if (span === 3) return { isRest: false, label: '점2분', durName: '점2분음표 (3박)' };
+    if (span >= 4) return { isRest: false, label: '온음표', durName: '온음표 (4박)' };
+    return { isRest: false, label: span + '박', durName: span + '박' };
   }
 
   function renderStructuredMeasures(){
@@ -3263,9 +3261,8 @@ registerProcessor('onset', OnsetProc);
             : (b.articulation === 'tirando' ? (' [티란도 반주 · ' + (b.explicitArticulation ? '악보지정(~)' : '자동추론') + ']') : '');
 
           var detailDesc = m.no + '마디 ' + (bIdx + 1) + '박: ' +
-            (b.midi ? (b.ko + ' (' + b.en + ', ' + getOctaveLabel(b.midi) + '음) · ' + durInfo.durName) : '쉼/울림 유지') +
-            (b.str != null ? ' [' + b.str + '번줄 ' + (b.fret === 0 ? '개방현' : b.fret + '프렛') + ']' : '') +
-            articDesc + ' (클릭: 운지 보기 및 음 듣기)';
+            (b.midi ? (b.ko + ' (' + b.en + ', ' + getOctaveLabel(b.midi) + ') · ' + durInfo.durName) : '쉼/울림 유지') +
+            articDesc + ' (클릭: 음 듣기 및 지판 확인)';
           cell.title = detailDesc;
 
           // 1. 박자 번호 및 음표 길이 헤더 (친절한 리듬 표기)
@@ -3278,7 +3275,8 @@ registerProcessor('onset', OnsetProc);
 
           var durBadge = document.createElement('span');
           durBadge.className = 'b-dur-badge';
-          durBadge.textContent = durInfo.durSymbol + ' ' + durInfo.shortName;
+          durBadge.textContent = durInfo.label;
+          durBadge.title = durInfo.durName;
 
           rhythmHead.appendChild(idxBadge);
           rhythmHead.appendChild(durBadge);
@@ -3291,7 +3289,7 @@ registerProcessor('onset', OnsetProc);
             koEl.textContent = b.ko;
           } else {
             koEl.className = 'b-ko-main b-rest-sym';
-            koEl.textContent = '𝄽 유지';
+            koEl.textContent = '쉼표';
           }
           cell.appendChild(koEl);
 
@@ -3300,46 +3298,6 @@ registerProcessor('onset', OnsetProc);
           subEl.className = 'b-note-sub';
           subEl.textContent = b.midi ? (getOctaveLabel(b.midi) + ' ' + b.en) : '울림 지속';
           cell.appendChild(subEl);
-
-          // 4. 기타 줄/프렛 미니 태그
-          var strTag = document.createElement('span');
-          strTag.className = 'b-str-tag';
-          strTag.textContent = b.str != null ? (b.str + '줄 ' + (b.fret === 0 ? '개방' : b.fret + '프')) : '-';
-          if (b.str != null) strTag.title = b.str + '번줄 ' + (b.fret === 0 ? '개방현' : b.fret + '프렛');
-          cell.appendChild(strTag);
-
-          // 5. 엄지(p) 베이스 동시 탄현 표기 (있을 경우)
-          if (effBass){
-            var bassBadge = document.createElement('span');
-            bassBadge.className = 'b-bass';
-            bassBadge.textContent = 'p:' + effBass.str + '줄 ' + effBass.ko + '(' + (effBass.fret === 0 ? '개방' : effBass.fret + '프') + ')';
-            bassBadge.title = '엄지 베이스 동시 탄현: ' + effBass.str + '번줄 ' + effBass.ko + ' (' + (effBass.fret === 0 ? '개방현' : effBass.fret + '프렛') + ')';
-            cell.appendChild(bassBadge);
-          }
-
-          // 6. 왼손(1~4)/오른손(p,i,m,a) 운지 정보
-          var fgEl = document.createElement('div');
-          fgEl.className = 'b-fingers';
-          if (b.lh != null){
-            var lhSpan = document.createElement('span');
-            lhSpan.className = 'b-lh';
-            lhSpan.textContent = '왼' + b.lh;
-            lhSpan.title = '왼손 ' + (b.lh === 0 ? '개방현(안 짚음)' : b.lh + '번 손가락');
-            fgEl.appendChild(lhSpan);
-          }
-          if (b.rh){
-            var rhSpan = document.createElement('span');
-            rhSpan.className = 'b-rh';
-            var rhBase = '오' + (effBass ? 'p+' + b.rh : b.rh);
-            if (b.articulation === 'apoyando'){
-              rhSpan.textContent = rhBase + '·아포';
-            } else {
-              rhSpan.textContent = rhBase;
-            }
-            rhSpan.title = '오른손 탄현: ' + (b.rh || '') + (b.articulation === 'apoyando' ? ' (아포얀도 강조)' : '');
-            fgEl.appendChild(rhSpan);
-          }
-          cell.appendChild(fgEl);
 
           cell.addEventListener('click', function(e){
             if (e.shiftKey) return;
