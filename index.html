@@ -2285,8 +2285,9 @@ registerProcessor('onset', OnsetProc);
   // 음·주법마다 처음 한 번만 AudioBuffer로 렌더링해 캐시하고, 연주할 때는 버퍼만 재생 (노드 수·CPU 부담 최소)
   var ksCache = new Map();
   var KS_CACHE_MAX = 64;
-  // 내장곡 실측: 기존 합성음 대비 RMS가 대부분 곡에서 +0~1dB, 긴 저음이 많은 느린 곡(푸른 옷소매·로망스)은 -1~-2.6dB, 피크는 -5dBFS 이하
-  var KS_VOICE_GAIN = 0.45;
+  // 내장곡 실측: 기존 합성음 대비 RMS가 대부분 곡에서 +0~1dB, 긴 저음이 많은 느린 곡(푸른 옷소매·로망스)은 -1~-2.6dB, 피크는 -4dBFS 이하
+  // (두 방향 진동 도입으로 어택 직후가 빨리 줄어든 만큼 0.45에서 +0.6dB 보정)
+  var KS_VOICE_GAIN = 0.48;
 
   function seededRandom(seed){ // 현 음색·잔향이 매번 똑같이 나오도록 시드 고정 난수 (mulberry32)
     return function(){
@@ -2300,14 +2301,18 @@ registerProcessor('onset', OnsetProc);
   // 1차 로우패스 손실 필터 (1-a)/(1-a·z^-1)의 각주파수 w에서의 감쇠량(neper)
   function ksLoopLoss(w, a){ return -Math.log((1 - a) / Math.sqrt(1 - 2 * a * Math.cos(w) + a * a)); }
 
-  function renderKsString(ctx, midi, isApoyando){
-    var sr = ctx.sampleRate;
-    var f = 440 * Math.pow(2, (midi - 69) / 12);
-    var isBass = midi < 55;
-    // 감쇠 목표: 기음 T60은 저음일수록 길고(E2 8초 · E4 5초 · E5 4초), 3kHz 대역은 0.5~0.6초에 걸쳐 사라짐
-    // (고음 배음이 너무 빨리 죽으면 높은 음이 사인파처럼 뭉개져 음이 흐릿하게 들림)
-    var t60Fund = 8.0 * Math.pow(f / 82.4, -0.33) * (isApoyando ? 1.15 : 1.0);
-    var t60High = isBass ? 0.6 : (isApoyando ? 0.5 : 0.6);
+  // 두 방향 진동(2단 감쇠): 실제 줄은 상판에 수직·수평 두 방향으로 함께 진동
+  // 수직 진동은 상판을 세게 밀어 소리가 크지만 금방 줄고, 수평 진동은 약하게 전달돼 오래 남음 → "처음엔 빨리 줄고 꼬리는 길게" 울리는 기타 특유의 감쇠
+  // 아포얀도는 줄을 상판 쪽으로 눌러 수직 성분이 많고(어택이 두툼), 티란도는 옆으로 뜯어 수평 성분이 많음(여운이 김)
+  var KS_POLAR = {
+    vT60: 0.35, vHigh: 0.8,   // 수직: 기본 감쇠 시간 대비 배수 (기음, 3kHz)
+    hT60: 1.4, hHigh: 1.15,   // 수평
+    vDetuneCents: -0.8,       // 수직 진동만 아주 살짝 낮게 (미세한 맥놀이, 오래 남는 수평 진동은 정확한 음정)
+    apo: [0.62, 0.48], tir: [0.48, 0.58] // [수직, 수평] 비율
+  };
+
+  // 한 방향 진동의 루프 필터·지연 설계: 기음과 3kHz 두 지점의 감쇠 시간(T60)과 정확한 음정을 동시에 맞춤
+  function ksDesign(sr, f, t60Fund, t60High){
     var w1 = 2 * Math.PI * f / sr, wh = 2 * Math.PI * 3000 / sr;
     var s1 = 6.91 / t60Fund, sh = 6.91 / t60High;
     // 루프 필터 g·(1-a)/(1-a·z^-1): 기음과 3kHz 두 지점의 감쇠가 목표와 맞도록 a를 이분 탐색한 뒤 g로 전체 길이 맞춤
@@ -2327,18 +2332,27 @@ registerProcessor('onset', OnsetProc);
     var pd = Math.atan2(a * Math.sin(w1), 1 - a * Math.cos(w1)) / w1;
     var N = Math.floor(sr / f - pd - 0.1);
     var d = sr / f - pd - N;
-    var C = (1 - d) / (1 + d);
+    return { a: a, g: g, N: N, C: (1 - d) / (1 + d) };
+  }
 
-    // 탄현 파형: 배음 크기를 |sin(kπβ)|/k^p 로 정해 한 주기를 합성 (β: 브리지에서 튕긴 위치, 1/β번째 배음이 빠짐)
-    // 노이즈로 배음 크기를 정하면 음마다 우연히 2·3배음이 약해져 일부 음이 흐릿해지므로, 크기는 고정하고 위상만 살짝 흔들어 자연스러움 유지
-    // 아포얀도는 브리지에서 더 멀리(β 0.2) 둥글게(p 1.7), 티란도는 브리지 쪽(β 0.14)에서 더 밝게(p 1.4)
+  // 탄현 파형: 배음 크기를 |sin(kπβ)|/k^p 로 정해 한 주기를 합성 (β: 브리지에서 튕긴 위치, 1/β번째 배음이 빠짐)
+  // 노이즈로 배음 크기를 정하면 음마다 우연히 2·3배음이 약해져 일부 음이 흐릿해지므로, 크기는 고정하고 위상만 살짝 흔들어 자연스러움 유지
+  // 아포얀도는 브리지에서 더 멀리(β 0.2) 둥글게(p 1.7), 티란도는 브리지 쪽(β 0.14)에서 더 밝게(p 1.4)
+  function ksExcitation(N, f, midi, isApoyando){
     var rnd = seededRandom(midi * 977 + (isApoyando ? 1 : 2));
     var beta = isApoyando ? 0.2 : 0.14, p = isApoyando ? 1.7 : 1.4;
     var K = Math.min(Math.floor(N / 2) - 1, Math.floor(10000 / f));
     var tone = new Float32Array(N), nz = new Float32Array(N), s = 0, i, k;
     for (k = 1; k <= K; k++){
       var amp = Math.sin(k * Math.PI * beta) / Math.pow(k, p), ph = (rnd() * 2 - 1) * 0.6;
-      for (i = 0; i < N; i++) tone[i] += amp * Math.sin(2 * Math.PI * k * i / N + ph);
+      // sin을 매 샘플 계산하지 않고 복소 회전으로 누적 (렌더링 속도)
+      var cs = Math.cos(2 * Math.PI * k / N), sn = Math.sin(2 * Math.PI * k / N), re = Math.cos(ph), im = Math.sin(ph);
+      for (i = 0; i < N; i++){
+        tone[i] += amp * im;
+        var nr = re * cs - im * sn;
+        im = re * sn + im * cs;
+        re = nr;
+      }
     }
     // 손끝·손톱이 줄을 스치는 질감용 약한 노이즈 (10%)
     for (i = 0; i < N; i++){
@@ -2355,23 +2369,48 @@ registerProcessor('onset', OnsetProc);
     });
     var dl = new Float32Array(N);
     for (i = 0; i < N; i++) dl[i] = 0.9 * tone[i] + 0.1 * nz[i];
+    return dl;
+  }
 
-    var len = Math.floor(sr * Math.min(isBass ? 6 : 5, t60Fund));
-    var buf = ctx.createBuffer(1, len, sr);
-    var out = buf.getChannelData(0);
-    var idx = 0, lp = 0, apX = 0, apY = 0, early = Math.floor(sr * 0.25), sumSq = 0;
-    for (var n = 0; n < len; n++){
+  // 한 방향 진동을 렌더링해 out에 w 비율로 더함
+  function ksRunString(D, dl, out, w){
+    var N = D.N, gb = D.g * (1 - D.a), a = D.a, C = D.C;
+    var idx = 0, lp = 0, apX = 0, apY = 0;
+    for (var n = 0; n < out.length; n++){
       var x = dl[idx];
-      lp = g * (1 - a) * x + a * lp;              // 손실(고역 감쇠) 필터
+      lp = gb * x + a * lp;                        // 손실(고역 감쇠) 필터
       var y = C * lp + apX - C * apY;              // 튜닝 allpass
       apX = lp; apY = y;
       dl[idx] = y;
-      out[n] = x;
-      if (n < early) sumSq += x * x;
+      out[n] += w * x;
       if (++idx === N) idx = 0;
     }
+  }
+
+  function renderKsString(ctx, midi, isApoyando){
+    var sr = ctx.sampleRate;
+    var f = 440 * Math.pow(2, (midi - 69) / 12);
+    var isBass = midi < 55;
+    // 감쇠 목표(두 진동을 합친 평균): 기음 T60은 저음일수록 길고(E2 8초 · E4 5초 · E5 4초), 3kHz 대역은 0.5~0.6초에 걸쳐 사라짐
+    // (고음 배음이 너무 빨리 죽으면 높은 음이 사인파처럼 뭉개져 음이 흐릿하게 들림)
+    var t60Fund = 8.0 * Math.pow(f / 82.4, -0.33) * (isApoyando ? 1.15 : 1.0);
+    var t60High = isBass ? 0.6 : (isApoyando ? 0.5 : 0.6);
+    var P = KS_POLAR, wts = isApoyando ? P.apo : P.tir;
+    var V = ksDesign(sr, f * Math.pow(2, P.vDetuneCents / 1200), t60Fund * P.vT60, t60High * P.vHigh);
+    var H = ksDesign(sr, f, t60Fund * P.hT60, t60High * P.hHigh);
+
+    var len = Math.floor(sr * Math.min(isBass ? 6 : 5, t60Fund * P.hT60));
+    var buf = ctx.createBuffer(1, len, sr);
+    var out = buf.getChannelData(0);
+    var exV = ksExcitation(V.N, f, midi, isApoyando);
+    var exH = H.N === V.N ? Float32Array.from(exV) : ksExcitation(H.N, f, midi, isApoyando);
+    ksRunString(V, exV, out, wts[0]);
+    ksRunString(H, exH, out, wts[1]);
+
     // 첫 250ms 체감 음량(RMS) 기준 정규화로 음높이·주법이 달라도 비슷한 크기로 들리게 + 버퍼 끝 40ms 페이드 (딸깍 소리 방지)
-    var rms = Math.sqrt(sumSq / Math.min(early, len));
+    var early = Math.min(len, Math.floor(sr * 0.25)), sumSq = 0, n;
+    for (n = 0; n < early; n++) sumSq += out[n] * out[n];
+    var rms = Math.sqrt(sumSq / early);
     var fade = Math.floor(sr * 0.04), nrm = rms > 0 ? 0.28 / rms : 1;
     for (n = 0; n < len; n++){
       var fg = n > len - fade ? (len - n) / fade : 1;
