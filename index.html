@@ -211,12 +211,14 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .beat-cell:not(.tab-cell){padding:8px 4px;min-height:82px;justify-content:space-between}
 .b-rhythm-head{display:flex;align-items:center;justify-content:space-between;width:100%;padding:0 2px;margin-bottom:4px;font-size:11px;line-height:1;white-space:nowrap;gap:2px}
 .b-idx-badge{font-family:var(--font-num);font-weight:700;color:var(--muted);background:rgba(128,128,128,.12);padding:2px 4px;border-radius:4px;white-space:nowrap;flex-shrink:0}
-.b-dur-badge{font-family:var(--font-num);font-weight:700;color:var(--accent);font-size:11px;white-space:nowrap;flex-shrink:0}
+.b-dur-badge{font-family:var(--font-num);font-weight:700;color:var(--accent);font-size:11px;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:3px}
+.dur-svg{display:inline-block;vertical-align:middle;flex-shrink:0}
 .b-ko-main{font-size:20px;font-weight:800;color:var(--accent);line-height:1.15;margin:2px 0;white-space:nowrap}
 .b-ko-main.b-rest-sym{font-size:15px;color:var(--muted);font-weight:600;margin:4px 0}
 .b-note-sub{font-size:11px;color:var(--muted);font-weight:600;line-height:1.1;margin-bottom:2px;white-space:nowrap}
 .beat-cell.active-beat .b-idx-badge{background:rgba(255,255,255,.25);color:var(--accent-ink)}
 .beat-cell.active-beat .b-dur-badge{color:var(--accent-ink)}
+.beat-cell.active-beat .dur-svg{color:var(--accent-ink)}
 .beat-cell.active-beat .b-ko-main{color:var(--accent-ink)}
 .beat-cell.active-beat .b-note-sub{color:var(--accent-ink)}
 .beat-cell.is-rest{opacity:.75}
@@ -3031,13 +3033,25 @@ registerProcessor('onset', OnsetProc);
     return '고음';
   }
 
+  var NOTE_DUR_SVGS = {
+    whole: '<svg class="dur-svg" viewBox="0 0 16 16" width="12" height="12"><ellipse cx="8" cy="8.5" rx="5.5" ry="3.5" transform="rotate(-25 8 8.5)" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
+    half: '<svg class="dur-svg" viewBox="0 0 14 16" width="10" height="12"><ellipse cx="4.5" cy="11.5" rx="3.3" ry="2.2" transform="rotate(-20 4.5 11.5)" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="7.3" y="1" width="1.4" height="11" fill="currentColor"/></svg>',
+    halfDot: '<svg class="dur-svg" viewBox="0 0 16 16" width="12" height="12"><ellipse cx="4.5" cy="11.5" rx="3.3" ry="2.2" transform="rotate(-20 4.5 11.5)" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="7.3" y="1" width="1.4" height="11" fill="currentColor"/><circle cx="12.5" cy="11.5" r="1.3" fill="currentColor"/></svg>',
+    quarter: '<svg class="dur-svg" viewBox="0 0 14 16" width="10" height="12"><ellipse cx="4.5" cy="11.5" rx="3.5" ry="2.4" transform="rotate(-20 4.5 11.5)" fill="currentColor"/><rect x="7.3" y="1" width="1.4" height="11" fill="currentColor"/></svg>',
+    quarterDot: '<svg class="dur-svg" viewBox="0 0 16 16" width="12" height="12"><ellipse cx="4.5" cy="11.5" rx="3.5" ry="2.4" transform="rotate(-20 4.5 11.5)" fill="currentColor"/><rect x="7.3" y="1" width="1.4" height="11" fill="currentColor"/><circle cx="12.5" cy="11.5" r="1.3" fill="currentColor"/></svg>',
+    eighth: '<svg class="dur-svg" viewBox="0 0 14 16" width="10" height="12"><ellipse cx="4.5" cy="11.5" rx="3.5" ry="2.4" transform="rotate(-20 4.5 11.5)" fill="currentColor"/><rect x="7.3" y="1" width="1.4" height="11" fill="currentColor"/><path d="M8 1 C9.5 3.5 12 4.5 13 7.5 C12 6 10.5 5.2 8 5 Z" fill="currentColor"/></svg>',
+    restQuarter: '<svg class="dur-svg" viewBox="0 0 10 16" width="8" height="12"><path d="M6 1 L2 6 L6.5 8.5 L1.5 12.5 C2.5 14.5 4.5 14 4.5 14.8 C4.5 15.6 3 15.5 2 15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    restEighth: '<svg class="dur-svg" viewBox="0 0 10 16" width="8" height="12"><circle cx="4" cy="5" r="1.6" fill="currentColor"/><path d="M4 4 C6.5 4 7.5 6 7.5 7.5 L5 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'
+  };
+
   function getBeatDurationInfo(beats, bIdx, bpb){
     var b = beats[bIdx];
     var isCompound = (bpb === 6 || bpb === 9 || bpb === 12);
     if (!b || !b.midi){
       return {
         isRest: true,
-        label: isCompound ? '8분 쉼' : '쉼표',
+        svg: isCompound ? NOTE_DUR_SVGS.restEighth : NOTE_DUR_SVGS.restQuarter,
+        label: isCompound ? '8분쉼' : '쉼표',
         durName: isCompound ? '8분 쉼표' : '4분 쉼표'
       };
     }
@@ -3047,17 +3061,17 @@ registerProcessor('onset', OnsetProc);
       span++;
     }
     if (isCompound){
-      if (span === 1) return { isRest: false, label: '♪ 8분', durName: '8분음표' };
-      if (span === 2) return { isRest: false, label: '♩ 4분', durName: '4분음표' };
-      if (span === 3) return { isRest: false, label: '점4분', durName: '점4분음표 (1박)' };
-      if (span >= 6) return { isRest: false, label: '점2분', durName: '점2분음표 (2박)' };
-      return { isRest: false, label: span + '박', durName: span + '박' };
+      if (span === 1) return { isRest: false, svg: NOTE_DUR_SVGS.eighth, label: '8분', durName: '8분음표' };
+      if (span === 2) return { isRest: false, svg: NOTE_DUR_SVGS.quarter, label: '4분', durName: '4분음표' };
+      if (span === 3) return { isRest: false, svg: NOTE_DUR_SVGS.quarterDot, label: '점4분', durName: '점4분음표 (1박)' };
+      if (span >= 6) return { isRest: false, svg: NOTE_DUR_SVGS.halfDot, label: '점2분', durName: '점2분음표 (2박)' };
+      return { isRest: false, svg: '', label: span + '박', durName: span + '박' };
     }
-    if (span === 1) return { isRest: false, label: '♩ 4분', durName: '4분음표 (1박)' };
-    if (span === 2) return { isRest: false, label: '2분음', durName: '2분음표 (2박)' };
-    if (span === 3) return { isRest: false, label: '점2분', durName: '점2분음표 (3박)' };
-    if (span >= 4) return { isRest: false, label: '온음표', durName: '온음표 (4박)' };
-    return { isRest: false, label: span + '박', durName: span + '박' };
+    if (span === 1) return { isRest: false, svg: NOTE_DUR_SVGS.quarter, label: '4분', durName: '4분음표 (1박)' };
+    if (span === 2) return { isRest: false, svg: NOTE_DUR_SVGS.half, label: '2분', durName: '2분음표 (2박)' };
+    if (span === 3) return { isRest: false, svg: NOTE_DUR_SVGS.halfDot, label: '점2분', durName: '점2분음표 (3박)' };
+    if (span >= 4) return { isRest: false, svg: NOTE_DUR_SVGS.whole, label: '온음', durName: '온음표 (4박)' };
+    return { isRest: false, svg: '', label: span + '박', durName: span + '박' };
   }
 
   function renderStructuredMeasures(){
@@ -3275,7 +3289,7 @@ registerProcessor('onset', OnsetProc);
 
           var durBadge = document.createElement('span');
           durBadge.className = 'b-dur-badge';
-          durBadge.textContent = durInfo.label;
+          durBadge.innerHTML = (durInfo.svg || '') + '<span>' + durInfo.label + '</span>';
           durBadge.title = durInfo.durName;
 
           rhythmHead.appendChild(idxBadge);
