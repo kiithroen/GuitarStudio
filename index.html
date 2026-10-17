@@ -632,7 +632,10 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
       <h2 id="toneTitle">음색 설정</h2>
       <button type="button" class="btn sm" id="closeToneBtn">닫기</button>
     </div>
-    <p class="hint" id="toneFxNote" hidden>지금은 드라이 모드라 적용되지 않아요. 콘서트홀 모드(단축키 F)에서 들려요.</p>
+    <div id="toneFxNote" hidden style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span class="hint">지금은 드라이 모드라 울림통·공명현이 꺼져 있어요.</span>
+      <button type="button" class="btn sm primary" id="toneFxOnBtn">콘서트홀 켜기</button>
+    </div>
     <div class="form-row">
       <div style="display:flex;align-items:center;gap:10px">
         <label for="bodyAmountRange" style="font-weight:600;white-space:nowrap">울림통 공명</label>
@@ -2369,9 +2372,9 @@ registerProcessor('onset', OnsetProc);
   // 탄현 파형: 배음 크기를 |sin(kπβ)|/k^p 로 정해 한 주기를 합성 (β: 브리지에서 튕긴 위치, 1/β번째 배음이 빠짐)
   // 노이즈로 배음 크기를 정하면 음마다 우연히 2·3배음이 약해져 일부 음이 흐릿해지므로, 크기는 고정하고 위상만 살짝 흔들어 자연스러움 유지
   // 아포얀도는 브리지에서 더 멀리(β 0.2) 둥글게(p 1.7), 티란도는 브리지 쪽(β 0.14)에서 더 밝게(p 1.4)
-  function ksExcitation(N, f, midi, isApoyando){
+  function ksExcitation(N, f, midi, isApoyando, betaScale){
     var rnd = seededRandom(midi * 977 + (isApoyando ? 1 : 2));
-    var beta = isApoyando ? 0.2 : 0.14, p = isApoyando ? 1.7 : 1.4;
+    var beta = Math.min(0.45, (isApoyando ? 0.2 : 0.14) * (betaScale || 1)), p = isApoyando ? 1.7 : 1.4;
     var K = Math.min(Math.floor(N / 2) - 1, Math.floor(10000 / f));
     var tone = new Float32Array(N), nz = new Float32Array(N), s = 0, i, k;
     for (k = 1; k <= K; k++){
@@ -2418,23 +2421,32 @@ registerProcessor('onset', OnsetProc);
     }
   }
 
-  function renderKsString(ctx, midi, isApoyando){
+  // strNo: 실제로 튕기는 줄(1~6). 같은 음높이라도 줄과 프렛에 따라 음색이 달라짐
+  // - 높은 프렛일수록 진동 길이가 짧아져 오른손 탄현 위치가 상대적으로 줄 가운데로 감 → 둥글고 어두움
+  //   (연주자는 고음에서 오른손을 브리지 쪽으로 옮겨 보정하므로 물리적 이동량 2^(프렛/12)의 20%만 반영:
+  //    100% 반영하면 로망스 12프렛 E5 아포얀도의 2배음이 -27dB까지 떨어져 음이 흐릿해짐)
+  // - 손가락으로 짚은 줄은 손끝이 고음을 흡수해 개방현보다 고음 배음과 여운이 조금 짧음
+  // - 4·5·6번줄은 금속 권선현이라 고음 배음이 더 오래 남음
+  function renderKsString(ctx, midi, isApoyando, strNo){
     var sr = ctx.sampleRate;
     var f = 440 * Math.pow(2, (midi - 69) / 12);
-    var isBass = midi < 55;
+    var st = strNo ? STRINGS[strNo - 1] : null;
+    var fret = st ? Math.max(0, midi - st.midi) : 0;
+    var isWound = st ? strNo >= 4 : midi < 55;
     // 감쇠 목표(두 진동을 합친 평균): 기음 T60은 저음일수록 길고(E2 8초 · E4 5초 · E5 4초), 3kHz 대역은 0.5~0.6초에 걸쳐 사라짐
     // (고음 배음이 너무 빨리 죽으면 높은 음이 사인파처럼 뭉개져 음이 흐릿하게 들림)
-    var t60Fund = 8.0 * Math.pow(f / 82.4, -0.33) * (isApoyando ? 1.15 : 1.0);
-    var t60High = isBass ? 0.6 : (isApoyando ? 0.5 : 0.6);
+    var t60Fund = 8.0 * Math.pow(f / 82.4, -0.33) * (isApoyando ? 1.15 : 1.0) * (fret > 0 ? 0.92 : 1.0);
+    var t60High = (isWound ? 0.6 : (isApoyando ? 0.5 : 0.6)) * (fret > 0 ? 0.95 : 1.0) * Math.max(0.88, 1 - 0.008 * fret);
     var P = KS_POLAR, wts = isApoyando ? P.apo : P.tir;
     var V = ksDesign(sr, f * Math.pow(2, P.vDetuneCents / 1200), t60Fund * P.vT60, t60High * P.vHigh);
     var H = ksDesign(sr, f, t60Fund * P.hT60, t60High * P.hHigh);
 
-    var len = Math.floor(sr * Math.min(isBass ? 6 : 5, t60Fund * P.hT60));
+    var len = Math.floor(sr * Math.min(isWound ? 6 : 5, t60Fund * P.hT60));
     var buf = ctx.createBuffer(1, len, sr);
     var out = buf.getChannelData(0);
-    var exV = ksExcitation(V.N, f, midi, isApoyando);
-    var exH = H.N === V.N ? Float32Array.from(exV) : ksExcitation(H.N, f, midi, isApoyando);
+    var betaScale = Math.pow(2, 0.2 * fret / 12);
+    var exV = ksExcitation(V.N, f, midi, isApoyando, betaScale);
+    var exH = H.N === V.N ? Float32Array.from(exV) : ksExcitation(H.N, f, midi, isApoyando, betaScale);
     ksRunString(V, exV, out, wts[0]);
     ksRunString(H, exH, out, wts[1]);
 
@@ -2450,36 +2462,54 @@ registerProcessor('onset', OnsetProc);
     return buf;
   }
 
-  function getKsBuffer(midi, isApoyando){
-    var key = midi + (isApoyando ? 'a' : 't');
+  function getKsBuffer(midi, isApoyando, strNo){
+    var key = midi + (isApoyando ? 'a' : 't') + (strNo || 0);
     var buf = ksCache.get(key);
     if (buf){
       ksCache.delete(key); // 최근 사용 순서 갱신 (LRU)
     } else {
-      buf = renderKsString(actx, midi, isApoyando);
+      buf = renderKsString(actx, midi, isApoyando, strNo);
       if (ksCache.size >= KS_CACHE_MAX) ksCache.delete(ksCache.keys().next().value);
     }
     ksCache.set(key, buf);
     return buf;
   }
 
-  // 연습 시작 전에 곡에 나오는 음을 미리 렌더링해 두어, 재생 도중 새 음을 처음 만들 때 생기는 메인 스레드 지연을 없앰
-  function warmKsCache(song){
-    if (appState.synthEngine === 'classic' || !song || song.type !== 'structured') return;
-    var notes = {};
-    song.measures.forEach(function(m){
-      m.beats.forEach(function(b, bIdx){
-        var eb = resolveEffectiveBass(m.chord, b, bIdx);
-        if (eb && eb.midi) notes[eb.midi + 't'] = [eb.midi, false];
-        if (b.midi) notes[b.midi + (b.articulation === 'apoyando' ? 'a' : 't')] = [b.midi, b.articulation === 'apoyando'];
-      });
-    });
-    Object.keys(notes).slice(0, KS_CACHE_MAX).forEach(function(k){ getKsBuffer(notes[k][0], notes[k][1]); });
+  // 줄 지정이 없는 음은 1포지션 표준 운지의 줄로 연주 (playGuitarNote·미리 렌더링이 같은 규칙을 써야 캐시가 맞음)
+  function defaultStringFor(midi){
+    var pos = midiInfo(midi).pos;
+    return pos ? pos.str : null;
   }
 
-  function buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx){
+  // 연습 시작 전에 곡에 나오는 음을 미리 렌더링해 두어, 재생 도중 새 음을 처음 만들 때 생기는 메인 스레드 지연을 없앰
+  function warmKsCache(song){
+    if (appState.synthEngine === 'classic' || !song) return;
+    var notes = {};
+    function add(midi, isApo, str){
+      var s = str || defaultStringFor(midi);
+      notes[midi + (isApo ? 'a' : 't') + (s || 0)] = [midi, isApo, s];
+    }
+    if (song.type === 'structured'){
+      song.measures.forEach(function(m){
+        m.beats.forEach(function(b, bIdx){
+          var eb = resolveEffectiveBass(m.chord, b, bIdx);
+          if (eb && eb.midi) add(eb.midi, false, eb.str);
+          if (b.midi) add(b.midi, b.articulation === 'apoyando', b.str);
+        });
+      });
+    } else if (song.type === 'image'){
+      // 이미지 악보는 마디마다 가이드 음 하나만 재생
+      for (var i = 0; i < getMeasureCount(song); i++){
+        var bar = getFlatImageBar(i), pn = bar && bar.note ? parseNoteToken(bar.note, 0) : null;
+        if (pn && pn.midi) add(pn.midi, false, null);
+      }
+    }
+    Object.keys(notes).slice(0, KS_CACHE_MAX).forEach(function(k){ getKsBuffer(notes[k][0], notes[k][1], notes[k][2]); });
+  }
+
+  function buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, strNo){
     var src = actx.createBufferSource();
-    src.buffer = getKsBuffer(midi, isApoyando);
+    src.buffer = getKsBuffer(midi, isApoyando, strNo);
     // 강한 탄현 순간 장력이 커져 음정이 살짝 높게 시작했다 안착하는 현상 (아포얀도가 더 큼)
     src.playbackRate.setValueAtTime(isApoyando ? 1.004 : 1.002, t);
     src.playbackRate.exponentialRampToValueAtTime(1, t + 0.03);
@@ -2585,18 +2615,17 @@ registerProcessor('onset', OnsetProc);
       ? Math.max(0.35, (durSec || 0.75) * (isBass ? 1.45 : (isApoyando ? 1.38 : 1.2)))
       : Math.max(0.18, (durSec || 0.5) * 0.85); // 드라이 톤: 음간 중첩 없는 또렷하고 깔끔한 감쇠
     var scale = gainScale != null ? gainScale : 1.0;
+    var sNo = strNum || defaultStringFor(midi);
 
     var voice = appState.synthEngine === 'classic'
       ? buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx)
-      : buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx);
+      : buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, sNo);
 
     // 같은 줄 재탄현 시 이 보이스만 독립적으로 끊을 수 있도록 엔벨로프 뒤에 별도 감쇠 게인을 둠
     var damp = actx.createGain();
     voice.out.connect(damp);
     damp.connect(guitarBus || actx.destination);
 
-    var pos = strNum ? null : midiInfo(midi).pos;
-    var sNo = strNum || (pos ? pos.str : null);
     if (sNo){
       dampSameStringVoices(sNo, t);
       (stringVoices[sNo] = stringVoices[sNo] || []).push({ start: t, end: voice.stopAt, damp: damp, srcs: voice.srcs });
@@ -2607,6 +2636,12 @@ registerProcessor('onset', OnsetProc);
   // ---------- 공명현: 연주한 음의 배음이 쉬고 있는 개방현의 배음과 겹치면 그 개방현이 저절로 살짝 울림
   // (예: 4번줄 2프렛 E3를 치면 6번줄 E2의 2배음과 1번줄 E4가 함께 울림) · 콘서트홀 모드에서만, 음색 설정의 공명현 세기로 조절
   var SYMP_LEVEL = 0.011; // 기본(100%)에서 연주 음 대비 약 -24dB
+
+  // 개방현 p번째 배음의 감쇠 시상수(초): 저음 줄일수록, 낮은 배음일수록 길게 (물리음원 현 모델의 기음 T60 기준)
+  function sympTau(openMidi, p){
+    return 8.0 * Math.pow(440 * Math.pow(2, (openMidi - 69) / 12) / 82.4, -0.33) / Math.pow(p, 0.7) / 6.91;
+  }
+
   function addSympatheticResonance(midi, t, scale, playedStr){
     if (!appState.acousticFx || !(appState.sympAmount > 0)) return;
     var f = 440 * Math.pow(2, (midi - 69) / 12);
@@ -2617,10 +2652,15 @@ registerProcessor('onset', OnsetProc);
       if ((stringVoices[st.str] || []).some(function(v){ return !v.symp && v.end > t; })) return;
       var fOpen = 440 * Math.pow(2, (st.midi - 69) / 12);
       for (var p = 1; p <= 6; p++){        // 개방현의 p번째 배음
-        for (var q = 1; q <= 4; q++){      // 연주 음의 q번째 배음
-          var dc = Math.abs(1200 * Math.log2(p * fOpen / (q * f)));
-          if (dc < 8 && p * fOpen < 4000){
-            cands.push({ st: st, freq: p * fOpen, p: p, w: (1 - dc / 8) / (q * Math.sqrt(p)) });
+        var fp = p * fOpen;
+        if (fp >= 4000) break;
+        // 개방현 배음은 대역폭 1/(π·시상수)인 공진기: 연주 음 배음과의 주파수 차이에 따른 로렌츠 응답으로 공명 세기를 정함
+        // (옥타브·유니즌은 그대로, 평균율 5도는 약 -4dB, 순정음과 13.7센트 어긋나는 평균율 장3도는 약 -18dB로 자연스럽게 약해짐)
+        var bw = 1 / (Math.PI * sympTau(st.midi, p));
+        for (var q = 1; q <= 5; q++){      // 연주 음의 q번째 배음
+          var resp = 1 / Math.sqrt(1 + Math.pow(2 * Math.abs(fp - q * f) / bw, 2));
+          if (resp > 0.1){
+            cands.push({ st: st, freq: fp, p: p, w: resp / (q * Math.sqrt(p)) });
           }
         }
       }
@@ -2641,8 +2681,7 @@ registerProcessor('onset', OnsetProc);
       o.frequency.value = c.freq;
       var g = actx.createGain();
       var amp = SYMP_LEVEL * appState.sympAmount * scale * c.w;
-      // 개방현 감쇠 시간: 저음 줄일수록, 낮은 배음일수록 길게 (물리음원 현 모델의 기음 T60 기준)
-      var tau = 8.0 * Math.pow(440 * Math.pow(2, (c.st.midi - 69) / 12) / 82.4, -0.33) / Math.pow(c.p, 0.7) / 6.91;
+      var tau = sympTau(c.st.midi, c.p);
       g.gain.setValueAtTime(0, t);
       g.gain.setTargetAtTime(amp, t, 0.04);              // 진동이 옮겨 가며 서서히 커짐
       g.gain.setTargetAtTime(0, t + 0.15, tau);
@@ -5239,6 +5278,14 @@ registerProcessor('onset', OnsetProc);
   });
   $('#closeToneBtn').addEventListener('click', function(){
     $('#toneModal').hidden = true;
+  });
+  // 드라이 모드에서는 슬라이더를 움직여도 들리지 않으므로 창 안에서 바로 콘서트홀로 전환
+  $('#toneFxOnBtn').addEventListener('click', function(){
+    appState.acousticFx = true;
+    updateAudioFxRouting();
+    syncConsoleUI();
+    saveAppState();
+    syncToneUI();
   });
   // 드래그 중에는 소리만 바로 반영하고, 손을 뗐을 때 저장
   $('#bodyAmountRange').addEventListener('input', function(e){
