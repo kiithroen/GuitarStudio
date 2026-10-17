@@ -335,6 +335,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
         <button type="button" class="btn primary" id="uploadImgBtn">+ 교본 사진/PDF 악보 올리기</button>
         <button type="button" class="btn" id="newTextSongBtn">+ 직접 악보 입력</button>
         <button type="button" class="btn" id="openSheetSyncBtn">구글 시트 연동</button>
+        <button type="button" class="btn sm" id="renameSongBtn" hidden title="이 악보의 이름을 변경합니다">이름 변경</button>
         <button type="button" class="btn danger sm" id="deleteSongBtn" hidden>삭제</button>
       </div>
     </div>
@@ -426,8 +427,9 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
   <!-- 악보 뷰어 섹션 -->
   <section class="panel" aria-label="악보 및 메트로놈 커서">
     <div class="score-toolbar">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <h2 id="scoreTitle">작은 별 (Twinkle Twinkle Little Star)</h2>
+        <button type="button" class="btn sm" id="renameScoreTitleBtn" hidden style="min-height:28px;padding:0 8px;font-size:12px" title="곡 이름 변경">✏️ 이름 변경</button>
         <span class="badge accent" id="scoreTypeBadge">내장 동요 · 다장조(C)</span>
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -2668,8 +2670,18 @@ registerProcessor('onset', OnsetProc);
     if (!curSong) return;
     $('#scoreTitle').textContent = curSong.title;
     $('#scoreTypeBadge').textContent = curSong.badge || (curSong.type === 'image' ? '교본 사진/PDF 악보' : '직접 만든 악보');
-    $('#deleteSongBtn').hidden = !!curSong.builtin;
+    var canRenameOrDelete = !curSong.builtin;
+    $('#deleteSongBtn').hidden = !canRenameOrDelete;
     $('#deleteSongBtn').textContent = curSong.fromSheet ? '목록에서 삭제' : '삭제';
+    if ($('#renameSongBtn')) $('#renameSongBtn').hidden = !canRenameOrDelete;
+    if ($('#renameScoreTitleBtn')) $('#renameScoreTitleBtn').hidden = !canRenameOrDelete;
+    if (canRenameOrDelete){
+      $('#scoreTitle').title = '클릭하여 악보 이름 변경';
+      $('#scoreTitle').style.cursor = 'pointer';
+    } else {
+      $('#scoreTitle').title = '';
+      $('#scoreTitle').style.cursor = 'default';
+    }
 
     // 곡별 저장된 설정 복원
     var savedMeta = (curSong.builtin || curSong.fromSheet) ? ls.get('gs.builtinMeta.' + curSong.id, null) : curSong;
@@ -3818,7 +3830,10 @@ registerProcessor('onset', OnsetProc);
     if (!file) return;
     e.target.value = '';
 
-    var title = file.name.replace(/\.[^.]+$/, '');
+    var baseName = file.name.replace(/\.[^.]+$/, '');
+    var inputTitle = prompt('새로 올릴 악보의 이름을 입력해 주세요:\n(취소하거나 비워두면 파일명이 사용됩니다)', baseName);
+    var title = (inputTitle && inputTitle.trim()) ? inputTitle.trim() : baseName;
+
     if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)){
       await handlePdfUpload(file, title);
     } else {
@@ -4791,6 +4806,45 @@ registerProcessor('onset', OnsetProc);
     rebuildSongSelect(sheetSongs.length ? sheetSongs[0].id : BUILTIN_SONGS[0].id);
   });
 
+  // ---------- 악보 이름 변경 (직접 올린 교본 이미지/PDF, 직접 입력 악보, 구글 시트 연동곡)
+  async function renameCurrentSong(){
+    if (!curSong || curSong.builtin){
+      alert('내장 기본 악보는 이름을 변경할 수 없어요.');
+      return;
+    }
+    var oldTitle = curSong.title || '';
+    var newTitle = prompt('악보 이름을 변경해 주세요:', oldTitle);
+    if (newTitle == null) return;
+    newTitle = newTitle.trim();
+    if (!newTitle){
+      alert('곡 이름을 1글자 이상 입력해 주세요.');
+      return;
+    }
+    if (newTitle === oldTitle) return;
+
+    curSong.title = newTitle;
+
+    if (curSong.fromSheet){
+      var titleOverrides = ls.get('gs.sheetTitleOverrides', {});
+      titleOverrides[curSong.id] = newTitle;
+      ls.set('gs.sheetTitleOverrides', titleOverrides);
+      var ss = sheetSongs.find(function(s){ return s.id === curSong.id; });
+      if (ss) ss.title = newTitle;
+    } else {
+      await dbSaveSong(curSong);
+      var cs = customSongs.find(function(s){ return s.id === curSong.id; });
+      if (cs) cs.title = newTitle;
+    }
+
+    rebuildSongSelect(curSong.id);
+  }
+
+  if ($('#renameSongBtn')) $('#renameSongBtn').addEventListener('click', renameCurrentSong);
+  if ($('#renameScoreTitleBtn')) $('#renameScoreTitleBtn').addEventListener('click', renameCurrentSong);
+  $('#scoreTitle').addEventListener('click', function(){
+    if (curSong && !curSong.builtin) renameCurrentSong();
+  });
+
   // ---------- 6현 튜너 모달
   function initTunerModal(){
     var box = $('#tunerStrings');
@@ -5108,9 +5162,13 @@ registerProcessor('onset', OnsetProc);
 
         if (!lines.length) return;
 
+        var songId = 'sheet-song-' + rIdx;
+        var titleOverrides = ls.get('gs.sheetTitleOverrides', {});
+        var finalTitle = titleOverrides[songId] || title;
+
         var song = buildStructuredSong({
-          id: 'sheet-song-' + rIdx,
-          title: title,
+          id: songId,
+          title: finalTitle,
           badge: badge,
           builtin: false,
           bpm: bpm,
