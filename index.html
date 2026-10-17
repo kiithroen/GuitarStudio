@@ -134,6 +134,9 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:24px}
 .fx-toggle{min-height:28px;padding:0 9px;border-radius:8px;border:1px solid var(--d-line);background:var(--d-bg);color:var(--d-muted);font-size:11.5px;font-weight:600;white-space:nowrap;cursor:pointer;transition:border-color .15s,color .15s,background-color .15s}
 .fx-toggle[data-active="true"]{border-color:var(--d-ok);background:rgba(98,212,145,.12);color:var(--d-ok)}
 .fx-toggle[data-active="false"]{border-color:var(--d-line);background:var(--d-bg);color:var(--d-muted)}
+#bpmResetBtn{background:var(--d-bg);border-color:var(--d-line);color:var(--d-muted);transition:border-color .15s,color .15s,background-color .15s}
+#bpmResetBtn:hover{border-color:var(--d-fg);color:var(--d-fg)}
+#bpmResetBtn.active{background:rgba(98,212,145,.14);border-color:var(--d-ok);color:var(--d-ok);font-weight:600}
 
 /* 실시간 마이크/음정 게이지 */
 .gauge-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -355,6 +358,10 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
     <div class="stage-grid">
       <!-- 1. BPM 및 박자 -->
       <div class="stage-box">
+        <div class="ctrl-row">
+          <span class="label" style="color:var(--d-muted)">템포 (BPM)</span>
+          <button type="button" class="btn sm" id="bpmResetBtn" style="min-height:26px;padding:0 8px;font-size:11.5px" title="이 악보의 기본 권장 BPM으로 초기화합니다">기본 BPM (<span id="defaultBpmTxt">64</span>)</button>
+        </div>
         <div class="bpm-ctrl">
           <button type="button" class="step-btn" id="bpmDown" aria-label="BPM 2 내리기">-2</button>
           <div class="bpm-read">
@@ -2383,7 +2390,8 @@ registerProcessor('onset', OnsetProc);
     var savedMeta = (curSong.builtin || curSong.fromSheet) ? ls.get('gs.builtinMeta.' + curSong.id, null) : curSong;
     var totalM = getMeasureCount(curSong);
     appState.beats = curSong.beats || 4;
-    appState.bpm = (savedMeta && savedMeta.bpm) || curSong.bpm || 64;
+    var defaultBpm = Number(curSong.bpm) || 64;
+    appState.bpm = defaultBpm;
     appState.loopStart = Math.min(totalM, Math.max(1, (savedMeta && savedMeta.loopStart) || 1));
     appState.loopEnd = Math.min(totalM, Math.max(appState.loopStart, (savedMeta && savedMeta.loopEnd) || totalM));
     if (savedMeta && savedMeta.ytUrl) curSong.ytUrl = savedMeta.ytUrl;
@@ -2395,7 +2403,8 @@ registerProcessor('onset', OnsetProc);
 
     if (savedMeta && savedMeta.at){
       $('#resumeBanner').hidden = false;
-      $('#resumeText').textContent = '이어가기 복원됨: 마지막 연습 ' + fmtDate(savedMeta.at) + ' · ' + appState.bpm + ' BPM · 구간 ' + appState.loopStart + '~' + appState.loopEnd + '마디';
+      var lastPracticedBpm = savedMeta.bpm || defaultBpm;
+      $('#resumeText').textContent = '이어가기 안내: 마지막 연습 ' + fmtDate(savedMeta.at) + ' (당시 ' + lastPracticedBpm + ' BPM) · 구간 ' + appState.loopStart + '~' + appState.loopEnd + '마디';
     } else {
       $('#resumeBanner').hidden = true;
     }
@@ -3298,6 +3307,14 @@ registerProcessor('onset', OnsetProc);
         : '리버브·공명·잔향을 끈 깔끔하고 또렷한 가이드 드라이 톤 (클릭 또는 단축키 F로 콘서트홀 전환)';
     }
     $('#calibBadge').textContent = calib.calibrated ? Math.round(calib.lat * 1000) + 'ms' : '기본 45ms';
+    var defBpm = curSong ? (Number(curSong.bpm) || 64) : 64;
+    if ($('#defaultBpmTxt')) $('#defaultBpmTxt').textContent = defBpm;
+    if ($('#bpmResetBtn')){
+      var isDiff = (appState.bpm !== defBpm);
+      $('#bpmResetBtn').classList.toggle('active', isDiff);
+      $('#bpmResetBtn').textContent = '기본 BPM (' + defBpm + ')';
+      $('#bpmResetBtn').title = '이 악보의 기본 권장 BPM(' + defBpm + ')으로 초기화합니다' + (isDiff ? ' (현재: ' + appState.bpm + ')' : '');
+    }
     buildLeds();
   }
 
@@ -3311,6 +3328,13 @@ registerProcessor('onset', OnsetProc);
   $('#bpmRange').addEventListener('input', function(e){ setBpm(e.target.value); });
   $('#bpmDown').addEventListener('click', function(){ setBpm(appState.bpm - 2); });
   $('#bpmUp').addEventListener('click', function(){ setBpm(appState.bpm + 2); });
+  if ($('#bpmResetBtn')){
+    $('#bpmResetBtn').addEventListener('click', function(){
+      if (!curSong) return;
+      var defBpm = Number(curSong.bpm) || 64;
+      setBpm(defBpm);
+    });
+  }
 
   $('#beatsSelect').addEventListener('change', function(e){
     appState.beats = Number(e.target.value);
@@ -4996,8 +5020,9 @@ registerProcessor('onset', OnsetProc);
     curSong = target;
     appState.lastSongId = target.id;
     if (songHasExplicitBass(target)) appState.autoBass = true;
-    saveAppState();
+    appState.bpm = Number(target.bpm) || 64;
     renderSong();
+    saveAppState();
   }
 
   function songHasExplicitBass(song){
@@ -5014,8 +5039,9 @@ registerProcessor('onset', OnsetProc);
       curSong = found;
       appState.lastSongId = found.id;
       if (songHasExplicitBass(found)) appState.autoBass = true;
-      saveAppState();
+      appState.bpm = Number(found.bpm) || 64;
       renderSong();
+      saveAppState();
     }
   });
 
