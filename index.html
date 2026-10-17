@@ -1649,7 +1649,7 @@ registerProcessor('onset', OnsetProc);
   // 오디오 및 메트로놈 런타임 (어쿠스틱 바디 공명 + 콘서트홀 리버브 버스 포함)
   var actx = null, workletNode = null, micStream = null, micSource = null, outGain = null;
   var guitarBus = null, reverbNode = null, pluckNoiseBuf = null, clickBus = null;
-  var dryGainNode = null, wetGainNode = null, bodyLowNode = null, bodyWoodNode = null;
+  var dryGainNode = null, wetGainNode = null, bodyModes = [];
   var stringVoices = {}; // 줄 번호(1~6)별 현재 울리고 있는 보이스 목록 (같은 줄 재탄현 시 이전 음 정지용)
   // 기타 마스터 음량 (0.90에서 -1.6dB): 내장곡 실측 기준 로망스 원곡 9/8 첫 박(베이스+아포얀도 동시 탄현)을 제외한 모든 곡의 피크가 -1dBFS 아래
   var GUITAR_MASTER_GAIN = 0.75;
@@ -2031,32 +2031,48 @@ registerProcessor('onset', OnsetProc);
   }
 
   // ---------- WebAudio 신디사이저 (클래식 기타 바디 공명 + 콘서트홀 리버브 + 권선현/나일론현 배음 합성)
+  // 콘서트홀 잔향 IR: 대역별 지수 감쇠(저음 1.9초 · 중음 1.6초 · 고음 1.0초)로 고음 잔향이 먼저 사라지고,
+  // 확산 잔향은 30ms 시상수로 차오르며, 초기 반사음은 양 채널 같은 극성(모노 합산 시 빗살 필터 착색 없음)
+  var REVERB_RT = { low: 1.9, mid: 1.6, high: 1.0 }; // <500Hz, 500Hz~3.5kHz, >3.5kHz
+  // 클래식 기타 몸통 공명 모드 [주파수Hz, Q, 원음 대비 크기]: 공기(헬름홀츠) · 상판 기본 · 상판-뒤판 결합 · 고차 상판 모드
+  var BODY_MODES = [[98, 12, 0.45], [196, 16, 0.38], [245, 14, 0.15], [390, 10, 0.20], [550, 9, 0.12]];
+  var REVERB_EARLY = [ // [초, 크기] 채널별로 시간만 다르게 해 자연스러운 좌우 폭
+    [[0.019, 0.42], [0.027, 0.33], [0.041, 0.27], [0.053, 0.21], [0.068, 0.16], [0.083, 0.12]],
+    [[0.022, 0.40], [0.031, 0.31], [0.037, 0.26], [0.058, 0.20], [0.072, 0.15], [0.089, 0.11]]
+  ];
+
   function buildConcertHallReverbBuffer(ctx){
     var rate = ctx.sampleRate;
-    var dur = 1.75;
-    var len = Math.floor(rate * dur);
+    var len = Math.floor(rate * 2.4);
     var buf = ctx.createBuffer(2, len, rate);
-    var preDelaySamples = Math.floor(rate * 0.015);
-    var earlyMs = [0.021, 0.037, 0.054, 0.079];
-    var earlyGains = [0.38, 0.28, 0.21, 0.15];
+    var pre = 0.018;
+    // 2단 1차 로우패스로 노이즈를 세 대역으로 나눠 각각 다른 속도로 감쇠
+    var cLo = 1 - Math.exp(-2 * Math.PI * 500 / rate), cHi = 1 - Math.exp(-2 * Math.PI * 3500 / rate);
 
     for (var ch = 0; ch < 2; ch++){
       var data = buf.getChannelData(ch);
-      var lp = 0;
-      for (var i = preDelaySamples; i < len; i++){
-        var t = (i - preDelaySamples) / (len - preDelaySamples);
-        // 고음역은 빠르게 감쇠하고 중저음 홀 잔향은 따뜻하게 남도록 1차 로우패스 노이즈 생성
-        var white = Math.random() * 2 - 1;
-        var damp = 0.22 + 0.55 * (1 - t);
-        lp = lp + damp * (white - lp);
-        var env = Math.pow(1 - t, 2.65) * 0.52;
-        data[i] = lp * env;
+      var rnd = seededRandom(9001 + ch * 7919); // 매번 같은 잔향 음색 (좌우는 서로 다른 노이즈로 공간감)
+      var lo = 0, loB = 0, hi = 0, hiB = 0;
+      for (var i = Math.floor(rate * pre); i < len; i++){
+        var tt = i / rate - pre;
+        var w = rnd() * 2 - 1;
+        lo += cLo * (w - lo); loB += cLo * (lo - loB);
+        hi += cHi * (w - hi); hiB += cHi * (hi - hiB);
+        var env = loB * Math.exp(-6.91 * tt / REVERB_RT.low)
+          + (hiB - loB) * Math.exp(-6.91 * tt / REVERB_RT.mid)
+          + (w - hiB) * Math.exp(-6.91 * tt / REVERB_RT.high);
+        data[i] = env * (1 - Math.exp(-tt / 0.03)) * 0.35;
       }
-      // 초기 반사음(Early Reflections) 추가로 기타 바디와 홀 벽면의 입체감 형성
-      for (var e = 0; e < earlyMs.length; e++){
-        var idx = Math.floor(rate * (earlyMs[e] + (ch === 1 ? 0.0035 : 0)));
-        if (idx < len) data[idx] += (ch % 2 === 0 ? 1 : -1) * earlyGains[e];
-      }
+      // 초기 반사음: 2ms 폭으로 살짝 퍼뜨려 딱딱한 클릭 없이 벽면 반사의 입체감만 남김
+      var spread = Math.floor(rate * 0.002);
+      REVERB_EARLY[ch].forEach(function(er){
+        var c = Math.floor(er[0] * rate);
+        for (var k = -spread; k <= spread; k++){
+          if (c + k >= 0 && c + k < len) data[c + k] += er[1] * (0.5 + 0.5 * Math.cos(Math.PI * k / spread)) / spread;
+        }
+      });
+      var fade = Math.floor(rate * 0.1);
+      for (var j = len - fade; j < len; j++) data[j] *= (len - j) / fade;
     }
     return buf;
   }
@@ -2100,19 +2116,6 @@ registerProcessor('onset', OnsetProc);
       clickBus = actx.createGain();
       clickBus.gain.value = 1.0;
 
-      // 클래식 기타 울림통(Helmholtz ~130Hz & 상판 우드 ~280Hz) 온화한 공명 EQ
-      bodyLowNode = actx.createBiquadFilter();
-      bodyLowNode.type = 'peaking';
-      bodyLowNode.frequency.value = 135;
-      bodyLowNode.Q.value = 1.05;
-      bodyLowNode.gain.value = appState.acousticFx ? 2.0 : 0.0;
-
-      bodyWoodNode = actx.createBiquadFilter();
-      bodyWoodNode.type = 'peaking';
-      bodyWoodNode.frequency.value = 285;
-      bodyWoodNode.Q.value = 1.3;
-      bodyWoodNode.gain.value = appState.acousticFx ? 1.4 : 0.0;
-
       guitarBus = actx.createGain();
       guitarBus.gain.value = 1.0;
 
@@ -2125,10 +2128,24 @@ registerProcessor('onset', OnsetProc);
       reverbNode = actx.createConvolver();
       reverbNode.buffer = buildConcertHallReverbBuffer(actx);
 
-      guitarBus.connect(bodyLowNode);
-      bodyLowNode.connect(bodyWoodNode);
-      bodyWoodNode.connect(dryGainNode);
-      bodyWoodNode.connect(reverbNode);
+      // 클래식 기타 울림통 공명: 원음 + 공명 모드별 대역 통과 필터를 병렬로 더함
+      // 각 모드가 짧게(0.04~0.27초) 울리고 모드 사이에는 자연스러운 골이 생겨, 넓게 부풀리는 EQ보다 덜 답답한 나무 울림통 소리
+      var bodyOut = actx.createGain();
+      guitarBus.connect(bodyOut);
+      bodyModes = BODY_MODES.map(function(m){
+        var bp = actx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = m[0];
+        bp.Q.value = m[1];
+        var mg = actx.createGain();
+        mg.gain.value = appState.acousticFx ? m[2] : 0;
+        guitarBus.connect(bp);
+        bp.connect(mg);
+        mg.connect(bodyOut);
+        return { gain: mg, level: m[2] };
+      });
+      bodyOut.connect(dryGainNode);
+      bodyOut.connect(reverbNode);
       reverbNode.connect(wetGainNode);
 
       dryGainNode.connect(outGain);
@@ -2155,16 +2172,11 @@ registerProcessor('onset', OnsetProc);
       wetGainNode.gain.setValueAtTime(wetGainNode.gain.value, now);
       wetGainNode.gain.linearRampToValueAtTime(on ? 0.18 : 0.0, now + 0.04);
     }
-    if (bodyLowNode && bodyLowNode.gain){
-      bodyLowNode.gain.cancelScheduledValues(now);
-      bodyLowNode.gain.setValueAtTime(bodyLowNode.gain.value, now);
-      bodyLowNode.gain.linearRampToValueAtTime(on ? 2.0 : 0.0, now + 0.04);
-    }
-    if (bodyWoodNode && bodyWoodNode.gain){
-      bodyWoodNode.gain.cancelScheduledValues(now);
-      bodyWoodNode.gain.setValueAtTime(bodyWoodNode.gain.value, now);
-      bodyWoodNode.gain.linearRampToValueAtTime(on ? 1.4 : 0.0, now + 0.04);
-    }
+    bodyModes.forEach(function(m){
+      m.gain.gain.cancelScheduledValues(now);
+      m.gain.gain.setValueAtTime(m.gain.gain.value, now);
+      m.gain.gain.linearRampToValueAtTime(on ? m.level : 0.0, now + 0.04);
+    });
   }
 
   // 어쿠스틱 우드블록(Woodblock) 메트로놈 클릭 (#volRange '클릭음' 슬라이더로 독립 조절, 0이면 무음)
@@ -2218,7 +2230,7 @@ registerProcessor('onset', OnsetProc);
   // 내장곡 실측: 기존 합성음 대비 RMS가 대부분 곡에서 +0~1dB, 긴 저음이 많은 느린 곡(푸른 옷소매·로망스)은 -1~-2.6dB, 피크는 -5dBFS 이하
   var KS_VOICE_GAIN = 0.45;
 
-  function ksRandom(seed){ // 음마다 항상 같은 음색이 나오도록 시드 고정 난수 (mulberry32)
+  function seededRandom(seed){ // 현 음색·잔향이 매번 똑같이 나오도록 시드 고정 난수 (mulberry32)
     return function(){
       seed |= 0; seed = seed + 0x6D2B79F5 | 0;
       var r = Math.imul(seed ^ seed >>> 15, 1 | seed);
@@ -2260,7 +2272,7 @@ registerProcessor('onset', OnsetProc);
 
     // 탄현 파형: 손가락이 당긴 삼각형 변위 + 손톱 마찰 노이즈 (아포얀도는 더 둥글고 노이즈가 적음)
     // 탄현 위치(브리지에서 β 지점)에 따라 1/β번째 배음이 빠지는 콤 필터 효과로 주법별 음색 차이
-    var rnd = ksRandom(midi * 977 + (isApoyando ? 1 : 2));
+    var rnd = seededRandom(midi * 977 + (isApoyando ? 1 : 2));
     var beta = isApoyando ? 0.2 : 0.14;
     var pos = Math.max(1, Math.round(N * beta));
     var tri = new Float32Array(N), nz = new Float32Array(N), lpA = isApoyando ? 0.6 : 0.4, s = 0, i;
