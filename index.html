@@ -99,61 +99,62 @@ h3{margin:0;font-size:14.5px;font-weight:600}
 .resume-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-radius:10px;background:var(--accent-soft);border:1px solid var(--accent);font-size:13px}
 
 /* 콘솔 (메트로놈 + 컨트롤) */
-.stage{background:var(--d-bg);color:var(--d-fg);border:1px solid var(--d-line);border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
-.stage-grid{display:grid;grid-template-columns:1.1fr 1.2fr 1fr;gap:14px;align-items:center}
-@media (max-width:820px){.stage-grid{grid-template-columns:1fr}}
-.stage-box{background:var(--d-surface);border:1px solid var(--d-line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.stage{background:var(--d-bg);color:var(--d-fg);border:1px solid var(--d-line);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
+.stage-grid{display:grid;grid-template-columns:1.15fr 1.15fr 1fr;gap:10px;align-items:stretch}
+@media (max-width:860px){.stage-grid{grid-template-columns:1fr}}
+.stage-box{background:var(--d-surface);border:1px solid var(--d-line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;gap:6px;min-height:130px;box-sizing:border-box}
 
-.st-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.phase{font-size:13px;color:var(--d-muted);font-variant-numeric:tabular-nums;font-weight:500}
-.leds{display:flex;gap:8px}
-.led{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--d-muted);opacity:.5;transition:transform .08s,background-color .08s}
-.led.on{background:var(--d-fg);border-color:var(--d-fg);opacity:1;transform:scale(1.12)}
+.st-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.phase{font-size:12px;color:var(--d-muted);font-variant-numeric:tabular-nums;font-weight:500}
+.leds{display:flex;gap:6px}
+.led{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--d-muted);opacity:.5;transition:transform .08s,background-color .08s}
+.led.on{background:var(--d-fg);border-color:var(--d-fg);opacity:1;transform:scale(1.1)}
 .led.on.accent{background:var(--d-near);border-color:var(--d-near)}
 
-.bpm-ctrl{display:grid;grid-template-columns:42px minmax(0,1fr) 42px;align-items:center;gap:8px}
-.step-btn{height:40px;border-radius:10px;border:1px solid var(--d-line);background:transparent;color:var(--d-fg);font-size:20px;font-family:var(--font-num)}
-.bpm-read{display:flex;flex-direction:column;align-items:center;line-height:1.1}
-.bpm-num{font-family:var(--font-num);font-size:32px;font-weight:700}
-.bpm-unit{font-size:11.5px;color:var(--d-muted)}
+.bpm-ctrl{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;align-items:center;gap:6px}
+.step-btn{height:30px;border-radius:7px;border:1px solid var(--d-line);background:transparent;color:var(--d-fg);font-size:15px;font-family:var(--font-num);cursor:pointer}
+.step-btn:hover{background:rgba(255,255,255,.06);border-color:var(--d-fg)}
+.bpm-read{display:flex;flex-direction:column;align-items:center;line-height:1.05}
+.bpm-num{font-family:var(--font-num);font-size:25px;font-weight:700}
+.bpm-unit{font-size:11px;color:var(--d-muted)}
 .tempo-it{font-family:var(--font-term);font-style:italic;color:var(--d-fg)}
-input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:24px}
+input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .stage input[type=range]{accent-color:var(--d-fg)}
 
-.ctrl-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
-.ctrl-item{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--d-muted)}
-.ctrl-item select,.ctrl-item input[type=number]{background:var(--d-bg);color:var(--d-fg);border:1px solid var(--d-line);border-radius:7px;padding:4px 7px;font-family:var(--font-num);font-size:13px}
-.ctrl-item input[type=number]{width:56px;text-align:center}
+.ctrl-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:space-between}
+.ctrl-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--d-muted)}
+.ctrl-item select,.ctrl-item input[type=number]{background:var(--d-bg);color:var(--d-fg);border:1px solid var(--d-line);border-radius:6px;padding:3px 6px;font-family:var(--font-num);font-size:12px}
+.ctrl-item input[type=number]{width:48px;text-align:center}
 
-.play-row{display:flex;gap:8px;align-items:center}
-.go-btn{flex:1;height:48px;border-radius:12px;border:0;background:var(--d-ok);color:#091e12;font-size:16.5px;font-weight:700;letter-spacing:.02em}
+.play-row{display:flex;gap:6px;align-items:center}
+.go-btn{flex:1;height:36px;border-radius:9px;border:0;background:var(--d-ok);color:#091e12;font-size:14px;font-weight:700;letter-spacing:.02em;cursor:pointer}
 .go-btn.running{background:transparent;color:var(--d-off);box-shadow:inset 0 0 0 2px var(--d-off)}
-.sound-toggle{height:48px;padding:0 14px;border-radius:12px;border:1.5px solid var(--d-line);background:var(--d-surface);color:var(--d-muted);font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer;transition:border-color .15s,color .15s,background-color .15s}
+.sound-toggle{height:36px;padding:0 9px;border-radius:9px;border:1.5px solid var(--d-line);background:var(--d-surface);color:var(--d-muted);font-size:11px;font-weight:600;white-space:nowrap;cursor:pointer;transition:border-color .15s,color .15s,background-color .15s}
 .sound-toggle[aria-pressed="true"]{border-color:var(--d-ok);background:rgba(98,212,145,.10);color:var(--d-ok)}
 .sound-toggle[aria-pressed="false"]{border-color:var(--d-line);background:var(--d-bg);color:var(--d-muted)}
-.fx-toggle{min-height:28px;padding:0 9px;border-radius:8px;border:1px solid var(--d-line);background:var(--d-bg);color:var(--d-muted);font-size:11.5px;font-weight:600;white-space:nowrap;cursor:pointer;transition:border-color .15s,color .15s,background-color .15s}
+.fx-toggle{height:22px;padding:0 7px;border-radius:6px;border:1px solid var(--d-line);background:var(--d-bg);color:var(--d-muted);font-size:11px;font-weight:600;white-space:nowrap;cursor:pointer;transition:border-color .15s,color .15s,background-color .15s}
 .fx-toggle[data-active="true"]{border-color:var(--d-ok);background:rgba(98,212,145,.12);color:var(--d-ok)}
 .fx-toggle[data-active="false"]{border-color:var(--d-line);background:var(--d-bg);color:var(--d-muted)}
-#bpmResetBtn{background:var(--d-bg);border-color:var(--d-line);color:var(--d-muted);transition:border-color .15s,color .15s,background-color .15s}
+#bpmResetBtn{height:22px;background:var(--d-bg);border-color:var(--d-line);color:var(--d-muted);transition:border-color .15s,color .15s,background-color .15s}
 #bpmResetBtn:hover{border-color:var(--d-fg);color:var(--d-fg)}
 #bpmResetBtn.active{background:rgba(98,212,145,.14);border-color:var(--d-ok);color:var(--d-ok);font-weight:600}
 
 /* 실시간 마이크/음정 게이지 */
-.gauge-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.pitch-box{display:flex;align-items:baseline;gap:6px}
-.pitch-note{font-family:var(--font-num);font-size:26px;font-weight:700;color:var(--d-fg)}
-.pitch-ko{font-size:14px;color:var(--d-near);font-weight:600}
-.err-box{font-family:var(--font-num);font-size:20px;font-weight:600}
+.gauge-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pitch-box{display:flex;align-items:baseline;gap:5px}
+.pitch-note{font-family:var(--font-num);font-size:20px;font-weight:700;color:var(--d-fg)}
+.pitch-ko{font-size:12px;color:var(--d-near);font-weight:600}
+.err-box{font-family:var(--font-num);font-size:16px;font-weight:600}
 .err-box[data-cls="ok"]{color:var(--d-ok)}
 .err-box[data-cls="near"]{color:var(--d-near)}
 .err-box[data-cls="off"]{color:var(--d-off)}
-.mini-scale{position:relative;height:18px;background:var(--d-bg);border-radius:6px;overflow:hidden;border:1px solid var(--d-line)}
+.mini-scale{position:relative;height:12px;background:var(--d-bg);border-radius:5px;overflow:hidden;border:1px solid var(--d-line)}
 .mini-zone{position:absolute;left:37.5%;width:25%;top:0;bottom:0;background:rgba(98,212,145,.18)}
 .mini-needle{position:absolute;top:0;bottom:0;left:50%;width:3px;background:var(--d-fg);transform:translateX(-50%);transition:left .1s ease-out}
 .mini-needle[data-cls="ok"]{background:var(--d-ok)}
 .mini-needle[data-cls="near"]{background:var(--d-near)}
 .mini-needle[data-cls="off"]{background:var(--d-off)}
-.mic-bar{height:6px;border-radius:3px;background:var(--d-line);overflow:hidden}
+.mic-bar{height:4px;border-radius:2px;background:var(--d-line);overflow:hidden}
 .mic-fill{height:100%;width:0;background:var(--d-ok);transition:width .06s}
 
 /* 악보 영역 */
@@ -360,7 +361,10 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
       <div class="stage-box">
         <div class="ctrl-row">
           <span class="label" style="color:var(--d-muted)">템포 (BPM)</span>
-          <button type="button" class="btn sm" id="bpmResetBtn" style="min-height:26px;padding:0 8px;font-size:11.5px" title="이 악보의 기본 권장 BPM으로 초기화합니다">기본 BPM (<span id="defaultBpmTxt">64</span>)</button>
+          <div style="display:flex;gap:4px;align-items:center">
+            <button type="button" class="btn sm" id="bpmResetBtn" style="height:22px;padding:0 7px;font-size:11px" title="이 악보의 기본 권장 BPM으로 초기화합니다">기본 BPM (<span id="defaultBpmTxt">64</span>)</button>
+            <button type="button" class="fx-toggle" id="toggleFxBtn" data-active="true" title="리버브·바디공명·긴 서스테인 특수효과 토글 (단축키: F)">콘서트홀</button>
+          </div>
         </div>
         <div class="bpm-ctrl">
           <button type="button" class="step-btn" id="bpmDown" aria-label="BPM 2 내리기">-2</button>
@@ -382,9 +386,8 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
             </select>
           </label>
           <label class="ctrl-item" title="메트로놈 클릭 볼륨 (0으로 내리면 메트로놈 소리만 끄고 기타 소리만 감상할 수 있습니다)">클릭음
-            <input type="range" id="volRange" min="0" max="100" step="5" value="55" style="width:72px">
+            <input type="range" id="volRange" min="0" max="100" step="5" value="55" style="width:68px">
           </label>
-          <button type="button" class="fx-toggle" id="toggleFxBtn" data-active="true" title="리버브·바디공명·긴 서스테인 특수효과 토글 (단축키: F)">음향: 콘서트홀 (풍성)</button>
         </div>
       </div>
 
@@ -392,20 +395,20 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
       <div class="stage-box">
         <div class="ctrl-row">
           <span class="label" style="color:var(--d-muted)">구간 반복 (마디)</span>
-          <button type="button" class="btn sm" id="loopAllBtn" style="min-height:26px;padding:0 8px;font-size:11.5px">전체 마디</button>
+          <button type="button" class="btn sm" id="loopAllBtn" style="height:22px;padding:0 7px;font-size:11px">전체 마디</button>
         </div>
-        <div class="ctrl-row">
+        <div class="ctrl-row" style="margin:auto 0">
           <label class="ctrl-item">시작 <input type="number" id="loopStart" min="1" value="1"> 마디</label>
           <span style="color:var(--d-muted)">~</span>
           <label class="ctrl-item">끝 <input type="number" id="loopEnd" min="1" value="8"> 마디</label>
           <label class="ctrl-item"><input type="checkbox" id="loopEnable" checked> 반복</label>
         </div>
-        <div class="ctrl-row" style="border-top:1px solid var(--d-line);padding-top:6px">
+        <div class="ctrl-row" style="border-top:1px solid var(--d-line);padding-top:4px">
           <label class="ctrl-item" title="구간을 완주할 때마다 템포를 자동으로 올립니다">
             <input type="checkbox" id="speedTrainerChk">
             <span>자동 가속: 2회 완주마다 <b>+3 BPM</b></span>
           </label>
-          <span class="badge" id="loopCountBadge" style="background:var(--d-bg);color:var(--d-fg);border-color:var(--d-line)">0회 완주</span>
+          <span class="badge" id="loopCountBadge" style="background:var(--d-bg);color:var(--d-fg);border-color:var(--d-line);font-size:11px;padding:2px 7px">0회 완주</span>
         </div>
       </div>
 
@@ -3312,10 +3315,10 @@ registerProcessor('onset', OnsetProc);
     if ($('#toggleFxBtn')){
       var isFx = !!appState.acousticFx;
       $('#toggleFxBtn').setAttribute('data-active', String(isFx));
-      $('#toggleFxBtn').textContent = isFx ? '음향: 콘서트홀 (풍성)' : '음향: 드라이 (또렷)';
+      $('#toggleFxBtn').textContent = isFx ? '콘서트홀' : '드라이';
       $('#toggleFxBtn').title = isFx
-        ? '리버브·바디공명·긴 서스테인 효과 켜짐 (클릭 또는 단축키 F로 또렷한 드라이 톤 전환)'
-        : '리버브·공명·잔향을 끈 깔끔하고 또렷한 가이드 드라이 톤 (클릭 또는 단축키 F로 콘서트홀 전환)';
+        ? '콘서트홀 풍성 음향 켜짐 (클릭 또는 F로 또렷한 드라이 톤 전환)'
+        : '또렷한 드라이 톤 켜짐 (클릭 또는 F로 풍성한 콘서트홀 전환)';
     }
     var btTxt = (appState.audioOffsetMs > 0) ? (' · BT +' + appState.audioOffsetMs + 'ms') : '';
     $('#calibBadge').textContent = (calib.calibrated ? Math.round(calib.lat * 1000) + 'ms' : '기본 45ms') + btTxt;
