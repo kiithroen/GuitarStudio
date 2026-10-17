@@ -3182,8 +3182,9 @@ registerProcessor('onset', OnsetProc);
                 playGuitarNote(effB.midi, bassDur, t, 1.12);
               }
               if (bObj.midi){
-                // 엄지(p) 베이스와 멜로디(a/m/i) 동시 탄현 시 18ms 미세 롤(Roll)을 주어 두 성부 어택이 마스킹되지 않고 선명히 분리되게 함
-                var melTime = t + (hasB ? 0.018 : 0);
+                // 엄지(p) 베이스와 멜로디(a/m/i) 동시 탄현 미세 롤(Roll): 빠른 템포(BPM 150+)에서는 롤을 4ms로 축소하여 어택 타이밍이 밀리지 않도록 최적화
+                var rollOffset = hasB ? (s.spb < 0.4 ? 0.004 : 0.014) : 0;
+                var melTime = t + rollOffset;
                 var artic = bObj.articulation;
                 var isApoyando = (artic === 'apoyando');
                 var isTirando = (artic === 'tirando');
@@ -3201,9 +3202,10 @@ registerProcessor('onset', OnsetProc);
           }
         }
 
-        // UI 동기화 예약
+        // UI 동기화 예약 (WebAudio 하드웨어 버퍼 출력 지연 baseLatency + outputLatency 보정하여 시각 커서와 청각 소리 일치)
         (function(mI, bI, loopCnt, beatTime, spbVal){
-          var delay = Math.max(0, (beatTime - actx.currentTime) * 1000);
+          var hwLat = (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010);
+          var delay = Math.max(0, (beatTime + hwLat - actx.currentTime) * 1000);
           setTimeout(function(){
             if (!isPlaying || !playSession) return;
             curMeasureIdx = mI;
@@ -3245,11 +3247,13 @@ registerProcessor('onset', OnsetProc);
       }
     }
 
-    // 이미지 악보일 때 부드러운 Playhead 이동
+    // 이미지 악보일 때 부드러운 Playhead 이동 (하드웨어 레이턴시 hwLat 보정)
     if (curSong && curSong.type === 'image' && !s.inCountIn){
-      var elapsedInBar = now - (s.measureStartTime - s.spb * s.bpb);
+      var hwLat = (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010);
+      var audioNow = now - hwLat;
+      var elapsedInBar = audioNow - (s.measureStartTime - s.spb * s.bpb);
       var barDur = s.spb * s.bpb;
-      var frac = ((now - (s.nextBeatTime - s.spb)) / s.spb + ((s.bIdx + s.bpb - 1) % s.bpb)) / s.bpb;
+      var frac = ((audioNow - (s.nextBeatTime - s.spb)) / s.spb + ((s.bIdx + s.bpb - 1) % s.bpb)) / s.bpb;
       var ph = $('#systemsOverlay .img-playhead');
       if (ph && isFinite(frac)){
         ph.style.left = Math.min(98, Math.max(0, frac * 100)) + '%';
