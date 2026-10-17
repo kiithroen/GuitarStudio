@@ -297,12 +297,13 @@ body.practice-compact .topbar,
 body.practice-compact section[aria-label="연습곡 선택 및 이어가기"],
 body.practice-compact .stage,
 body.practice-compact .two-col,
+body.practice-compact #scoreTitle,
+body.practice-compact #scoreTypeBadge,
+body.practice-compact #renameScoreTitleBtn,
 body.practice-compact #scoreClickHint,
 body.practice-compact #editStructuredBtn,
 body.practice-compact #editBarMetaBtn,
 body.practice-compact #convertImgToScoreBtn,
-body.practice-compact #renameScoreTitleBtn,
-body.practice-compact #scoreTypeBadge,
 body.practice-compact .ref-img-details,
 body.practice-compact .tbl-wrap,
 body.practice-compact footer {
@@ -311,29 +312,106 @@ body.practice-compact footer {
 
 body.practice-compact .wrap{
   max-width: 100% !important;
-  padding: 6px 12px 10px !important;
-  gap: 6px !important;
+  padding: 4px 6px 8px !important;
+  gap: 4px !important;
 }
 
 body.practice-compact section[aria-label="악보 및 메트로놈 커서"]{
-  padding: 8px 12px !important;
-  gap: 6px !important;
+  padding: 6px 8px !important;
+  gap: 4px !important;
   box-shadow: 0 4px 24px rgba(0,0,0,.12) !important;
 }
 
+/* 콤팩트 툴바: 갤럭시 폴드 등 모바일에서도 정확히 1줄 고정 */
 body.practice-compact .score-toolbar{
-  padding-bottom: 6px !important;
-  margin-bottom: 4px !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+  height: 36px !important;
+  padding: 0 2px 4px !important;
+  margin-bottom: 2px !important;
   border-bottom: 1px solid var(--line) !important;
+  overflow: hidden !important;
+}
+
+body.practice-compact .score-toolbar-left{
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  overflow: hidden !important;
+}
+
+body.practice-compact .score-toolbar-right{
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 4px !important;
+  flex-shrink: 0 !important;
+}
+
+body.practice-compact #compactPlayBtn{
+  display: inline-flex !important;
+  padding: 4px 8px !important;
+  font-size: 11.5px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+body.practice-compact #compactSongSelect{
+  display: inline-block !important;
+  flex: 1 1 auto !important;
+  min-width: 60px !important;
+  max-width: 170px !important;
+  height: 28px !important;
+  font-size: 11px !important;
+  padding: 2px 4px !important;
+  border-radius: 6px !important;
+  background: var(--surface-2) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--fg) !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.practice-compact .tab-seg{
+  margin: 0 !important;
+  flex-shrink: 0 !important;
+}
+body.practice-compact .tab-seg button{
+  padding: 3px 6px !important;
+  font-size: 11px !important;
 }
 
 body.practice-compact #compactStatusBadge{
   display: inline-flex !important;
+  font-size: 10px !important;
+  padding: 2px 5px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
 }
 
-/* 악보 2줄(2단) 고정 높이 */
+@media (max-width: 520px){
+  body.practice-compact #compactStatusBadge{
+    display: none !important;
+  }
+}
+
+body.practice-compact #toggleCompactBtn{
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+/* 악보 2줄(2단) 고정 높이 - 2단이 온전히 보이도록 충분한 높이 확보 */
 body.practice-compact #structuredScoreWrap{
-  max-height: 350px !important;
+  max-height: 415px !important;
   overflow-y: auto !important;
   scrollbar-width: thin !important;
   padding: 2px 2px 6px !important;
@@ -341,19 +419,23 @@ body.practice-compact #structuredScoreWrap{
 }
 
 body.practice-compact #structuredScoreWrap.card-view-active{
-  max-height: 265px !important;
+  max-height: 290px !important;
+}
+
+body.practice-compact .measures-grid{
+  gap: 8px !important;
 }
 
 /* 실시간 지판 운지법: 악보 바로 아래 부착 */
 body.practice-compact .fretboard-wrap{
-  margin-top: 4px !important;
-  padding-top: 6px !important;
+  margin-top: 2px !important;
+  padding-top: 4px !important;
   border-top: 1px solid var(--line) !important;
   padding-bottom: 2px !important;
 }
 
 body.practice-compact .fretboard{
-  padding: 8px 12px 6px !important;
+  padding: 8px 10px 6px !important;
 }
 
 /* 클래식 기타 지판 (Fretboard) */
@@ -563,23 +645,24 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
   <!-- 악보 뷰어 섹션 -->
   <section class="panel" aria-label="악보 및 메트로놈 커서">
     <div class="score-toolbar" id="scoreToolbar">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button type="button" class="btn primary sm" id="compactPlayBtn" style="font-weight:800;padding:4px 12px;font-size:12.5px" title="연습 시작 또는 일시 정지 (단축키: Space)">▶ 연습 시작 (Space)</button>
-        <div class="tab-seg" id="scoreModeSeg" role="tablist" aria-label="악보 보기 모드" style="margin-left:2px">
-          <button type="button" id="scoreModeTabBtn" role="tab" aria-selected="true" title="6현 가로선 타브(TAB) 악보로 보기 (단축키: T)">6현 타브 (TAB)</button>
-          <button type="button" id="scoreModeCardBtn" role="tab" aria-selected="false" title="박자·음표 길이 및 계이름(친절한 오선지) 카드 뷰 (단축키: T)">박자·리듬 카드</button>
+      <div class="score-toolbar-left" style="display:flex;align-items:center;gap:6px;min-width:0;flex:1">
+        <button type="button" class="btn primary sm" id="compactPlayBtn" style="font-weight:800;padding:3px 8px;font-size:11.5px;white-space:nowrap;flex-shrink:0" title="연습 시작 또는 일시 정지 (단축키: Space)" hidden>▶ 시작</button>
+        <select id="compactSongSelect" class="compact-song-select" aria-label="연습곡 선택" title="연습곡 변경" hidden></select>
+        <div class="tab-seg" id="scoreModeSeg" role="tablist" aria-label="악보 보기 모드" style="margin-left:2px;flex-shrink:0">
+          <button type="button" id="scoreModeTabBtn" role="tab" aria-selected="true" title="6현 가로선 타브(TAB) 악보로 보기 (단축키: T)">타브</button>
+          <button type="button" id="scoreModeCardBtn" role="tab" aria-selected="false" title="박자·음표 길이 및 계이름(친절한 오선지) 카드 뷰 (단축키: T)">카드</button>
         </div>
         <h2 id="scoreTitle">작은 별 (Twinkle Twinkle Little Star)</h2>
         <button type="button" class="btn sm" id="renameScoreTitleBtn" hidden style="min-height:28px;padding:0 8px;font-size:12px" title="곡 이름 변경">✏️ 이름 변경</button>
         <span class="badge accent" id="scoreTypeBadge">내장 동요 · 다장조(C)</span>
         <span class="badge" id="compactStatusBadge" style="font-family:var(--font-num);font-weight:700" hidden>64 BPM · 1마디</span>
       </div>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <div class="score-toolbar-right" style="display:flex;gap:6px;align-items:center;flex-shrink:0">
         <span class="hint" id="scoreClickHint">마디 클릭: 시작 위치 / Shift+클릭: 끝 마디</span>
         <button type="button" class="btn sm primary" id="convertImgToScoreBtn" hidden>이 사진을 내 악보(계이름·운지)로 변환</button>
-        <button type="button" class="btn sm" id="editStructuredBtn">악보 마디·계이름 빠른 수정</button>
+        <button type="button" class="btn sm" id="editStructuredBtn">악보 빠른 수정</button>
         <button type="button" class="btn sm" id="editBarMetaBtn" hidden>선택 마디 코드·메모 수정</button>
-        <button type="button" class="btn sm" id="toggleCompactBtn" title="악보 2줄과 실시간 지판만 보는 콤팩트 집중 모드 전환 (단축키: P / 연습 시작 시 자동 전환)">집중 연습 뷰</button>
+        <button type="button" class="btn sm" id="toggleCompactBtn" title="악보 2줄과 실시간 지판만 보는 콤팩트 집중 모드 전환 (단축키: P / Esc)">콤팩트 뷰</button>
       </div>
     </div>
 
@@ -3051,6 +3134,13 @@ registerProcessor('onset', OnsetProc);
       $('#resumeBanner').hidden = true;
     }
 
+    if ($('#songSelect') && curSong && $('#songSelect').value !== curSong.id){
+      $('#songSelect').value = curSong.id;
+    }
+    if ($('#compactSongSelect') && curSong && $('#compactSongSelect').value !== curSong.id){
+      $('#compactSongSelect').value = curSong.id;
+    }
+
     syncConsoleUI();
     renderYoutubePanel();
 
@@ -3823,11 +3913,13 @@ registerProcessor('onset', OnsetProc);
     var activeTopInScroll = (aRect.top - cRect.top) + containerEl.scrollTop;
 
     // 상단 여백을 약 15%(최대 44px)만 남겨 아래쪽 85% 영역에 다음 2~3줄이 항상 보이게 유지
-    var topAnchor = Math.min(44, Math.max(10, cRect.height * 0.15));
+    // 콤팩트 모드에서는 2줄(2단) 악보가 잘리지 않고 온전히 다 들어오도록 상단 오프셋을 2px로 고정
+    var isCompact = document.body.classList.contains('practice-compact');
+    var topAnchor = isCompact ? 2 : Math.min(44, Math.max(10, cRect.height * 0.15));
     var targetScroll = activeTopInScroll - topAnchor;
 
-    // 다음 마디가 아래 줄(개행)에 있고, 현재 마디의 절반 이상 진행되었을 때 미리 선행 스크롤
-    if (nextEl){
+    // 다음 마디가 아래 줄(개행)에 있고, 현재 마디의 절반 이상 진행되었을 때 미리 선행 스크롤 (콤팩트 모드에서는 마디 행 점프 시에만 정렬)
+    if (nextEl && !isCompact){
       var nRect = nextEl.getBoundingClientRect();
       var rowDelta = nRect.top - aRect.top;
       if (rowDelta > aRect.height * 0.5 && beatRatio >= 0.4){
@@ -3838,7 +3930,7 @@ registerProcessor('onset', OnsetProc);
     }
 
     targetScroll = Math.max(0, targetScroll);
-    if (Math.abs(containerEl.scrollTop - targetScroll) > 6){
+    if (Math.abs(containerEl.scrollTop - targetScroll) > 4){
       containerEl.scrollTo({ top: targetScroll, behavior: 'smooth' });
     }
   }
@@ -3952,19 +4044,18 @@ registerProcessor('onset', OnsetProc);
     };
 
     isPlaying = true;
-    setCompactPractice(true);
     syncCompactPlayButtons();
     $('#loopCountBadge').textContent = '0회 완주';
   }
 
   function syncCompactPlayButtons(){
-    var playTxt = isPlaying ? '⏹ 연습 정지 (Space)' : '▶ 연습 시작 (Space)';
     if ($('#playBtn')){
       $('#playBtn').textContent = isPlaying ? '연습 정지' : '연습 시작';
       $('#playBtn').classList.toggle('running', isPlaying);
     }
     if ($('#compactPlayBtn')){
-      $('#compactPlayBtn').textContent = playTxt;
+      $('#compactPlayBtn').textContent = isPlaying ? '⏹ 정지' : '▶ 시작';
+      $('#compactPlayBtn').title = isPlaying ? '연습 정지 (단축키: Space)' : '연습 시작 (단축키: Space)';
       $('#compactPlayBtn').classList.toggle('danger', isPlaying);
       $('#compactPlayBtn').classList.toggle('primary', !isPlaying);
       $('#compactPlayBtn').classList.toggle('running', isPlaying);
@@ -3975,15 +4066,22 @@ registerProcessor('onset', OnsetProc);
     appState.isCompactPractice = !!active;
     document.body.classList.toggle('practice-compact', appState.isCompactPractice);
     if ($('#toggleCompactBtn')){
-      $('#toggleCompactBtn').textContent = appState.isCompactPractice ? '전체 화면 (Esc)' : '집중 연습 뷰';
+      $('#toggleCompactBtn').textContent = appState.isCompactPractice ? '일반 뷰' : '콤팩트 뷰';
+      $('#toggleCompactBtn').title = appState.isCompactPractice ? '모든 악보 정보 및 설정 보기 (단축키: P / Esc)' : '악보 2줄과 실시간 지판만 보는 콤팩트 집중 모드 (단축키: P / Esc)';
       $('#toggleCompactBtn').classList.toggle('active', appState.isCompactPractice);
     }
     syncCompactPlayButtons();
     syncScoreModeUI();
-    if (appState.isCompactPractice && curSong && curSong.type === 'structured'){
-      var card = $('#measuresGrid .measure-card[data-m="' + curMeasureIdx + '"]');
-      var nextCard = $('#measuresGrid .measure-card[data-m="' + (curMeasureIdx + 1) + '"]');
-      if (card) scrollScoreLookAhead($('#structuredScoreWrap'), card, nextCard, 0);
+    if (appState.isCompactPractice && curSong){
+      if (curSong.type === 'structured'){
+        var card = $('#measuresGrid .measure-card[data-m="' + curMeasureIdx + '"]');
+        var nextCard = $('#measuresGrid .measure-card[data-m="' + (curMeasureIdx + 1) + '"]');
+        if (card) scrollScoreLookAhead($('#structuredScoreWrap'), card, nextCard, 0);
+      } else {
+        var imgCell = $('#systemsOverlay .img-bar-cell[data-m="' + curMeasureIdx + '"]');
+        var nextImgCell = $('#systemsOverlay .img-bar-cell[data-m="' + (curMeasureIdx + 1) + '"]');
+        if (imgCell) scrollScoreLookAhead($('#imgStageScroll'), imgCell, nextImgCell, 0);
+      }
     }
   }
 
@@ -6147,6 +6245,48 @@ registerProcessor('onset', OnsetProc);
   });
 
   // ---------- 초기화 및 곡 목록 구성
+  function syncCompactSongSelectOptions(){
+    var cSel = $('#compactSongSelect');
+    if (!cSel) return;
+    cSel.textContent = '';
+
+    var grp1 = document.createElement('optgroup');
+    grp1.label = '내장 악보';
+    BUILTIN_SONGS.forEach(function(s){
+      var opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.title;
+      grp1.appendChild(opt);
+    });
+    cSel.appendChild(grp1);
+
+    if (sheetSongs.length){
+      var grpSheet = document.createElement('optgroup');
+      grpSheet.label = '구글 시트 연동';
+      sheetSongs.forEach(function(s){
+        var opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = '☁️ ' + s.title;
+        grpSheet.appendChild(opt);
+      });
+      cSel.appendChild(grpSheet);
+    }
+
+    if (customSongs.length){
+      var grp2 = document.createElement('optgroup');
+      grp2.label = '내 저장 악보';
+      customSongs.forEach(function(s){
+        var opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = s.title;
+        grp2.appendChild(opt);
+      });
+      cSel.appendChild(grp2);
+    }
+
+    if (curSong) cSel.value = curSong.id;
+  }
+
   function rebuildSongSelect(selectId){
     allSongs = BUILTIN_SONGS.concat(sheetSongs).concat(customSongs);
     var sel = $('#songSelect');
@@ -6186,8 +6326,11 @@ registerProcessor('onset', OnsetProc);
       sel.appendChild(grp2);
     }
 
+    syncCompactSongSelectOptions();
+
     var target = allSongs.find(function(s){ return s.id === selectId; }) || allSongs[0];
     sel.value = target.id;
+    if ($('#compactSongSelect')) $('#compactSongSelect').value = target.id;
     curSong = target;
     appState.lastSongId = target.id;
     if (songHasExplicitBass(target)) appState.autoBass = true;
@@ -6203,18 +6346,37 @@ registerProcessor('onset', OnsetProc);
     });
   }
 
-  $('#songSelect').addEventListener('change', function(e){
+  function changeSongById(songId){
     if (isPlaying) stopPractice(false);
-    var found = allSongs.find(function(s){ return s.id === e.target.value; });
+    curMeasureIdx = 0;
+    curBeatIdx = 0;
+    var found = allSongs.find(function(s){ return s.id === songId; });
     if (found){
       curSong = found;
       appState.lastSongId = found.id;
       if (songHasExplicitBass(found)) appState.autoBass = true;
       appState.bpm = Number(found.bpm) || 64;
+      if ($('#songSelect')) $('#songSelect').value = found.id;
+      if ($('#compactSongSelect')) $('#compactSongSelect').value = found.id;
       renderSong();
       saveAppState();
+      if (appState.isCompactPractice && curSong.type === 'structured'){
+        var card = $('#measuresGrid .measure-card[data-m="0"]');
+        var nextCard = $('#measuresGrid .measure-card[data-m="1"]');
+        if (card) scrollScoreLookAhead($('#structuredScoreWrap'), card, nextCard, 0);
+      }
     }
+  }
+
+  $('#songSelect').addEventListener('change', function(e){
+    changeSongById(e.target.value);
   });
+
+  if ($('#compactSongSelect')){
+    $('#compactSongSelect').addEventListener('change', function(e){
+      changeSongById(e.target.value);
+    });
+  }
 
   // 앱 부팅: songs.json 로드 + IndexedDB 로드 + 구글 시트 자동 동기화
   buildFretboard();
