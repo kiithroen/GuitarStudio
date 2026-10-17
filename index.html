@@ -1559,7 +1559,7 @@ registerProcessor('onset', OnsetProc);
     }
     if (!tok || tok === '-' || tok === '.') return null;
 
-    // 2성부(엄지 베이스 + 멜로디 동시 탄현) 표기 예: 0E2+4B4, 0E2+!4B4, !3C3+0E4
+    // 2성부 및 다성부(엄지 베이스 + 내성 + 주선율 화음 탄현) 표기 예: 0E2+4B4, 3C3+2E3+0G3+1C4
     if (tok.indexOf('+') >= 0){
       var subParts = tok.split('+').map(function(s){ return s.trim(); }).filter(Boolean);
       var parsedSub = subParts.map(function(sp){ return parseNoteToken(sp, altIdx); }).filter(Boolean);
@@ -1599,7 +1599,32 @@ registerProcessor('onset', OnsetProc);
         melInf.articulation = inheritedArtic;
         melInf.explicitArticulation = true;
       }
-      melInf.customTok = bassTokStr + '+' + articPrefix + melTokStr;
+
+      // 3음 이상 화음(코드 롤/아르페지오) 지원
+      var chordNotes = parsedSub.map(function(ps, idx){
+        var pos = ps.pos ? Object.assign({}, ps.pos) : { str: 1, fret: 0, lh: null, rh: null };
+        var cleanTok = (ps.customTok || '').replace(/^[!>^~]+|[!>^~]+$/g, '');
+        var tokStr = cleanTok || ((pos.lh != null ? pos.lh : '') + ps.en);
+        var autoRh = idx === 0 ? 'p' : (idx === parsedSub.length - 1 ? 'a' : (idx === 1 ? 'i' : 'm'));
+        return {
+          tok: tokStr,
+          midi: ps.midi,
+          en: ps.en,
+          ko: ps.ko,
+          str: pos.str,
+          fret: pos.fret,
+          lh: pos.lh,
+          rh: pos.rh || autoRh,
+          articulation: ps.articulation || inheritedArtic
+        };
+      });
+      melInf.chordNotes = chordNotes;
+
+      if (parsedSub.length > 2){
+        melInf.customTok = chordNotes.map(function(cn){ return cn.tok; }).join('+');
+      } else {
+        melInf.customTok = bassTokStr + '+' + articPrefix + melTokStr;
+      }
       return melInf;
     }
 
@@ -1825,6 +1850,7 @@ registerProcessor('onset', OnsetProc);
           lh: nInfo && nInfo.pos ? nInfo.pos.lh : null,
           rh: nInfo && nInfo.pos ? nInfo.pos.rh : null,
           bass: nInfo && nInfo.bass ? nInfo.bass : null,
+          chordNotes: nInfo && nInfo.chordNotes ? nInfo.chordNotes : null,
           articulation: nInfo && nInfo.articulation ? nInfo.articulation : null,
           explicitArticulation: !!(nInfo && nInfo.explicitArticulation),
           autoArticulation: false
@@ -2201,7 +2227,13 @@ registerProcessor('onset', OnsetProc);
           ? (' · 티란도(뜯어치기' + (targetNote.explicitArticulation ? '·~' : '·자동') + ')')
           : '');
 
-      if (effBass && effBass.midi){
+      if (targetNote.chordNotes && targetNote.chordNotes.length > 2){
+        var noteNames = targetNote.chordNotes.map(function(c){ return c.str + '줄 ' + c.ko + (c.fret === 0 ? '(개방)' : '(' + c.fret + '프)'); }).join(' + ');
+        $('#guideNoteTxt').textContent = (chordName ? cleanChordToken(chordName) + ' 화음' : '화음') + ': ' + noteNames;
+        var lhStrs = targetNote.chordNotes.map(function(c){ return c.str + '줄 ' + (c.fret === 0 ? '0' : c.lh + '번'); }).join(' + ');
+        $('#guideLhTxt').textContent = '왼손 운지: ' + lhStrs;
+        $('#guideRhTxt').textContent = '상행 롤 아르페지오 (p → i → m → a 또는 엄지 롤 ↑)';
+      } else if (effBass && effBass.midi){
         $('#guideNoteTxt').textContent = info.en + '(' + info.ko + ') + 저음 ' + effBass.en + '(' + effBass.ko + '·' + effBass.str + '줄 ' + (effBass.fret === 0 ? '개방' : effBass.fret + '프') + ')';
         $('#guideLhTxt').textContent = '멜로디 ' + (lhNames[lh] || lh) + ' + 저음 ' + (effBass.fret === 0 ? '0(개방)' : (effBass.lh + '번'));
         $('#guideRhTxt').textContent = 'p(엄지·' + effBass.str + '줄) + ' + (rhNames[rh] || rh) + ' 동시 탄현' + articTag;
@@ -2211,23 +2243,29 @@ registerProcessor('onset', OnsetProc);
         $('#guideRhTxt').textContent = (rhNames[rh] || rh) + articTag;
       }
 
-      if (fret === 0){
-        var openEl = $('#fretboard .fb-open[data-str="' + str + '"]');
-        if (openEl){
-          openEl.style.color = '#62d491';
-          openEl.style.fontWeight = '700';
-          openEl.textContent = (openEl.dataset.baseLabel || '') + '·' + info.ko;
+      var notesToHighlight = (targetNote.chordNotes && targetNote.chordNotes.length > 2)
+        ? targetNote.chordNotes.slice(1)
+        : [{ str: str, fret: fret, lh: lh, ko: info.ko }];
+
+      notesToHighlight.forEach(function(nt){
+        if (nt.fret === 0){
+          var openEl = $('#fretboard .fb-open[data-str="' + nt.str + '"]');
+          if (openEl){
+            openEl.style.color = '#62d491';
+            openEl.style.fontWeight = '700';
+            openEl.textContent = (openEl.dataset.baseLabel || '') + '·' + nt.ko;
+          }
+        } else if (nt.str && nt.fret > 0){
+          var targetCell = $('#fretboard .fb-cell[data-str="' + nt.str + '"][data-fret="' + nt.fret + '"]');
+          if (targetCell){
+            targetCell.textContent = '';
+            var tmk = document.createElement('span');
+            tmk.className = 'fb-marker target-note';
+            tmk.textContent = nt.ko + (nt.lh ? '(' + nt.lh + ')' : '');
+            targetCell.appendChild(tmk);
+          }
         }
-      } else if (str && fret > 0){
-        var targetCell = $('#fretboard .fb-cell[data-str="' + str + '"][data-fret="' + fret + '"]');
-        if (targetCell){
-          targetCell.textContent = '';
-          var tmk = document.createElement('span');
-          tmk.className = 'fb-marker target-note';
-          tmk.textContent = info.ko + (lh ? '(' + lh + ')' : '');
-          targetCell.appendChild(tmk);
-        }
-      }
+      });
     } else if (ch){
       $('#guideNoteTxt').textContent = ch.name;
       $('#guideLhTxt').textContent = ch.desc;
@@ -3345,14 +3383,18 @@ registerProcessor('onset', OnsetProc);
           if (b.midi){
             var solfege = document.createElement('span');
             solfege.className = 'tab-cell-solfege';
-            solfege.textContent = b.ko;
+            solfege.textContent = (b.chordNotes && b.chordNotes.length > 2) ? '화음' : b.ko;
             topRow.appendChild(solfege);
           }
           if (b.rh || effBass){
             var rhEl = document.createElement('span');
             rhEl.className = 'tab-cell-rh';
             var rhText = effBass ? 'p+' + (b.rh || '') : (b.rh || '');
-            if (b.articulation === 'apoyando') rhText += '!';
+            if (b.chordNotes && b.chordNotes.length > 2){
+              rhText = '↑';
+            } else if (b.articulation === 'apoyando'){
+              rhText += '!';
+            }
             rhEl.textContent = rhText;
             topRow.appendChild(rhEl);
           }
@@ -3361,39 +3403,78 @@ registerProcessor('onset', OnsetProc);
           var gridEl = document.createElement('div');
           gridEl.className = 'tab-cell-grid';
 
-          // 1. 베이스 프렛 (주황/골드)
-          if (effBass && effBass.str){
-            var bPill = document.createElement('span');
-            bPill.className = 'tab-fret-pill bass-fret';
-            bPill.style.top = ((effBass.str - 1) * 20) + '%';
-            bPill.textContent = String(effBass.fret != null ? effBass.fret : 0);
-            if (effBass.lh){
-              var blh = document.createElement('span');
-              blh.className = 'tab-cell-lh';
-              blh.textContent = '(' + effBass.lh + ')';
-              bPill.appendChild(blh);
+          if (b.chordNotes && b.chordNotes.length > 2){
+            var strTops = b.chordNotes.map(function(cn){ return (cn.str - 1) * 20; });
+            var minTop = Math.min.apply(null, strTops);
+            var maxTop = Math.max.apply(null, strTops);
+            if (maxTop > minTop){
+              var rollSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+              rollSvg.setAttribute('class', 'tab-roll-svg');
+              rollSvg.setAttribute('viewBox', '0 0 12 60');
+              rollSvg.setAttribute('preserveAspectRatio', 'none');
+              rollSvg.style.position = 'absolute';
+              rollSvg.style.left = '16%';
+              rollSvg.style.top = minTop + '%';
+              rollSvg.style.height = (maxTop - minTop) + '%';
+              rollSvg.style.width = '12px';
+              rollSvg.style.transform = 'translateX(-50%)';
+              rollSvg.style.color = 'var(--accent)';
+              rollSvg.style.zIndex = '2';
+              rollSvg.style.pointerEvents = 'none';
+              rollSvg.innerHTML = '<line x1="6" y1="58" x2="6" y2="4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="2,11 6,3 10,11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+              gridEl.appendChild(rollSvg);
             }
-            gridEl.appendChild(bPill);
-          }
+            b.chordNotes.forEach(function(cn, cnIdx){
+              if (cn.str){
+                var cPill = document.createElement('span');
+                var isBass = (cnIdx === 0);
+                cPill.className = 'tab-fret-pill ' + (isBass ? 'bass-fret' : 'mel-fret');
+                cPill.style.top = ((cn.str - 1) * 20) + '%';
+                cPill.textContent = String(cn.fret != null ? cn.fret : 0);
+                if (cn.lh != null && cn.lh > 0){
+                  var clh = document.createElement('span');
+                  clh.className = 'tab-cell-lh';
+                  clh.textContent = '(' + cn.lh + ')';
+                  cPill.appendChild(clh);
+                }
+                gridEl.appendChild(cPill);
+              }
+            });
+          } else {
+            // 1. 베이스 프렛 (주황/골드)
+            if (effBass && effBass.str){
+              var bPill = document.createElement('span');
+              bPill.className = 'tab-fret-pill bass-fret';
+              bPill.style.top = ((effBass.str - 1) * 20) + '%';
+              bPill.textContent = String(effBass.fret != null ? effBass.fret : 0);
+              if (effBass.lh){
+                var blh = document.createElement('span');
+                blh.className = 'tab-cell-lh';
+                blh.textContent = '(' + effBass.lh + ')';
+                bPill.appendChild(blh);
+              }
+              gridEl.appendChild(bPill);
+            }
 
-          // 2. 멜로디 프렛 (인디고/블루)
-          if (b.midi && b.str){
-            var mPill = document.createElement('span');
-            mPill.className = 'tab-fret-pill mel-fret';
-            mPill.style.top = ((b.str - 1) * 20) + '%';
-            mPill.textContent = String(b.fret != null ? b.fret : 0);
-            if (b.lh != null){
-              var mlh = document.createElement('span');
-              mlh.className = 'tab-cell-lh';
-              mlh.textContent = '(' + b.lh + ')';
-              mPill.appendChild(mlh);
+            // 2. 멜로디 프렛 (인디고/블루)
+            if (b.midi && b.str){
+              var mPill = document.createElement('span');
+              mPill.className = 'tab-fret-pill mel-fret';
+              mPill.style.top = ((b.str - 1) * 20) + '%';
+              mPill.textContent = String(b.fret != null ? b.fret : 0);
+              if (b.lh != null){
+                var mlh = document.createElement('span');
+                mlh.className = 'tab-cell-lh';
+                mlh.textContent = '(' + b.lh + ')';
+                mPill.appendChild(mlh);
+              }
+              gridEl.appendChild(mPill);
+            } else if (!b.midi && !effBass){
+              var dash = document.createElement('span');
+              dash.className = 'tab-rest-dash';
+              dash.textContent = '-';
+              gridEl.appendChild(dash);
             }
-            gridEl.appendChild(mPill);
-          } else if (!b.midi && !effBass){
-            var dash = document.createElement('span');
-            dash.className = 'tab-rest-dash';
-            dash.textContent = '-';
-            gridEl.appendChild(dash);
           }
 
           cell.appendChild(gridEl);
@@ -3476,13 +3557,21 @@ registerProcessor('onset', OnsetProc);
           var koEl = document.createElement('span');
           if (b.midi){
             koEl.className = 'b-ko-main';
-            koEl.textContent = b.ko;
+            if (b.chordNotes && b.chordNotes.length > 2){
+              koEl.textContent = b.chordNotes.map(function(c){ return c.ko; }).join('·');
+            } else {
+              koEl.textContent = b.ko;
+            }
             cell.appendChild(koEl);
 
             // 3. 옥타브 위치 및 영문 음높이 서브 표기 (가온 C4, 중간 E4 등)
             var subEl = document.createElement('span');
             subEl.className = 'b-note-sub';
-            subEl.textContent = getOctaveLabel(b.midi) + ' ' + b.en;
+            if (b.chordNotes && b.chordNotes.length > 2){
+              subEl.textContent = '화음 ' + b.chordNotes[0].en + '~' + b.en;
+            } else {
+              subEl.textContent = getOctaveLabel(b.midi) + ' ' + b.en;
+            }
             cell.appendChild(subEl);
           } else {
             koEl.className = 'b-ko-main b-rest-sym';
@@ -3985,13 +4074,21 @@ registerProcessor('onset', OnsetProc);
       if (playPreviewSound){
         ensureAudioCtx();
         var nowT = actx.currentTime;
-        var hasB = !!(effBass && effBass.midi);
-        if (hasB) playGuitarNote(effBass.midi, 1.25, nowT, 1.12, null, effBass.str);
-        if (beatObj && beatObj.midi){
-          var pvArt = beatObj.articulation;
-          var pvScale = pvArt === 'apoyando' ? 1.15 : (pvArt === 'tirando' ? 0.65 : 1.0);
-          var pvDur = pvArt === 'apoyando' ? 1.05 : 0.80;
-          playGuitarNote(beatObj.midi, pvDur, nowT + (hasB ? 0.018 : 0), pvScale, pvArt, beatObj.str);
+        if (beatObj && beatObj.chordNotes && beatObj.chordNotes.length > 2){
+          beatObj.chordNotes.forEach(function(cn, idx){
+            var arpTime = nowT + (idx * 0.028);
+            var isBass = (idx === 0);
+            playGuitarNote(cn.midi, isBass ? 1.5 : 1.2, arpTime, isBass ? 1.12 : 0.95, null, cn.str);
+          });
+        } else {
+          var hasB = !!(effBass && effBass.midi);
+          if (hasB) playGuitarNote(effBass.midi, 1.25, nowT, 1.12, null, effBass.str);
+          if (beatObj && beatObj.midi){
+            var pvArt = beatObj.articulation;
+            var pvScale = pvArt === 'apoyando' ? 1.15 : (pvArt === 'tirando' ? 0.65 : 1.0);
+            var pvDur = pvArt === 'apoyando' ? 1.05 : 0.80;
+            playGuitarNote(beatObj.midi, pvDur, nowT + (hasB ? 0.018 : 0), pvScale, pvArt, beatObj.str);
+          }
         }
       }
     } else {
@@ -4165,22 +4262,34 @@ registerProcessor('onset', OnsetProc);
             var m = curSong.measures[s.mIdx];
             if (m && m.beats[s.bIdx]){
               var bObj = m.beats[s.bIdx];
-              var effB = resolveEffectiveBass(m.chord, bObj, s.bIdx);
-              var hasB = !!(effB && effB.midi);
-              if (hasB){
-                var bassDur = (s.bpb === 9 || s.bpb === 6) ? (s.spb * 8.2) : (s.spb * 2.2);
-                playGuitarNote(effB.midi, bassDur, t, 1.12, null, effB.str);
-              }
-              if (bObj.midi){
-                // 엄지(p) 베이스와 멜로디(a/m/i) 동시 탄현 미세 롤(Roll): 빠른 템포(BPM 150+)에서는 롤을 4ms로 축소하여 어택 타이밍이 밀리지 않도록 최적화
-                var rollOffset = hasB ? (s.spb < 0.4 ? 0.004 : 0.014) : 0;
-                var melTime = t + rollOffset;
-                var artic = bObj.articulation;
-                var isApoyando = (artic === 'apoyando');
-                var isTirando = (artic === 'tirando');
-                var melDur = isApoyando ? (s.spb * 3.1) : (isTirando ? (s.spb * 1.5) : (s.spb * 1.15));
-                var melGain = isApoyando ? 1.16 : (isTirando ? 0.62 : 1.0);
-                playGuitarNote(bObj.midi, melDur, melTime, melGain, artic, bObj.str);
+              if (bObj.chordNotes && bObj.chordNotes.length > 2){
+                // 3음 이상 화음 / 롤 아르페지오 (상행 화음 스트럼)
+                var rollStep = s.spb < 0.4 ? 0.018 : 0.028;
+                bObj.chordNotes.forEach(function(cn, idx){
+                  var nTime = t + (idx * rollStep);
+                  var isBass = (idx === 0);
+                  var dur = isBass ? (s.spb * 3.5) : (s.spb * 2.5);
+                  var gain = isBass ? 1.12 : (idx === bObj.chordNotes.length - 1 ? 1.05 : 0.85);
+                  playGuitarNote(cn.midi, dur, nTime, gain, cn.articulation, cn.str);
+                });
+              } else {
+                var effB = resolveEffectiveBass(m.chord, bObj, s.bIdx);
+                var hasB = !!(effB && effB.midi);
+                if (hasB){
+                  var bassDur = (s.bpb === 9 || s.bpb === 6) ? (s.spb * 8.2) : (s.spb * 2.2);
+                  playGuitarNote(effB.midi, bassDur, t, 1.12, null, effB.str);
+                }
+                if (bObj.midi){
+                  // 엄지(p) 베이스와 멜로디(a/m/i) 동시 탄현 미세 롤(Roll): 빠른 템포(BPM 150+)에서는 롤을 4ms로 축소하여 어택 타이밍이 밀리지 않도록 최적화
+                  var rollOffset = hasB ? (s.spb < 0.4 ? 0.004 : 0.014) : 0;
+                  var melTime = t + rollOffset;
+                  var artic = bObj.articulation;
+                  var isApoyando = (artic === 'apoyando');
+                  var isTirando = (artic === 'tirando');
+                  var melDur = isApoyando ? (s.spb * 3.1) : (isTirando ? (s.spb * 1.5) : (s.spb * 1.15));
+                  var melGain = isApoyando ? 1.16 : (isTirando ? 0.62 : 1.0);
+                  playGuitarNote(bObj.midi, melDur, melTime, melGain, artic, bObj.str);
+                }
               }
             }
           } else if (isFirstBeat){
@@ -5212,7 +5321,9 @@ registerProcessor('onset', OnsetProc);
             ? ' <span style="color:#1d4ed8;font-weight:800">!아포</span>'
             : ' <span style="color:#64748b;font-weight:700">~티란</span>';
         }
-        if (inf && inf.bass){
+        if (inf && inf.chordNotes && inf.chordNotes.length > 2){
+          cell.innerHTML = '<b>' + inf.chordNotes.map(function(c){ return c.ko; }).join('+') + '</b><small style="color:#b45309;font-weight:700">화음' + artBadge + '</small>';
+        } else if (inf && inf.bass){
           cell.innerHTML = '<b>p' + inf.bass.ko + '+' + koLabel + '</b><small style="color:#b45309;font-weight:700">' + inf.bass.str + '줄+' + (inf.pos ? inf.pos.str + '줄' + inf.pos.fret : '') + artBadge + '</small>';
         } else {
           cell.innerHTML = '<b>' + koLabel + '</b><small>' + (inf && inf.pos ? (inf.pos.str + '줄' + inf.pos.fret) : '쉼/유지') + artBadge + '</small>';
@@ -5258,8 +5369,14 @@ registerProcessor('onset', OnsetProc);
     var inf = parseNoteToken(nextRawTok, veState.selBeat);
     bar.notes[veState.selBeat] = inf ? (inf.customTok || inf.en) : '-';
     if (inf){
-      if (inf.bass && inf.bass.midi) playGuitarNote(inf.bass.midi, 0.75);
-      if (inf.midi) playGuitarNote(inf.midi, 0.45);
+      if (inf.chordNotes && inf.chordNotes.length > 2){
+        inf.chordNotes.forEach(function(cn, i){
+          playGuitarNote(cn.midi, i === 0 ? 0.75 : 0.55, actx.currentTime + (i * 0.025), 0.9, null, cn.str);
+        });
+      } else {
+        if (inf.bass && inf.bass.midi) playGuitarNote(inf.bass.midi, 0.75);
+        if (inf.midi) playGuitarNote(inf.midi, 0.45);
+      }
     }
 
     // 일반 입력이거나 겹음 결합이 완료된 경우 다음 박자 칸으로 자동 이동
@@ -5540,7 +5657,7 @@ registerProcessor('onset', OnsetProc);
       '  * 예: `3G2+3D4` (6줄 3프렛 솔 + 2줄 3프렛 레)',
       '  * 예: `0A2+0E4` (5줄 개방 라 + 1줄 개방 미)',
       '  * 예: `1F2+2A3` (6줄 1프렛 파 + 3줄 2프렛 라)',
-      '- 마디 끝의 화음 스트럼/롤 아르페지오도 `3C3+1C4` 처럼 최저음과 최고음을 `+`로 묶어서 표기해줘.',
+      '- 3음 이상 동시에 치거나 롤 아르페지오(글리산도 스트럼)로 연주하는 화음은 `3C3+2E3+0G3+1C4`처럼 저음줄부터 고음줄까지 모든 구성음을 `+`로 연결해서 표기해줘.',
       '',
       '[4. 박자표 및 토큰 수 규칙]',
       '- 4/4박자에서 8분음표 단위로 쪼개지는 핑거스타일/아르페지오 곡은 마디당 8개의 토큰(beats=8)으로 맞춰줘.',
