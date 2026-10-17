@@ -92,10 +92,10 @@ h3{margin:0;font-size:14.5px;font-weight:600}
 .badge.accent{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
 
 /* 곡 선택 및 이어가기 바 */
-.song-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
-@media (max-width:680px){.song-bar{grid-template-columns:1fr}}
-.song-select-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.song-select{flex:1 1 240px;min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-weight:600;font-size:15px}
+.song-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.song-select-row{display:flex;gap:8px;align-items:center;flex:1 1 360px;min-width:0}
+.song-select-row label{white-space:nowrap}
+.song-select{flex:1 1 0;min-width:0;width:100%;max-width:100%;min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .resume-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-radius:10px;background:var(--accent-soft);border:1px solid var(--accent);font-size:13px}
 
 /* 콘솔 (메트로놈 + 컨트롤) */
