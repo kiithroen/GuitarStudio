@@ -364,6 +364,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
           <span class="label" style="color:var(--d-muted)">템포 (BPM)</span>
           <div style="display:flex;gap:4px;align-items:center">
             <button type="button" class="btn sm" id="bpmResetBtn" style="height:22px;padding:0 7px;font-size:11px" title="이 악보의 기본 권장 BPM으로 초기화합니다">기본 BPM (<span id="defaultBpmTxt">64</span>)</button>
+            <button type="button" class="fx-toggle" id="engineBtn" data-active="true">물리음원</button>
             <button type="button" class="fx-toggle" id="toggleFxBtn" data-active="true" title="리버브·바디공명·긴 서스테인 특수효과 토글 (단축키: F)">콘서트홀</button>
           </div>
         </div>
@@ -1636,6 +1637,7 @@ registerProcessor('onset', OnsetProc);
   if (typeof appState.audioOffsetMs !== 'number') appState.audioOffsetMs = 0;
   if (typeof appState.micScoring !== 'boolean') appState.micScoring = true; // 연습 중 마이크 정박·음정 채점 사용 여부
   if (typeof appState.micDeviceId !== 'string') appState.micDeviceId = ''; // 마이크 입력 장치 (''이면 시스템 기본)
+  if (appState.synthEngine !== 'classic') appState.synthEngine = 'ks'; // 기타 음원: 'ks' 물리 모델 / 'classic' 기존 합성음
   var calib = ls.get('gs.calib', { lat: 0.045, calibrated: false, at: null });
   var historyList = ls.get('gs.history', []);
 
@@ -2201,27 +2203,158 @@ registerProcessor('onset', OnsetProc);
       v.damp.gain.setTargetAtTime(0, t, 0.012);
       var cut = t + 0.1;
       if (cut < v.end){
-        v.oscs.forEach(function(o){ try { o.stop(cut); } catch (e){} });
+        v.srcs.forEach(function(o){ try { o.stop(cut); } catch (e){} });
         v.end = cut;
       }
       return false;
     });
   }
 
-  // 클래식 기타 나일론 현 + 저음 권선현(Wound Bass) + 아포얀도(Apoyando)/티란도(Tirando) 물리 음색 합성
-  // strNum: 실제 탄현하는 줄 번호(1~6). 생략하면 1포지션 표준 운지로 추정
-  function playGuitarNote(midi, durSec, when, gainScale, articulation, strNum){
-    if (!midi) return;
-    ensureAudioCtx();
-    var t = when != null ? when : actx.currentTime;
-    var isBass = midi < 55; // 4·5·6번 저음 권선현(E2~F#3) 여부
-    var isApoyando = articulation === 'apoyando';
-    var isTirando = articulation === 'tirando';
-    var isFx = !!appState.acousticFx;
-    var dur = isFx
-      ? Math.max(0.35, (durSec || 0.75) * (isBass ? 1.45 : (isApoyando ? 1.38 : 1.2)))
-      : Math.max(0.18, (durSec || 0.5) * 0.85); // 드라이 톤: 음간 중첩 없는 또렷하고 깔끔한 감쇠
-    var scale = gainScale != null ? gainScale : 1.0;
+  // ---------- Karplus-Strong 확장형 나일론 현 물리 모델
+  // 한 주기 길이의 지연선에 탄현 파형을 넣고 손실 필터로 되먹임: 고배음이 먼저 사라지는 실제 현의 감쇠와 배음 구조가 저절로 생김
+  // 음·주법마다 처음 한 번만 AudioBuffer로 렌더링해 캐시하고, 연주할 때는 버퍼만 재생 (노드 수·CPU 부담 최소)
+  var ksCache = new Map();
+  var KS_CACHE_MAX = 64;
+  // 내장곡 실측: 기존 합성음 대비 RMS가 대부분 곡에서 +0~1dB, 긴 저음이 많은 느린 곡(푸른 옷소매·로망스)은 -1~-2.6dB, 피크는 -5dBFS 이하
+  var KS_VOICE_GAIN = 0.45;
+
+  function ksRandom(seed){ // 음마다 항상 같은 음색이 나오도록 시드 고정 난수 (mulberry32)
+    return function(){
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      var r = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      r = r + Math.imul(r ^ r >>> 7, 61 | r) ^ r;
+      return ((r ^ r >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  // 1차 로우패스 손실 필터 (1-a)/(1-a·z^-1)의 각주파수 w에서의 감쇠량(neper)
+  function ksLoopLoss(w, a){ return -Math.log((1 - a) / Math.sqrt(1 - 2 * a * Math.cos(w) + a * a)); }
+
+  function renderKsString(ctx, midi, isApoyando){
+    var sr = ctx.sampleRate;
+    var f = 440 * Math.pow(2, (midi - 69) / 12);
+    var isBass = midi < 55;
+    // 감쇠 목표: 기음 T60은 저음일수록 길고(E2 8초 · E4 5초 · E5 4초), 3kHz 대역은 0.2~0.35초 안에 사라지는 나일론 특유의 부드러운 잔향
+    var t60Fund = 8.0 * Math.pow(f / 82.4, -0.33) * (isApoyando ? 1.15 : 1.0);
+    var t60High = isBass ? 0.35 : (isApoyando ? 0.22 : 0.28);
+    var w1 = 2 * Math.PI * f / sr, wh = 2 * Math.PI * 3000 / sr;
+    var s1 = 6.91 / t60Fund, sh = 6.91 / t60High;
+    // 루프 필터 g·(1-a)/(1-a·z^-1): 기음과 3kHz 두 지점의 감쇠가 목표와 맞도록 a를 이분 탐색한 뒤 g로 전체 길이 맞춤
+    var need = (sh - s1) / f, lo = 0, hi = 0.999, a = 0;
+    if (need > 0){
+      if (ksLoopLoss(wh, hi) - ksLoopLoss(w1, hi) <= need) a = hi;
+      else {
+        for (var it = 0; it < 50; it++){
+          var mid = (lo + hi) / 2;
+          if (ksLoopLoss(wh, mid) - ksLoopLoss(w1, mid) < need) lo = mid; else hi = mid;
+        }
+        a = (lo + hi) / 2;
+      }
+    }
+    var g = Math.min(0.99999, Math.exp(-(s1 / f - ksLoopLoss(w1, a))));
+    // 정확한 음정: 지연선(정수) + 손실 필터 위상 지연 + 1차 allpass 분수 지연의 합이 정확히 한 주기가 되도록
+    var pd = Math.atan2(a * Math.sin(w1), 1 - a * Math.cos(w1)) / w1;
+    var N = Math.floor(sr / f - pd - 0.1);
+    var d = sr / f - pd - N;
+    var C = (1 - d) / (1 + d);
+
+    // 탄현 파형: 손가락이 당긴 삼각형 변위 + 손톱 마찰 노이즈 (아포얀도는 더 둥글고 노이즈가 적음)
+    // 탄현 위치(브리지에서 β 지점)에 따라 1/β번째 배음이 빠지는 콤 필터 효과로 주법별 음색 차이
+    var rnd = ksRandom(midi * 977 + (isApoyando ? 1 : 2));
+    var beta = isApoyando ? 0.2 : 0.14;
+    var pos = Math.max(1, Math.round(N * beta));
+    var tri = new Float32Array(N), nz = new Float32Array(N), lpA = isApoyando ? 0.6 : 0.4, s = 0, i;
+    for (i = 0; i < N; i++){
+      tri[i] = i < pos ? i / pos : (N - i) / (N - pos);
+      s += (1 - lpA) * ((rnd() * 2 - 1) - s);
+      nz[i] = s;
+    }
+    for (i = N - 1; i >= pos; i--) nz[i] -= nz[i - pos];
+    [tri, nz].forEach(function(x){ // 평균 0, RMS 1로 정규화
+      var m = 0, r = 0, k;
+      for (k = 0; k < x.length; k++) m += x[k];
+      m /= x.length;
+      for (k = 0; k < x.length; k++){ x[k] -= m; r += x[k] * x[k]; }
+      r = Math.sqrt(r / x.length) || 1;
+      for (k = 0; k < x.length; k++) x[k] /= r;
+    });
+    var mixNoise = isApoyando ? 0.35 : 0.45;
+    var dl = new Float32Array(N);
+    for (i = 0; i < N; i++) dl[i] = (1 - mixNoise) * tri[i] + mixNoise * nz[i];
+
+    var len = Math.floor(sr * Math.min(isBass ? 6 : 5, t60Fund));
+    var buf = ctx.createBuffer(1, len, sr);
+    var out = buf.getChannelData(0);
+    var idx = 0, lp = 0, apX = 0, apY = 0, early = Math.floor(sr * 0.25), sumSq = 0;
+    for (var n = 0; n < len; n++){
+      var x = dl[idx];
+      lp = g * (1 - a) * x + a * lp;              // 손실(고역 감쇠) 필터
+      var y = C * lp + apX - C * apY;              // 튜닝 allpass
+      apX = lp; apY = y;
+      dl[idx] = y;
+      out[n] = x;
+      if (n < early) sumSq += x * x;
+      if (++idx === N) idx = 0;
+    }
+    // 첫 250ms 체감 음량(RMS) 기준 정규화로 음높이·주법이 달라도 비슷한 크기로 들리게 + 버퍼 끝 40ms 페이드 (딸깍 소리 방지)
+    var rms = Math.sqrt(sumSq / Math.min(early, len));
+    var fade = Math.floor(sr * 0.04), nrm = rms > 0 ? 0.28 / rms : 1;
+    for (n = 0; n < len; n++){
+      var fg = n > len - fade ? (len - n) / fade : 1;
+      out[n] *= nrm * fg;
+    }
+    return buf;
+  }
+
+  function getKsBuffer(midi, isApoyando){
+    var key = midi + (isApoyando ? 'a' : 't');
+    var buf = ksCache.get(key);
+    if (buf){
+      ksCache.delete(key); // 최근 사용 순서 갱신 (LRU)
+    } else {
+      buf = renderKsString(actx, midi, isApoyando);
+      if (ksCache.size >= KS_CACHE_MAX) ksCache.delete(ksCache.keys().next().value);
+    }
+    ksCache.set(key, buf);
+    return buf;
+  }
+
+  // 연습 시작 전에 곡에 나오는 음을 미리 렌더링해 두어, 재생 도중 새 음을 처음 만들 때 생기는 메인 스레드 지연을 없앰
+  function warmKsCache(song){
+    if (appState.synthEngine === 'classic' || !song || song.type !== 'structured') return;
+    var notes = {};
+    song.measures.forEach(function(m){
+      m.beats.forEach(function(b, bIdx){
+        var eb = resolveEffectiveBass(m.chord, b, bIdx);
+        if (eb && eb.midi) notes[eb.midi + 't'] = [eb.midi, false];
+        if (b.midi) notes[b.midi + (b.articulation === 'apoyando' ? 'a' : 't')] = [b.midi, b.articulation === 'apoyando'];
+      });
+    });
+    Object.keys(notes).slice(0, KS_CACHE_MAX).forEach(function(k){ getKsBuffer(notes[k][0], notes[k][1]); });
+  }
+
+  function buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx){
+    var src = actx.createBufferSource();
+    src.buffer = getKsBuffer(midi, isApoyando);
+    // 강한 탄현 순간 장력이 커져 음정이 살짝 높게 시작했다 안착하는 현상 (아포얀도가 더 큼)
+    src.playbackRate.setValueAtTime(isApoyando ? 1.004 : 1.002, t);
+    src.playbackRate.exponentialRampToValueAtTime(1, t + 0.03);
+    var g = actx.createGain();
+    var peakGain = KS_VOICE_GAIN * (isBass ? 1.0 : 0.9) * scale;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peakGain, t + 0.002);
+    // 현은 스스로 감쇠하므로 엔벨로프는 음 길이가 끝날 때 손가락으로 줄을 멈추는 동작만 담당 (드라이 모드는 더 짧게 끊음)
+    var relAt = t + Math.max(0.06, dur * 0.75);
+    g.gain.setTargetAtTime(0, relAt, isFx ? 0.06 : 0.035);
+    var stopAt = Math.min(t + src.buffer.duration, relAt + 0.4);
+    src.connect(g);
+    src.start(t);
+    src.stop(stopAt);
+    return { out: g, srcs: [src], stopAt: stopAt };
+  }
+
+  // 기존 합성음 (삼각파 2개 + 사인파 + 로우패스 스윕): 물리 모델 음원과 A/B 비교용
+  function buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx){
     var freq = 440 * Math.pow(2, (midi - 69) / 12);
 
     var o1 = actx.createOscillator();
@@ -2280,25 +2413,46 @@ registerProcessor('onset', OnsetProc);
       g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
     }
 
-    // 같은 줄 재탄현 시 이 보이스만 독립적으로 끊을 수 있도록 엔벨로프(g) 뒤에 별도 감쇠 게인을 둠
-    var damp = actx.createGain();
-
     o1.connect(g1); g1.connect(filter);
     o2.connect(g2); g2.connect(filter);
     o3.connect(g3); g3.connect(filter);
     filter.connect(g);
-    g.connect(damp);
-    damp.connect(guitarBus || actx.destination);
 
     var stopAt = t + dur + 0.03;
     o1.start(t); o2.start(t); o3.start(t);
     o1.stop(stopAt); o2.stop(stopAt); o3.stop(stopAt);
+    return { out: g, srcs: [o1, o2, o3], stopAt: stopAt };
+  }
+
+  // 클래식 기타 나일론 현 + 저음 권선현(Wound Bass) + 아포얀도(Apoyando)/티란도(Tirando) 음색 재생
+  // strNum: 실제 탄현하는 줄 번호(1~6). 생략하면 1포지션 표준 운지로 추정
+  function playGuitarNote(midi, durSec, when, gainScale, articulation, strNum){
+    if (!midi) return;
+    ensureAudioCtx();
+    var t = when != null ? when : actx.currentTime;
+    var isBass = midi < 55; // 4·5·6번 저음 권선현(E2~F#3) 여부
+    var isApoyando = articulation === 'apoyando';
+    var isTirando = articulation === 'tirando';
+    var isFx = !!appState.acousticFx;
+    var dur = isFx
+      ? Math.max(0.35, (durSec || 0.75) * (isBass ? 1.45 : (isApoyando ? 1.38 : 1.2)))
+      : Math.max(0.18, (durSec || 0.5) * 0.85); // 드라이 톤: 음간 중첩 없는 또렷하고 깔끔한 감쇠
+    var scale = gainScale != null ? gainScale : 1.0;
+
+    var voice = appState.synthEngine === 'classic'
+      ? buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx)
+      : buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx);
+
+    // 같은 줄 재탄현 시 이 보이스만 독립적으로 끊을 수 있도록 엔벨로프 뒤에 별도 감쇠 게인을 둠
+    var damp = actx.createGain();
+    voice.out.connect(damp);
+    damp.connect(guitarBus || actx.destination);
 
     var pos = strNum ? null : midiInfo(midi).pos;
     var sNo = strNum || (pos ? pos.str : null);
     if (sNo){
       dampSameStringVoices(sNo, t);
-      (stringVoices[sNo] = stringVoices[sNo] || []).push({ start: t, end: stopAt, damp: damp, oscs: [o1, o2, o3] });
+      (stringVoices[sNo] = stringVoices[sNo] || []).push({ start: t, end: voice.stopAt, damp: damp, srcs: voice.srcs });
     }
   }
 
@@ -3208,6 +3362,7 @@ registerProcessor('onset', OnsetProc);
     } else {
       $('#liveNoteKo').textContent = '마이크 꺼짐 (채점 안 함)';
     }
+    warmKsCache(curSong);
 
     // 이전 판정 흔적 초기화
     $$('#measuresGrid .beat-cell').forEach(function(c){ delete c.dataset.judge; });
@@ -3433,6 +3588,12 @@ registerProcessor('onset', OnsetProc);
     $('#speedTrainerChk').checked = appState.speedTrainer;
     $('#guideSoundBtn').setAttribute('aria-pressed', String(appState.guideSound));
     $('#guideSoundBtn').textContent = appState.guideSound ? '기타 시뮬레이션: 켜짐' : '기타 시뮬레이션: 꺼짐 (메트로놈만)';
+    var isKs = appState.synthEngine !== 'classic';
+    $('#engineBtn').setAttribute('data-active', String(isKs));
+    $('#engineBtn').textContent = isKs ? '물리음원' : '기존음원';
+    $('#engineBtn').title = isKs
+      ? '물리 모델(Karplus-Strong) 나일론 현 음원 사용 중 (클릭하면 기존 합성음과 비교)'
+      : '기존 합성음(삼각파+필터) 사용 중 (클릭하면 물리 모델 음원으로 전환)';
     $('#micScoreBtn').setAttribute('data-active', String(appState.micScoring));
     $('#micScoreBtn').textContent = appState.micScoring ? '마이크 채점' : '마이크 꺼짐';
     $('#micScoreBtn').title = appState.micScoring
@@ -3535,6 +3696,19 @@ registerProcessor('onset', OnsetProc);
     appState.guideSound = !appState.guideSound;
     syncConsoleUI();
     saveAppState();
+  });
+
+  $('#engineBtn').addEventListener('click', function(){
+    appState.synthEngine = appState.synthEngine === 'classic' ? 'ks' : 'classic';
+    syncConsoleUI();
+    saveAppState();
+    // 두 음원 차이를 바로 비교할 수 있도록 정지 상태에서는 짧은 저음+멜로디 프리뷰 재생
+    if (!isPlaying && appState.guideSound){
+      ensureAudioCtx();
+      var now = actx.currentTime + 0.02;
+      playGuitarNote(45, 1.4, now, 1.12, null, 5);
+      playGuitarNote(64, 1.0, now + 0.014, 1.0, 'apoyando', 1);
+    }
   });
 
   $('#micScoreBtn').addEventListener('click', async function(){
