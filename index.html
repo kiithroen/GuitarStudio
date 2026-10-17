@@ -322,7 +322,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
     </div>
     <div class="top-actions">
       <button type="button" class="btn sm" id="tunerBtn">6현 튜너</button>
-      <button type="button" class="btn sm" id="calibOpenBtn">마이크 지연 보정 (<span id="calibBadge">미보정</span>)</button>
+      <button type="button" class="btn sm" id="calibOpenBtn">지연 보정 (<span id="calibBadge">기본 45ms</span>)</button>
       <button type="button" class="btn sm" id="backupBtn">백업·복원</button>
     </div>
   </header>
@@ -606,19 +606,40 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
   </div>
 </div>
 
-<!-- 모달 2: 마이크 지연 보정 -->
+<!-- 모달 2: 지연 보정 (마이크 입력 + 블루투스 출력) -->
 <div class="modal-backdrop" id="calibModal" hidden>
   <div class="modal" role="dialog" aria-labelledby="calibTitle">
     <div class="panel-head">
-      <h2 id="calibTitle">마이크 지연 보정</h2>
+      <h2 id="calibTitle">지연 보정 (블루투스 &amp; 마이크)</h2>
       <button type="button" class="btn sm" id="closeCalibBtn">닫기</button>
     </div>
-    <p class="hint">스피커에서 나간 메트로놈 소리가 마이크로 다시 들어오는 지연 시간(ms)을 측정해 정박 채점 오차를 없애 줍니다. 조용한 상태에서 아래 버튼을 누르고 6초간 기다려 주세요.</p>
-    <div class="fg-card">
-      <span class="label">현재 보정 상태</span>
-      <span class="fg-val num" id="calibModalStatus">아직 보정 안 됨 (기본값 45ms 사용 중)</span>
+
+    <!-- 1. 오디오 출력 장치 (블루투스 지연 보정) -->
+    <div style="margin:12px 0 16px;padding:12px;background:var(--card-sub);border-radius:8px;border:1px solid var(--border)">
+      <div style="font-weight:600;margin-bottom:6px">1. 오디오 출력 장치 (블루투스 지연 보정)</div>
+      <p class="hint" style="margin-bottom:10px">블루투스 무선 이어폰/스피커는 무선 전송 특성상 150~250ms 지연이 발생합니다. 화면 커서 점등과 정박 채점 판정을 이에 맞게 보정하여 소리와 완벽히 일치시킵니다.</p>
+      <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+        <button type="button" class="btn sm" id="btPresetWired">유선/내장 스피커 (0ms)</button>
+        <button type="button" class="btn sm" id="btPresetNormal">블루투스 이어폰 (+180ms)</button>
+        <button type="button" class="btn sm" id="btPresetHeavy">블루투스 헤드셋 (+240ms)</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <label for="audioOffsetRange" style="font-size:12px;color:var(--text-dim);white-space:nowrap">출력 지연 오프셋:</label>
+        <input type="range" id="audioOffsetRange" min="0" max="400" step="5" value="0" style="flex:1">
+        <span class="num" id="audioOffsetVal" style="font-weight:700;min-width:60px;text-align:right">+0 ms</span>
+      </div>
     </div>
-    <button type="button" class="btn primary" id="runCalibBtn">6초 자동 보정 시작</button>
+
+    <!-- 2. 마이크 루프백 자동 보정 -->
+    <div style="padding:12px;background:var(--card-sub);border-radius:8px;border:1px solid var(--border)">
+      <div style="font-weight:600;margin-bottom:6px">2. 마이크 입력 자동 보정</div>
+      <p class="hint">스피커 소리가 마이크로 다시 들어오는 왕복 시간(ms)을 측정해 정박 채점 오차를 없앱니다 (유선/내장 스피커 권장).</p>
+      <div class="fg-card" style="margin:8px 0">
+        <span class="label">현재 마이크 측정 지연</span>
+        <span class="fg-val num" id="calibModalStatus">아직 보정 안 됨 (기본값 45ms 사용 중)</span>
+      </div>
+      <button type="button" class="btn primary" id="runCalibBtn">6초 자동 보정 시작</button>
+    </div>
   </div>
 </div>
 
@@ -1594,10 +1615,12 @@ registerProcessor('onset', OnsetProc);
     loopEnable: true,
     loopStart: 1,
     loopEnd: 8,
-    speedTrainer: false
+    speedTrainer: false,
+    audioOffsetMs: 0
   });
   if (typeof appState.autoBass !== 'boolean') appState.autoBass = true;
   if (typeof appState.acousticFx !== 'boolean') appState.acousticFx = true;
+  if (typeof appState.audioOffsetMs !== 'number') appState.audioOffsetMs = 0;
   var calib = ls.get('gs.calib', { lat: 0.045, calibrated: false, at: null });
   var historyList = ls.get('gs.history', []);
 
@@ -2317,7 +2340,8 @@ registerProcessor('onset', OnsetProc);
   function handleGuitarOnset(rawTime){
     var s = playSession;
     if (!s) return;
-    var t = rawTime - calib.lat;
+    var totalOffset = calib.lat + ((appState.audioOffsetMs || 0) / 1000);
+    var t = rawTime - totalOffset;
     if (t < s.measureStartTime - s.spb * 0.4) return;
     var beatFloat = (t - s.measureStartTime) / s.spb;
     var nearestBeat = Math.round(beatFloat);
@@ -3202,9 +3226,9 @@ registerProcessor('onset', OnsetProc);
           }
         }
 
-        // UI 동기화 예약 (WebAudio 하드웨어 버퍼 출력 지연 baseLatency + outputLatency 보정하여 시각 커서와 청각 소리 일치)
+        // UI 동기화 예약 (WebAudio 하드웨어 버퍼 출력 지연 baseLatency + outputLatency + 블루투스 오프셋 보정)
         (function(mI, bI, loopCnt, beatTime, spbVal){
-          var hwLat = (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010);
+          var hwLat = (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010) + ((appState.audioOffsetMs || 0) / 1000);
           var delay = Math.max(0, (beatTime + hwLat - actx.currentTime) * 1000);
           setTimeout(function(){
             if (!isPlaying || !playSession) return;
@@ -3247,9 +3271,9 @@ registerProcessor('onset', OnsetProc);
       }
     }
 
-    // 이미지 악보일 때 부드러운 Playhead 이동 (하드웨어 레이턴시 hwLat 보정)
+    // 이미지 악보일 때 부드러운 Playhead 이동 (하드웨어 레이턴시 hwLat + 블루투스 오프셋 보정)
     if (curSong && curSong.type === 'image' && !s.inCountIn){
-      var hwLat = (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010);
+      var hwLat = (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010) + ((appState.audioOffsetMs || 0) / 1000);
       var audioNow = now - hwLat;
       var elapsedInBar = audioNow - (s.measureStartTime - s.spb * s.bpb);
       var barDur = s.spb * s.bpb;
@@ -3310,7 +3334,8 @@ registerProcessor('onset', OnsetProc);
         ? '리버브·바디공명·긴 서스테인 효과 켜짐 (클릭 또는 단축키 F로 또렷한 드라이 톤 전환)'
         : '리버브·공명·잔향을 끈 깔끔하고 또렷한 가이드 드라이 톤 (클릭 또는 단축키 F로 콘서트홀 전환)';
     }
-    $('#calibBadge').textContent = calib.calibrated ? Math.round(calib.lat * 1000) + 'ms' : '기본 45ms';
+    var btTxt = (appState.audioOffsetMs > 0) ? (' · BT +' + appState.audioOffsetMs + 'ms') : '';
+    $('#calibBadge').textContent = (calib.calibrated ? Math.round(calib.lat * 1000) + 'ms' : '기본 45ms') + btTxt;
     var defBpm = curSong ? (Number(curSong.bpm) || 64) : 64;
     if ($('#defaultBpmTxt')) $('#defaultBpmTxt').textContent = defBpm;
     if ($('#bpmResetBtn')){
@@ -4617,13 +4642,51 @@ registerProcessor('onset', OnsetProc);
     }
   });
 
-  // ---------- 지연 보정 모달
+  // ---------- 지연 보정 모달 (블루투스 출력 + 마이크 입력)
+  function updateAudioOffsetUI(){
+    var v = appState.audioOffsetMs || 0;
+    if ($('#audioOffsetRange')) $('#audioOffsetRange').value = v;
+    if ($('#audioOffsetVal')) $('#audioOffsetVal').textContent = (v > 0 ? '+' : '') + v + ' ms';
+    if ($('#btPresetWired')) $('#btPresetWired').classList.toggle('primary', v === 0);
+    if ($('#btPresetNormal')) $('#btPresetNormal').classList.toggle('primary', v === 180);
+    if ($('#btPresetHeavy')) $('#btPresetHeavy').classList.toggle('primary', v === 240);
+    syncConsoleUI();
+  }
   $('#calibOpenBtn').addEventListener('click', function(){
+    updateAudioOffsetUI();
     $('#calibModal').hidden = false;
   });
   $('#closeCalibBtn').addEventListener('click', function(){
     $('#calibModal').hidden = true;
   });
+  if ($('#audioOffsetRange')){
+    $('#audioOffsetRange').addEventListener('input', function(e){
+      appState.audioOffsetMs = Number(e.target.value) || 0;
+      saveAppState();
+      updateAudioOffsetUI();
+    });
+  }
+  if ($('#btPresetWired')){
+    $('#btPresetWired').addEventListener('click', function(){
+      appState.audioOffsetMs = 0;
+      saveAppState();
+      updateAudioOffsetUI();
+    });
+  }
+  if ($('#btPresetNormal')){
+    $('#btPresetNormal').addEventListener('click', function(){
+      appState.audioOffsetMs = 180;
+      saveAppState();
+      updateAudioOffsetUI();
+    });
+  }
+  if ($('#btPresetHeavy')){
+    $('#btPresetHeavy').addEventListener('click', function(){
+      appState.audioOffsetMs = 240;
+      saveAppState();
+      updateAudioOffsetUI();
+    });
+  }
   $('#runCalibBtn').addEventListener('click', async function(){
     if (isCalibrating) return;
     try {
