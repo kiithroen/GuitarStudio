@@ -2246,9 +2246,10 @@ registerProcessor('onset', OnsetProc);
     var sr = ctx.sampleRate;
     var f = 440 * Math.pow(2, (midi - 69) / 12);
     var isBass = midi < 55;
-    // 감쇠 목표: 기음 T60은 저음일수록 길고(E2 8초 · E4 5초 · E5 4초), 3kHz 대역은 0.2~0.35초 안에 사라지는 나일론 특유의 부드러운 잔향
+    // 감쇠 목표: 기음 T60은 저음일수록 길고(E2 8초 · E4 5초 · E5 4초), 3kHz 대역은 0.5~0.6초에 걸쳐 사라짐
+    // (고음 배음이 너무 빨리 죽으면 높은 음이 사인파처럼 뭉개져 음이 흐릿하게 들림)
     var t60Fund = 8.0 * Math.pow(f / 82.4, -0.33) * (isApoyando ? 1.15 : 1.0);
-    var t60High = isBass ? 0.35 : (isApoyando ? 0.22 : 0.28);
+    var t60High = isBass ? 0.6 : (isApoyando ? 0.5 : 0.6);
     var w1 = 2 * Math.PI * f / sr, wh = 2 * Math.PI * 3000 / sr;
     var s1 = 6.91 / t60Fund, sh = 6.91 / t60High;
     // 루프 필터 g·(1-a)/(1-a·z^-1): 기음과 3kHz 두 지점의 감쇠가 목표와 맞도록 a를 이분 탐색한 뒤 g로 전체 길이 맞춤
@@ -2270,29 +2271,32 @@ registerProcessor('onset', OnsetProc);
     var d = sr / f - pd - N;
     var C = (1 - d) / (1 + d);
 
-    // 탄현 파형: 손가락이 당긴 삼각형 변위 + 손톱 마찰 노이즈 (아포얀도는 더 둥글고 노이즈가 적음)
-    // 탄현 위치(브리지에서 β 지점)에 따라 1/β번째 배음이 빠지는 콤 필터 효과로 주법별 음색 차이
+    // 탄현 파형: 배음 크기를 |sin(kπβ)|/k^p 로 정해 한 주기를 합성 (β: 브리지에서 튕긴 위치, 1/β번째 배음이 빠짐)
+    // 노이즈로 배음 크기를 정하면 음마다 우연히 2·3배음이 약해져 일부 음이 흐릿해지므로, 크기는 고정하고 위상만 살짝 흔들어 자연스러움 유지
+    // 아포얀도는 브리지에서 더 멀리(β 0.2) 둥글게(p 1.7), 티란도는 브리지 쪽(β 0.14)에서 더 밝게(p 1.4)
     var rnd = seededRandom(midi * 977 + (isApoyando ? 1 : 2));
-    var beta = isApoyando ? 0.2 : 0.14;
-    var pos = Math.max(1, Math.round(N * beta));
-    var tri = new Float32Array(N), nz = new Float32Array(N), lpA = isApoyando ? 0.6 : 0.4, s = 0, i;
+    var beta = isApoyando ? 0.2 : 0.14, p = isApoyando ? 1.7 : 1.4;
+    var K = Math.min(Math.floor(N / 2) - 1, Math.floor(10000 / f));
+    var tone = new Float32Array(N), nz = new Float32Array(N), s = 0, i, k;
+    for (k = 1; k <= K; k++){
+      var amp = Math.sin(k * Math.PI * beta) / Math.pow(k, p), ph = (rnd() * 2 - 1) * 0.6;
+      for (i = 0; i < N; i++) tone[i] += amp * Math.sin(2 * Math.PI * k * i / N + ph);
+    }
+    // 손끝·손톱이 줄을 스치는 질감용 약한 노이즈 (10%)
     for (i = 0; i < N; i++){
-      tri[i] = i < pos ? i / pos : (N - i) / (N - pos);
-      s += (1 - lpA) * ((rnd() * 2 - 1) - s);
+      s += 0.5 * ((rnd() * 2 - 1) - s);
       nz[i] = s;
     }
-    for (i = N - 1; i >= pos; i--) nz[i] -= nz[i - pos];
-    [tri, nz].forEach(function(x){ // 평균 0, RMS 1로 정규화
-      var m = 0, r = 0, k;
-      for (k = 0; k < x.length; k++) m += x[k];
+    [tone, nz].forEach(function(x){ // 평균 0, RMS 1로 정규화
+      var m = 0, r = 0, j;
+      for (j = 0; j < x.length; j++) m += x[j];
       m /= x.length;
-      for (k = 0; k < x.length; k++){ x[k] -= m; r += x[k] * x[k]; }
+      for (j = 0; j < x.length; j++){ x[j] -= m; r += x[j] * x[j]; }
       r = Math.sqrt(r / x.length) || 1;
-      for (k = 0; k < x.length; k++) x[k] /= r;
+      for (j = 0; j < x.length; j++) x[j] /= r;
     });
-    var mixNoise = isApoyando ? 0.35 : 0.45;
     var dl = new Float32Array(N);
-    for (i = 0; i < N; i++) dl[i] = (1 - mixNoise) * tri[i] + mixNoise * nz[i];
+    for (i = 0; i < N; i++) dl[i] = 0.9 * tone[i] + 0.1 * nz[i];
 
     var len = Math.floor(sr * Math.min(isBass ? 6 : 5, t60Fund));
     var buf = ctx.createBuffer(1, len, sr);
