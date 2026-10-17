@@ -1634,8 +1634,11 @@ registerProcessor('onset', OnsetProc);
 
   // 오디오 및 메트로놈 런타임 (어쿠스틱 바디 공명 + 콘서트홀 리버브 버스 포함)
   var actx = null, workletNode = null, micStream = null, outGain = null;
-  var guitarBus = null, reverbNode = null, pluckNoiseBuf = null;
+  var guitarBus = null, reverbNode = null, pluckNoiseBuf = null, clickBus = null;
   var dryGainNode = null, wetGainNode = null, bodyLowNode = null, bodyWoodNode = null;
+  var stringVoices = {}; // 줄 번호(1~6)별 현재 울리고 있는 보이스 목록 (같은 줄 재탄현 시 이전 음 정지용)
+  // 기타 마스터 음량 (0.90에서 -1.6dB): 내장곡 실측 기준 로망스 원곡 9/8 첫 박(베이스+아포얀도 동시 탄현)을 제외한 모든 곡의 피크가 -1dBFS 아래
+  var GUITAR_MASTER_GAIN = 0.75;
   var isPlaying = false;
   var isCalibrating = false;
   var isTunerActive = false;
@@ -1709,7 +1712,7 @@ registerProcessor('onset', OnsetProc);
       openEl.dataset.baseLabel = st.name.split(' ')[0];
       openEl.textContent = openEl.dataset.baseLabel;
       openEl.title = st.name + ' (클릭하면 소리 재생)';
-      openEl.addEventListener('click', function(){ playGuitarNote(st.midi, 0.9); });
+      openEl.addEventListener('click', function(){ playGuitarNote(st.midi, 0.9, null, null, null, st.str); });
       row.appendChild(openEl);
 
       for (var f = 1; f <= 12; f++){
@@ -1721,7 +1724,7 @@ registerProcessor('onset', OnsetProc);
         cell.dataset.midi = midi;
         var inf = midiInfo(midi);
         cell.title = st.str + '번줄 ' + f + '프렛: ' + inf.en + ' (' + inf.ko + ')';
-        cell.addEventListener('click', (function(m){ return function(){ playGuitarNote(m, 0.9); }; })(midi));
+        cell.addEventListener('click', (function(m){ return function(){ playGuitarNote(m, 0.9, null, null, null, st.str); }; })(midi));
         row.appendChild(cell);
       }
       fb.appendChild(row);
@@ -1777,10 +1780,10 @@ registerProcessor('onset', OnsetProc);
         var now = actx.currentTime;
         var effB = resolveEffectiveBass(mObj.chord, bObj, curBeatIdx);
         if (effB && effB.midi){
-          playGuitarNote(effB.midi, 1.35, now, 1.15);
-          if (bObj.midi) playGuitarNote(bObj.midi, 0.95, now + 0.045, 1.0);
+          playGuitarNote(effB.midi, 1.35, now, 1.15, null, effB.str);
+          if (bObj.midi) playGuitarNote(bObj.midi, 0.95, now + 0.045, 1.0, null, bObj.str);
         } else if (bObj.midi){
-          playGuitarNote(bObj.midi, 0.95, now, 1.0);
+          playGuitarNote(bObj.midi, 0.95, now, 1.0, null, bObj.str);
         }
       }
     }
@@ -2065,16 +2068,22 @@ registerProcessor('onset', OnsetProc);
     }
     if (actx.state !== 'running') actx.resume();
     if (!outGain){
+      // 기타 마스터: 리미터가 평소에는 개입하지 않도록 헤드룸 확보 (값과 실측 근거는 GUITAR_MASTER_GAIN 참고)
       outGain = actx.createGain();
-      outGain.gain.value = 0.90;
+      outGain.gain.value = GUITAR_MASTER_GAIN;
 
-      // 마스터 투명 브릭월 리미터 (다성부 화음 중첩 시에도 디지털 클리핑/찌직거림을 100% 방지)
+      // 마스터 안전 리미터: 평소에는 개입하지 않고 -1dBFS를 넘는 순간 피크만 눌러 클리핑을 막음
+      // (DynamicsCompressorNode는 약 6ms 룩어헤드 지연이 있으므로 기타·클릭·보정음 모두 이 노드를 거쳐 타이밍을 맞춤)
       var comp = actx.createDynamicsCompressor();
-      comp.threshold.value = -3.0;
-      comp.knee.value = 4;
-      comp.ratio.value = 10.0;
-      comp.attack.value = 0.002;
-      comp.release.value = 0.08;
+      comp.threshold.value = -1.0;
+      comp.knee.value = 0;
+      comp.ratio.value = 20.0;
+      comp.attack.value = 0.001;
+      comp.release.value = 0.10;
+
+      // 메트로놈 클릭·지연 보정음 전용 버스 (기타 마스터 음량과 독립, 리미터만 공유)
+      clickBus = actx.createGain();
+      clickBus.gain.value = 1.0;
 
       // 클래식 기타 울림통(Helmholtz ~130Hz & 상판 우드 ~280Hz) 온화한 공명 EQ
       bodyLowNode = actx.createBiquadFilter();
@@ -2110,6 +2119,7 @@ registerProcessor('onset', OnsetProc);
       dryGainNode.connect(outGain);
       wetGainNode.connect(outGain);
       outGain.connect(comp);
+      clickBus.connect(comp);
       comp.connect(actx.destination);
     }
     return actx;
@@ -2161,13 +2171,33 @@ registerProcessor('onset', OnsetProc);
     g.gain.linearRampToValueAtTime(Math.max(0.0002, appState.vol * amp), t + 0.002);
     g.gain.exponentialRampToValueAtTime(0.0001, t + clickDur);
     o.connect(g);
-    g.connect(actx.destination);
+    g.connect(clickBus || actx.destination);
     o.start(t);
     o.stop(t + clickDur + 0.005);
   }
 
+  // 같은 줄을 다시 튕기면 이전 진동은 새 탄현에 막혀 바로 멈춤: 이전 보이스를 12ms 시상수로 빠르게 감쇠시켜 음 겹침·탁함 제거
+  // (30ms 이내 거의 동시 탄현은 롤·화음 표현이므로 함께 울리도록 둠)
+  function dampSameStringVoices(strNo, t){
+    var list = stringVoices[strNo];
+    if (!list) return;
+    stringVoices[strNo] = list.filter(function(v){
+      if (v.end <= t) return false;
+      if (t - v.start <= 0.03) return true;
+      v.damp.gain.setValueAtTime(1, t);
+      v.damp.gain.setTargetAtTime(0, t, 0.012);
+      var cut = t + 0.1;
+      if (cut < v.end){
+        v.oscs.forEach(function(o){ try { o.stop(cut); } catch (e){} });
+        v.end = cut;
+      }
+      return false;
+    });
+  }
+
   // 클래식 기타 나일론 현 + 저음 권선현(Wound Bass) + 아포얀도(Apoyando)/티란도(Tirando) 물리 음색 합성
-  function playGuitarNote(midi, durSec, when, gainScale, articulation){
+  // strNum: 실제 탄현하는 줄 번호(1~6). 생략하면 1포지션 표준 운지로 추정
+  function playGuitarNote(midi, durSec, when, gainScale, articulation, strNum){
     if (!midi) return;
     ensureAudioCtx();
     var t = when != null ? when : actx.currentTime;
@@ -2237,14 +2267,26 @@ registerProcessor('onset', OnsetProc);
       g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
     }
 
+    // 같은 줄 재탄현 시 이 보이스만 독립적으로 끊을 수 있도록 엔벨로프(g) 뒤에 별도 감쇠 게인을 둠
+    var damp = actx.createGain();
+
     o1.connect(g1); g1.connect(filter);
     o2.connect(g2); g2.connect(filter);
     o3.connect(g3); g3.connect(filter);
     filter.connect(g);
-    g.connect(guitarBus || actx.destination);
+    g.connect(damp);
+    damp.connect(guitarBus || actx.destination);
 
+    var stopAt = t + dur + 0.03;
     o1.start(t); o2.start(t); o3.start(t);
-    o1.stop(t + dur + 0.03); o2.stop(t + dur + 0.03); o3.stop(t + dur + 0.03);
+    o1.stop(stopAt); o2.stop(stopAt); o3.stop(stopAt);
+
+    var pos = strNum ? null : midiInfo(midi).pos;
+    var sNo = strNum || (pos ? pos.str : null);
+    if (sNo){
+      dampSameStringVoices(sNo, t);
+      (stringVoices[sNo] = stringVoices[sNo] || []).push({ start: t, end: stopAt, damp: damp, oscs: [o1, o2, o3] });
+    }
   }
 
   function playChordPreview(chordName){
@@ -2259,7 +2301,7 @@ registerProcessor('onset', OnsetProc);
       if (fret < 0) continue;
       var strObj = STRINGS[5 - i];
       var midi = strObj.midi + fret;
-      playGuitarNote(midi, 1.1, now + step * 0.07);
+      playGuitarNote(midi, 1.1, now + step * 0.07, null, null, strObj.str);
       step++;
     }
   }
@@ -3050,12 +3092,12 @@ registerProcessor('onset', OnsetProc);
         ensureAudioCtx();
         var nowT = actx.currentTime;
         var hasB = !!(effBass && effBass.midi);
-        if (hasB) playGuitarNote(effBass.midi, 1.25, nowT, 1.12);
+        if (hasB) playGuitarNote(effBass.midi, 1.25, nowT, 1.12, null, effBass.str);
         if (beatObj && beatObj.midi){
           var pvArt = beatObj.articulation;
           var pvScale = pvArt === 'apoyando' ? 1.15 : (pvArt === 'tirando' ? 0.65 : 1.0);
           var pvDur = pvArt === 'apoyando' ? 1.05 : 0.80;
-          playGuitarNote(beatObj.midi, pvDur, nowT + (hasB ? 0.018 : 0), pvScale, pvArt);
+          playGuitarNote(beatObj.midi, pvDur, nowT + (hasB ? 0.018 : 0), pvScale, pvArt, beatObj.str);
         }
       }
     } else {
@@ -3189,7 +3231,7 @@ registerProcessor('onset', OnsetProc);
               var hasB = !!(effB && effB.midi);
               if (hasB){
                 var bassDur = (s.bpb === 9 || s.bpb === 6) ? (s.spb * 8.2) : (s.spb * 2.2);
-                playGuitarNote(effB.midi, bassDur, t, 1.12);
+                playGuitarNote(effB.midi, bassDur, t, 1.12, null, effB.str);
               }
               if (bObj.midi){
                 // 엄지(p) 베이스와 멜로디(a/m/i) 동시 탄현 미세 롤(Roll): 빠른 템포(BPM 150+)에서는 롤을 4ms로 축소하여 어택 타이밍이 밀리지 않도록 최적화
@@ -3200,7 +3242,7 @@ registerProcessor('onset', OnsetProc);
                 var isTirando = (artic === 'tirando');
                 var melDur = isApoyando ? (s.spb * 3.1) : (isTirando ? (s.spb * 1.5) : (s.spb * 1.15));
                 var melGain = isApoyando ? 1.16 : (isTirando ? 0.62 : 1.0);
-                playGuitarNote(bObj.midi, melDur, melTime, melGain, artic);
+                playGuitarNote(bObj.midi, melDur, melTime, melGain, artic, bObj.str);
               }
             }
           } else if (isFirstBeat){
@@ -4592,7 +4634,7 @@ registerProcessor('onset', OnsetProc);
       b.style.padding = '8px 4px';
       b.innerHTML = '<b>' + st.name.split(' ')[0] + '</b><span style="font-size:11px;color:var(--muted)">' + st.name.split(' ')[1] + '</span>';
       b.addEventListener('click', function(){
-        playGuitarNote(st.midi, 1.8);
+        playGuitarNote(st.midi, 1.8, null, null, null, st.str);
       });
       box.appendChild(b);
     });
@@ -4695,7 +4737,8 @@ registerProcessor('onset', OnsetProc);
       g.gain.setValueAtTime(0, ct);
       g.gain.linearRampToValueAtTime(0.8, ct + 0.002);
       g.gain.exponentialRampToValueAtTime(0.001, ct + 0.05);
-      o.connect(g); g.connect(actx.destination);
+      // 메트로놈 클릭과 같은 출력 경로(리미터 룩어헤드 포함)로 내보내야 측정 지연이 실제 연습 상황과 일치
+      o.connect(g); g.connect(clickBus || actx.destination);
       o.start(ct); o.stop(ct + 0.06);
     }
     playSession = { calClicks: clicks, calHeard: [] };
