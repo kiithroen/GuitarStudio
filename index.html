@@ -154,7 +154,8 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .mini-needle[data-cls="ok"]{background:var(--d-ok)}
 .mini-needle[data-cls="near"]{background:var(--d-near)}
 .mini-needle[data-cls="off"]{background:var(--d-off)}
-.mic-bar{height:4px;border-radius:2px;background:var(--d-line);overflow:hidden}
+.mic-row{display:flex;align-items:center;gap:8px}
+.mic-bar{flex:1;height:4px;border-radius:2px;background:var(--d-line);overflow:hidden}
 .mic-fill{height:100%;width:0;background:var(--d-ok);transition:width .06s}
 
 /* 악보 영역 */
@@ -429,7 +430,10 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
           <div class="mini-zone"></div>
           <div class="mini-needle" id="liveNeedle" hidden></div>
         </div>
-        <div class="mic-bar" title="마이크 입력 레벨"><div class="mic-fill" id="micFill"></div></div>
+        <div class="mic-row">
+          <button type="button" class="fx-toggle" id="micScoreBtn" data-active="true">마이크 채점</button>
+          <div class="mic-bar" title="마이크 입력 레벨"><div class="mic-fill" id="micFill"></div></div>
+        </div>
       </div>
     </div>
   </section>
@@ -635,7 +639,13 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
 
     <!-- 2. 마이크 루프백 자동 보정 -->
     <div style="padding:12px;background:var(--card-sub);border-radius:8px;border:1px solid var(--border)">
-      <div style="font-weight:600;margin-bottom:6px">2. 마이크 입력 자동 보정</div>
+      <div style="font-weight:600;margin-bottom:6px">2. 마이크 입력 장치 &amp; 자동 보정</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <label for="micDeviceSelect" style="font-size:12px;color:var(--muted);white-space:nowrap">입력 장치:</label>
+        <select id="micDeviceSelect" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg)"></select>
+        <button type="button" class="btn sm" id="micDeviceRefreshBtn">목록 불러오기</button>
+      </div>
+      <p class="hint" style="margin-bottom:8px">블루투스 이어폰의 마이크를 쓰면 이어폰이 통화 모드로 바뀌어 재생 음질이 크게 떨어져요. 노트북 내장 마이크나 USB 마이크를 고르세요. 장치를 바꾸면 아래 자동 보정을 다시 해 주세요.</p>
       <p class="hint">스피커 소리가 마이크로 다시 들어오는 왕복 시간(ms)을 측정해 정박 채점 오차를 없앱니다 (유선/내장 스피커 권장).</p>
       <div class="fg-card" style="margin:8px 0">
         <span class="label">현재 마이크 측정 지연</span>
@@ -1624,6 +1634,8 @@ registerProcessor('onset', OnsetProc);
   if (typeof appState.autoBass !== 'boolean') appState.autoBass = true;
   if (typeof appState.acousticFx !== 'boolean') appState.acousticFx = true;
   if (typeof appState.audioOffsetMs !== 'number') appState.audioOffsetMs = 0;
+  if (typeof appState.micScoring !== 'boolean') appState.micScoring = true; // 연습 중 마이크 정박·음정 채점 사용 여부
+  if (typeof appState.micDeviceId !== 'string') appState.micDeviceId = ''; // 마이크 입력 장치 (''이면 시스템 기본)
   var calib = ls.get('gs.calib', { lat: 0.045, calibrated: false, at: null });
   var historyList = ls.get('gs.history', []);
 
@@ -1633,13 +1645,14 @@ registerProcessor('onset', OnsetProc);
   var selectedImgBar = null; // { sysIdx, barIdx }
 
   // 오디오 및 메트로놈 런타임 (어쿠스틱 바디 공명 + 콘서트홀 리버브 버스 포함)
-  var actx = null, workletNode = null, micStream = null, outGain = null;
+  var actx = null, workletNode = null, micStream = null, micSource = null, outGain = null;
   var guitarBus = null, reverbNode = null, pluckNoiseBuf = null, clickBus = null;
   var dryGainNode = null, wetGainNode = null, bodyLowNode = null, bodyWoodNode = null;
   var stringVoices = {}; // 줄 번호(1~6)별 현재 울리고 있는 보이스 목록 (같은 줄 재탄현 시 이전 음 정지용)
   // 기타 마스터 음량 (0.90에서 -1.6dB): 내장곡 실측 기준 로망스 원곡 9/8 첫 박(베이스+아포얀도 동시 탄현)을 제외한 모든 곡의 피크가 -1dBFS 아래
   var GUITAR_MASTER_GAIN = 0.75;
   var isPlaying = false;
+  var isStarting = false; // 연습 시작 중 마이크 권한·연결을 기다리는 동안 중복 시작 방지
   var isCalibrating = false;
   var isTunerActive = false;
   var playSession = null;
@@ -2307,30 +2320,88 @@ registerProcessor('onset', OnsetProc);
   }
 
   // ---------- 마이크 입력 연결 (튜너 & 정박/음정 채점 겸용)
+  // 선택한 입력 장치로 마이크 열기 (블루투스 이어폰 대신 내장/USB 마이크를 쓰면 이어폰 재생이 고음질 모드로 유지됨)
+  async function openMicStream(){
+    var base = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+    if (appState.micDeviceId){
+      try {
+        return await navigator.mediaDevices.getUserMedia({ audio: Object.assign({ deviceId: { exact: appState.micDeviceId } }, base) });
+      } catch (e){
+        // 저장해 둔 장치가 분리된 경우에만 시스템 기본 마이크로 대체 (권한 거부 등은 그대로 알림)
+        if (!e || (e.name !== 'OverconstrainedError' && e.name !== 'NotFoundError')) throw e;
+      }
+    }
+    return navigator.mediaDevices.getUserMedia({ audio: base });
+  }
+
   async function ensureMicWorklet(){
     ensureAudioCtx();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
       throw new Error('이 브라우저에서는 마이크 입력을 쓸 수 없어요.');
     }
     if (!micStream){
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
-      });
+      micStream = await openMicStream();
+      if (micSource){ micSource.disconnect(); micSource = null; }
     }
     if (!workletNode){
       var blob = new Blob([$('#worklet').textContent], { type: 'text/javascript' });
       var url = URL.createObjectURL(blob);
       await actx.audioWorklet.addModule(url);
       URL.revokeObjectURL(url);
-      var src = actx.createMediaStreamSource(micStream);
       workletNode = new AudioWorkletNode(actx, 'onset', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
-      src.connect(workletNode);
       var sink = actx.createGain();
       sink.gain.value = 0;
       workletNode.connect(sink);
       sink.connect(actx.destination);
       workletNode.port.onmessage = onWorkletMessage;
     }
+    if (!micSource){
+      micSource = actx.createMediaStreamSource(micStream);
+      micSource.connect(workletNode);
+    }
+    refreshMicDeviceList(); // 권한을 받은 뒤라 장치 이름이 보임
+  }
+
+  // 마이크를 열어 둔 채로 두면 블루투스 헤드셋이 통화 모드(HFP)에 머물러 재생 음질이 떨어지므로, 쓰는 곳이 없으면 바로 해제
+  function releaseMic(){
+    if (isTunerActive || isCalibrating || ((isPlaying || isStarting) && appState.micScoring)) return;
+    if (micSource){ micSource.disconnect(); micSource = null; }
+    if (micStream){
+      micStream.getTracks().forEach(function(tr){ tr.stop(); });
+      micStream = null;
+    }
+  }
+
+  async function refreshMicDeviceList(){
+    var sel = $('#micDeviceSelect');
+    if (!sel || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    var devs = [];
+    try {
+      devs = (await navigator.mediaDevices.enumerateDevices()).filter(function(d){ return d.kind === 'audioinput'; });
+    } catch (e){}
+    sel.textContent = '';
+    var defOpt = document.createElement('option');
+    defOpt.value = '';
+    defOpt.textContent = '시스템 기본 마이크';
+    sel.appendChild(defOpt);
+    var named = 0;
+    devs.forEach(function(d){
+      // 'default'·'communications'는 실제 장치의 별칭이라 목록에서 제외
+      if (!d.deviceId || d.deviceId === 'default' || d.deviceId === 'communications') return;
+      var o = document.createElement('option');
+      o.value = d.deviceId;
+      o.textContent = d.label || ('마이크 ' + (named + 1));
+      sel.appendChild(o);
+      named++;
+    });
+    if (!named){
+      var hintOpt = document.createElement('option');
+      hintOpt.disabled = true;
+      hintOpt.textContent = '(목록 불러오기를 눌러 마이크 권한을 허용하면 장치가 보여요)';
+      sel.appendChild(hintOpt);
+    }
+    sel.value = appState.micDeviceId;
+    if (sel.value !== appState.micDeviceId) sel.value = '';
   }
 
   function onWorkletMessage(e){
@@ -3122,13 +3193,20 @@ registerProcessor('onset', OnsetProc);
 
   // ---------- 메트로놈 재생 루프 (카운트인 + 마디 진행 + 구간 반복 + 자동 가속)
   async function startPractice(){
-    if (isPlaying) return;
+    if (isPlaying || isStarting) return;
     ensureAudioCtx();
-    try {
-      await ensureMicWorklet();
-    } catch (e){
-      // 마이크가 없어도 메트로놈+악보 커서 연습은 정상 동작하도록 허용
-      $('#liveNoteKo').textContent = '마이크 없음 (뷰어 모드)';
+    if (appState.micScoring){
+      isStarting = true;
+      try {
+        await ensureMicWorklet();
+      } catch (e){
+        // 마이크가 없어도 메트로놈+악보 커서 연습은 정상 동작하도록 허용
+        $('#liveNoteKo').textContent = '마이크 없음 (뷰어 모드)';
+      } finally {
+        isStarting = false;
+      }
+    } else {
+      $('#liveNoteKo').textContent = '마이크 꺼짐 (채점 안 함)';
     }
 
     // 이전 판정 흔적 초기화
@@ -3199,6 +3277,7 @@ registerProcessor('onset', OnsetProc);
     }
     saveAppState();
     playSession = null;
+    releaseMic();
   }
 
   function schedulerTick(){
@@ -3354,6 +3433,11 @@ registerProcessor('onset', OnsetProc);
     $('#speedTrainerChk').checked = appState.speedTrainer;
     $('#guideSoundBtn').setAttribute('aria-pressed', String(appState.guideSound));
     $('#guideSoundBtn').textContent = appState.guideSound ? '기타 시뮬레이션: 켜짐' : '기타 시뮬레이션: 꺼짐 (메트로놈만)';
+    $('#micScoreBtn').setAttribute('data-active', String(appState.micScoring));
+    $('#micScoreBtn').textContent = appState.micScoring ? '마이크 채점' : '마이크 꺼짐';
+    $('#micScoreBtn').title = appState.micScoring
+      ? '연습 중 마이크로 정박·음정을 채점합니다 (클릭하면 끔 · 블루투스 이어폰만 쓸 때 끄면 재생 음질이 유지돼요)'
+      : '마이크를 쓰지 않고 메트로놈과 악보 커서만으로 연습합니다 (클릭하면 채점 켬)';
     if ($('#toggleFxBtn')){
       var isFx = !!appState.acousticFx;
       $('#toggleFxBtn').setAttribute('data-active', String(isFx));
@@ -3452,6 +3536,27 @@ registerProcessor('onset', OnsetProc);
     syncConsoleUI();
     saveAppState();
   });
+
+  $('#micScoreBtn').addEventListener('click', async function(){
+    appState.micScoring = !appState.micScoring;
+    syncConsoleUI();
+    saveAppState();
+    if (!appState.micScoring){
+      releaseMic();
+      $('#liveNoteKo').textContent = '마이크 꺼짐 (채점 안 함)';
+    } else if (isPlaying){
+      // 연습 도중 다시 켜면 그 시점부터 바로 채점
+      try {
+        await ensureMicWorklet();
+        $('#liveNoteKo').textContent = '마이크 대기';
+      } catch (e){
+        $('#liveNoteKo').textContent = '마이크 없음 (뷰어 모드)';
+      }
+    } else {
+      $('#liveNoteKo').textContent = '마이크 대기';
+    }
+  });
+  if (!appState.micScoring) $('#liveNoteKo').textContent = '마이크 꺼짐 (채점 안 함)';
 
   if ($('#toggleFxBtn')){
     $('#toggleFxBtn').addEventListener('click', function(){
@@ -4660,6 +4765,7 @@ registerProcessor('onset', OnsetProc);
   $('#closeTunerBtn').addEventListener('click', function(){
     isTunerActive = false;
     $('#tunerModal').hidden = true;
+    releaseMic();
   });
   $('#tunerStartMicBtn').addEventListener('click', async function(){
     try {
@@ -4682,8 +4788,39 @@ registerProcessor('onset', OnsetProc);
   }
   $('#calibOpenBtn').addEventListener('click', function(){
     updateAudioOffsetUI();
+    refreshMicDeviceList();
     $('#calibModal').hidden = false;
   });
+
+  // 마이크 입력 장치 선택: 사용 중이면 새 장치로 즉시 교체
+  $('#micDeviceSelect').addEventListener('change', async function(e){
+    appState.micDeviceId = e.target.value;
+    saveAppState();
+    if (!micStream) return;
+    if (micSource){ micSource.disconnect(); micSource = null; }
+    micStream.getTracks().forEach(function(tr){ tr.stop(); });
+    micStream = null;
+    try {
+      await ensureMicWorklet();
+    } catch (err){
+      $('#calibModalStatus').textContent = '선택한 마이크를 열지 못했어요: ' + err.message;
+    }
+  });
+  // 권한을 아직 안 받았으면 장치 이름이 숨겨지므로 잠깐 마이크를 열어 권한만 받고 바로 닫음
+  $('#micDeviceRefreshBtn').addEventListener('click', async function(){
+    if (!micStream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+      try {
+        var tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
+        tmp.getTracks().forEach(function(tr){ tr.stop(); });
+      } catch (err){
+        $('#calibModalStatus').textContent = '마이크 권한이 없어 장치 목록을 볼 수 없어요.';
+      }
+    }
+    refreshMicDeviceList();
+  });
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener){
+    navigator.mediaDevices.addEventListener('devicechange', refreshMicDeviceList);
+  }
   $('#closeCalibBtn').addEventListener('click', function(){
     $('#calibModal').hidden = true;
   });
@@ -4753,6 +4890,7 @@ registerProcessor('onset', OnsetProc);
         }
       });
       isCalibrating = false;
+      releaseMic();
       $('#runCalibBtn').disabled = false;
       if (lats.length >= 4){
         lats.sort(function(a, b){ return a - b; });
