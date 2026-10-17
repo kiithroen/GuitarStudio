@@ -131,6 +131,9 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:24px}
 .sound-toggle{height:48px;padding:0 14px;border-radius:12px;border:1.5px solid var(--d-line);background:var(--d-surface);color:var(--d-muted);font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer;transition:border-color .15s,color .15s,background-color .15s}
 .sound-toggle[aria-pressed="true"]{border-color:var(--d-ok);background:rgba(98,212,145,.10);color:var(--d-ok)}
 .sound-toggle[aria-pressed="false"]{border-color:var(--d-line);background:var(--d-bg);color:var(--d-muted)}
+.fx-toggle{min-height:28px;padding:0 9px;border-radius:8px;border:1px solid var(--d-line);background:var(--d-bg);color:var(--d-muted);font-size:11.5px;font-weight:600;white-space:nowrap;cursor:pointer;transition:border-color .15s,color .15s,background-color .15s}
+.fx-toggle[data-active="true"]{border-color:var(--d-ok);background:rgba(98,212,145,.12);color:var(--d-ok)}
+.fx-toggle[data-active="false"]{border-color:var(--d-line);background:var(--d-bg);color:var(--d-muted)}
 
 /* 실시간 마이크/음정 게이지 */
 .gauge-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -373,6 +376,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
           <label class="ctrl-item" title="메트로놈 클릭 볼륨 (0으로 내리면 메트로놈 소리만 끄고 기타 소리만 감상할 수 있습니다)">클릭음
             <input type="range" id="volRange" min="0" max="100" step="5" value="55" style="width:72px">
           </label>
+          <button type="button" class="fx-toggle" id="toggleFxBtn" data-active="true" title="리버브·바디공명·긴 서스테인 특수효과 토글 (단축키: F)">음향: 콘서트홀 (풍성)</button>
         </div>
       </div>
 
@@ -1880,6 +1884,7 @@ registerProcessor('onset', OnsetProc);
     beats: 4,
     vol: 0.55,
     guideSound: true,
+    acousticFx: true, // 고품질 음향 효과 (콘서트홀 리버브, 바디 공명, 2단 서스테인) 토글
     autoBass: true,
     loopEnable: true,
     loopStart: 1,
@@ -1887,6 +1892,7 @@ registerProcessor('onset', OnsetProc);
     speedTrainer: false
   });
   if (typeof appState.autoBass !== 'boolean') appState.autoBass = true;
+  if (typeof appState.acousticFx !== 'boolean') appState.acousticFx = true;
   var calib = ls.get('gs.calib', { lat: 0.045, calibrated: false, at: null });
   var historyList = ls.get('gs.history', []);
 
@@ -1898,6 +1904,7 @@ registerProcessor('onset', OnsetProc);
   // 오디오 및 메트로놈 런타임 (어쿠스틱 바디 공명 + 콘서트홀 리버브 버스 포함)
   var actx = null, workletNode = null, micStream = null, outGain = null;
   var guitarBus = null, reverbNode = null, pluckNoiseBuf = null;
+  var dryGainNode = null, wetGainNode = null, bodyLowNode = null, bodyWoodNode = null;
   var isPlaying = false;
   var isCalibrating = false;
   var isTunerActive = false;
@@ -2339,43 +2346,70 @@ registerProcessor('onset', OnsetProc);
       comp.release.value = 0.18;
 
       // 클래식 기타 울림통(Helmholtz ~130Hz & 상판 우드 ~280Hz) 공명 EQ
-      var bodyLow = actx.createBiquadFilter();
-      bodyLow.type = 'peaking';
-      bodyLow.frequency.value = 135;
-      bodyLow.Q.value = 1.05;
-      bodyLow.gain.value = 4.8;
+      bodyLowNode = actx.createBiquadFilter();
+      bodyLowNode.type = 'peaking';
+      bodyLowNode.frequency.value = 135;
+      bodyLowNode.Q.value = 1.05;
+      bodyLowNode.gain.value = appState.acousticFx ? 4.8 : 0.0;
 
-      var bodyWood = actx.createBiquadFilter();
-      bodyWood.type = 'peaking';
-      bodyWood.frequency.value = 285;
-      bodyWood.Q.value = 1.3;
-      bodyWood.gain.value = 2.6;
+      bodyWoodNode = actx.createBiquadFilter();
+      bodyWoodNode.type = 'peaking';
+      bodyWoodNode.frequency.value = 285;
+      bodyWoodNode.Q.value = 1.3;
+      bodyWoodNode.gain.value = appState.acousticFx ? 2.6 : 0.0;
 
       guitarBus = actx.createGain();
       guitarBus.gain.value = 1.0;
 
-      var dryGain = actx.createGain();
-      dryGain.gain.value = 0.85;
+      dryGainNode = actx.createGain();
+      dryGainNode.gain.value = appState.acousticFx ? 0.85 : 1.0;
 
-      var wetGain = actx.createGain();
-      wetGain.gain.value = 0.36;
+      wetGainNode = actx.createGain();
+      wetGainNode.gain.value = appState.acousticFx ? 0.36 : 0.0;
 
       reverbNode = actx.createConvolver();
       reverbNode.buffer = buildConcertHallReverbBuffer(actx);
       pluckNoiseBuf = buildPluckNoiseBuffer(actx);
 
-      guitarBus.connect(bodyLow);
-      bodyLow.connect(bodyWood);
-      bodyWood.connect(dryGain);
-      bodyWood.connect(reverbNode);
-      reverbNode.connect(wetGain);
+      guitarBus.connect(bodyLowNode);
+      bodyLowNode.connect(bodyWoodNode);
+      bodyWoodNode.connect(dryGainNode);
+      bodyWoodNode.connect(reverbNode);
+      reverbNode.connect(wetGainNode);
 
-      dryGain.connect(outGain);
-      wetGain.connect(outGain);
+      dryGainNode.connect(outGain);
+      wetGainNode.connect(outGain);
       outGain.connect(comp);
       comp.connect(actx.destination);
     }
     return actx;
+  }
+
+  // 콘서트홀 음향 특수효과 (리버브·바디공명 EQ·서스테인) 실시간 라우팅 전환
+  function updateAudioFxRouting(){
+    if (!actx || !dryGainNode) return;
+    var now = actx.currentTime;
+    var on = !!appState.acousticFx;
+    if (dryGainNode && dryGainNode.gain){
+      dryGainNode.gain.cancelScheduledValues(now);
+      dryGainNode.gain.setValueAtTime(dryGainNode.gain.value, now);
+      dryGainNode.gain.linearRampToValueAtTime(on ? 0.85 : 1.0, now + 0.04);
+    }
+    if (wetGainNode && wetGainNode.gain){
+      wetGainNode.gain.cancelScheduledValues(now);
+      wetGainNode.gain.setValueAtTime(wetGainNode.gain.value, now);
+      wetGainNode.gain.linearRampToValueAtTime(on ? 0.36 : 0.0, now + 0.04);
+    }
+    if (bodyLowNode && bodyLowNode.gain){
+      bodyLowNode.gain.cancelScheduledValues(now);
+      bodyLowNode.gain.setValueAtTime(bodyLowNode.gain.value, now);
+      bodyLowNode.gain.linearRampToValueAtTime(on ? 4.8 : 0.0, now + 0.04);
+    }
+    if (bodyWoodNode && bodyWoodNode.gain){
+      bodyWoodNode.gain.cancelScheduledValues(now);
+      bodyWoodNode.gain.setValueAtTime(bodyWoodNode.gain.value, now);
+      bodyWoodNode.gain.linearRampToValueAtTime(on ? 2.6 : 0.0, now + 0.04);
+    }
   }
 
   // 어쿠스틱 우드블록(Woodblock) 메트로놈 클릭 (#volRange '클릭음' 슬라이더로 독립 조절, 0이면 무음)
@@ -2410,7 +2444,10 @@ registerProcessor('onset', OnsetProc);
     var isBass = midi < 55; // 4·5·6번 저음 권선현(E2~F#3) 여부
     var isApoyando = articulation === 'apoyando';
     var isTirando = articulation === 'tirando';
-    var dur = Math.max(0.35, (durSec || 0.75) * (isBass ? 1.45 : (isApoyando ? 1.38 : 1.2)));
+    var isFx = !!appState.acousticFx;
+    var dur = isFx
+      ? Math.max(0.35, (durSec || 0.75) * (isBass ? 1.45 : (isApoyando ? 1.38 : 1.2)))
+      : Math.max(0.18, (durSec || 0.5) * 0.85); // 드라이 톤: 음간 중첩 없는 또렷하고 깔끔한 감쇠
     var scale = gainScale != null ? gainScale : 1.0;
     var freq = 440 * Math.pow(2, (midi - 69) / 12);
 
@@ -2444,20 +2481,34 @@ registerProcessor('onset', OnsetProc);
 
     filter.type = 'lowpass';
     filter.Q.value = isBass ? 1.35 : (isApoyando ? 1.15 : 0.8);
-    var startCutoffMult = isBass ? 6.8 : (isApoyando ? 4.6 : 5.6);
-    var endCutoffMult = isBass ? 2.4 : (isApoyando ? 1.35 : 1.55);
-    filter.frequency.setValueAtTime(freq * startCutoffMult, t);
-    filter.frequency.exponentialRampToValueAtTime(freq * endCutoffMult, t + dur * 0.75);
+    if (isFx){
+      var startCutoffMult = isBass ? 6.8 : (isApoyando ? 4.6 : 5.6);
+      var endCutoffMult = isBass ? 2.4 : (isApoyando ? 1.35 : 1.55);
+      filter.frequency.setValueAtTime(freq * startCutoffMult, t);
+      filter.frequency.exponentialRampToValueAtTime(freq * endCutoffMult, t + dur * 0.75);
+    } else {
+      // 드라이 모드: 음정의 윤곽이 뚜렷하게 들리도록 필터를 시원하고 명료하게 유지
+      filter.frequency.setValueAtTime(freq * 5.2, t);
+      filter.frequency.exponentialRampToValueAtTime(freq * 2.8, t + dur * 0.85);
+    }
 
-    var peakGain = (isBass ? 0.44 : (isApoyando ? 0.40 : 0.35)) * scale;
-    g.gain.setValueAtTime(0.0008, t);
-    g.gain.linearRampToValueAtTime(peakGain, t + (isBass ? 0.006 : 0.005));
-    // 초기 탄현 어택 이후 몸통 서스테인으로 자연스럽게 이어지는 2단 감쇠(Pluck -> Sustain)
-    g.gain.exponentialRampToValueAtTime(peakGain * (isApoyando ? 0.48 : 0.40), t + Math.min(0.20, dur * 0.28));
-    g.gain.exponentialRampToValueAtTime(0.0006, t + dur);
+    if (isFx){
+      var peakGain = (isBass ? 0.44 : (isApoyando ? 0.40 : 0.35)) * scale;
+      g.gain.setValueAtTime(0.0008, t);
+      g.gain.linearRampToValueAtTime(peakGain, t + (isBass ? 0.006 : 0.005));
+      // 초기 탄현 어택 이후 몸통 서스테인으로 자연스럽게 이어지는 2단 감쇠(Pluck -> Sustain)
+      g.gain.exponentialRampToValueAtTime(peakGain * (isApoyando ? 0.48 : 0.40), t + Math.min(0.20, dur * 0.28));
+      g.gain.exponentialRampToValueAtTime(0.0006, t + dur);
+    } else {
+      // 드라이 모드: 웅웅거리는 서스테인 꼬리 없이 음의 시작과 끝이 분명한 1단 직관적 감쇠
+      var peakGain = (isBass ? 0.40 : (isApoyando ? 0.38 : 0.34)) * scale;
+      g.gain.setValueAtTime(0.0008, t);
+      g.gain.linearRampToValueAtTime(peakGain, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+    }
 
-    // 손끝/손톱이 현을 튕기는 순간의 어택 트랜지언트 노이즈 추가
-    if (pluckNoiseBuf){
+    // 손끝/손톱이 현을 튕기는 순간의 어택 트랜지언트 노이즈 (콘서트홀 풍성 모드에서만 재생하여 드라이 가이드톤의 순수 피치 확보)
+    if (isFx && pluckNoiseBuf){
       var nSrc = actx.createBufferSource();
       var nFilt = actx.createBiquadFilter();
       var nGain = actx.createGain();
@@ -3530,6 +3581,14 @@ registerProcessor('onset', OnsetProc);
     $('#speedTrainerChk').checked = appState.speedTrainer;
     $('#guideSoundBtn').setAttribute('aria-pressed', String(appState.guideSound));
     $('#guideSoundBtn').textContent = appState.guideSound ? '기타 시뮬레이션: 켜짐' : '기타 시뮬레이션: 꺼짐 (메트로놈만)';
+    if ($('#toggleFxBtn')){
+      var isFx = !!appState.acousticFx;
+      $('#toggleFxBtn').setAttribute('data-active', String(isFx));
+      $('#toggleFxBtn').textContent = isFx ? '음향: 콘서트홀 (풍성)' : '음향: 드라이 (또렷)';
+      $('#toggleFxBtn').title = isFx
+        ? '리버브·바디공명·긴 서스테인 효과 켜짐 (클릭 또는 단축키 F로 또렷한 드라이 톤 전환)'
+        : '리버브·공명·잔향을 끈 깔끔하고 또렷한 가이드 드라이 톤 (클릭 또는 단축키 F로 콘서트홀 전환)';
+    }
     $('#calibBadge').textContent = calib.calibrated ? Math.round(calib.lat * 1000) + 'ms' : '기본 45ms';
     buildLeds();
   }
@@ -3605,12 +3664,26 @@ registerProcessor('onset', OnsetProc);
     saveAppState();
   });
 
+  if ($('#toggleFxBtn')){
+    $('#toggleFxBtn').addEventListener('click', function(){
+      appState.acousticFx = !appState.acousticFx;
+      updateAudioFxRouting();
+      syncConsoleUI();
+      saveAppState();
+      // 청음 피드백을 위해 살짝 단음 프리뷰 재생 (연습 정지 상태일 때 사용자가 음색 차이를 바로 체감)
+      if (!isPlaying && appState.guideSound){
+        ensureAudioCtx();
+        playGuitarNote(64, 0.45, actx.currentTime + 0.02, 0.9, 'tirando');
+      }
+    });
+  }
+
   $('#playBtn').addEventListener('click', function(){
     if (isPlaying) stopPractice(true);
     else startPractice();
   });
 
-  // 메인 화면 키보드 단축키 (Space: 연습 시작/정지, G: 기타 시뮬레이션 소리 ON/OFF)
+  // 메인 화면 키보드 단축키 (Space: 연습 시작/정지, G: 기타 시뮬레이션 소리 ON/OFF, F: 음향 특수효과 콘서트홀/드라이 토글)
   window.addEventListener('keydown', function(e){
     var tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -3622,6 +3695,9 @@ registerProcessor('onset', OnsetProc);
     } else if (e.key === 'g' || e.key === 'G' || e.key === 'ㅎ'){
       e.preventDefault();
       $('#guideSoundBtn').click();
+    } else if (e.key === 'f' || e.key === 'F' || e.key === 'ㄹ'){
+      e.preventDefault();
+      if ($('#toggleFxBtn')) $('#toggleFxBtn').click();
     }
   });
 
