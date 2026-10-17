@@ -157,6 +157,13 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .mic-row{display:flex;align-items:center;gap:8px}
 .mic-bar{flex:1;height:4px;border-radius:2px;background:var(--d-line);overflow:hidden}
 .mic-fill{height:100%;width:0;background:var(--d-ok);transition:width .06s}
+.tuner-meter{position:relative;width:100%;height:18px;margin:10px auto 6px;max-width:360px;background:var(--d-surface);border:1px solid var(--d-muted);border-radius:9px;overflow:hidden}
+.tuner-meter::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--d-muted)}
+.tuner-zone{position:absolute;top:0;bottom:0;left:47%;width:6%;background:rgba(98,212,145,.35)}
+.tuner-needle{position:absolute;top:0;bottom:0;left:50%;width:4px;margin-left:-2px;border-radius:2px;background:var(--d-muted);transition:left .08s linear}
+.tuner-needle[data-cls="ok"]{background:var(--d-ok)}
+.tuner-needle[data-cls="near"]{background:var(--d-near)}
+.tuner-needle[data-cls="off"]{background:var(--d-off)}
 
 /* 악보 영역 */
 .score-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid var(--line)}
@@ -603,12 +610,15 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
       <h2 id="tunerTitle">클래식 기타 6현 튜너</h2>
       <button type="button" class="btn sm" id="closeTunerBtn">닫기</button>
     </div>
-    <p class="hint">아래 줄 번호를 누르면 기준음이 울리고, 마이크로 내 기타 줄 소리를 들어 음정이 맞는지 보여줘요.</p>
+    <p class="hint">마이크로 기타 줄 소리를 들어 센트 단위로 음정을 보여줘요. 줄 번호를 누르면 기준음이 울리고 그 줄 기준으로 고정되며, 자동이면 가장 가까운 줄에 맞춰요.</p>
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px" id="tunerStrings"></div>
+    <button type="button" class="btn sm active" id="tunerAutoBtn" style="align-self:flex-start">자동 (가장 가까운 줄)</button>
     <div class="stage" style="text-align:center;padding:16px">
       <div style="font-size:13px;color:var(--d-muted)">감지된 음</div>
       <div style="font-family:var(--font-num);font-size:38px;font-weight:700" id="tunerReadout">--</div>
-      <div style="font-size:14px;color:var(--d-near)" id="tunerGuide">마이크 켜기 버튼을 누르고 한 줄씩 튕기세요</div>
+      <div class="tuner-meter" aria-hidden="true"><div class="tuner-zone"></div><div class="tuner-needle" id="tunerNeedle"></div></div>
+      <div class="num" style="font-size:13px;color:var(--d-muted)" id="tunerCents">-- 센트 · -- Hz</div>
+      <div style="font-size:14px;color:var(--d-near);margin-top:4px" id="tunerGuide">마이크 켜기 버튼을 누르고 한 줄씩 튕기세요</div>
     </div>
     <button type="button" class="btn primary" id="tunerStartMicBtn">마이크로 튜닝 시작</button>
   </div>
@@ -842,6 +852,44 @@ function makeFFT(N){
   };
 }
 function hann(N){ const w = new Float32Array(N); let s = 0; for (let i = 0; i < N; i++){ w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N); s += w[i]; } return { w: w, sum: s }; }
+// 튜너용 연속 음정 추정 (YIN): 차이 함수를 FFT 상관으로 계산하고 누적 평균 정규화 최솟값을 포물선 보간해 센트 단위 정밀도
+// W=2048 창이면 60Hz(6번줄 E2 82Hz 아래)까지 감지, 낮은 기음이 약한 노트북 마이크 입력에서도 옥타브 오류 없음
+function makeYin(sr, W){
+  const half = W / 2, fft = makeFFT(W);
+  const aRe = new Float32Array(W), aIm = new Float32Array(W), bRe = new Float32Array(W), bIm = new Float32Array(W);
+  const cm = new Float32Array(half);
+  const tauMin = Math.floor(sr / 1100), tauMax = Math.min(half - 2, Math.ceil(sr / 60));
+  return function(x){
+    let e = 0;
+    for (let i = 0; i < W; i++) e += x[i] * x[i];
+    const rms = Math.sqrt(e / W);
+    if (rms < 0.003) return { hz: null, rms: rms };
+    for (let i = 0; i < W; i++){ aRe[i] = i < half ? x[i] : 0; aIm[i] = 0; bRe[i] = x[i]; bIm[i] = 0; }
+    fft(aRe, aIm); fft(bRe, bIm);
+    for (let k = 0; k < W; k++){
+      const re = aRe[k] * bRe[k] + aIm[k] * bIm[k], im = aRe[k] * bIm[k] - aIm[k] * bRe[k];
+      aRe[k] = re; aIm[k] = -im;
+    }
+    fft(aRe, aIm); // aRe[t] / W = Σ x[j]·x[j+t]
+    let e0 = 0;
+    for (let j = 0; j < half; j++) e0 += x[j] * x[j];
+    let eT = e0, run = 0;
+    cm[0] = 1;
+    for (let t = 1; t < half; t++){
+      eT += x[t + half - 1] * x[t + half - 1] - x[t - 1] * x[t - 1];
+      const d = e0 + eT - 2 * aRe[t] / W;
+      run += d;
+      cm[t] = run > 0 ? d * t / run : 1;
+    }
+    let tau = -1;
+    for (let t = tauMin; t <= tauMax; t++){
+      if (cm[t] < 0.15){ while (t + 1 <= tauMax && cm[t + 1] < cm[t]) t++; tau = t; break; }
+    }
+    if (tau < 0) return { hz: null, rms: rms };
+    const a = cm[tau - 1], b = cm[tau], c = cm[tau + 1], den = a - 2 * b + c;
+    return { hz: sr / (tau + (den !== 0 ? 0.5 * (a - c) / den : 0)), conf: 1 - b, rms: rms };
+  };
+}
 const NOTE_LO = 40, NOTE_HI = 84;
 const HARM = [1, 0.9, 0.8, 0.7, 0.6, 0.5];
 
@@ -879,6 +927,10 @@ class OnsetProc extends AudioWorkletProcessor {
     this.RN = 16384; this.ring = new Float32Array(this.RN); this.jobs = [];
     this.PRE_GAP = 600; this.POST_SKIP = 200;
     this.hops = 0; this.peak = 0; this.blocks = 0;
+    // 튜너 모드: 튜너 화면이 열려 있을 때만 1024샘플마다 연속 음정 추정 (약 21ms 간격)
+    this.TW = 2048; this.yin = makeYin(this.sr, this.TW); this.tbuf = new Float32Array(this.TW);
+    this.tunerOn = false; this.tunerAcc = 0;
+    this.port.onmessage = (e) => { if (e.data && e.data.t === 'tuner') this.tunerOn = !!e.data.on; };
   }
   mkBand(lo, hi, c){
     const k0 = Math.max(1, Math.ceil(lo * this.N / this.sr));
@@ -974,6 +1026,12 @@ class OnsetProc extends AudioWorkletProcessor {
       this.analyze((fr + n) / this.sr, this.hops > 16);
       const end = fr + n;
       while (this.jobs.length && end >= this.jobs[0].s + this.POST_SKIP + this.PN) this.pitch(this.jobs.shift());
+      if (this.tunerOn && (this.tunerAcc += n) >= 1024){
+        this.tunerAcc = 0;
+        for (let i = 0; i < this.TW; i++) this.tbuf[i] = this.ring[(end - this.TW + i) & mask];
+        const r = this.yin(this.tbuf);
+        this.port.postMessage({ t: 'tune', hz: r.hz, conf: r.conf, rms: r.rms });
+      }
     }
     if (++this.blocks >= 10){
       this.port.postMessage({ t: 'lv', l: this.peak });
@@ -2584,13 +2642,16 @@ registerProcessor('onset', OnsetProc);
       if (d.l > micLevel) micLevel = d.l;
       return;
     }
+    if (d.t === 'tune'){
+      if (isTunerActive) updateTunerReading(d.hz);
+      return;
+    }
     if (d.t === 'pitch'){
       lastDetectedMidi = d.midi;
       if (d.midi != null){
         var inf = midiInfo(d.midi);
         $('#liveNote').textContent = inf.en;
         $('#liveNoteKo').textContent = inf.ko + (inf.pos ? ' (' + inf.pos.str + '줄 ' + inf.pos.fret + '프렛)' : '');
-        if (isTunerActive) updateTunerDisplay(inf);
       }
       if (isPlaying && playSession && playSession.lastOnsetObj && playSession.lastOnsetObj.rawTime === d.time){
         playSession.lastOnsetObj.midi = d.midi;
@@ -4920,7 +4981,12 @@ registerProcessor('onset', OnsetProc);
     if (curSong && !curSong.builtin) renameCurrentSong();
   });
 
-  // ---------- 6현 튜너 모달
+  // ---------- 6현 튜너 모달 (워크릿 YIN 연속 음정 추정 → 센트 단위 바늘)
+  var tunerTarget = null;  // 직접 고른 줄 (null이면 가장 가까운 줄 자동 선택)
+  var tunerHist = [];      // 최근 추정값(Hz): 중앙값으로 순간적인 튐 제거
+  var tunerCents = null;   // 바늘 떨림을 줄인 평활 센트값
+  var tunerSilent = 0;     // 소리가 없는 연속 프레임 수 (프레임 약 21ms)
+
   function initTunerModal(){
     var box = $('#tunerStrings');
     box.textContent = '';
@@ -4928,10 +4994,14 @@ registerProcessor('onset', OnsetProc);
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'btn sm';
+      b.dataset.str = st.str;
       b.style.flexDirection = 'column';
       b.style.padding = '8px 4px';
       b.innerHTML = '<b>' + st.name.split(' ')[0] + '</b><span style="font-size:11px;color:var(--muted)">' + st.name.split(' ')[1] + '</span>';
       b.addEventListener('click', function(){
+        // 줄을 고르면 그 줄 기준으로 고정하고 기준음을 들려줌
+        tunerTarget = st;
+        syncTunerTargetUI(null);
         playGuitarNote(st.midi, 1.8, null, null, null, st.str);
       });
       box.appendChild(b);
@@ -4939,18 +5009,69 @@ registerProcessor('onset', OnsetProc);
   }
   initTunerModal();
 
-  function updateTunerDisplay(inf){
-    $('#tunerReadout').textContent = inf.en + ' (' + inf.ko + ')';
-    var matchStr = STRINGS.find(function(s){ return s.midi === inf.midi; });
-    if (matchStr){
-      $('#tunerGuide').textContent = matchStr.name + ' 개방현 음정과 일치해요!';
-      $('#tunerGuide').style.color = 'var(--d-ok)';
-    } else {
-      $('#tunerGuide').textContent = '감지된 음: ' + inf.en + ' (개방현 6E·5A·4D·3G·2B·1E에 맞춰 조율하세요)';
-      $('#tunerGuide').style.color = 'var(--d-near)';
-    }
+  function syncTunerTargetUI(autoStr){
+    $$('#tunerStrings button').forEach(function(b){
+      var s = Number(b.dataset.str);
+      b.classList.toggle('active', tunerTarget ? s === tunerTarget.str : s === autoStr);
+    });
+    $('#tunerAutoBtn').classList.toggle('active', !tunerTarget);
   }
 
+  function updateTunerReading(hz){
+    var guide = $('#tunerGuide');
+    if (!hz){
+      // 소리가 0.5초 이상 끊기면 대기 상태로 (마지막 표시는 흐리게 남김)
+      if (++tunerSilent === 24){
+        tunerHist = [];
+        tunerCents = null;
+        $('#tunerReadout').style.opacity = '0.45';
+        $('#tunerNeedle').dataset.cls = '';
+        guide.textContent = '줄을 하나씩 튕겨 보세요';
+        guide.style.color = 'var(--d-muted)';
+      }
+      return;
+    }
+    tunerSilent = 0;
+    tunerHist.push(hz);
+    if (tunerHist.length > 5) tunerHist.shift();
+    var med = tunerHist.slice().sort(function(a, b){ return a - b; })[tunerHist.length >> 1];
+    var midiF = 69 + 12 * Math.log2(med / 440);
+    var target = tunerTarget, autoStr = null;
+    if (!target){
+      target = STRINGS.reduce(function(best, s){ return Math.abs(midiF - s.midi) < Math.abs(midiF - best.midi) ? s : best; });
+      autoStr = target.str;
+    }
+    var cents = (midiF - target.midi) * 100;
+    // 다른 줄로 넘어가는 큰 변화는 즉시, 작은 흔들림은 부드럽게 따라감
+    tunerCents = (tunerCents == null || Math.abs(cents - tunerCents) > 30) ? cents : tunerCents + (cents - tunerCents) * 0.35;
+    var c = Math.round(tunerCents);
+    var cls = Math.abs(c) <= 3 ? 'ok' : (Math.abs(c) <= 15 ? 'near' : 'off');
+
+    $('#tunerReadout').style.opacity = '1';
+    $('#tunerReadout').textContent = target.name.split(' ')[0] + ' · ' + midiInfo(Math.round(midiF)).en;
+    $('#tunerCents').textContent = (c > 0 ? '+' + c : (c < 0 ? String(c) : '±0')) + ' 센트 · ' + med.toFixed(1) + ' Hz';
+    var needle = $('#tunerNeedle');
+    needle.style.left = (50 + Math.max(-50, Math.min(50, c))) + '%';
+    needle.dataset.cls = cls;
+    if (cls === 'ok'){
+      guide.textContent = target.name + ' 음정이 맞았어요!';
+      guide.style.color = 'var(--d-ok)';
+    } else {
+      guide.textContent = (Math.abs(c) > 100 ? '많이 ' : '') + (c < 0 ? '낮아요 · 줄감개를 조여 음을 올리세요' : '높아요 · 줄감개를 풀어 음을 내리세요');
+      guide.style.color = cls === 'near' ? 'var(--d-near)' : 'var(--d-off)';
+    }
+    syncTunerTargetUI(autoStr);
+  }
+
+  function setTunerAnalysis(on){
+    if (workletNode) workletNode.port.postMessage({ t: 'tuner', on: on });
+  }
+
+  $('#tunerAutoBtn').addEventListener('click', function(){
+    tunerTarget = null;
+    tunerCents = null;
+    syncTunerTargetUI(null);
+  });
   $('#tunerBtn').addEventListener('click', function(){
     isTunerActive = true;
     $('#tunerModal').hidden = false;
@@ -4958,11 +5079,21 @@ registerProcessor('onset', OnsetProc);
   $('#closeTunerBtn').addEventListener('click', function(){
     isTunerActive = false;
     $('#tunerModal').hidden = true;
+    setTunerAnalysis(false);
+    $('#tunerStartMicBtn').disabled = false;
+    $('#tunerStartMicBtn').textContent = '마이크로 튜닝 시작';
     releaseMic();
   });
   $('#tunerStartMicBtn').addEventListener('click', async function(){
     try {
       await ensureMicWorklet();
+      if (!isTunerActive){ releaseMic(); return; } // 권한을 기다리는 사이 튜너를 닫은 경우
+      tunerHist = [];
+      tunerCents = null;
+      tunerSilent = 0;
+      setTunerAnalysis(true);
+      $('#tunerStartMicBtn').disabled = true;
+      $('#tunerStartMicBtn').textContent = '튜닝 중 (마이크 켜짐)';
       $('#tunerGuide').textContent = '마이크가 켜졌어요. 기타 줄을 한 줄씩 튕겨 보세요.';
     } catch (e){
       $('#tunerGuide').textContent = e.message;
