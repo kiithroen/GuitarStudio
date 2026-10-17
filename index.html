@@ -369,8 +369,8 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
               <option value="9">9/8 (3박 셋잇단)</option>
             </select>
           </label>
-          <label class="ctrl-item">클릭음
-            <input type="range" id="volRange" min="10" max="100" step="5" value="80" style="width:72px">
+          <label class="ctrl-item" title="메트로놈 클릭 볼륨 (0으로 내리면 메트로놈 소리만 끄고 기타 소리만 감상할 수 있습니다)">클릭음
+            <input type="range" id="volRange" min="0" max="100" step="5" value="55" style="width:72px">
           </label>
         </div>
       </div>
@@ -1294,10 +1294,13 @@ registerProcessor('onset', OnsetProc);
   };
 
   function resolveEffectiveBass(chordName, beatObj, bIdx){
+    if (appState && appState.autoBass === false){
+      return null;
+    }
     if (beatObj && beatObj.bass && beatObj.bass.midi){
       return beatObj.bass;
     }
-    if (appState && appState.autoBass && bIdx === 0 && chordName && chordName !== '-'){
+    if ((!appState || appState.autoBass !== false) && bIdx === 0 && chordName && chordName !== '-'){
       var clean = cleanChordToken(chordName);
       var norm = CHORD_BASS_TOKEN[clean] ? clean : (clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase());
       var bTok = CHORD_BASS_TOKEN[norm];
@@ -1777,14 +1780,15 @@ registerProcessor('onset', OnsetProc);
     lastSongId: 'builtin-lv1-butterfly',
     bpm: 64,
     beats: 4,
-    vol: 0.8,
+    vol: 0.55,
     guideSound: true,
-    autoBass: false,
+    autoBass: true,
     loopEnable: true,
     loopStart: 1,
     loopEnd: 8,
     speedTrainer: false
   });
+  if (typeof appState.autoBass !== 'boolean') appState.autoBass = true;
   var calib = ls.get('gs.calib', { lat: 0.045, calibrated: false, at: null });
   var historyList = ls.get('gs.history', []);
 
@@ -1793,8 +1797,9 @@ registerProcessor('onset', OnsetProc);
   var dragCreate = null;
   var selectedImgBar = null; // { sysIdx, barIdx }
 
-  // 오디오 및 메트로놈 런타임
+  // 오디오 및 메트로놈 런타임 (어쿠스틱 바디 공명 + 콘서트홀 리버브 버스 포함)
   var actx = null, workletNode = null, micStream = null, outGain = null;
+  var guitarBus = null, reverbNode = null, pluckNoiseBuf = null;
   var isPlaying = false;
   var isCalibrating = false;
   var isTunerActive = false;
@@ -1868,7 +1873,7 @@ registerProcessor('onset', OnsetProc);
       openEl.dataset.baseLabel = st.name.split(' ')[0];
       openEl.textContent = openEl.dataset.baseLabel;
       openEl.title = st.name + ' (클릭하면 소리 재생)';
-      openEl.addEventListener('click', function(){ playGuitarNote(st.midi, 0.7); });
+      openEl.addEventListener('click', function(){ playGuitarNote(st.midi, 0.9); });
       row.appendChild(openEl);
 
       for (var f = 1; f <= 12; f++){
@@ -1880,7 +1885,7 @@ registerProcessor('onset', OnsetProc);
         cell.dataset.midi = midi;
         var inf = midiInfo(midi);
         cell.title = st.str + '번줄 ' + f + '프렛: ' + inf.en + ' (' + inf.ko + ')';
-        cell.addEventListener('click', (function(m){ return function(){ playGuitarNote(m, 0.7); }; })(midi));
+        cell.addEventListener('click', (function(m){ return function(){ playGuitarNote(m, 0.9); }; })(midi));
         row.appendChild(cell);
       }
       fb.appendChild(row);
@@ -1896,7 +1901,7 @@ registerProcessor('onset', OnsetProc);
       btn.classList.toggle('active', on);
       btn.textContent = on ? '파란 코드 점: 켜짐' : '파란 코드 점: 숨김';
     }
-    var bassOn = !!appState.autoBass;
+    var bassOn = appState.autoBass !== false;
     var bassBtn = $('#toggleAutoBassBtn');
     if (bassBtn){
       bassBtn.classList.toggle('active', bassOn);
@@ -1912,13 +1917,37 @@ registerProcessor('onset', OnsetProc);
   });
 
   $('#toggleAutoBassBtn').addEventListener('click', function(){
-    appState.autoBass = !appState.autoBass;
+    appState.autoBass = !(appState.autoBass !== false);
     saveAppState();
     syncChordDotsBtnUI();
     if (curSong && curSong.type === 'structured'){
       renderStructuredMeasures();
+      var m = curSong.measures[curMeasureIdx] || curSong.measures[0];
+      if (m){
+        // 현재 박자에 베이스가 없으면 1박(bIdx=0)으로 커서를 옮겨서 즉시 베이스 ON/OFF 소리 차이를 들려줌
+        var curB = m.beats[curBeatIdx];
+        if (!curB || (!curB.bass && curBeatIdx !== 0)){
+          curBeatIdx = 0;
+        }
+      }
     }
-    updateActiveCursor(curMeasureIdx, curBeatIdx, true);
+    updateActiveCursor(curMeasureIdx, curBeatIdx, false);
+    // 토글 직후 베이스 유무 차이를 귀로 명확히 비교할 수 있도록 즉시 프리뷰 사운드 재생
+    if (curSong && curSong.type === 'structured'){
+      var mObj = curSong.measures[curMeasureIdx];
+      var bObj = mObj && mObj.beats[curBeatIdx];
+      if (mObj && bObj){
+        ensureAudioCtx();
+        var now = actx.currentTime;
+        var effB = resolveEffectiveBass(mObj.chord, bObj, curBeatIdx);
+        if (effB && effB.midi){
+          playGuitarNote(effB.midi, 1.35, now, 1.15);
+          if (bObj.midi) playGuitarNote(bObj.midi, 0.95, now + 0.045, 1.0);
+        } else if (bObj.midi){
+          playGuitarNote(bObj.midi, 0.95, now, 1.0);
+        }
+      }
+    }
   });
 
   function highlightFretboard(chordName, targetNote, forceShowChord, isAutoChord, bIdx){
@@ -2141,7 +2170,52 @@ registerProcessor('onset', OnsetProc);
     return svg;
   }
 
-  // ---------- WebAudio 신디사이저 (클래식 기타 나일론 현 소리 & 메트로놈 클릭)
+  // ---------- WebAudio 신디사이저 (클래식 기타 바디 공명 + 콘서트홀 리버브 + 권선현/나일론현 배음 합성)
+  function buildConcertHallReverbBuffer(ctx){
+    var rate = ctx.sampleRate;
+    var dur = 1.75;
+    var len = Math.floor(rate * dur);
+    var buf = ctx.createBuffer(2, len, rate);
+    var preDelaySamples = Math.floor(rate * 0.015);
+    var earlyMs = [0.021, 0.037, 0.054, 0.079];
+    var earlyGains = [0.38, 0.28, 0.21, 0.15];
+
+    for (var ch = 0; ch < 2; ch++){
+      var data = buf.getChannelData(ch);
+      var lp = 0;
+      for (var i = preDelaySamples; i < len; i++){
+        var t = (i - preDelaySamples) / (len - preDelaySamples);
+        // 고음역은 빠르게 감쇠하고 중저음 홀 잔향은 따뜻하게 남도록 1차 로우패스 노이즈 생성
+        var white = Math.random() * 2 - 1;
+        var damp = 0.22 + 0.55 * (1 - t);
+        lp = lp + damp * (white - lp);
+        var env = Math.pow(1 - t, 2.65) * 0.52;
+        data[i] = lp * env;
+      }
+      // 초기 반사음(Early Reflections) 추가로 기타 바디와 홀 벽면의 입체감 형성
+      for (var e = 0; e < earlyMs.length; e++){
+        var idx = Math.floor(rate * (earlyMs[e] + (ch === 1 ? 0.0035 : 0)));
+        if (idx < len) data[idx] += (ch % 2 === 0 ? 1 : -1) * earlyGains[e];
+      }
+    }
+    return buf;
+  }
+
+  function buildPluckNoiseBuffer(ctx){
+    var rate = ctx.sampleRate;
+    var len = Math.floor(rate * 0.026);
+    var buf = ctx.createBuffer(1, len, rate);
+    var data = buf.getChannelData(0);
+    var prev = 0;
+    for (var i = 0; i < len; i++){
+      var env = Math.pow(1 - (i / len), 2.2);
+      var w = Math.random() * 2 - 1;
+      prev = (prev + 0.35 * w) * 0.72;
+      data[i] = prev * env;
+    }
+    return buf;
+  }
+
   function ensureAudioCtx(){
     if (!actx){
       var AC = window.AudioContext || window.webkitAudioContext;
@@ -2150,67 +2224,153 @@ registerProcessor('onset', OnsetProc);
     if (actx.state !== 'running') actx.resume();
     if (!outGain){
       outGain = actx.createGain();
-      outGain.gain.value = appState.vol;
-      outGain.connect(actx.destination);
+      outGain.gain.value = 0.92;
+
+      // 마스터 리미터 역할의 부드러운 컴프레서 (다성부 아르페지오 시 클리핑 방지)
+      var comp = actx.createDynamicsCompressor();
+      comp.threshold.value = -13;
+      comp.knee.value = 12;
+      comp.ratio.value = 2.6;
+      comp.attack.value = 0.006;
+      comp.release.value = 0.18;
+
+      // 클래식 기타 울림통(Helmholtz ~130Hz & 상판 우드 ~280Hz) 공명 EQ
+      var bodyLow = actx.createBiquadFilter();
+      bodyLow.type = 'peaking';
+      bodyLow.frequency.value = 135;
+      bodyLow.Q.value = 1.05;
+      bodyLow.gain.value = 4.8;
+
+      var bodyWood = actx.createBiquadFilter();
+      bodyWood.type = 'peaking';
+      bodyWood.frequency.value = 285;
+      bodyWood.Q.value = 1.3;
+      bodyWood.gain.value = 2.6;
+
+      guitarBus = actx.createGain();
+      guitarBus.gain.value = 1.0;
+
+      var dryGain = actx.createGain();
+      dryGain.gain.value = 0.85;
+
+      var wetGain = actx.createGain();
+      wetGain.gain.value = 0.36;
+
+      reverbNode = actx.createConvolver();
+      reverbNode.buffer = buildConcertHallReverbBuffer(actx);
+      pluckNoiseBuf = buildPluckNoiseBuffer(actx);
+
+      guitarBus.connect(bodyLow);
+      bodyLow.connect(bodyWood);
+      bodyWood.connect(dryGain);
+      bodyWood.connect(reverbNode);
+      reverbNode.connect(wetGain);
+
+      dryGain.connect(outGain);
+      wetGain.connect(outGain);
+      outGain.connect(comp);
+      comp.connect(actx.destination);
     }
     return actx;
   }
 
+  // 어쿠스틱 우드블록(Woodblock) 메트로놈 클릭 (#volRange '클릭음' 슬라이더로 독립 조절, 0이면 무음)
   function scheduleMetronomeClick(t, isAccent, isSubBeat){
+    if (appState.vol <= 0.01) return;
     ensureAudioCtx();
     var o = actx.createOscillator();
     var g = actx.createGain();
     o.type = 'triangle';
-    var freq = isAccent ? 1600 : (isSubBeat ? 780 : 1100);
-    var amp = isAccent ? 0.65 : (isSubBeat ? 0.16 : 0.4);
-    o.frequency.setValueAtTime(freq, t);
+    var startFreq = isAccent ? 920 : (isSubBeat ? 540 : 700);
+    var endFreq = isAccent ? 380 : (isSubBeat ? 250 : 310);
+    var amp = isAccent ? 0.36 : (isSubBeat ? 0.09 : 0.21);
+    var clickDur = isSubBeat ? 0.024 : 0.034;
+
+    o.frequency.setValueAtTime(startFreq, t);
+    o.frequency.exponentialRampToValueAtTime(endFreq, t + clickDur);
+
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(appState.vol * amp, t + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + (isSubBeat ? 0.03 : 0.045));
+    g.gain.linearRampToValueAtTime(Math.max(0.0002, appState.vol * amp), t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + clickDur);
     o.connect(g);
     g.connect(actx.destination);
     o.start(t);
-    o.stop(t + 0.05);
+    o.stop(t + clickDur + 0.005);
   }
 
-  // 나일론 기타 톤 합성 (배음 + 로우패스 감쇠 + 성부별 다이나믹 볼륨 스케일)
+  // 클래식 기타 나일론 현 + 저음 권선현(Wound Bass) 다중 배음 & 탄현 어택 합성
   function playGuitarNote(midi, durSec, when, gainScale){
     if (!midi) return;
     ensureAudioCtx();
     var t = when != null ? when : actx.currentTime;
-    var dur = durSec || 0.65;
+    var isBass = midi < 55; // 4·5·6번 저음 권선현(E2~F#3) 여부
+    var dur = Math.max(0.35, (durSec || 0.75) * (isBass ? 1.45 : 1.25));
     var scale = gainScale != null ? gainScale : 1.0;
     var freq = 440 * Math.pow(2, (midi - 69) / 12);
 
     var o1 = actx.createOscillator();
     var o2 = actx.createOscillator();
+    var o3 = actx.createOscillator();
     var filter = actx.createBiquadFilter();
     var g = actx.createGain();
 
-    o1.type = 'triangle';
-    o2.type = 'sine';
-    o1.frequency.setValueAtTime(freq, t);
-    o2.frequency.setValueAtTime(freq * 2, t);
+    // 저음 권선현(E2~D3)은 일반 스피커에서도 묵직한 존재감이 들리도록 배음이 풍부한 파형 사용
+    o1.type = isBass ? 'sawtooth' : 'triangle';
+    o2.type = 'triangle';
+    o3.type = 'sine';
+
+    // 탄현 순간 줄의 장력으로 인해 음정이 아주 미세하게 높게 시작했다가 제자리로 안착하는 어쿠스틱 현 물리 특성
+    o1.frequency.setValueAtTime(freq * 1.006, t);
+    o1.frequency.exponentialRampToValueAtTime(freq, t + 0.022);
+    o2.frequency.setValueAtTime(freq * 2 * 1.005, t);
+    o2.frequency.exponentialRampToValueAtTime(freq * 2, t + 0.022);
+    o3.frequency.setValueAtTime(freq * 3, t);
+
+    var g1 = actx.createGain();
+    var g2 = actx.createGain();
+    var g3 = actx.createGain();
+    g1.gain.value = isBass ? 0.65 : 0.85;
+    g2.gain.value = isBass ? 0.58 : 0.28;
+    // 3배음은 어택 직후 빠르게 감쇠하여 탄현 시의 명료함과 이후의 따뜻한 여운을 동시에 구현
+    g3.gain.setValueAtTime(isBass ? 0.36 : 0.14, t);
+    g3.gain.exponentialRampToValueAtTime(0.008, t + Math.min(0.32, dur * 0.45));
 
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(freq * 4.5, t);
-    filter.frequency.exponentialRampToValueAtTime(freq * 1.4, t + dur);
+    filter.Q.value = isBass ? 1.35 : 0.85;
+    filter.frequency.setValueAtTime(freq * (isBass ? 6.8 : 5.4), t);
+    filter.frequency.exponentialRampToValueAtTime(freq * (isBass ? 2.4 : 1.45), t + dur * 0.75);
 
-    var g2 = actx.createGain();
-    g2.gain.value = 0.22;
+    var peakGain = (isBass ? 0.44 : 0.36) * scale;
+    g.gain.setValueAtTime(0.0008, t);
+    g.gain.linearRampToValueAtTime(peakGain, t + (isBass ? 0.006 : 0.005));
+    // 초기 탄현 어택 이후 몸통 서스테인으로 자연스럽게 이어지는 2단 감쇠(Pluck -> Sustain)
+    g.gain.exponentialRampToValueAtTime(peakGain * 0.42, t + Math.min(0.18, dur * 0.25));
+    g.gain.exponentialRampToValueAtTime(0.0006, t + dur);
 
-    g.gain.setValueAtTime(0.001, t);
-    g.gain.linearRampToValueAtTime(0.32 * appState.vol * scale, t + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    // 손끝/손톱이 현을 튕기는 순간의 어택 트랜지언트 노이즈 추가
+    if (pluckNoiseBuf){
+      var nSrc = actx.createBufferSource();
+      var nFilt = actx.createBiquadFilter();
+      var nGain = actx.createGain();
+      nSrc.buffer = pluckNoiseBuf;
+      nFilt.type = 'bandpass';
+      nFilt.frequency.value = isBass ? 950 : 2100;
+      nFilt.Q.value = 1.6;
+      nGain.gain.value = (isBass ? 0.18 : 0.14) * scale;
+      nSrc.connect(nFilt);
+      nFilt.connect(nGain);
+      nGain.connect(guitarBus || actx.destination);
+      nSrc.start(t);
+    }
 
-    o1.connect(filter);
-    o2.connect(g2);
-    g2.connect(filter);
+    o1.connect(g1); g1.connect(filter);
+    o2.connect(g2); g2.connect(filter);
+    o3.connect(g3); g3.connect(filter);
     filter.connect(g);
-    g.connect(actx.destination);
+    g.connect(guitarBus || actx.destination);
 
-    o1.start(t); o2.start(t);
-    o1.stop(t + dur + 0.02); o2.stop(t + dur + 0.02);
+    o1.start(t); o2.start(t); o3.start(t);
+    o1.stop(t + dur + 0.03); o2.stop(t + dur + 0.03); o3.stop(t + dur + 0.03);
   }
 
   function playChordPreview(chordName){
@@ -2988,8 +3148,11 @@ registerProcessor('onset', OnsetProc);
       var effBass = resolveEffectiveBass(m.chord, beatObj, bIdx);
       highlightFretboard(m.chord, beatObj, false, m.autoChord, bIdx);
       if (playPreviewSound){
-        if (effBass && effBass.midi) playGuitarNote(effBass.midi, 0.85);
-        if (beatObj && beatObj.midi) playGuitarNote(beatObj.midi, 0.55);
+        ensureAudioCtx();
+        var nowT = actx.currentTime;
+        var hasB = !!(effBass && effBass.midi);
+        if (hasB) playGuitarNote(effBass.midi, 1.25, nowT, 1.12);
+        if (beatObj && beatObj.midi) playGuitarNote(beatObj.midi, 0.85, nowT + (hasB ? 0.018 : 0), 1.0);
       }
     } else {
       var imgCell = $('#systemsOverlay .img-bar-cell[data-m="' + mIdx + '"]');
@@ -3006,7 +3169,7 @@ registerProcessor('onset', OnsetProc);
       var parsedNote = parseNoteToken(barData.note || 'C4', 0);
       highlightFretboard(barData.chord || 'C', parsedNote, false, false, bIdx);
       if (playPreviewSound && parsedNote && parsedNote.midi){
-        playGuitarNote(parsedNote.midi, 0.55);
+        playGuitarNote(parsedNote.midi, 0.75);
       }
     }
   }
@@ -3119,16 +3282,19 @@ registerProcessor('onset', OnsetProc);
             if (m && m.beats[s.bIdx]){
               var bObj = m.beats[s.bIdx];
               var effB = resolveEffectiveBass(m.chord, bObj, s.bIdx);
-              if (effB && effB.midi){
-                var bassDur = s.bpb === 9 ? (s.spb * 7.5) : (s.spb * 1.8);
-                playGuitarNote(effB.midi, bassDur, t, 1.05);
+              var hasB = !!(effB && effB.midi);
+              if (hasB){
+                var bassDur = s.bpb === 9 ? (s.spb * 8.2) : (s.spb * 2.2);
+                playGuitarNote(effB.midi, bassDur, t, 1.12);
               }
               if (bObj.midi){
+                // 엄지(p) 베이스와 멜로디(a/m/i) 동시 탄현 시 18ms 미세 롤(Roll)을 주어 두 성부 어택이 마스킹되지 않고 선명히 분리되게 함
+                var melTime = t + (hasB ? 0.018 : 0);
                 if (s.bpb === 9){
                   var isMainMel = (s.bIdx % 3 === 0);
-                  playGuitarNote(bObj.midi, isMainMel ? (s.spb * 2.8) : (s.spb * 1.4), t, isMainMel ? 1.12 : 0.62);
+                  playGuitarNote(bObj.midi, isMainMel ? (s.spb * 3.1) : (s.spb * 1.5), melTime, isMainMel ? 1.15 : 0.64);
                 } else {
-                  playGuitarNote(bObj.midi, s.spb * 0.9, t, 1.0);
+                  playGuitarNote(bObj.midi, s.spb * 1.15, melTime, 1.0);
                 }
               }
             }
@@ -3262,7 +3428,6 @@ registerProcessor('onset', OnsetProc);
 
   $('#volRange').addEventListener('input', function(e){
     appState.vol = Number(e.target.value) / 100;
-    if (outGain) outGain.gain.value = appState.vol;
     saveAppState();
   });
 
@@ -4814,8 +4979,16 @@ registerProcessor('onset', OnsetProc);
     sel.value = target.id;
     curSong = target;
     appState.lastSongId = target.id;
+    if (songHasExplicitBass(target)) appState.autoBass = true;
     saveAppState();
     renderSong();
+  }
+
+  function songHasExplicitBass(song){
+    if (!song || song.type !== 'structured' || !Array.isArray(song.measures)) return false;
+    return song.measures.some(function(m){
+      return Array.isArray(m.beats) && m.beats.some(function(b){ return !!(b && b.bass && b.bass.midi); });
+    });
   }
 
   $('#songSelect').addEventListener('change', function(e){
@@ -4824,6 +4997,7 @@ registerProcessor('onset', OnsetProc);
     if (found){
       curSong = found;
       appState.lastSongId = found.id;
+      if (songHasExplicitBass(found)) appState.autoBass = true;
       saveAppState();
       renderSong();
     }
