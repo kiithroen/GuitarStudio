@@ -88,7 +88,7 @@ h3{margin:0;font-size:14.5px;font-weight:600}
 .label{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--muted)}
 .hint{margin:0;font-size:12.5px;color:var(--muted);line-height:1.45}
 .num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
-.badge{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);font-variant-numeric:tabular-nums}
+.badge{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;display:inline-flex;align-items:center}
 .badge.accent{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
 
 /* 곡 선택 및 이어가기 바 */
@@ -166,7 +166,9 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .tuner-needle[data-cls="off"]{background:var(--d-off)}
 
 /* 악보 영역 */
-.score-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.score-toolbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.score-toolbar-left{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
+.score-toolbar-right{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex-shrink:0}
 .tab-seg{display:inline-flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
 .tab-seg button{border:0;background:transparent;padding:5px 11px;border-radius:7px;font-size:13px;color:var(--muted);font-weight:500}
 .tab-seg button[aria-selected="true"]{background:var(--surface);color:var(--fg);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
@@ -208,21 +210,24 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .beat-cell.arp-group-start{margin-left:3px;box-shadow:-3px 0 0 -1px var(--line)}
 
 /* 박자·리듬 카드 친절한 오선지 뷰 스타일 (운지 정보 제외, 박자·리듬·계이름 전용) */
-.beat-cell:not(.tab-cell){padding:8px 4px;min-height:82px;justify-content:space-between}
-.b-rhythm-head{display:flex;align-items:center;justify-content:space-between;width:100%;padding:0 2px;margin-bottom:4px;font-size:11px;line-height:1;white-space:nowrap;gap:2px}
-.b-idx-badge{font-family:var(--font-num);font-weight:700;color:var(--muted);background:rgba(128,128,128,.12);padding:2px 4px;border-radius:4px;white-space:nowrap;flex-shrink:0}
-.b-dur-badge{font-family:var(--font-num);font-weight:700;color:var(--accent);font-size:11px;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:3px}
+.beat-cell:not(.tab-cell){padding:6px 2px 5px;min-height:72px;justify-content:space-between;min-width:0;overflow:hidden}
+.b-rhythm-head{display:flex;align-items:center;justify-content:space-between;width:100%;padding:0 2px;margin-bottom:2px;font-size:11px;line-height:1;white-space:nowrap;gap:2px;min-width:0;overflow:hidden}
+.b-idx-badge{font-family:var(--font-num);font-weight:700;color:var(--muted);background:rgba(128,128,128,.12);padding:1px 3px;border-radius:4px;white-space:nowrap;flex-shrink:0;font-size:10px}
+.b-dur-badge{color:var(--accent);display:inline-flex;align-items:center;flex-shrink:0}
+.b-dur-badge .dur-svg{width:11px;height:13px}
 .dur-svg{display:inline-block;vertical-align:middle;flex-shrink:0}
-.b-ko-main{font-size:20px;font-weight:800;color:var(--accent);line-height:1.15;margin:2px 0;white-space:nowrap}
-.b-ko-main.b-rest-sym{font-size:15px;color:var(--muted);font-weight:600;margin:4px 0}
-.b-note-sub{font-size:11px;color:var(--muted);font-weight:600;line-height:1.1;margin-bottom:2px;white-space:nowrap}
+.b-ko-main{font-size:19px;font-weight:800;color:var(--accent);line-height:1.15;margin:2px 0;white-space:nowrap}
+.b-ko-main.b-rest-sym{display:flex;align-items:center;justify-content:center;min-height:26px;margin:2px 0}
+.b-ko-main.b-rest-sym .dur-svg{width:14px;height:22px;color:var(--muted);transition:color .08s}
+.b-note-sub{font-size:10.5px;color:var(--muted);font-weight:600;line-height:1.1;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .beat-cell.active-beat .b-idx-badge{background:rgba(255,255,255,.25);color:var(--accent-ink)}
 .beat-cell.active-beat .b-dur-badge{color:var(--accent-ink)}
 .beat-cell.active-beat .dur-svg{color:var(--accent-ink)}
 .beat-cell.active-beat .b-ko-main{color:var(--accent-ink)}
+.beat-cell.active-beat .b-ko-main.b-rest-sym .dur-svg{color:var(--accent-ink)}
 .beat-cell.active-beat .b-note-sub{color:var(--accent-ink)}
 .beat-cell.is-rest{opacity:.75}
-.beat-cell.is-rest:hover{opacity:1}
+.beat-cell.is-rest:hover,.beat-cell.is-rest.active-beat{opacity:1}
 
 /* 6현 타브 (TAB) 악보 렌더링 스타일 */
 .tab-stave-wrap{position:relative;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-top:2px}
@@ -418,12 +423,17 @@ body.practice-compact #structuredScoreWrap{
   scroll-behavior: smooth !important;
 }
 
-body.practice-compact #structuredScoreWrap.card-view-active{
-  max-height: 290px !important;
-}
-
 body.practice-compact .measures-grid{
   gap: 8px !important;
+}
+
+body.practice-compact .measure-card{
+  padding: 8px 8px 6px !important;
+}
+
+body.practice-compact .beat-cell:not(.tab-cell){
+  padding: 5px 2px 4px !important;
+  min-height: 66px !important;
 }
 
 /* 실시간 지판 운지법: 악보 바로 아래 부착 */
@@ -645,19 +655,19 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
   <!-- 악보 뷰어 섹션 -->
   <section class="panel" aria-label="악보 및 메트로놈 커서">
     <div class="score-toolbar" id="scoreToolbar">
-      <div class="score-toolbar-left" style="display:flex;align-items:center;gap:6px;min-width:0;flex:1">
+      <div class="score-toolbar-left">
         <button type="button" class="btn primary sm" id="compactPlayBtn" style="font-weight:800;padding:3px 8px;font-size:11.5px;white-space:nowrap;flex-shrink:0" title="연습 시작 또는 일시 정지 (단축키: Space)" hidden>▶ 시작</button>
         <select id="compactSongSelect" class="compact-song-select" aria-label="연습곡 선택" title="연습곡 변경" hidden></select>
+        <h2 id="scoreTitle">작은 별 (Twinkle Twinkle Little Star)</h2>
+        <button type="button" class="btn sm" id="renameScoreTitleBtn" hidden style="min-height:28px;padding:0 8px;font-size:12px" title="곡 이름 변경">✏️ 이름 변경</button>
+        <span class="badge accent" id="scoreTypeBadge">내장 동요 · 다장조(C)</span>
         <div class="tab-seg" id="scoreModeSeg" role="tablist" aria-label="악보 보기 모드" style="margin-left:2px;flex-shrink:0">
           <button type="button" id="scoreModeTabBtn" role="tab" aria-selected="true" title="6현 가로선 타브(TAB) 악보로 보기 (단축키: T)">타브</button>
           <button type="button" id="scoreModeCardBtn" role="tab" aria-selected="false" title="박자·음표 길이 및 계이름(친절한 오선지) 카드 뷰 (단축키: T)">카드</button>
         </div>
-        <h2 id="scoreTitle">작은 별 (Twinkle Twinkle Little Star)</h2>
-        <button type="button" class="btn sm" id="renameScoreTitleBtn" hidden style="min-height:28px;padding:0 8px;font-size:12px" title="곡 이름 변경">✏️ 이름 변경</button>
-        <span class="badge accent" id="scoreTypeBadge">내장 동요 · 다장조(C)</span>
         <span class="badge" id="compactStatusBadge" style="font-family:var(--font-num);font-weight:700" hidden>64 BPM · 1마디</span>
       </div>
-      <div class="score-toolbar-right" style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+      <div class="score-toolbar-right">
         <span class="hint" id="scoreClickHint">마디 클릭: 시작 위치 / Shift+클릭: 끝 마디</span>
         <button type="button" class="btn sm primary" id="convertImgToScoreBtn" hidden>이 사진을 내 악보(계이름·운지)로 변환</button>
         <button type="button" class="btn sm" id="editStructuredBtn">악보 빠른 수정</button>
@@ -3444,32 +3454,35 @@ registerProcessor('onset', OnsetProc);
           var idxBadge = document.createElement('span');
           idxBadge.className = 'b-idx-badge';
           idxBadge.textContent = (bIdx + 1) + '박';
-
-          var durBadge = document.createElement('span');
-          durBadge.className = 'b-dur-badge';
-          durBadge.innerHTML = (durInfo.svg || '') + '<span>' + durInfo.label + '</span>';
-          durBadge.title = durInfo.durName;
-
           rhythmHead.appendChild(idxBadge);
-          rhythmHead.appendChild(durBadge);
+
+          if (b.midi){
+            var durBadge = document.createElement('span');
+            durBadge.className = 'b-dur-badge';
+            durBadge.innerHTML = durInfo.svg || '';
+            durBadge.title = durInfo.durName;
+            rhythmHead.appendChild(durBadge);
+          }
           cell.appendChild(rhythmHead);
 
-          // 2. 오선지 음이름 / 계이름 메인 표기 (도, 레, 미 등 큰 글자)
+          // 2. 오선지 음이름 (계이름) 또는 쉼표 기호 (한글 쉼표 대신 1박 옆에 있던 음표/쉼표 기호만 표시)
           var koEl = document.createElement('span');
           if (b.midi){
             koEl.className = 'b-ko-main';
             koEl.textContent = b.ko;
+            cell.appendChild(koEl);
+
+            // 3. 옥타브 위치 및 영문 음높이 서브 표기 (가온 C4, 중간 E4 등)
+            var subEl = document.createElement('span');
+            subEl.className = 'b-note-sub';
+            subEl.textContent = getOctaveLabel(b.midi) + ' ' + b.en;
+            cell.appendChild(subEl);
           } else {
             koEl.className = 'b-ko-main b-rest-sym';
-            koEl.textContent = '쉼표';
+            koEl.innerHTML = durInfo.svg || '';
+            koEl.title = durInfo.durName;
+            cell.appendChild(koEl);
           }
-          cell.appendChild(koEl);
-
-          // 3. 옥타브 위치 및 영문 음높이 서브 표기 (가온 C4, 중간 E4, 높은 C5 등)
-          var subEl = document.createElement('span');
-          subEl.className = 'b-note-sub';
-          subEl.textContent = b.midi ? (getOctaveLabel(b.midi) + ' ' + b.en) : '울림 지속';
-          cell.appendChild(subEl);
 
           cell.addEventListener('click', function(e){
             if (e.shiftKey) return;
