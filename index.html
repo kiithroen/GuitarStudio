@@ -2063,41 +2063,40 @@ registerProcessor('onset', OnsetProc);
     if (actx.state !== 'running') actx.resume();
     if (!outGain){
       outGain = actx.createGain();
-      outGain.gain.value = 1.0;
+      outGain.gain.value = 0.90;
 
-      // 마스터 리미터 역할의 투명한 컴프레서 (다성부 아르페지오 시 클리핑만 방지하고 다이나믹스/음량 보존)
+      // 마스터 투명 브릭월 리미터 (다성부 화음 중첩 시에도 디지털 클리핑/찌직거림을 100% 방지)
       var comp = actx.createDynamicsCompressor();
-      comp.threshold.value = -6;
-      comp.knee.value = 8;
-      comp.ratio.value = 1.8;
-      comp.attack.value = 0.005;
-      comp.release.value = 0.12;
+      comp.threshold.value = -3.0;
+      comp.knee.value = 4;
+      comp.ratio.value = 10.0;
+      comp.attack.value = 0.002;
+      comp.release.value = 0.08;
 
-      // 클래식 기타 울림통(Helmholtz ~130Hz & 상판 우드 ~280Hz) 공명 EQ
+      // 클래식 기타 울림통(Helmholtz ~130Hz & 상판 우드 ~280Hz) 온화한 공명 EQ
       bodyLowNode = actx.createBiquadFilter();
       bodyLowNode.type = 'peaking';
       bodyLowNode.frequency.value = 135;
       bodyLowNode.Q.value = 1.05;
-      bodyLowNode.gain.value = appState.acousticFx ? 3.6 : 0.0;
+      bodyLowNode.gain.value = appState.acousticFx ? 2.0 : 0.0;
 
       bodyWoodNode = actx.createBiquadFilter();
       bodyWoodNode.type = 'peaking';
       bodyWoodNode.frequency.value = 285;
       bodyWoodNode.Q.value = 1.3;
-      bodyWoodNode.gain.value = appState.acousticFx ? 2.2 : 0.0;
+      bodyWoodNode.gain.value = appState.acousticFx ? 1.4 : 0.0;
 
       guitarBus = actx.createGain();
       guitarBus.gain.value = 1.0;
 
       dryGainNode = actx.createGain();
-      dryGainNode.gain.value = 1.0; // 콘서트홀 모드에서도 원음 알맹이가 깎이지 않도록 1.0 유지
+      dryGainNode.gain.value = 0.88;
 
       wetGainNode = actx.createGain();
-      wetGainNode.gain.value = appState.acousticFx ? 0.30 : 0.0;
+      wetGainNode.gain.value = appState.acousticFx ? 0.18 : 0.0;
 
       reverbNode = actx.createConvolver();
       reverbNode.buffer = buildConcertHallReverbBuffer(actx);
-      pluckNoiseBuf = buildPluckNoiseBuffer(actx);
 
       guitarBus.connect(bodyLowNode);
       bodyLowNode.connect(bodyWoodNode);
@@ -2121,22 +2120,22 @@ registerProcessor('onset', OnsetProc);
     if (dryGainNode && dryGainNode.gain){
       dryGainNode.gain.cancelScheduledValues(now);
       dryGainNode.gain.setValueAtTime(dryGainNode.gain.value, now);
-      dryGainNode.gain.linearRampToValueAtTime(1.0, now + 0.04);
+      dryGainNode.gain.linearRampToValueAtTime(0.88, now + 0.04);
     }
     if (wetGainNode && wetGainNode.gain){
       wetGainNode.gain.cancelScheduledValues(now);
       wetGainNode.gain.setValueAtTime(wetGainNode.gain.value, now);
-      wetGainNode.gain.linearRampToValueAtTime(on ? 0.30 : 0.0, now + 0.04);
+      wetGainNode.gain.linearRampToValueAtTime(on ? 0.18 : 0.0, now + 0.04);
     }
     if (bodyLowNode && bodyLowNode.gain){
       bodyLowNode.gain.cancelScheduledValues(now);
       bodyLowNode.gain.setValueAtTime(bodyLowNode.gain.value, now);
-      bodyLowNode.gain.linearRampToValueAtTime(on ? 3.6 : 0.0, now + 0.04);
+      bodyLowNode.gain.linearRampToValueAtTime(on ? 2.0 : 0.0, now + 0.04);
     }
     if (bodyWoodNode && bodyWoodNode.gain){
       bodyWoodNode.gain.cancelScheduledValues(now);
       bodyWoodNode.gain.setValueAtTime(bodyWoodNode.gain.value, now);
-      bodyWoodNode.gain.linearRampToValueAtTime(on ? 2.2 : 0.0, now + 0.04);
+      bodyWoodNode.gain.linearRampToValueAtTime(on ? 1.4 : 0.0, now + 0.04);
     }
   }
 
@@ -2185,8 +2184,8 @@ registerProcessor('onset', OnsetProc);
     var filter = actx.createBiquadFilter();
     var g = actx.createGain();
 
-    // 저음 권선현(E2~D3)은 일반 스피커에서도 묵직한 존재감이 들리도록 배음이 풍부한 파형 사용
-    o1.type = isBass ? 'sawtooth' : 'triangle';
+    // 순수 음향 악기 오실레이터 구성 (거친 전자음 노이즈를 유발하는 톱니파 배제하고 맑은 삼각파 기반 물리 배음 합성)
+    o1.type = 'triangle';
     o2.type = 'triangle';
     o3.type = 'sine';
 
@@ -2202,53 +2201,37 @@ registerProcessor('onset', OnsetProc);
     var g2 = actx.createGain();
     var g3 = actx.createGain();
     // 아포얀도(눌러치기)는 상판 수직 진동으로 기음(o1)과 2배음(o2)이 두껍고 둥글며, 티란도(뜯어치기)는 가볍고 맑게 발음
-    g1.gain.value = isBass ? 0.68 : (isApoyando ? 1.08 : (isTirando ? 0.76 : 0.88));
-    g2.gain.value = isBass ? 0.60 : (isApoyando ? 0.38 : (isTirando ? 0.26 : 0.30));
-    g3.gain.setValueAtTime(isBass ? 0.38 : (isApoyando ? 0.12 : 0.18), t);
+    g1.gain.value = isBass ? 0.72 : (isApoyando ? 1.05 : (isTirando ? 0.74 : 0.85));
+    g2.gain.value = isBass ? 0.55 : (isApoyando ? 0.36 : (isTirando ? 0.24 : 0.28));
+    g3.gain.setValueAtTime(isBass ? 0.32 : (isApoyando ? 0.10 : 0.15), t);
     g3.gain.exponentialRampToValueAtTime(0.008, t + Math.min(0.32, dur * 0.45));
 
     filter.type = 'lowpass';
-    filter.Q.value = isBass ? 1.35 : (isApoyando ? 1.15 : 0.8);
+    filter.Q.value = isBass ? 1.25 : (isApoyando ? 1.10 : 0.8);
     if (isFx){
-      var startCutoffMult = isBass ? 7.2 : (isApoyando ? 5.8 : 6.2);
-      var endCutoffMult = isBass ? 3.0 : (isApoyando ? 2.5 : 2.8);
+      var startCutoffMult = isBass ? 6.5 : (isApoyando ? 5.2 : 5.6);
+      var endCutoffMult = isBass ? 2.6 : (isApoyando ? 2.3 : 2.5);
       filter.frequency.setValueAtTime(freq * startCutoffMult, t);
       filter.frequency.exponentialRampToValueAtTime(freq * endCutoffMult, t + dur * 0.75);
     } else {
       // 드라이 모드: 음정의 윤곽이 뚜렷하게 들리도록 필터를 시원하고 명료하게 유지
-      filter.frequency.setValueAtTime(freq * 5.8, t);
-      filter.frequency.exponentialRampToValueAtTime(freq * 3.2, t + dur * 0.85);
+      filter.frequency.setValueAtTime(freq * 5.4, t);
+      filter.frequency.exponentialRampToValueAtTime(freq * 3.0, t + dur * 0.85);
     }
 
     if (isFx){
-      var peakGain = (isBass ? 0.50 : (isApoyando ? 0.46 : 0.40)) * scale;
+      var peakGain = (isBass ? 0.44 : (isApoyando ? 0.42 : 0.36)) * scale;
       g.gain.setValueAtTime(0.0008, t);
       g.gain.linearRampToValueAtTime(peakGain, t + (isBass ? 0.006 : 0.005));
       // 초기 탄현 어택 이후 몸통 서스테인으로 자연스럽게 이어지는 2단 감쇠(Pluck -> Sustain)
-      g.gain.exponentialRampToValueAtTime(peakGain * (isApoyando ? 0.56 : 0.46), t + Math.min(0.20, dur * 0.28));
-      g.gain.exponentialRampToValueAtTime(0.0006, t + dur);
+      g.gain.exponentialRampToValueAtTime(peakGain * (isApoyando ? 0.50 : 0.42), t + Math.min(0.20, dur * 0.28));
+      g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
     } else {
       // 드라이 모드: 웅웅거리는 서스테인 꼬리 없이 음의 시작과 끝이 분명한 1단 직관적 감쇠
-      var peakGain = (isBass ? 0.46 : (isApoyando ? 0.44 : 0.38)) * scale;
+      var peakGain = (isBass ? 0.42 : (isApoyando ? 0.40 : 0.34)) * scale;
       g.gain.setValueAtTime(0.0008, t);
       g.gain.linearRampToValueAtTime(peakGain, t + 0.004);
       g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
-    }
-
-    // 손끝/손톱이 현을 튕기는 순간의 어택 트랜지언트 노이즈 (콘서트홀 풍성 모드에서만 재생하여 드라이 가이드톤의 순수 피치 확보)
-    if (isFx && pluckNoiseBuf){
-      var nSrc = actx.createBufferSource();
-      var nFilt = actx.createBiquadFilter();
-      var nGain = actx.createGain();
-      nSrc.buffer = pluckNoiseBuf;
-      nFilt.type = 'bandpass';
-      nFilt.frequency.value = isBass ? 1100 : (isApoyando ? 1900 : 2500);
-      nFilt.Q.value = 1.4;
-      nGain.gain.value = (isBass ? 0.24 : (isApoyando ? 0.22 : 0.16)) * scale;
-      nSrc.connect(nFilt);
-      nFilt.connect(nGain);
-      nGain.connect(guitarBus || actx.destination);
-      nSrc.start(t);
     }
 
     o1.connect(g1); g1.connect(filter);
