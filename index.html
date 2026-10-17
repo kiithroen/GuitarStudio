@@ -292,8 +292,72 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .two-col{display:grid;grid-template-columns:1.15fr 0.85fr;gap:14px}
 @media (max-width:860px){.two-col{grid-template-columns:1fr}}
 
+/* 콤팩트 집중 연습 모드 (악보 2줄 + 실시간 지판) */
+body.practice-compact .topbar,
+body.practice-compact section[aria-label="연습곡 선택 및 이어가기"],
+body.practice-compact .stage,
+body.practice-compact .two-col,
+body.practice-compact #scoreClickHint,
+body.practice-compact #editStructuredBtn,
+body.practice-compact #editBarMetaBtn,
+body.practice-compact #convertImgToScoreBtn,
+body.practice-compact #renameScoreTitleBtn,
+body.practice-compact #scoreTypeBadge,
+body.practice-compact .ref-img-details,
+body.practice-compact .tbl-wrap,
+body.practice-compact footer {
+  display: none !important;
+}
+
+body.practice-compact .wrap{
+  max-width: 100% !important;
+  padding: 6px 12px 10px !important;
+  gap: 6px !important;
+}
+
+body.practice-compact section[aria-label="악보 및 메트로놈 커서"]{
+  padding: 8px 12px !important;
+  gap: 6px !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,.12) !important;
+}
+
+body.practice-compact .score-toolbar{
+  padding-bottom: 6px !important;
+  margin-bottom: 4px !important;
+  border-bottom: 1px solid var(--line) !important;
+}
+
+body.practice-compact #compactStatusBadge{
+  display: inline-flex !important;
+}
+
+/* 악보 2줄(2단) 고정 높이 */
+body.practice-compact #structuredScoreWrap{
+  max-height: 350px !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin !important;
+  padding: 2px 2px 6px !important;
+  scroll-behavior: smooth !important;
+}
+
+body.practice-compact #structuredScoreWrap.card-view-active{
+  max-height: 265px !important;
+}
+
+/* 실시간 지판 운지법: 악보 바로 아래 부착 */
+body.practice-compact .fretboard-wrap{
+  margin-top: 4px !important;
+  padding-top: 6px !important;
+  border-top: 1px solid var(--line) !important;
+  padding-bottom: 2px !important;
+}
+
+body.practice-compact .fretboard{
+  padding: 8px 12px 6px !important;
+}
+
 /* 클래식 기타 지판 (Fretboard) */
-.fretboard-wrap{overflow-x:auto;padding-bottom:4px}
+.fretboard-wrap{overflow-x:auto;padding-bottom:4px;margin-top:6px;border-top:1px solid var(--line);padding-top:8px}
 .fretboard{min-width:520px;background:var(--wood);border:2px solid #2e1f14;border-radius:10px;padding:10px 12px 8px;color:#fff;position:relative}
 .fb-frets-header{display:grid;grid-template-columns:56px repeat(12,minmax(0,1fr));text-align:center;font-family:var(--font-num);font-size:11px;color:#d7c6b6;margin-bottom:4px}
 .fb-row{display:grid;grid-template-columns:56px repeat(12,minmax(0,1fr));align-items:center;height:28px;position:relative}
@@ -498,21 +562,24 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
 
   <!-- 악보 뷰어 섹션 -->
   <section class="panel" aria-label="악보 및 메트로놈 커서">
-    <div class="score-toolbar">
+    <div class="score-toolbar" id="scoreToolbar">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <h2 id="scoreTitle">작은 별 (Twinkle Twinkle Little Star)</h2>
-        <button type="button" class="btn sm" id="renameScoreTitleBtn" hidden style="min-height:28px;padding:0 8px;font-size:12px" title="곡 이름 변경">✏️ 이름 변경</button>
-        <span class="badge accent" id="scoreTypeBadge">내장 동요 · 다장조(C)</span>
-        <div class="tab-seg" id="scoreModeSeg" role="tablist" aria-label="악보 보기 모드" style="margin-left:4px">
+        <button type="button" class="btn primary sm" id="compactPlayBtn" style="font-weight:800;padding:4px 12px;font-size:12.5px" title="연습 시작 또는 일시 정지 (단축키: Space)">▶ 연습 시작 (Space)</button>
+        <div class="tab-seg" id="scoreModeSeg" role="tablist" aria-label="악보 보기 모드" style="margin-left:2px">
           <button type="button" id="scoreModeTabBtn" role="tab" aria-selected="true" title="6현 가로선 타브(TAB) 악보로 보기 (단축키: T)">6현 타브 (TAB)</button>
           <button type="button" id="scoreModeCardBtn" role="tab" aria-selected="false" title="박자·음표 길이 및 계이름(친절한 오선지) 카드 뷰 (단축키: T)">박자·리듬 카드</button>
         </div>
+        <h2 id="scoreTitle">작은 별 (Twinkle Twinkle Little Star)</h2>
+        <button type="button" class="btn sm" id="renameScoreTitleBtn" hidden style="min-height:28px;padding:0 8px;font-size:12px" title="곡 이름 변경">✏️ 이름 변경</button>
+        <span class="badge accent" id="scoreTypeBadge">내장 동요 · 다장조(C)</span>
+        <span class="badge" id="compactStatusBadge" style="font-family:var(--font-num);font-weight:700" hidden>64 BPM · 1마디</span>
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <span class="hint">마디 클릭: 시작 위치 / Shift+클릭: 끝 마디</span>
+        <span class="hint" id="scoreClickHint">마디 클릭: 시작 위치 / Shift+클릭: 끝 마디</span>
         <button type="button" class="btn sm primary" id="convertImgToScoreBtn" hidden>이 사진을 내 악보(계이름·운지)로 변환</button>
         <button type="button" class="btn sm" id="editStructuredBtn">악보 마디·계이름 빠른 수정</button>
         <button type="button" class="btn sm" id="editBarMetaBtn" hidden>선택 마디 코드·메모 수정</button>
+        <button type="button" class="btn sm" id="toggleCompactBtn" title="악보 2줄과 실시간 지판만 보는 콤팩트 집중 모드 전환 (단축키: P / 연습 시작 시 자동 전환)">집중 연습 뷰</button>
       </div>
     </div>
 
@@ -548,6 +615,11 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
         </div>
       </div>
     </div>
+
+    <!-- C. 실시간 지판 운지법 (악보 바로 아래 부착) -->
+    <div class="fretboard-wrap" id="fretboardWrap">
+      <div class="fretboard" id="fretboard" aria-label="기타 지판 1~12프렛"></div>
+    </div>
   </section>
 
   <!-- 하단 2열: 1) 실시간 지판 & 클래식 기타 운지법 / 2) 유튜브 레퍼런스 플레이어 -->
@@ -555,7 +627,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
     <!-- 좌측: 클래식 기타 지판 & 코드 운지 -->
     <section class="panel" aria-label="클래식 기타 지판 및 코드 운지법">
       <div class="panel-head">
-        <h2>실시간 지판 &amp; 클래식 기타 운지법</h2>
+        <h2>클래식 기타 운지 가이드 &amp; 코드표</h2>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <button type="button" class="btn sm" id="toggleAutoBassBtn" title="단선율 곡이라도 마디 첫 박(강박)마다 현재 코드의 근음 베이스(엄지 p)를 함께 표시하고 들려줍니다">엄지(p) 베이스 동반: 꺼짐</button>
           <button type="button" class="btn sm active" id="toggleChordDotsBtn" title="지판 위의 파란색 반주 코드 운지 점을 켜거나 숨깁니다">파란 코드 점: 켜짐</button>
@@ -578,10 +650,6 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
         </div>
       </div>
 
-      <!-- 6현 1~12프렛 지판 -->
-      <div class="fretboard-wrap">
-        <div class="fretboard" id="fretboard" aria-label="기타 지판 1~12프렛"></div>
-      </div>
       <p class="hint">지판의 칸을 직접 누르면 해당 프렛의 기타 음이 재생돼요. 초록색 원은 멜로디 음(i·m·a), 주황색 원은 엄지(p)로 함께 튕기는 베이스 저음, 파란색 원은 현재 마디 코드의 구성음이에요.</p>
 
       <!-- 곡에 등장하는 코드 운지 카드 -->
@@ -3795,6 +3863,9 @@ registerProcessor('onset', OnsetProc);
       }
       var cell = $('#measuresGrid .beat-cell[data-m="' + mIdx + '"][data-b="' + bIdx + '"]');
       if (cell) cell.classList.add('active-beat');
+      if ($('#compactStatusBadge')){
+        $('#compactStatusBadge').textContent = appState.bpm + ' BPM · ' + (mIdx + 1) + '마디 ' + (bIdx + 1) + '박' + (m.chord ? ' [' + m.chord + ']' : '');
+      }
 
       var beatObj = m.beats[bIdx];
       var effBass = resolveEffectiveBass(m.chord, beatObj, bIdx);
@@ -3881,16 +3952,45 @@ registerProcessor('onset', OnsetProc);
     };
 
     isPlaying = true;
-    $('#playBtn').textContent = '연습 정지';
-    $('#playBtn').classList.add('running');
+    setCompactPractice(true);
+    syncCompactPlayButtons();
     $('#loopCountBadge').textContent = '0회 완주';
+  }
+
+  function syncCompactPlayButtons(){
+    var playTxt = isPlaying ? '⏹ 연습 정지 (Space)' : '▶ 연습 시작 (Space)';
+    if ($('#playBtn')){
+      $('#playBtn').textContent = isPlaying ? '연습 정지' : '연습 시작';
+      $('#playBtn').classList.toggle('running', isPlaying);
+    }
+    if ($('#compactPlayBtn')){
+      $('#compactPlayBtn').textContent = playTxt;
+      $('#compactPlayBtn').classList.toggle('danger', isPlaying);
+      $('#compactPlayBtn').classList.toggle('primary', !isPlaying);
+      $('#compactPlayBtn').classList.toggle('running', isPlaying);
+    }
+  }
+
+  function setCompactPractice(active){
+    appState.isCompactPractice = !!active;
+    document.body.classList.toggle('practice-compact', appState.isCompactPractice);
+    if ($('#toggleCompactBtn')){
+      $('#toggleCompactBtn').textContent = appState.isCompactPractice ? '전체 화면 (Esc)' : '집중 연습 뷰';
+      $('#toggleCompactBtn').classList.toggle('active', appState.isCompactPractice);
+    }
+    syncCompactPlayButtons();
+    syncScoreModeUI();
+    if (appState.isCompactPractice && curSong && curSong.type === 'structured'){
+      var card = $('#measuresGrid .measure-card[data-m="' + curMeasureIdx + '"]');
+      var nextCard = $('#measuresGrid .measure-card[data-m="' + (curMeasureIdx + 1) + '"]');
+      if (card) scrollScoreLookAhead($('#structuredScoreWrap'), card, nextCard, 0);
+    }
   }
 
   function stopPractice(saveRecord){
     if (!isPlaying) return;
     isPlaying = false;
-    $('#playBtn').textContent = '연습 시작';
-    $('#playBtn').classList.remove('running');
+    syncCompactPlayButtons();
     $('#phaseTxt').textContent = '정지됨 · 마디를 클릭해 이어서 연습하세요';
     setLeds(-1);
 
@@ -4237,7 +4337,20 @@ registerProcessor('onset', OnsetProc);
     else startPractice();
   });
 
-  // 메인 화면 키보드 단축키 (Space: 연습 시작/정지, G: 기타 시뮬레이션 소리 ON/OFF, F: 음향 특수효과 콘서트홀/드라이 토글)
+  if ($('#compactPlayBtn')){
+    $('#compactPlayBtn').addEventListener('click', function(){
+      if (isPlaying) stopPractice(true);
+      else startPractice();
+    });
+  }
+
+  if ($('#toggleCompactBtn')){
+    $('#toggleCompactBtn').addEventListener('click', function(){
+      setCompactPractice(!appState.isCompactPractice);
+    });
+  }
+
+  // 메인 화면 키보드 단축키 (Space: 연습 시작/정지, G: 소리 토글, F: 특수효과 토글, T: 타브/박자카드 토글, P: 집중연습뷰, Esc: 전체화면)
   window.addEventListener('keydown', function(e){
     var tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -4260,6 +4373,14 @@ registerProcessor('onset', OnsetProc);
         } else {
           if ($('#scoreModeCardBtn')) $('#scoreModeCardBtn').click();
         }
+      }
+    } else if (e.key === 'p' || e.key === 'P' || e.key === 'ㅔ'){
+      e.preventDefault();
+      setCompactPractice(!appState.isCompactPractice);
+    } else if (e.key === 'Escape'){
+      if (appState.isCompactPractice){
+        e.preventDefault();
+        setCompactPractice(false);
       }
     }
   });
@@ -5232,6 +5353,10 @@ registerProcessor('onset', OnsetProc);
     if ($('#scoreModeTabBtn')) $('#scoreModeTabBtn').setAttribute('aria-selected', String(isTab));
     if ($('#scoreModeCardBtn')) $('#scoreModeCardBtn').setAttribute('aria-selected', String(!isTab));
     if ($('#scoreModeSeg')) $('#scoreModeSeg').hidden = !curSong || curSong.type !== 'structured';
+    if ($('#structuredScoreWrap')){
+      $('#structuredScoreWrap').classList.toggle('tab-view-active', isTab);
+      $('#structuredScoreWrap').classList.toggle('card-view-active', !isTab);
+    }
   }
 
   if ($('#scoreModeTabBtn')){
