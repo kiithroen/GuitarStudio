@@ -172,9 +172,10 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .tab-seg button[aria-selected="true"]{background:var(--surface);color:var(--fg);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
 
 /* 구조화 악보 (동요/타브/계이름) 그리드 */
-.tab-score-wrap{display:flex;flex-direction:column;gap:12px;max-height:480px;overflow-y:auto;padding:4px 2px;scroll-behavior:smooth}
+.tab-score-wrap{display:flex;flex-direction:column;gap:12px;max-height:520px;overflow-y:auto;overflow-x:auto;padding:4px 2px;scroll-behavior:smooth}
 .measures-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
 .measure-card{position:relative;border:1.5px solid var(--line);border-radius:12px;background:var(--bg);padding:10px 10px 8px;display:flex;flex-direction:column;gap:6px;cursor:pointer;transition:border-color .12s,box-shadow .12s}
+.measure-card.tab-mode{padding:8px 8px 8px}
 .measure-card:hover{border-color:var(--muted)}
 .measure-card.in-loop{background:var(--surface)}
 .measure-card.active-bar{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
@@ -205,6 +206,37 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .beat-cell.arp-sub{opacity:.9}
 .beat-cell.arp-sub .b-note{font-size:12px;font-weight:600}
 .beat-cell.arp-group-start{margin-left:3px;box-shadow:-3px 0 0 -1px var(--line)}
+
+/* 6현 타브 (TAB) 악보 렌더링 스타일 */
+.tab-stave-wrap{position:relative;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-top:2px}
+.tab-stave-side{width:36px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:25px 2px 5px 4px;background:var(--surface-2);border-right:1px solid var(--line);user-select:none}
+.tab-badge-title{font-family:var(--font-num);font-weight:900;font-size:10px;letter-spacing:.05em;color:var(--accent);line-height:1;margin-bottom:2px}
+.tab-str-names{display:flex;flex-direction:column;justify-content:space-between;height:90px;font-family:var(--font-num);font-size:9.5px;font-weight:700;color:var(--muted);line-height:1;width:100%;text-align:center}
+.tab-stave-body{position:relative;flex:1;min-width:0}
+.tab-lines-bg{position:absolute;left:0;right:0;top:25px;height:90px;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none}
+.tab-line-h{height:1px;background:var(--line);opacity:.75}
+.beats-row.tab-mode{display:grid;grid-template-columns:repeat(var(--bpb,4),minmax(0,1fr));gap:0;margin-top:0;height:124px;position:relative;z-index:1}
+.beat-cell.tab-cell{border:none;border-right:1px dashed rgba(128,128,128,.2);border-radius:0;background:transparent;padding:3px 1px 2px;display:flex;flex-direction:column;align-items:center;position:relative;cursor:pointer;transition:background-color .08s,box-shadow .08s}
+.beat-cell.tab-cell:last-child{border-right:none}
+.beat-cell.tab-cell:hover{background:rgba(45,76,155,.07)}
+.beat-cell.tab-cell.active-beat{background:rgba(45,76,155,.18);transform:none;box-shadow:inset 0 0 0 2px var(--accent);color:inherit}
+.beat-cell.tab-cell.arp-group-start{border-left:2px solid var(--line)}
+.beat-cell.tab-cell[data-judge="ok"]{background:rgba(98,212,145,.14);box-shadow:inset 0 0 0 1.5px var(--ok)}
+.beat-cell.tab-cell[data-judge="near"]{background:rgba(245,158,11,.14);box-shadow:inset 0 0 0 1.5px var(--near)}
+.beat-cell.tab-cell[data-judge="off"]{background:rgba(244,63,94,.14);box-shadow:inset 0 0 0 1.5px var(--off)}
+.tab-cell-top{height:20px;display:flex;align-items:center;justify-content:center;gap:3px;font-size:11px;line-height:1;white-space:nowrap}
+.tab-cell-solfege{font-weight:700;color:var(--accent);font-size:11.5px}
+.beat-cell.tab-cell.active-beat .tab-cell-solfege{color:var(--accent)}
+.tab-cell-rh{font-family:var(--font-num);font-weight:700;color:var(--near);font-size:9.5px}
+.tab-cell-grid{position:relative;width:100%;height:90px;margin-top:2px}
+.tab-fret-pill{position:absolute;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:16px;padding:0 3px;border-radius:4px;font-family:var(--font-num);font-size:12px;font-weight:800;line-height:1;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.08);z-index:2;white-space:nowrap}
+.tab-fret-pill.mel-fret{color:var(--fg);border-color:rgba(45,76,155,.45)}
+.beat-cell.tab-cell.active-beat .tab-fret-pill.mel-fret{background:var(--accent);color:#fff;border-color:var(--accent)}
+.tab-fret-pill.bass-fret{color:#b45309;background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.6)}
+@media (prefers-color-scheme:dark){.tab-fret-pill.bass-fret{color:#fbbf24;background:rgba(245,158,11,.24)}}
+.beat-cell.tab-cell.active-beat .tab-fret-pill.bass-fret{background:#f59e0b;color:#fff;border-color:#f59e0b}
+.tab-cell-lh{font-size:9px;font-weight:700;margin-left:1px;opacity:.85}
+.tab-rest-dash{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:var(--font-num);font-size:13px;color:var(--muted);font-weight:700}
 
 /* 이미지 / PDF 악보 뷰어 및 마디 그리드 매퍼 */
 .img-score-wrap{display:flex;flex-direction:column;gap:10px}
@@ -454,6 +486,10 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
         <h2 id="scoreTitle">작은 별 (Twinkle Twinkle Little Star)</h2>
         <button type="button" class="btn sm" id="renameScoreTitleBtn" hidden style="min-height:28px;padding:0 8px;font-size:12px" title="곡 이름 변경">✏️ 이름 변경</button>
         <span class="badge accent" id="scoreTypeBadge">내장 동요 · 다장조(C)</span>
+        <div class="tab-seg" id="scoreModeSeg" role="tablist" aria-label="악보 보기 모드" style="margin-left:4px">
+          <button type="button" id="scoreModeTabBtn" role="tab" aria-selected="true" title="6현 가로선 타브(TAB) 악보로 보기 (단축키: T)">6현 타브 (TAB)</button>
+          <button type="button" id="scoreModeCardBtn" role="tab" aria-selected="false" title="박자별 계이름 카드 그리드로 보기">박자 카드</button>
+        </div>
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <span class="hint">마디 클릭: 시작 위치 / Shift+클릭: 끝 마디</span>
@@ -1730,6 +1766,7 @@ registerProcessor('onset', OnsetProc);
   if (appState.synthEngine !== 'classic') appState.synthEngine = 'ks'; // 기타 음원: 'ks' 물리 모델 / 'classic' 기존 합성음
   if (typeof appState.bodyAmount !== 'number') appState.bodyAmount = 1.0; // 울림통 공명 세기 (0~2, 1이 기본)
   if (typeof appState.sympAmount !== 'number') appState.sympAmount = 1.0; // 공명현 세기 (0~2, 0이면 꺼짐)
+  if (appState.scoreView !== 'card') appState.scoreView = 'tab'; // 악보 보기 모드: 'tab' 6현 타브(기본) / 'card' 박자 카드
   var calib = ls.get('gs.calib', { lat: 0.045, calibrated: false, at: null });
   var historyList = ls.get('gs.history', []);
 
@@ -2938,6 +2975,7 @@ registerProcessor('onset', OnsetProc);
       $('#convertImgToScoreBtn').hidden = true;
       $('#editStructuredBtn').hidden = false;
       $('#editBarMetaBtn').hidden = true;
+      syncScoreModeUI();
       if (curSong.refImageDataUrl){
         $('#refImgDetails').hidden = false;
         $('#refScoreImg').src = curSong.refImageDataUrl;
@@ -2951,6 +2989,7 @@ registerProcessor('onset', OnsetProc);
       $('#convertImgToScoreBtn').hidden = false;
       $('#editStructuredBtn').hidden = true;
       $('#editBarMetaBtn').hidden = false;
+      syncScoreModeUI();
       renderImageScore();
     }
 
@@ -2970,12 +3009,13 @@ registerProcessor('onset', OnsetProc);
   function renderStructuredMeasures(){
     var grid = $('#measuresGrid');
     grid.textContent = '';
+    var isTab = (appState.scoreView !== 'card');
     if (curSong && curSong.beats >= 9){
-      grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(540px, 1fr))';
+      grid.style.gridTemplateColumns = isTab ? 'repeat(auto-fill, minmax(560px, 1fr))' : 'repeat(auto-fill, minmax(540px, 1fr))';
     } else if (curSong && curSong.beats >= 6){
-      grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(310px, 1fr))';
+      grid.style.gridTemplateColumns = isTab ? 'repeat(auto-fill, minmax(330px, 1fr))' : 'repeat(auto-fill, minmax(310px, 1fr))';
     } else {
-      grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(235px, 1fr))';
+      grid.style.gridTemplateColumns = isTab ? 'repeat(auto-fill, minmax(250px, 1fr))' : 'repeat(auto-fill, minmax(235px, 1fr))';
     }
     var chordsSet = [];
 
@@ -2983,7 +3023,7 @@ registerProcessor('onset', OnsetProc);
       if (m.chord && chordsSet.indexOf(m.chord) < 0) chordsSet.push(m.chord);
 
       var card = document.createElement('div');
-      card.className = 'measure-card';
+      card.className = 'measure-card' + (isTab ? ' tab-mode' : '');
       card.dataset.m = mIdx;
       var inLoop = (mIdx + 1) >= appState.loopStart && (mIdx + 1) <= appState.loopEnd;
       card.classList.toggle('in-loop', inLoop);
@@ -3003,94 +3043,230 @@ registerProcessor('onset', OnsetProc);
       }
       card.appendChild(head);
 
-      var beatsRow = document.createElement('div');
-      beatsRow.className = 'beats-row';
-      beatsRow.style.setProperty('--bpb', curSong.beats);
+      if (isTab){
+        var staveWrap = document.createElement('div');
+        staveWrap.className = 'tab-stave-wrap';
 
-      m.beats.forEach(function(b, bIdx){
-        var cell = document.createElement('div');
-        var extraCls = '';
-        if (b.articulation === 'apoyando'){
-          extraCls += ' arp-melody';
-        } else if (b.articulation === 'tirando'){
-          extraCls += ' arp-sub';
+        var side = document.createElement('div');
+        side.className = 'tab-stave-side';
+        var sideTitle = document.createElement('div');
+        sideTitle.className = 'tab-badge-title';
+        sideTitle.textContent = 'TAB';
+        var strNames = document.createElement('div');
+        strNames.className = 'tab-str-names';
+        ['1e', '2B', '3G', '4D', '5A', '6E'].forEach(function(s){
+          var sn = document.createElement('span');
+          sn.textContent = s;
+          strNames.appendChild(sn);
+        });
+        side.appendChild(sideTitle);
+        side.appendChild(strNames);
+        staveWrap.appendChild(side);
+
+        var body = document.createElement('div');
+        body.className = 'tab-stave-body';
+
+        var linesBg = document.createElement('div');
+        linesBg.className = 'tab-lines-bg';
+        for (var l = 0; l < 6; l++){
+          var lh = document.createElement('div');
+          lh.className = 'tab-line-h';
+          linesBg.appendChild(lh);
         }
-        if ((curSong.beats === 9 || curSong.beats === 6) && (bIdx === 3 || bIdx === 6)){
-          extraCls += ' arp-group-start';
-        }
-        cell.className = 'beat-cell' + extraCls;
-        cell.dataset.m = mIdx;
-        cell.dataset.b = bIdx;
-        var articDesc = b.articulation === 'apoyando'
-          ? (' [아포얀도 주선율 · ' + (b.explicitArticulation ? '악보지정(!)' : '최고음 자동추론') + ']')
-          : (b.articulation === 'tirando' ? (' [티란도 반주 · ' + (b.explicitArticulation ? '악보지정(~)' : '자동추론') + ']') : '');
-        cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + articDesc + ' (클릭: 운지 보기 및 음 듣기)';
+        body.appendChild(linesBg);
 
-        var noteEl = document.createElement('span');
-        noteEl.className = 'b-note';
-        noteEl.textContent = b.en;
+        var beatsRow = document.createElement('div');
+        beatsRow.className = 'beats-row tab-mode';
+        beatsRow.style.setProperty('--bpb', curSong.beats);
 
-        var koEl = document.createElement('span');
-        koEl.className = 'b-ko';
-        koEl.textContent = b.midi ? b.ko : '쉼/유지';
-
-        var tabEl = document.createElement('span');
-        tabEl.className = 'b-tab';
-        tabEl.textContent = b.str != null ? (b.str + '줄·' + (b.fret === 0 ? '개방' : b.fret + '프')) : '-';
-
-        var effBass = resolveEffectiveBass(m.chord, b, bIdx);
-
-        var fgEl = document.createElement('div');
-        fgEl.className = 'b-fingers';
-        if (b.lh != null){
-          var lhSpan = document.createElement('span');
-          lhSpan.className = 'b-lh';
-          lhSpan.textContent = '왼' + b.lh;
-          fgEl.appendChild(lhSpan);
-        }
-        if (b.rh){
-          var rhSpan = document.createElement('span');
-          rhSpan.className = 'b-rh';
-          var rhBase = '오' + (effBass ? 'p+' + b.rh : b.rh);
-          if (b.articulation === 'apoyando'){
-            rhSpan.textContent = rhBase + '·아포';
-          } else {
-            rhSpan.textContent = rhBase;
+        m.beats.forEach(function(b, bIdx){
+          var cell = document.createElement('div');
+          var extraCls = ' tab-cell';
+          if (b.articulation === 'apoyando') extraCls += ' arp-melody';
+          else if (b.articulation === 'tirando') extraCls += ' arp-sub';
+          if ((curSong.beats === 9 || curSong.beats === 6) && (bIdx === 3 || bIdx === 6)){
+            extraCls += ' arp-group-start';
           }
-          fgEl.appendChild(rhSpan);
-        }
+          cell.className = 'beat-cell' + extraCls;
+          cell.dataset.m = mIdx;
+          cell.dataset.b = bIdx;
+          var effBass = resolveEffectiveBass(m.chord, b, bIdx);
 
-        cell.appendChild(noteEl);
-        cell.appendChild(koEl);
-        cell.appendChild(tabEl);
-        if (effBass){
-          var bassBadge = document.createElement('span');
-          bassBadge.className = 'b-bass';
-          bassBadge.textContent = 'p:' + effBass.str + '줄 ' + effBass.ko + '(' + (effBass.fret === 0 ? '개방' : effBass.fret + '프') + ')';
-          cell.appendChild(bassBadge);
-        }
-        cell.appendChild(fgEl);
+          var articDesc = b.articulation === 'apoyando'
+            ? (' [아포얀도 주선율 · ' + (b.explicitArticulation ? '악보지정(!)' : '최고음 자동추론') + ']')
+            : (b.articulation === 'tirando' ? (' [티란도 반주 · ' + (b.explicitArticulation ? '악보지정(~)' : '자동추론') + ']') : '');
+          cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + articDesc + ' (클릭: 운지 보기 및 음 듣기)';
 
-        cell.addEventListener('click', function(e){
-          if (e.shiftKey) return; // Shift+클릭은 상위 마디의 끝 구간 설정으로 전달
-          e.stopPropagation();
-          curMeasureIdx = mIdx;
-          curBeatIdx = bIdx;
-          if (mIdx + 1 < appState.loopStart || mIdx + 1 > appState.loopEnd){
-            appState.loopStart = mIdx + 1;
-            appState.loopEnd = getMeasureCount(curSong);
-            $('#loopStart').value = appState.loopStart;
-            $('#loopEnd').value = appState.loopEnd;
-            updateLoopClasses();
+          var topRow = document.createElement('div');
+          topRow.className = 'tab-cell-top';
+          if (b.midi){
+            var solfege = document.createElement('span');
+            solfege.className = 'tab-cell-solfege';
+            solfege.textContent = b.ko;
+            topRow.appendChild(solfege);
           }
-          saveAppState();
-          updateActiveCursor(mIdx, bIdx, !isPlaying);
+          if (b.rh || effBass){
+            var rhEl = document.createElement('span');
+            rhEl.className = 'tab-cell-rh';
+            var rhText = effBass ? 'p+' + (b.rh || '') : (b.rh || '');
+            if (b.articulation === 'apoyando') rhText += '!';
+            rhEl.textContent = rhText;
+            topRow.appendChild(rhEl);
+          }
+          cell.appendChild(topRow);
+
+          var gridEl = document.createElement('div');
+          gridEl.className = 'tab-cell-grid';
+
+          // 1. 베이스 프렛 (주황/골드)
+          if (effBass && effBass.str){
+            var bPill = document.createElement('span');
+            bPill.className = 'tab-fret-pill bass-fret';
+            bPill.style.top = ((effBass.str - 1) * 20) + '%';
+            bPill.textContent = String(effBass.fret != null ? effBass.fret : 0);
+            if (effBass.lh){
+              var blh = document.createElement('span');
+              blh.className = 'tab-cell-lh';
+              blh.textContent = '(' + effBass.lh + ')';
+              bPill.appendChild(blh);
+            }
+            gridEl.appendChild(bPill);
+          }
+
+          // 2. 멜로디 프렛 (인디고/블루)
+          if (b.midi && b.str){
+            var mPill = document.createElement('span');
+            mPill.className = 'tab-fret-pill mel-fret';
+            mPill.style.top = ((b.str - 1) * 20) + '%';
+            mPill.textContent = String(b.fret != null ? b.fret : 0);
+            if (b.lh != null){
+              var mlh = document.createElement('span');
+              mlh.className = 'tab-cell-lh';
+              mlh.textContent = '(' + b.lh + ')';
+              mPill.appendChild(mlh);
+            }
+            gridEl.appendChild(mPill);
+          } else if (!b.midi && !effBass){
+            var dash = document.createElement('span');
+            dash.className = 'tab-rest-dash';
+            dash.textContent = '-';
+            gridEl.appendChild(dash);
+          }
+
+          cell.appendChild(gridEl);
+
+          cell.addEventListener('click', function(e){
+            if (e.shiftKey) return;
+            e.stopPropagation();
+            curMeasureIdx = mIdx;
+            curBeatIdx = bIdx;
+            if (mIdx + 1 < appState.loopStart || mIdx + 1 > appState.loopEnd){
+              appState.loopStart = mIdx + 1;
+              appState.loopEnd = getMeasureCount(curSong);
+              $('#loopStart').value = appState.loopStart;
+              $('#loopEnd').value = appState.loopEnd;
+              updateLoopClasses();
+            }
+            saveAppState();
+            updateActiveCursor(mIdx, bIdx, !isPlaying);
+          });
+
+          beatsRow.appendChild(cell);
         });
 
-        beatsRow.appendChild(cell);
-      });
+        body.appendChild(beatsRow);
+        staveWrap.appendChild(body);
+        card.appendChild(staveWrap);
+      } else {
+        var beatsRow = document.createElement('div');
+        beatsRow.className = 'beats-row';
+        beatsRow.style.setProperty('--bpb', curSong.beats);
 
-      card.appendChild(beatsRow);
+        m.beats.forEach(function(b, bIdx){
+          var cell = document.createElement('div');
+          var extraCls = '';
+          if (b.articulation === 'apoyando'){
+            extraCls += ' arp-melody';
+          } else if (b.articulation === 'tirando'){
+            extraCls += ' arp-sub';
+          }
+          if ((curSong.beats === 9 || curSong.beats === 6) && (bIdx === 3 || bIdx === 6)){
+            extraCls += ' arp-group-start';
+          }
+          cell.className = 'beat-cell' + extraCls;
+          cell.dataset.m = mIdx;
+          cell.dataset.b = bIdx;
+          var articDesc = b.articulation === 'apoyando'
+            ? (' [아포얀도 주선율 · ' + (b.explicitArticulation ? '악보지정(!)' : '최고음 자동추론') + ']')
+            : (b.articulation === 'tirando' ? (' [티란도 반주 · ' + (b.explicitArticulation ? '악보지정(~)' : '자동추론') + ']') : '');
+          cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + articDesc + ' (클릭: 운지 보기 및 음 듣기)';
+
+          var noteEl = document.createElement('span');
+          noteEl.className = 'b-note';
+          noteEl.textContent = b.en;
+
+          var koEl = document.createElement('span');
+          koEl.className = 'b-ko';
+          koEl.textContent = b.midi ? b.ko : '쉼/유지';
+
+          var tabEl = document.createElement('span');
+          tabEl.className = 'b-tab';
+          tabEl.textContent = b.str != null ? (b.str + '줄·' + (b.fret === 0 ? '개방' : b.fret + '프')) : '-';
+
+          var effBass = resolveEffectiveBass(m.chord, b, bIdx);
+
+          var fgEl = document.createElement('div');
+          fgEl.className = 'b-fingers';
+          if (b.lh != null){
+            var lhSpan = document.createElement('span');
+            lhSpan.className = 'b-lh';
+            lhSpan.textContent = '왼' + b.lh;
+            fgEl.appendChild(lhSpan);
+          }
+          if (b.rh){
+            var rhSpan = document.createElement('span');
+            rhSpan.className = 'b-rh';
+            var rhBase = '오' + (effBass ? 'p+' + b.rh : b.rh);
+            if (b.articulation === 'apoyando'){
+              rhSpan.textContent = rhBase + '·아포';
+            } else {
+              rhSpan.textContent = rhBase;
+            }
+            fgEl.appendChild(rhSpan);
+          }
+
+          cell.appendChild(noteEl);
+          cell.appendChild(koEl);
+          cell.appendChild(tabEl);
+          if (effBass){
+            var bassBadge = document.createElement('span');
+            bassBadge.className = 'b-bass';
+            bassBadge.textContent = 'p:' + effBass.str + '줄 ' + effBass.ko + '(' + (effBass.fret === 0 ? '개방' : effBass.fret + '프') + ')';
+            cell.appendChild(bassBadge);
+          }
+          cell.appendChild(fgEl);
+
+          cell.addEventListener('click', function(e){
+            if (e.shiftKey) return;
+            e.stopPropagation();
+            curMeasureIdx = mIdx;
+            curBeatIdx = bIdx;
+            if (mIdx + 1 < appState.loopStart || mIdx + 1 > appState.loopEnd){
+              appState.loopStart = mIdx + 1;
+              appState.loopEnd = getMeasureCount(curSong);
+              $('#loopStart').value = appState.loopStart;
+              $('#loopEnd').value = appState.loopEnd;
+              updateLoopClasses();
+            }
+            saveAppState();
+            updateActiveCursor(mIdx, bIdx, !isPlaying);
+          });
+
+          beatsRow.appendChild(cell);
+        });
+
+        card.appendChild(beatsRow);
+      }
 
       if (m.lyric){
         var lyr = document.createElement('div');
@@ -4009,6 +4185,15 @@ registerProcessor('onset', OnsetProc);
     } else if (e.key === 'f' || e.key === 'F' || e.key === 'ㄹ'){
       e.preventDefault();
       if ($('#toggleFxBtn')) $('#toggleFxBtn').click();
+    } else if (e.key === 't' || e.key === 'T' || e.key === 'ㅅ'){
+      e.preventDefault();
+      if (curSong && curSong.type === 'structured'){
+        if (appState.scoreView === 'card'){
+          if ($('#scoreModeTabBtn')) $('#scoreModeTabBtn').click();
+        } else {
+          if ($('#scoreModeCardBtn')) $('#scoreModeCardBtn').click();
+        }
+      }
     }
   });
 
@@ -4973,6 +5158,33 @@ registerProcessor('onset', OnsetProc);
       rawText: lines
     });
   });
+
+  // ---------- 악보 보기 모드 (6현 타브 vs 박자 카드) 동기화 및 전환
+  function syncScoreModeUI(){
+    var isTab = (appState.scoreView !== 'card');
+    if ($('#scoreModeTabBtn')) $('#scoreModeTabBtn').setAttribute('aria-selected', String(isTab));
+    if ($('#scoreModeCardBtn')) $('#scoreModeCardBtn').setAttribute('aria-selected', String(!isTab));
+    if ($('#scoreModeSeg')) $('#scoreModeSeg').hidden = !curSong || curSong.type !== 'structured';
+  }
+
+  if ($('#scoreModeTabBtn')){
+    $('#scoreModeTabBtn').addEventListener('click', function(){
+      appState.scoreView = 'tab';
+      syncScoreModeUI();
+      saveAppState();
+      if (curSong && curSong.type === 'structured') renderStructuredMeasures();
+      updateActiveCursor(curMeasureIdx, curBeatIdx, false);
+    });
+  }
+  if ($('#scoreModeCardBtn')){
+    $('#scoreModeCardBtn').addEventListener('click', function(){
+      appState.scoreView = 'card';
+      syncScoreModeUI();
+      saveAppState();
+      if (curSong && curSong.type === 'structured') renderStructuredMeasures();
+      updateActiveCursor(curMeasureIdx, curBeatIdx, false);
+    });
+  }
 
   $('#ocrPickImgBtn').addEventListener('click', function(){
     $('#ocrModalFileInput').click();
