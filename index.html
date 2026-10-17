@@ -128,8 +128,9 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:24px}
 .play-row{display:flex;gap:8px;align-items:center}
 .go-btn{flex:1;height:48px;border-radius:12px;border:0;background:var(--d-ok);color:#091e12;font-size:16.5px;font-weight:700;letter-spacing:.02em}
 .go-btn.running{background:transparent;color:var(--d-off);box-shadow:inset 0 0 0 2px var(--d-off)}
-.sound-toggle{height:48px;padding:0 12px;border-radius:12px;border:1px solid var(--d-line);background:var(--d-surface);color:var(--d-fg);font-size:13px;font-weight:500}
-.sound-toggle[aria-pressed="true"]{border-color:var(--d-ok);color:var(--d-ok)}
+.sound-toggle{height:48px;padding:0 14px;border-radius:12px;border:1.5px solid var(--d-line);background:var(--d-surface);color:var(--d-muted);font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer;transition:border-color .15s,color .15s,background-color .15s}
+.sound-toggle[aria-pressed="true"]{border-color:var(--d-ok);background:rgba(98,212,145,.10);color:var(--d-ok)}
+.sound-toggle[aria-pressed="false"]{border-color:var(--d-line);background:var(--d-bg);color:var(--d-muted)}
 
 /* 실시간 마이크/음정 게이지 */
 .gauge-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -400,7 +401,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
       <div class="stage-box">
         <div class="play-row">
           <button type="button" class="go-btn" id="playBtn">연습 시작</button>
-          <button type="button" class="sound-toggle" id="guideSoundBtn" aria-pressed="true" title="악보의 멜로디/코드 가이드 소리를 함께 재생합니다">가이드음 켜짐</button>
+          <button type="button" class="sound-toggle" id="guideSoundBtn" aria-pressed="true" title="앱의 기타 연주 소리를 끄고 메트로놈만 들으며 내 실제 기타로 연습합니다 (단축키: G)">기타 시뮬레이션: 켜짐</button>
         </div>
         <div class="gauge-row">
           <div class="pitch-box">
@@ -3528,7 +3529,7 @@ registerProcessor('onset', OnsetProc);
     $('#loopEnable').checked = appState.loopEnable;
     $('#speedTrainerChk').checked = appState.speedTrainer;
     $('#guideSoundBtn').setAttribute('aria-pressed', String(appState.guideSound));
-    $('#guideSoundBtn').textContent = appState.guideSound ? '가이드음 켜짐' : '가이드음 꺼짐';
+    $('#guideSoundBtn').textContent = appState.guideSound ? '기타 시뮬레이션: 켜짐' : '기타 시뮬레이션: 꺼짐 (메트로놈만)';
     $('#calibBadge').textContent = calib.calibrated ? Math.round(calib.lat * 1000) + 'ms' : '기본 45ms';
     buildLeds();
   }
@@ -3607,6 +3608,21 @@ registerProcessor('onset', OnsetProc);
   $('#playBtn').addEventListener('click', function(){
     if (isPlaying) stopPractice(true);
     else startPractice();
+  });
+
+  // 메인 화면 키보드 단축키 (Space: 연습 시작/정지, G: 기타 시뮬레이션 소리 ON/OFF)
+  window.addEventListener('keydown', function(e){
+    var tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (!$('#newSongModal').hidden || !$('#tunerModal').hidden || !$('#calibModal').hidden || !$('#sheetSyncModal').hidden || !$('#backupModal').hidden) return;
+
+    if (e.code === 'Space'){
+      e.preventDefault();
+      $('#playBtn').click();
+    } else if (e.key === 'g' || e.key === 'G' || e.key === 'ㅎ'){
+      e.preventDefault();
+      $('#guideSoundBtn').click();
+    }
   });
 
   // ---------- 유튜브 레퍼런스 연동
