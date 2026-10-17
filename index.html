@@ -2414,8 +2414,11 @@ registerProcessor('onset', OnsetProc);
       filter.frequency.exponentialRampToValueAtTime(freq * 3.0, t + dur * 0.85);
     }
 
+    // 주법별 오실레이터 비율·피크 차이로 생기는 음량 차이 상쇄 (실측: 같은 scale에서 아포얀도 +3.9dB(드라이 +3.1dB), 티란도 -1.2dB)
+    // 강약은 호출부 scale(아포얀도 ×1.16, 티란도 ×0.62)로만 정해져 물리음원과 같은 균형이 됨 (보정 전에는 티란도가 주선율보다 10.6dB 작았음)
+    var artComp = isBass ? 1 : (isApoyando ? (isFx ? 0.64 : 0.70) : (isTirando ? 1.15 : 1));
     if (isFx){
-      var peakGain = (isBass ? 0.44 : (isApoyando ? 0.42 : 0.36)) * scale;
+      var peakGain = (isBass ? 0.44 : (isApoyando ? 0.42 : 0.36)) * scale * artComp;
       g.gain.setValueAtTime(0.0008, t);
       g.gain.linearRampToValueAtTime(peakGain, t + (isBass ? 0.006 : 0.005));
       // 초기 탄현 어택 이후 몸통 서스테인으로 자연스럽게 이어지는 2단 감쇠(Pluck -> Sustain)
@@ -2423,7 +2426,7 @@ registerProcessor('onset', OnsetProc);
       g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
     } else {
       // 드라이 모드: 웅웅거리는 서스테인 꼬리 없이 음의 시작과 끝이 분명한 1단 직관적 감쇠
-      var peakGain = (isBass ? 0.42 : (isApoyando ? 0.40 : 0.34)) * scale;
+      var peakGain = (isBass ? 0.42 : (isApoyando ? 0.40 : 0.34)) * scale * artComp;
       g.gain.setValueAtTime(0.0008, t);
       g.gain.linearRampToValueAtTime(peakGain, t + 0.004);
       g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
