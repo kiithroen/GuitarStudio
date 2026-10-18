@@ -3,6 +3,7 @@
   // 콘서트홀 잔향 IR: 대역별 지수 감쇠(저음 1.9초 · 중음 1.6초 · 고음 1.0초)로 고음 잔향이 먼저 사라지고,
   // 확산 잔향은 30ms 시상수로 차오르며, 초기 반사음은 양 채널 같은 극성(모노 합산 시 빗살 필터 착색 없음)
   var REVERB_RT = { low: 1.9, mid: 1.6, high: 1.0 }; // <500Hz, 500Hz~3.5kHz, >3.5kHz
+  var CONCERT_HALL_WET_GAIN = 0.35;
   // 클래식 기타 몸통 공명 모드 [주파수Hz, Q, 원음 대비 크기]: 공기(헬름홀츠) · 상판 기본 · 상판-뒤판 결합 · 고차 상판 모드
   var BODY_MODES = [[98, 12, 0.45], [196, 16, 0.38], [245, 14, 0.15], [390, 10, 0.20], [550, 9, 0.12]];
   var REVERB_EARLY = [ // [초, 크기] 채널별로 시간만 다르게 해 자연스러운 좌우 폭
@@ -99,7 +100,7 @@
       dryGainNode.gain.value = 0.88;
 
       wetGainNode = actx.createGain();
-      wetGainNode.gain.value = appState.acousticFx ? 0.18 : 0.0;
+      wetGainNode.gain.value = appState.acousticFx ? CONCERT_HALL_WET_GAIN : 0.0;
 
       reverbNode = actx.createConvolver();
       reverbNode.buffer = buildConcertHallReverbBuffer(actx);
@@ -146,7 +147,7 @@
     if (wetGainNode && wetGainNode.gain){
       wetGainNode.gain.cancelScheduledValues(now);
       wetGainNode.gain.setValueAtTime(wetGainNode.gain.value, now);
-      wetGainNode.gain.linearRampToValueAtTime(on ? 0.18 : 0.0, now + 0.04);
+      wetGainNode.gain.linearRampToValueAtTime(on ? CONCERT_HALL_WET_GAIN : 0.0, now + 0.04);
     }
     bodyModes.forEach(function(m){
       m.gain.gain.cancelScheduledValues(now);

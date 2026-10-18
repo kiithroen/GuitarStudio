@@ -9,10 +9,10 @@ const parser = require('../src/parser.js');
 const guideSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'guide.js'), 'utf8');
 const audioSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'audio.js'), 'utf8');
 
-function makeContext(capo){
+function makeContext(capo, acousticFx){
   const oscillators = [];
   function param(initial){
-    return { value:initial || 0, setValueAtTime(value, time){ this.last = ['set', value, time]; },
+    return { value:initial || 0, setValueAtTime(value, time){ this.value = value; this.last = ['set', value, time]; },
       linearRampToValueAtTime(value, time){ this.last = ['linear', value, time]; },
       exponentialRampToValueAtTime(value, time){ this.last = ['exponential', value, time]; },
       setTargetAtTime(value, time, constant){ this.last = ['target', value, time, constant]; },
@@ -23,15 +23,24 @@ function makeContext(capo){
       stop(time){ this.stopAt = time; } };
   }
   const context = {
-    appState: { acousticFx: true, sympAmount: 1, synthEngine: 'ks' },
+    appState: { acousticFx: acousticFx !== false, bodyAmount: 1, sympAmount: 1, synthEngine: 'ks' },
+    GUITAR_MASTER_GAIN: 0.75,
+    outGain: null,
+    clickBus: null,
+    guitarBus: {},
+    dryGainNode: null,
+    wetGainNode: null,
+    reverbNode: null,
+    bodyModes: [],
     STRINGS: [
       { str: 6, midi: 40 }, { str: 5, midi: 45 }, { str: 4, midi: 50 },
       { str: 3, midi: 55 }, { str: 2, midi: 59 }, { str: 1, midi: 64 }
     ],
     stringVoices: {},
-    guitarBus: {},
     actx: {
       currentTime: 0,
+      sampleRate: 48000,
+      state: 'running',
       destination: {},
       createOscillator(){
         const oscillator = {
@@ -46,6 +55,12 @@ function makeContext(capo){
       createBiquadFilter(){ return { frequency:param(0), Q:param(0), type:'', connect(){} }; },
       createGain(){
         return { gain:param(0), connect(){} };
+      },
+      createDynamicsCompressor(){ return { threshold:param(0), knee:param(0), ratio:param(0), attack:param(0), release:param(0), connect(){} }; },
+      createConvolver(){ return { buffer:null, connect(){} }; },
+      createBuffer(channels, length){
+        const data = Array.from({ length:channels }, () => new Float32Array(length));
+        return { getChannelData(index){ return data[index]; } };
       }
     },
     curCapo(){ return capo; },
@@ -60,7 +75,7 @@ function makeContext(capo){
     console
   };
   vm.createContext(context);
-  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
+  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
   return { context, oscillators };
 }
 
@@ -173,6 +188,35 @@ test('exact classic duration ends at the requested time and regular gate remains
   const regular = context.__audioHooks.buildClassicVoice(64, 1, 0.2, 1, false, false, false, false, false);
   assert.ok(Math.abs(exact.stopAt - 1.215) < 1e-9);
   assert.ok(Math.abs(regular.stopAt - 1.23) < 1e-9);
+});
+
+test('concert hall wet gain initializes and toggles through the shared routing policy', function(){
+  const enabled = makeContext(0, true);
+  enabled.context.__audioHooks.ensureAudioCtx();
+  const initial = enabled.context.__audioHooks.getFxNodes();
+  assert.equal(initial.wetGainNode.gain.value, 0.35, 'enabled AudioContext starts at the concert hall wet level');
+  assert.equal(initial.dryGainNode.gain.value, 0.88, 'enabled AudioContext keeps the existing dry level');
+
+  enabled.context.appState.acousticFx = false;
+  enabled.context.__audioHooks.updateAudioFxRouting();
+  assert.deepEqual(initial.wetGainNode.gain.last, ['linear', 0, 0.04], 'live OFF ramps wet gain to zero over the existing 40ms');
+  assert.deepEqual(initial.dryGainNode.gain.last, ['linear', 0.88, 0.04], 'live OFF leaves the dry target unchanged');
+
+  enabled.context.appState.acousticFx = true;
+  enabled.context.__audioHooks.updateAudioFxRouting();
+  assert.deepEqual(initial.wetGainNode.gain.last, ['linear', 0.35, 0.04], 'live ON ramps wet gain to the shared constant');
+  assert.deepEqual(initial.dryGainNode.gain.last, ['linear', 0.88, 0.04], 'live ON leaves the dry target unchanged');
+
+  enabled.context.__audioHooks.replaceGetKsBuffer(() => ({ duration:4 }));
+  enabled.context.playGuitarNote(64, 0.5, 1, 1, null, 1, { exactDuration:true });
+  const direct = enabled.context.trackedGuideVoices[0];
+  assert.ok(Math.abs(direct.end - 1.515) < 1e-9, 'wet gain changes leave direct KS note gate and 15ms release unchanged');
+
+  const disabled = makeContext(0, false);
+  disabled.context.__audioHooks.ensureAudioCtx();
+  const offNodes = disabled.context.__audioHooks.getFxNodes();
+  assert.equal(offNodes.wetGainNode.gain.value, 0, 'disabled AudioContext starts with wet muted');
+  assert.equal(offNodes.dryGainNode.gain.value, 0.88, 'disabled AudioContext keeps dry gain');
 });
 
 test('stopGuitarNotes cuts direct and sympathetic voices at the requested time only', function(){

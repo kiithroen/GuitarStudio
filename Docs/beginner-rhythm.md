@@ -26,6 +26,8 @@ note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}` 형�
 
 `scheduleBeatGuide`는 실음 MIDI에 카포를 한 번 적용해. 구조화 악보 이벤트만 `playGuitarNote(..., {exactDuration:true})`를 사용하고 직접음은 지정 길이 뒤 최대 15ms 이내 해제 꼬리로 끝나. AudioWorklet, KS/classic 합성, 필터·공명·음색 설정은 유지해.
 
+콘서트홀의 wet gain은 `CONCERT_HALL_WET_GAIN` 단일 상수 `0.35`를 초기 ON 라우팅과 실시간 ON 전환에서 함께 사용해. OFF는 `0`, dry gain은 기존 `0.88`과 40ms 전환을 유지해. 이 값은 wet 잔향만 조절하며 음원·명시 길이·IR을 바꾸지 않아.
+
 ## 재생음 정리와 시계
 
 `stopGuitarNotes(when)`는 예약된 탄현과 직접음, 공명현 재생음을 함께 정리해. 정지, 곡 교체, 기타 시뮬레이션 끄기, 새 연습 시작 전에 이전 프리뷰나 예약음이 이어지지 않게 사용해. 만료 여부는 예약 시각이 아니라 실제 `actx.currentTime`을 기준으로 판단해. 미래의 쉼을 예약한 뒤에도 그 시각이 오기 전에 정지를 요청하면 종료를 앞당길 수 있어야 해. 이후 정지 요청이 기존 종료를 늦춰서는 안 돼. 메트로놈, 마이크, 리버브 버스는 이 정리의 대상이 아니야.

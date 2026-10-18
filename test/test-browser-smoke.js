@@ -157,6 +157,104 @@ async function waitForCondition(client, expression, timeoutMs = 5000) {
   throw new Error('Timed out waiting for condition: ' + expression);
 }
 
+async function testConcertHallRouting(client){
+  const routing = await client.evaluate(`(async function(){
+    var saved = { acousticFx:appState.acousticFx, bodyAmount:appState.bodyAmount,
+      sympAmount:appState.sympAmount, synthEngine:appState.synthEngine };
+    var button = document.getElementById('toggleFxBtn'), off, on, voiceScheduled = false;
+    try {
+      if (!appState.acousticFx){ button.click(); await new Promise(function(resolve){ setTimeout(resolve, 60); }); }
+      button.click();
+      await new Promise(function(resolve){ setTimeout(resolve, 60); });
+      off = { state:appState.acousticFx, wet:wetGainNode.gain.value, dry:dryGainNode.gain.value,
+        running:actx.state === 'running', bus:!!guitarBus && !!outGain };
+      appState.sympAmount = 0;
+      playGuitarNote(64, 0.125, actx.currentTime + 0.02, 1, null, 1, { exactDuration:true });
+      voiceScheduled = trackedGuideVoices.some(function(voice){ return voice.start >= actx.currentTime; });
+      button.click();
+      await new Promise(function(resolve){ setTimeout(resolve, 60); });
+      on = { state:appState.acousticFx, wet:wetGainNode.gain.value, dry:dryGainNode.gain.value,
+        running:actx.state === 'running', bus:!!guitarBus && !!outGain };
+      return { initial:saved.acousticFx, off:off, on:on, voiceScheduled:voiceScheduled };
+    } finally {
+      appState.acousticFx=saved.acousticFx; appState.bodyAmount=saved.bodyAmount;
+      appState.sympAmount=saved.sympAmount; appState.synthEngine=saved.synthEngine;
+      updateAudioFxRouting(); syncConsoleUI(); saveAppState(); stopGuitarNotes(actx.currentTime);
+    }
+  })()`);
+  assert.equal(routing.off.state, false, 'the actual FX toggle changes app state to OFF');
+  assert.ok(Math.abs(routing.off.wet) < 0.001, 'the live AudioContext wet gain reaches zero when OFF');
+  assert.ok(Math.abs(routing.off.dry - 0.88) < 0.001, 'OFF preserves the dry route');
+  assert.equal(routing.off.running, true, 'AudioContext remains running when FX is OFF');
+  assert.equal(routing.off.bus, true, 'guitar bus and output graph remain connected when FX is OFF');
+  assert.equal(routing.voiceScheduled, true, 'direct note scheduling remains active through the FX toggle');
+  assert.equal(routing.on.state, true, 'the actual FX toggle changes app state to ON');
+  assert.ok(Math.abs(routing.on.wet - 0.35) < 0.001, 'the live AudioContext wet gain reaches the hall level when ON');
+  assert.ok(Math.abs(routing.on.dry - 0.88) < 0.001, 'ON preserves the dry route');
+  assert.equal(routing.on.running, true, 'AudioContext remains running when FX is ON');
+  assert.equal(routing.on.bus, true, 'guitar bus and output graph remain connected when FX is ON');
+  process.stdout.write('Browser checkpoint: concert hall routing ON/OFF passed\n');
+}
+
+async function testConcertHallOfflineRender(client){
+  const render = await client.evaluate(`(async function(){
+    var saved = { actx:window.actx, outGain:window.outGain, clickBus:window.clickBus, guitarBus:window.guitarBus,
+      dryGainNode:window.dryGainNode, wetGainNode:window.wetGainNode, reverbNode:window.reverbNode,
+      bodyModes:window.bodyModes, trackedGuideVoices:window.trackedGuideVoices, stringVoices:window.stringVoices,
+      acousticFx:appState.acousticFx, bodyAmount:appState.bodyAmount, sympAmount:appState.sympAmount, synthEngine:appState.synthEngine };
+    async function renderAt(wet, dry){
+      appState.acousticFx = true; appState.bodyAmount = 0; appState.sympAmount = 0; appState.synthEngine = 'ks';
+      var rate = 48000, ctx = new OfflineAudioContext(2, rate * 3.2, rate), sourceStops = [];
+      ctx.resume = function(){ return Promise.resolve(); };
+      var originalCreate = ctx.createBufferSource.bind(ctx);
+      ctx.createBufferSource = function(){ var source = originalCreate(); var stop = source.stop.bind(source);
+        source.stop = function(time){ sourceStops.push(time); return stop(time); }; return source; };
+      window.actx = ctx; window.outGain = null; window.clickBus = null; window.guitarBus = null;
+      window.dryGainNode = null; window.wetGainNode = null; window.reverbNode = null; window.bodyModes = [];
+      window.trackedGuideVoices = []; window.stringVoices = {};
+      ensureAudioCtx(); dryGainNode.gain.value = dry; wetGainNode.gain.value = wet;
+      playGuitarNote(64, 0.5, 0.1, 1, null, 1, { exactDuration:true });
+      var buffer = await ctx.startRendering(), left = buffer.getChannelData(0), right = buffer.getChannelData(1);
+      function rms(start, end){ var sum = 0, count = 0;
+        for(var i=Math.floor(start*rate); i<Math.floor(end*rate); i++){ var x=(left[i]+right[i])*0.5; sum+=x*x; count++; }
+        return Math.sqrt(sum/count); }
+      var peak=0; for(var i=0;i<left.length;i++) peak=Math.max(peak,Math.abs(left[i]),Math.abs(right[i]));
+      return { tailRms:rms(0.715,1.8), peak:peak, sourceStops:sourceStops };
+    }
+    var result;
+    try {
+      var dry = await renderAt(0, 0.88);
+      var before = await renderAt(0.18, 0);
+      var fixed = await renderAt(CONCERT_HALL_WET_GAIN, 0);
+      result = { dry:dry, before:before, fixed:fixed, gain:CONCERT_HALL_WET_GAIN,
+        tailRatio:fixed.tailRms/before.tailRms };
+    } finally {
+      window.actx=saved.actx; window.outGain=saved.outGain; window.clickBus=saved.clickBus;
+      window.guitarBus=saved.guitarBus; window.dryGainNode=saved.dryGainNode; window.wetGainNode=saved.wetGainNode;
+      window.reverbNode=saved.reverbNode; window.bodyModes=saved.bodyModes;
+      window.trackedGuideVoices=saved.trackedGuideVoices; window.stringVoices=saved.stringVoices;
+      appState.acousticFx=saved.acousticFx; appState.bodyAmount=saved.bodyAmount;
+      appState.sympAmount=saved.sympAmount; appState.synthEngine=saved.synthEngine;
+    }
+    result.restored = window.actx===saved.actx && window.outGain===saved.outGain && window.guitarBus===saved.guitarBus &&
+      window.wetGainNode===saved.wetGainNode && appState.acousticFx===saved.acousticFx &&
+      appState.bodyAmount===saved.bodyAmount && appState.sympAmount===saved.sympAmount && appState.synthEngine===saved.synthEngine;
+    return result;
+  })()`);
+  assert.equal(render.gain, 0.35, 'offline render uses the production wet gain');
+  assert.equal(render.restored, true, 'offline measurement restores the live AudioContext graph and app settings');
+  assert.ok(render.dry.tailRms < 1e-8, 'dry KS render has no post-gate tail with body and sympathetic resonance disabled');
+  assert.ok(render.before.tailRms > 0, 'the old runtime-only wet gain produces a real convolver tail');
+  assert.ok(render.fixed.tailRms > render.before.tailRms, 'the production wet gain produces a larger real convolver tail');
+  assert.ok(Math.abs(render.tailRatio / (0.35 / 0.18) - 1) < 0.05, 'rendered tail RMS follows the wet-gain ratio within 5%');
+  assert.ok(render.fixed.peak < 1 && render.before.peak < 1 && render.dry.peak < 1, 'all rendered modes remain below full-scale peak');
+  [render.dry, render.before, render.fixed].forEach(function(result){
+    assert.equal(result.sourceStops.length, 1, 'each render creates one direct KS source');
+    assert.ok(Math.abs(result.sourceStops[0] - 0.615) < 1e-6, 'each direct KS source keeps the exact 15ms post-gate stop');
+  });
+  process.stdout.write('Browser checkpoint: OfflineAudioContext hall render passed (tail ratio ' + render.tailRatio.toFixed(4) + ')\n');
+}
+
 async function testPracticeSessionLifecycle(client) {
   const result = await client.evaluate(`(async function(){
     var original = {
@@ -792,6 +890,8 @@ async function main() {
     assert.equal(audioBoot.supported, true, 'browser exposes a real Web Audio engine');
     assert.equal(audioBoot.instance, true, 'app initializes a real AudioContext');
     assert.equal(audioBoot.state, 'running', 'AudioContext resumes in the browser test');
+    await testConcertHallRouting(cdp);
+    await testConcertHallOfflineRender(cdp);
     const liveGuide = await cdp.evaluate(`(function(){
       var parsed = parseScore('[C] 0E2 r r r', 4);
       warmKsCache({ type:'structured', measures:parsed.measures, capo:2 });
