@@ -79,14 +79,14 @@
     vol: 0.55,
     guideSound: true,
     acousticFx: true, // 고품질 음향 효과 (콘서트홀 리버브, 바디 공명, 2단 서스테인) 토글
-    autoBass: true,
+    autoBass: false,
     loopEnable: true,
     loopStart: 1,
     loopEnd: 8,
     speedTrainer: false,
     audioOffsetMs: 0
   });
-  if (typeof appState.autoBass !== 'boolean') appState.autoBass = true;
+  if (typeof appState.autoBass !== 'boolean') appState.autoBass = false;
   if (typeof appState.acousticFx !== 'boolean') appState.acousticFx = true;
   if (typeof appState.audioOffsetMs !== 'number') appState.audioOffsetMs = 0;
   if (typeof appState.micScoring !== 'boolean') appState.micScoring = true; // 연습 중 마이크 정박·음정 채점 사용 여부
@@ -3069,17 +3069,9 @@ function editorCapo(){
     if ($('#compactSongSelect')) $('#compactSongSelect').value = target.id;
     curSong = target;
     appState.lastSongId = target.id;
-    if (songHasExplicitBass(target)) appState.autoBass = true;
     appState.bpm = Number(target.bpm) || 64;
     renderSong();
     saveAppState();
-  }
-
-  function songHasExplicitBass(song){
-    if (!song || song.type !== 'structured' || !Array.isArray(song.measures)) return false;
-    return song.measures.some(function(m){
-      return Array.isArray(m.beats) && m.beats.some(function(b){ return !!(b && b.bass && b.bass.midi); });
-    });
   }
 
   function changeSongById(songId){
@@ -3090,7 +3082,6 @@ function editorCapo(){
     if (found){
       curSong = found;
       appState.lastSongId = found.id;
-      if (songHasExplicitBass(found)) appState.autoBass = true;
       appState.bpm = Number(found.bpm) || 64;
       if ($('#songSelect')) $('#songSelect').value = found.id;
       if ($('#compactSongSelect')) $('#compactSongSelect').value = found.id;
