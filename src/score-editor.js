@@ -212,8 +212,7 @@ var scoreEditorHooks = (function(){
       event.stopPropagation();
       if (!beforeAction('마디 메뉴')) return;
       var open = menu.hidden;
-      document.querySelectorAll('.score-measure-menu').forEach(function(other){ other.hidden = true; });
-      document.querySelectorAll('.score-measure-menu-button').forEach(function(other){ other.setAttribute('aria-expanded', 'false'); });
+      closeMeasureMenus();
       menu.hidden = !open;
       trigger.setAttribute('aria-expanded', String(open));
     });
@@ -362,7 +361,17 @@ var scoreEditorHooks = (function(){
     } catch (draftError){ error.textContent = draftError.message || '빈 악보를 만들지 못했어.'; }
   }
 
+  function closeMeasureMenus(){
+    document.querySelectorAll('.score-measure-menu').forEach(function(other){ other.hidden = true; });
+    document.querySelectorAll('.score-measure-menu-button').forEach(function(other){ other.setAttribute('aria-expanded', 'false'); });
+  }
+
   function init(){
+    document.addEventListener('click', function(event){
+      var target = event.target;
+      if (target && target.closest && target.closest('.score-measure-actions')) return;
+      closeMeasureMenus();
+    }, true);
     document.getElementById('addBlankScoreBtn').addEventListener('click', openBlankModal);
     document.getElementById('cancelBlankScoreBtn').addEventListener('click', function(){ document.getElementById('blankScoreModal').hidden = true; });
     document.getElementById('createBlankScoreBtn').addEventListener('click', createBlank);

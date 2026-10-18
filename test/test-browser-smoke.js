@@ -262,6 +262,28 @@ async function testTemporaryScoreEditor(client){
   await client.send('Emulation.clearDeviceMetricsOverride');
 
   await client.evaluate(`document.querySelector('#scoreMeasureEditor [data-score-action="cancel"]').click()`);
+  const menuClose = await client.evaluate(`(function(){
+    var saved={m:curMeasureIdx,b:curBeatIdx,ls:appState.loopStart,le:appState.loopEnd,lsv:$('#loopStart').value,lev:$('#loopEnd').value};
+    var c0=document.querySelector('#measuresGrid .measure-card[data-m="0"]');
+    var btn=c0.querySelector('.score-measure-menu-button'),menu=c0.querySelector('.score-measure-menu');
+    btn.click();var openedByTrigger=menu.hidden===false;
+    btn.click();var toggleCloses=menu.hidden===true;
+    btn.click();
+    var c1=document.querySelector('#measuresGrid .measure-card[data-m="1"]');
+    var other=c1.querySelector('.beat-cell')||c1;
+    other.click();
+    var outsideCloses=menu.hidden===true&&btn.getAttribute('aria-expanded')==='false';
+    if(!menu.hidden)btn.click();
+    btn.click();
+    var reopened=menu.hidden===false;
+    document.body.click();
+    var bodyCloses=reopened&&menu.hidden===true;
+    curMeasureIdx=saved.m;curBeatIdx=saved.b;appState.loopStart=saved.ls;appState.loopEnd=saved.le;
+    $('#loopStart').value=saved.lsv;$('#loopEnd').value=saved.lev;
+    updateLoopClasses();
+    return {openedByTrigger:openedByTrigger,toggleCloses:toggleCloses,outsideCloses:outsideCloses,bodyCloses:bodyCloses};
+  })()`);
+  assert.deepEqual(menuClose, {openedByTrigger:true, toggleCloses:true, outsideCloses:true, bodyCloses:true}, 'measure menu closes on toggle and on outside clicks');
   const mutations = await client.evaluate(`(function(){
     function selectSong(id){var select=document.getElementById('songSelect');select.value=id;select.dispatchEvent(new Event('change',{bubbles:true}));}
     function card(index){return document.querySelector('#measuresGrid .measure-card[data-m="'+index+'"]');}
