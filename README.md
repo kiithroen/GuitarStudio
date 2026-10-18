@@ -19,6 +19,7 @@ python -m http.server 8765 --bind 127.0.0.1
 - [사용 흐름](Docs/usage.md): 악보 연습, 사진/PDF, Google Sheets와 백업
 - [악보 입력 형식](Docs/score-format.md): 외부에서 작성할 텍스트 악보 문법과 박자 해석
 - [개발 안내](Docs/development.md): 모듈 구성과 검증 명령
+- [내장곡 출처와 운지 제안](Docs/builtin-sources.md): 확인한 선율 출처와 앱 연습용 운지 제안의 구분
 - [리듬·오디오 계약](Docs/beginner-rhythm.md): 현재 파서와 재생의 유지보수 기준
 - [에이전트 지침](AGENTS.md): 변경 범위와 필수 검증 규칙
 

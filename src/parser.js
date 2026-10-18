@@ -248,6 +248,53 @@
     // 화음 끝의 주법 postfix가 마지막 구성음의 오른손 suffix에 붙는 조합은 금지한다.
     if (/:([pima])[!~]$/.test(tok)) return null;
 
+    // 화음은 구성음을 먼저 나눠 각 음표의 주법과 운지를 독립적으로 해석한다.
+    if (tok.indexOf('+') >= 0){
+      var subParts = tok.split('+').map(function(s){ return s.trim(); });
+      if (subParts.some(function(s){ return !s; })) return null;
+      var parsedSub = subParts.map(function(sp){ return parseNoteToken(sp, altIdx); });
+      if (!parsedSub.length || parsedSub.some(function(note){ return !note; })) return null;
+      if (parsedSub.length === 1) return parsedSub[0];
+
+      parsedSub.sort(function(a, b){ return a.midi - b.midi; });
+      var bassInf = parsedSub[0];
+      var melInf = parsedSub[parsedSub.length - 1];
+      var bassPos = bassInf.pos ? Object.assign({}, bassInf.pos) : { str: 6, fret: 0, lh: null, rh: null };
+      var bassTokStr = bassInf.customTok || bassInf.en;
+      melInf.bass = {
+        tok: bassTokStr,
+        midi: bassInf.midi,
+        en: bassInf.en,
+        ko: bassInf.ko,
+        str: bassPos.str,
+        fret: bassPos.fret,
+        lh: bassPos.lh,
+        rh: bassPos.rh == null ? null : bassPos.rh,
+        articulation: bassInf.articulation || null,
+        explicitArticulation: !!bassInf.explicitArticulation
+      };
+
+      // 3음 이상 화음(코드 롤/아르페지오) 지원
+      var chordNotes = parsedSub.map(function(ps){
+        var pos = ps.pos ? Object.assign({}, ps.pos) : { str: 1, fret: 0, lh: null, rh: null };
+        return {
+          tok: ps.customTok || ps.en,
+          midi: ps.midi,
+          en: ps.en,
+          ko: ps.ko,
+          str: pos.str,
+          fret: pos.fret,
+          lh: pos.lh,
+          rh: pos.rh == null ? null : pos.rh,
+          articulation: ps.articulation || null,
+          explicitArticulation: !!ps.explicitArticulation
+        };
+      });
+      melInf.chordNotes = chordNotes;
+      melInf.customTok = chordNotes.map(function(cn){ return cn.tok; }).join('+');
+      return melInf;
+    }
+
     // 오른손 운지는 음표별로만 적고 잘못된 콜론 표기는 음표로 복구하지 않는다.
     var explicitRh = null;
     if (tok.indexOf(':') >= 0 && tok.indexOf('+') < 0){
@@ -276,75 +323,6 @@
       tok = tok.slice(0, -1).trim();
     }
     if (!tok || tok === '-' || tok === '.') return null;
-
-    // 2성부 및 다성부(엄지 베이스 + 내성 + 주선율 화음 탄현) 표기 예: 0E2+4B4, 3C3+2E3+0G3+1C4
-    if (tok.indexOf('+') >= 0){
-      var subParts = tok.split('+').map(function(s){ return s.trim(); });
-      if (subParts.some(function(s){ return !s; })) return null;
-      var parsedSub = subParts.map(function(sp){ return parseNoteToken(sp, altIdx); });
-      if (!parsedSub.length || parsedSub.some(function(note){ return !note; })) return null;
-      if (parsedSub.length === 1){
-        if (explicitArtic){
-          parsedSub[0].articulation = explicitArtic;
-          parsedSub[0].explicitArticulation = true;
-        }
-        return parsedSub[0];
-      }
-      var inheritedArtic = explicitArtic;
-      parsedSub.forEach(function(ps){
-        if (ps.explicitArticulation && ps.articulation) inheritedArtic = ps.articulation;
-      });
-      parsedSub.sort(function(a, b){ return a.midi - b.midi; });
-      var bassInf = parsedSub[0];
-      var melInf = parsedSub[parsedSub.length - 1];
-      var bassPos = bassInf.pos ? Object.assign({}, bassInf.pos) : { str: 6, fret: 0, lh: null, rh: null };
-      var cleanBassCustom = (bassInf.customTok || '').replace(/^[!~]+|[!~]+$/g, '');
-      var bassTokStr = cleanBassCustom || bassInf.en;
-      var melPos = melInf.pos ? Object.assign({}, melInf.pos) : null;
-      var cleanMelCustom = (melInf.customTok || '').replace(/^[!~]+|[!~]+$/g, '');
-      var melTokStr = cleanMelCustom || melInf.en;
-      var articPrefix = inheritedArtic === 'apoyando' ? '!' : (inheritedArtic === 'tirando' ? '~' : '');
-      melInf.bass = {
-        tok: bassTokStr,
-        midi: bassInf.midi,
-        en: bassInf.en,
-        ko: bassInf.ko,
-        str: bassPos.str,
-        fret: bassPos.fret,
-        lh: bassPos.lh,
-        rh: bassPos.rh == null ? null : bassPos.rh
-      };
-      if (inheritedArtic){
-        melInf.articulation = inheritedArtic;
-        melInf.explicitArticulation = true;
-      }
-
-      // 3음 이상 화음(코드 롤/아르페지오) 지원
-      var chordNotes = parsedSub.map(function(ps){
-        var pos = ps.pos ? Object.assign({}, ps.pos) : { str: 1, fret: 0, lh: null, rh: null };
-        var cleanTok = (ps.customTok || '').replace(/^[!~]+|[!~]+$/g, '');
-        var tokStr = cleanTok || ps.en;
-        return {
-          tok: tokStr,
-          midi: ps.midi,
-          en: ps.en,
-          ko: ps.ko,
-          str: pos.str,
-          fret: pos.fret,
-          lh: pos.lh,
-          rh: pos.rh == null ? null : pos.rh,
-          articulation: ps.articulation || inheritedArtic
-        };
-      });
-      melInf.chordNotes = chordNotes;
-
-      if (parsedSub.length > 2){
-        melInf.customTok = chordNotes.map(function(cn){ return cn.tok; }).join('+');
-      } else {
-        melInf.customTok = bassTokStr + '+' + articPrefix + melTokStr;
-      }
-      return melInf;
-    }
 
     // 괄호 표기 예: D4(4) -> 4D4 정규화
     var parenMatch = tok.match(/^([A-Ga-g]#?[2-5]?|[가-힣]+#?[2-5]?)\(([0-4])\)$/);

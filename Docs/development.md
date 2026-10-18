@@ -37,6 +37,7 @@ Guitar Studio는 번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱
 
 ```powershell
 node test/test-parser.js
+node test/test-builtins.js
 node test/test-notation.js
 node test/test-rhythm.js
 node test/test-image-conversion.js

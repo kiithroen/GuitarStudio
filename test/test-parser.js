@@ -95,6 +95,44 @@ test('bass plus melody and multi-note chords preserve roles and ascending arpegg
   assert.equal(chord.chordNotes[3].midi, 71);
 });
 
+test('chord articulation belongs to its written component and canonical tokens retain it', function(){
+  assert.equal(parser.parseNoteToken('C4!', 0).articulation, 'apoyando', 'legacy single-note postfix apoyando remains accepted');
+  assert.equal(parser.parseNoteToken('C4~', 0).articulation, 'tirando', 'legacy single-note postfix tirando remains accepted');
+  const cases = [
+    ['!C3+E4', [[48, 'apoyando', true], [64, null, false]], '!C3+E4'],
+    ['C3+!E4', [[48, null, false], [64, 'apoyando', true]], 'C3+!E4'],
+    ['~C3+!E4', [[48, 'tirando', true], [64, 'apoyando', true]], '~C3+!E4'],
+    ['!E4+C3', [[48, null, false], [64, 'apoyando', true]], 'C3+!E4'],
+    ['~0E2@6:p+!4B4@1:a', [[40, 'tirando', true], [71, 'apoyando', true]], '~0E2@6:p+!4B4@1:a'],
+    ['C3+~E3+!G3', [[48, null, false], [52, 'tirando', true], [55, 'apoyando', true]], 'C3+~E3+!G3']
+  ];
+  for (const [token, expected, canonical] of cases){
+    const parsed = parser.parseNoteToken(token, 0);
+    assert.ok(parsed, token);
+    assert.deepEqual(parsed.chordNotes.map(note => [note.midi, note.articulation, note.explicitArticulation]), expected, token);
+    assert.deepEqual(parsed.chordNotes.map(note => note.tok).join('+'), canonical, token + ' canonical token');
+    assert.equal(parsed.articulation || null, expected[expected.length - 1][1], token + ' representative articulation');
+    assert.equal(!!parsed.explicitArticulation, expected[expected.length - 1][2], token + ' representative explicit flag');
+    assert.equal(parsed.customTok, canonical, token + ' normalized chord serialization');
+  }
+
+  const parsed = parser.parseNoteToken('~0E2@6:p+!4B4@1:a', 0);
+  assert.deepEqual([parsed.bass.tok, parsed.bass.articulation, parsed.bass.explicitArticulation, parsed.bass.rh, parsed.bass.lh, parsed.bass.str],
+    ['~0E2@6:p', 'tirando', true, 'p', 0, 6], 'bass retains its own articulation and complete token metadata');
+  assert.deepEqual([parsed.pos.rh, parsed.pos.lh, parsed.pos.str, parsed.articulation], ['a', 4, 1, 'apoyando'], 'melody representative retains its own metadata');
+
+  for (const token of ['~0E2@6:p+!4B4@1:a', 'E4+!C3', 'C3+~E3+!G3']){
+    const score = parse('[C] ' + token + ' r r r', 4);
+    assert.equal(score.errors.length, 0, token + ' parses as score');
+    const serialized = parser.serializeScoreMeasures(score.measures);
+    const restored = parse(serialized, 4);
+    assert.equal(restored.errors.length, 0, token + ' round-trips');
+    assert.deepEqual(restored.measures[0].beats[0].chordNotes.map(note => [note.midi, note.articulation]),
+      score.measures[0].beats[0].chordNotes.map(note => [note.midi, note.articulation]), token + ' round-trip articulation');
+  }
+  assert.equal(parser.parseNoteToken('C3:p+E4:i!', 0), null, 'invalid RH postfix technique remains rejected');
+});
+
 test('explicit bass helper returns only the bass attached to the beat', function(){
   const beat={bass:{midi:40,str:6}};
   assert.equal(parser.getExplicitBass(beat),beat.bass);
@@ -184,7 +222,7 @@ test('capo offsets clamp to twelve and title/badge metadata takes precedence', f
 
 test('all songs.json entries parse into the expected number of beats per measure', function(){
   const songs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'songs.json'), 'utf8'));
-  assert.equal(songs.length, 14);
+  assert.equal(songs.length, 13);
   for (const song of songs){
     const structured = parser.buildStructuredSong(song);
     assert.equal(structured.id, song.id);

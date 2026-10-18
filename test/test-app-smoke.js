@@ -222,9 +222,9 @@ async function testUnavailableIndexedDbBoot(html){
   const onUnhandled = reason => unhandled.push(reason);
   process.on('unhandledRejection', onUnhandled);
   try {
-    await waitFor(() => unavailableContext.allSongs.length === 14 && unavailableContext.curSong != null);
+    await waitFor(() => unavailableContext.allSongs.length === 13 && unavailableContext.curSong != null);
     await new Promise(resolve => setTimeout(resolve, 50));
-    assert.equal(unavailableContext.allSongs.length, 14, 'built-in songs render when IndexedDB is unavailable');
+    assert.equal(unavailableContext.allSongs.length, 13, 'built-in songs render when IndexedDB is unavailable');
     assert.ok(unavailableElements.get('measuresGrid').children.length > 0, 'built-in score renders when IndexedDB is unavailable');
     assert.equal(unavailableElements.get('storageStatus').hidden, false, 'unavailable IndexedDB displays storage guidance');
     assert.equal(unhandled.length, 0, 'unavailable IndexedDB causes no unhandled rejection');
@@ -239,15 +239,15 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=explicit-pima-1')), 'every app script uses the shared explicit pima revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=builtin-score-review-2')), 'every app script uses the shared built-in score review revision');
   assert.doesNotMatch(html, /newTextSongBtn|editStructuredBtn|convertImgToScoreBtn|ocrModalFileInput|refImgDetails|refScoreImg|newSongModal|veBarsGrid/);
   for (const script of scripts){
     const source = fs.readFileSync(path.join(root, script), 'utf8');
     vm.runInContext(source, context, { filename: script });
   }
-  await waitFor(() => context.allSongs.length === 14 && context.curSong != null);
+  await waitFor(() => context.allSongs.length === 13 && context.curSong != null);
   await testUnavailableIndexedDbBoot(html);
-  assert.equal(context.allSongs.length, 14, 'songs.json loads through app boot');
+  assert.equal(context.allSongs.length, 13, 'songs.json loads through app boot');
   assert.equal(context.curSong.id, 'builtin-lv1-butterfly', 'saved/default built-in song is selected');
   assert.equal(elements.get('fretboard').children.length, 7, 'fretboard renders six strings and one header');
   assert.ok(elements.get('measuresGrid').children.length > 0, 'selected score renders measures');

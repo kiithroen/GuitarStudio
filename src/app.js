@@ -79,7 +79,7 @@ function curCapo(){
   var guitarBus = null, reverbNode = null, pluckNoiseBuf = null, clickBus = null;
   var dryGainNode = null, wetGainNode = null, bodyModes = [];
   var stringVoices = {}; // 줄 번호(1~6)별 현재 울리고 있는 보이스 목록 (같은 줄 재탄현 시 이전 음 정지용)
-  // 기타 마스터 음량 (0.90에서 -1.6dB): 내장곡 실측 기준 로망스 원곡 9/8 첫 박(베이스+아포얀도 동시 탄현)을 제외한 모든 곡의 피크가 -1dBFS 아래
+  // 기타 마스터 음량: 화음과 명시 아포얀도의 동시 탄현을 고려한 공통 출력 레벨
   var GUITAR_MASTER_GAIN = 0.75;
   var isPlaying = false;
   var playSession = null;
@@ -237,6 +237,16 @@ function curCapo(){
       grid.style.gridTemplateColumns = isTab ? 'repeat(auto-fill, minmax(330px, 1fr))' : 'repeat(auto-fill, minmax(340px, 1fr))';
     } else {
       grid.style.gridTemplateColumns = isTab ? 'repeat(auto-fill, minmax(250px, 1fr))' : 'repeat(auto-fill, minmax(260px, 1fr))';
+    }
+    if (isTab){
+      var maxSubParts = (curSong.measures || []).reduce(function(maxParts, measure){
+        return (measure.beats || []).reduce(function(measureMax, beat){
+          return Math.max(measureMax, beat.subNotes && beat.subNotes.length || 1);
+        }, maxParts);
+      }, 1);
+      var requiredMinWidth = curSong.beats * maxSubParts * 48 + 56;
+      var existingMinWidth = curSong.beats >= 9 ? 560 : (curSong.beats >= 8 ? 460 : (curSong.beats >= 6 ? 330 : 250));
+      grid.style.gridTemplateColumns = 'repeat(auto-fill,minmax(' + Math.max(existingMinWidth, requiredMinWidth) + 'px,1fr))';
     }
     var chordsSet = [];
 

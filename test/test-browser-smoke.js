@@ -224,6 +224,24 @@ async function testConcertHallOfflineRender(client){
       var peak=0; for(var i=0;i<left.length;i++) peak=Math.max(peak,Math.abs(left[i]),Math.abs(right[i]));
       return { tailRms:rms(1.01,1.8), lateRms:rms(0.516,1.0), earlyRms:rms(0.11,0.45), peak:peak, sourceStops:sourceStops };
     }
+    async function renderRomance(engine, hall, guideEvents){
+      appState.acousticFx=hall; appState.bodyAmount=0; appState.sympAmount=0; appState.synthEngine=engine;
+      var rate=48000, ctx=new OfflineAudioContext(2,rate*6,rate); ctx.resume=function(){ return Promise.resolve(); };
+      window.actx=ctx; window.outGain=null; window.clickBus=null; window.guitarBus=null;
+      window.dryGainNode=null; window.wetGainNode=null; window.reverbNode=null; window.bodyModes=[];
+      window.trackedGuideVoices=[]; window.stringVoices={}; ensureAudioCtx();
+      dryGainNode.gain.value=0.88; wetGainNode.gain.value=hall?CONCERT_HALL_WET_GAIN:0;
+      guideEvents.forEach(function(event){
+        playGuitarNote(event.note.midi,event.duration,event.when,event.gain,event.articulation,event.str,{exactDuration:true});
+      });
+      var buffer=await ctx.startRendering(), peak=0, sum=0, count=0;
+      for(var i=0;i<buffer.length;i++){
+        var left=buffer.getChannelData(0)[i], right=buffer.getChannelData(1)[i];
+        peak=Math.max(peak,Math.abs(left),Math.abs(right));
+        if(i>=Math.floor(0.1*rate)&&i<Math.floor(4.5*rate)){var mono=(left+right)*0.5;sum+=mono*mono;count++;}
+      }
+      return {engine:engine,fx:hall?'hall':'dry',peak:peak,rms:Math.sqrt(sum/count),eventCount:guideEvents.length};
+    }
     async function renderChord(engine, chord, wet, amount){
       amount = amount == null ? 1 : amount;
       appState.acousticFx=wet; appState.bodyAmount=amount; appState.sympAmount=amount; appState.synthEngine=engine;
@@ -263,6 +281,19 @@ async function testConcertHallOfflineRender(client){
         result.chords.push(await renderChord(engine,[40,47,52,55,59,64],true,2));
         result.chords.push(await renderChord(engine,[41,48,53,57,60,65],true,2));
       }
+      var lv6=allSongs.find(function(song){return song.id==='builtin-lv6-romance-full';});
+      if(!lv6 || !lv6.measures || !lv6.measures[0]) throw new Error('Lv.6 Romance built-in score is unavailable for offline rendering');
+      var lv6SlotDuration=60/Number(lv6.bpm || 56), lv6Events=[];
+      lv6.measures[0].beats.forEach(function(beat,index){
+        lv6Events=lv6Events.concat(getBeatGuideEvents(beat,{startTime:0.1+index*lv6SlotDuration,slotDuration:lv6SlotDuration,measures:lv6.measures}));
+      });
+      var lv6Renders=[];
+      for(var engine of ['ks','classic']) for(var hallMode of [false,true]){
+        lv6Renders.push(await renderRomance(engine,hallMode,lv6Events));
+      }
+      result.lv6FirstMeasure={id:lv6.id,bpm:lv6.bpm,events:lv6Events.map(function(event){return {
+        midi:event.note.midi,when:event.when,duration:event.duration,gain:event.gain,articulation:event.articulation,str:event.str
+      };}),renders:lv6Renders};
     } finally {
       window.actx=saved.actx; window.outGain=saved.outGain; window.clickBus=saved.clickBus;
       window.guitarBus=saved.guitarBus; window.dryGainNode=saved.dryGainNode; window.wetGainNode=saved.wetGainNode;
@@ -288,6 +319,12 @@ async function testConcertHallOfflineRender(client){
   assert.ok(render.forcedClassic.sourceStops.length === 3 && render.forcedClassic.sourceStops.every(function(stop){return Math.abs(stop - 0.515) < 1e-6;}), 'hard loop boundary stops all three classic oscillators within 15ms');
   assert.ok(render.forcedClassic.lateRms < 1e-8, 'hard loop boundary render is silent for classic output after its 15ms cutoff');
   assert.ok(render.chords.every(function(chord){ return chord.peak < 1 && chord.activeRms > 0; }), 'valid six-string Em/F chords render for KS/classic with dry/hall routing and body/sympathetic amount 1 or 2, without clipping');
+  assert.equal(render.lv6FirstMeasure.id, 'builtin-lv6-romance-full', 'offline render uses the actual Lv.6 built-in score');
+  assert.equal(render.lv6FirstMeasure.events.length, 10, 'Lv.6 first measure guide emits bass, melody, and inner voice notes');
+  assert.deepEqual(render.lv6FirstMeasure.events.slice(0, 2).map(function(event){return [event.midi,event.gain,event.articulation,event.str];}),
+    [[40,0.62,'tirando',6],[71,1.16,'apoyando',1]], 'Lv.6 opening bass and melody retain their written articulation and strings');
+  assert.ok(render.lv6FirstMeasure.renders.length === 4 && render.lv6FirstMeasure.renders.every(function(item){return item.peak < 1 && item.rms > 0 && item.eventCount === 10;}),
+    'actual Lv.6 first measure renders audible, unclipped KS/classic dry/hall audio');
   const artifact = path.join(root, 'test-artifacts', 'audio-release-check-' + Date.now() + '.json');
   fs.mkdirSync(path.dirname(artifact), { recursive:true });
   fs.writeFileSync(artifact, JSON.stringify({ sampleRateHz:48000, peakDefinition:'max absolute sample across stereo channels',
@@ -295,9 +332,9 @@ async function testConcertHallOfflineRender(client){
     gain:render.gain, wetTailRatio:render.tailRatio, chords:render.chords, matrix:render.matrix,
     dryTailRms:render.dry.tailRms, hallTailRms:render.hall.tailRms, forcedCutoffStopAt:render.forced.sourceStops[0],
     forcedClassicStops:render.forcedClassic.sourceStops, forcedClassicLateRms:render.forcedClassic.lateRms,
-    forcedPostCutoffRms:render.forced.lateRms }, null, 2) + '\n');
+    forcedPostCutoffRms:render.forced.lateRms, lv6FirstMeasure:render.lv6FirstMeasure }, null, 2) + '\n');
   process.stdout.write('Artifact: ' + artifact + '\n');
-  process.stdout.write('Browser checkpoint: OfflineAudioContext natural releases, KS/classic hard cutoff, 12 KS/classic duration/FX cases, isolated hall tail, and 12 valid six-string Em/F chord renders passed (wet tail ratio ' + render.tailRatio.toFixed(4) + ', max chord peak ' + Math.max.apply(null,render.chords.map(function(chord){return chord.peak;})).toFixed(4) + ')\n');
+  process.stdout.write('Browser checkpoint: OfflineAudioContext natural releases, KS/classic hard cutoff, 12 KS/classic duration/FX cases, isolated hall tail, 12 valid six-string Em/F chord renders, and four actual Lv.6 first-measure renders passed (wet tail ratio ' + render.tailRatio.toFixed(4) + ', max chord peak ' + Math.max.apply(null,render.chords.map(function(chord){return chord.peak;})).toFixed(4) + ')\n');
 }
 
 async function testPracticeSessionLifecycle(client) {
@@ -914,6 +951,137 @@ async function capturePimaScreenshots(client) {
   process.stdout.write('Pima screenshots: ' + outputs.join(' ; ') + '\n');
 }
 
+async function captureBuiltinRomanceScreenshots(client, browserBin){
+  const screenshotDir = path.join(__dirname, '..', 'test-artifacts');
+  fs.mkdirSync(screenshotDir, { recursive:true });
+  const browserName = path.basename(browserBin, path.extname(browserBin)).toLowerCase();
+  const timestamp = Date.now();
+  const outputs = [];
+  try {
+    for (const viewport of [{ width:1280, height:900, label:'desktop' }, { width:390, height:844, label:'mobile' }]) {
+      await client.send('Emulation.setDeviceMetricsOverride', {
+        width:viewport.width, height:viewport.height, deviceScaleFactor:1, mobile:viewport.width < 500
+      });
+      await client.evaluate(`(function(){
+        var score=document.getElementById('structuredScoreWrap');
+        if(score) score.scrollIntoView({block:'start'});
+      })()`);
+      const pillBounds = await client.evaluate(`(function(){
+        var markers=Array.from(document.querySelectorAll('#measuresGrid .tab-fret-pill.note-fret, #measuresGrid .tab-note-rh'));
+        var failures=[];
+        markers.forEach(function(marker){
+          var cell=marker.closest('.tab-cell'), stave=marker.closest('.tab-stave-wrap');
+          if(!cell||!stave){failures.push({reason:'missing-container',className:marker.className});return;}
+          var bounds=marker.getBoundingClientRect(), cellBounds=cell.getBoundingClientRect(), staveBounds=stave.getBoundingClientRect();
+          if(bounds.left<cellBounds.left-1||bounds.right>cellBounds.right+1||bounds.left<staveBounds.left-1||bounds.right>staveBounds.right+1){
+            failures.push({className:marker.className,left:bounds.left,right:bounds.right,cellLeft:cellBounds.left,cellRight:cellBounds.right,staveLeft:staveBounds.left,staveRight:staveBounds.right});
+          }
+        });
+        return {count:markers.length,failures:failures};
+      })()`);
+      assert.ok(pillBounds.count>0, 'Lv.6 score renders fret pills and explicit right-hand markers');
+      assert.deepEqual(pillBounds.failures, [], 'TAB fret pills and right-hand markers fit within their beat cells and stave');
+      const image = await client.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+      const target = path.join(screenshotDir, 'builtin-romance-' + browserName + '-' + viewport.label + '-' + timestamp + '.png');
+      fs.writeFileSync(target, Buffer.from(image.data, 'base64'));
+      outputs.push(target);
+    }
+  } finally {
+    await client.send('Emulation.setDeviceMetricsOverride', { width:1280, height:900, deviceScaleFactor:1, mobile:false });
+  }
+  process.stdout.write('Built-in Lv.6 Romance screenshots: ' + outputs.join(' ; ') + '\n');
+}
+
+async function testBuiltinScores(client, browserBin){
+  const restoreKey = '__gsBuiltinScoreReviewRestore_' + process.pid;
+  await client.evaluate(`(function(){
+    var key=${JSON.stringify(restoreKey)};
+    window[key]={song:curSong,state:Object.assign({},appState),measure:window.curMeasureIdx,beat:window.curBeatIdx,scrollX:window.scrollX,scrollY:window.scrollY};
+  })()`);
+  try {
+    const review = await client.evaluate(`(function(){
+      if(!Array.isArray(window.BUILTIN_SONGS)||window.BUILTIN_SONGS.length!==13) throw new Error('Expected the 13-song built-in catalog');
+      if(window.BUILTIN_SONGS.some(function(song){return /arirang|아리랑/i.test(song.id+' '+song.title+' '+song.badge);})) throw new Error('Arirang must not be present in built-in song options');
+      var results=[];
+      window.BUILTIN_SONGS.forEach(function(builtin){
+        var song=window.allSongs.find(function(candidate){return candidate.id===builtin.id;});
+        if(!song) throw new Error('Built-in score missing from loaded songs: '+builtin.id);
+        if(song.type!=='structured') throw new Error('Built-in score is not structured: '+builtin.id);
+        var validation=validateScore(serializeScoreMeasures(builtin.measures,'\\n'),builtin.beats);
+        if(validation.errors.length) throw new Error('Built-in score validation failed: '+builtin.id+' '+JSON.stringify(validation.errors));
+        changeSongById(builtin.id);
+        ['tab','card'].forEach(function(view){
+          appState.scoreView=view;
+          renderSong();
+          var grid=document.getElementById('measuresGrid');
+          var cards=grid?grid.querySelectorAll('.measure-card'):[];
+          var wrapper=document.getElementById('structuredScoreWrap');
+          var hasNotes=view==='tab'
+            ? !!(grid&&grid.querySelector('.tab-fret-pill.note-fret'))
+            : !!(grid&&grid.querySelector('.beat-cell .b-note-sub'));
+          if(cards.length!==song.measures.length) throw new Error('Rendered measure count mismatch: '+builtin.id+' '+view+' '+cards.length+'/'+song.measures.length);
+          if(!hasNotes) throw new Error('Rendered score has no note content: '+builtin.id+' '+view);
+          if(!wrapper||!wrapper.classList.contains(view==='tab'?'tab-view-active':'card-view-active')) throw new Error('Score view did not render: '+builtin.id+' '+view);
+          results.push({id:builtin.id,view:view,measures:cards.length,hasNotes:hasNotes,errors:validation.errors.length});
+        });
+      });
+      changeSongById('builtin-lv6-romance-full');
+      appState.scoreView='tab';
+      renderSong();
+      var romance=window.allSongs.find(function(song){return song.id==='builtin-lv6-romance-full';});
+      if(!romance) throw new Error('Lv.6 Romance built-in score is missing');
+      var first=romance.measures[0];
+      if(romance.beats!==3||Number(romance.bpm)!==56) throw new Error('Lv.6 Romance meter or tempo mismatch');
+      if(!first||first.beats.length!==3||!first.beats.every(function(beat){return beat.subNotes&&beat.subNotes.length===3;})) throw new Error('Lv.6 first measure must have three beats split into three notes');
+      var firstMeasure=document.querySelector('#measuresGrid .measure-card[data-m="0"]');
+      var fingers=firstMeasure?Array.from(firstMeasure.querySelectorAll('.tab-note-rh')).map(function(node){return node.textContent;}):[];
+      if(fingers.slice(0,4).join('/')!=='p/a/m/i') throw new Error('Lv.6 first measure TAB does not show explicit p/a/m/i: '+fingers.join('/'));
+      var slotDuration=1, events=[];
+      first.beats.forEach(function(beat,index){
+        events=events.concat(getBeatGuideEvents(beat,{startTime:index*slotDuration,slotDuration:slotDuration,measures:romance.measures}));
+      });
+      var expectedTimes=[0,0,1/3,2/3,1,4/3,5/3,2,7/3,8/3];
+      if(events.length!==10) throw new Error('Lv.6 first measure must produce 10 guide note events, got '+events.length);
+      events.forEach(function(event,index){
+        if(Math.abs(event.when-expectedTimes[index])>1e-9) throw new Error('Lv.6 guide event is not at the expected third-beat onset: '+index+' '+event.when);
+      });
+      if(events.filter(function(event){return event.note.midi===40;}).length!==1||
+        events.filter(function(event){return event.note.midi===71;}).length!==3||
+        events.filter(function(event){return event.note.midi!==40&&event.note.midi!==71;}).length!==6) throw new Error('Lv.6 bass/melody/inner note counts are not 1/3/6');
+      if(events[0].note.midi!==40||events[0].gain!==0.62||events[0].articulation!=='tirando'||
+        events[1].note.midi!==71||events[1].gain!==1.16||events[1].articulation!=='apoyando') throw new Error('Lv.6 opening bass/melody articulation or gain mismatch');
+      var score=document.getElementById('structuredScoreWrap');
+      if(score) score.scrollIntoView({block:'start'});
+      return {catalogCount:window.BUILTIN_SONGS.length,rendered:results,romance:{id:romance.id,bpm:romance.bpm,beats:romance.beats,
+        firstMeasureBeats:first.beats.length,subdivisionCounts:first.beats.map(function(beat){return beat.subNotes.length;}),
+        fingers:fingers.slice(0,4),guideEvents:events.map(function(event){return {midi:event.note.midi,when:event.when,gain:event.gain,
+          articulation:event.articulation,str:event.str,duration:event.duration};})}};
+    })()`);
+    assert.equal(review.catalogCount, 13, 'all built-in scores are reviewed');
+    assert.equal(review.rendered.length, 26, 'each built-in score renders in tab and card views');
+    assert.ok(review.rendered.every(function(item){return item.measures>0&&item.hasNotes&&item.errors===0;}), 'built-in score DOM and validation are clean');
+    assert.equal(review.romance.bpm, 56, 'Lv.6 Romance tempo is 56');
+    assert.equal(review.romance.beats, 3, 'Lv.6 Romance uses three beats per measure');
+    assert.deepEqual(review.romance.subdivisionCounts, [3,3,3], 'all first-measure beats use three subdivisions');
+    assert.deepEqual(review.romance.fingers, ['p','a','m','i'], 'first measure TAB shows explicit p/a/m/i fingers');
+    assert.equal(review.romance.guideEvents.length, 10, 'first measure produces 10 guide note events');
+    process.stdout.write('Browser checkpoint: all 13 built-in scores render in TAB/card; Lv.6 Romance first measure has explicit p/a/m/i and 10 timed guide notes\n');
+    await captureBuiltinRomanceScreenshots(client,browserBin);
+  } finally {
+    await client.evaluate(`(function(){
+      var key=${JSON.stringify(restoreKey)},saved=window[key];
+      if(!saved) return;
+      if(saved.song) window.curSong=saved.song;
+      Object.keys(appState).forEach(function(name){if(!Object.prototype.hasOwnProperty.call(saved.state,name)) delete appState[name];});
+      Object.keys(saved.state).forEach(function(name){appState[name]=saved.state[name];});
+      window.curMeasureIdx=saved.measure; window.curBeatIdx=saved.beat;
+      if(window.curSong){renderSong();saveAppState();}
+      window.scrollTo(saved.scrollX,saved.scrollY);
+      delete window[key];
+    })()`);
+  }
+}
+
 async function testStorageFailureRecovery(client) {
   const result = await client.evaluate(`(async function(){
     var openSheet = document.getElementById('openSheetSyncBtn');
@@ -992,7 +1160,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=explicit-pima-1')), 'all app scripts use the explicit pima revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=builtin-score-review-2')), 'all app scripts use the built-in score review revision');
   const browserBin = findBrowserBinary();
   if (!browserBin) {
     process.stdout.write('SKIP: No Chrome or Edge binary found for browser test\n');
@@ -1050,11 +1218,11 @@ async function main() {
     await cdp.send('Page.navigate', { url: appUrl });
 
     // Wait until boot completes
-    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.allSongs.length === 14 && window.curSong != null', 8000);
+    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.allSongs.length === 13 && window.curSong != null', 8000);
 
     // Assert initial app state in real browser
     const songCount = await cdp.evaluate('window.allSongs.length');
-    assert.equal(songCount, 14, 'browser loaded 14 songs from songs.json');
+    assert.equal(songCount, 13, 'browser loaded 13 songs from songs.json');
 
     const curSongId = await cdp.evaluate('window.curSong.id');
     assert.equal(curSongId, 'builtin-lv1-butterfly', 'default song selected in browser');
@@ -1074,6 +1242,7 @@ async function main() {
     assert.equal(audioBoot.instance, true, 'app initializes a real AudioContext');
     assert.equal(audioBoot.state, 'running', 'AudioContext resumes in the browser test');
     await testConcertHallRouting(cdp);
+    await testBuiltinScores(cdp, browserBin);
     await testConcertHallOfflineRender(cdp);
     const liveGuide = await cdp.evaluate(`(function(){
       var parsed = parseScore('[C] 0E2 r r r', 4);
@@ -1285,7 +1454,7 @@ async function main() {
     assert.equal(ytLinkText.includes("[Lv"), false, "youtube search query excludes [Lv..] tags");
 
     await cdp.send('Page.reload', { ignoreCache: true });
-    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.BUILTIN_SONGS.length === 14 && window.imageSongs.some(function(song){ return song.id === "browser-backup-image"; })', 8000);
+    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.BUILTIN_SONGS.length === 13 && window.imageSongs.some(function(song){ return song.id === "browser-backup-image"; })', 8000);
     const screenshotDir = path.join(__dirname, '..', 'test-artifacts');
     let screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review.png');
     if (fs.existsSync(screenshotTarget)) screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review-' + Date.now() + '.png');

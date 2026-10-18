@@ -47,7 +47,10 @@ function getBeatGuideEvents(beat, options){
     if (kind !== 'note' || duration <= 0) return;
     guideNotes(noteSource).forEach(function(note){
       if (!note || !note.midi) return;
-      var articulation = note.articulation || noteSource.articulation || part.articulation || null;
+      var hasChordComponents = Array.isArray(noteSource.chordNotes) && noteSource.chordNotes.length > 0;
+      var articulation = hasChordComponents
+        ? (note.articulation || null)
+        : (note.articulation || noteSource.articulation || part.articulation || null);
       var gain = articulation === 'apoyando' ? 1.16 : (articulation === 'tirando' ? 0.62 : 1.0);
       events.push({ kind:'note', note:note, duration:duration, when:when,
         gain:gain, articulation:articulation, str:note.str });
