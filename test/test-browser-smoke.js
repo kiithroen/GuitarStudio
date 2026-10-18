@@ -441,6 +441,52 @@ async function testSubdividedGuide(client) {
   process.stdout.write('Checks: subdivided guide ' + result.length + '\n');
 }
 
+async function testStorageFailureRecovery(client) {
+  const result = await client.evaluate(`(async function(){
+    var originalSaveSong = window.dbSaveSong;
+    var originalDeleteSong = window.dbDeleteSong;
+    var originalSong = window.curSong;
+    var originalCustomSongs = window.customSongs.slice();
+    var assertions = [];
+    function check(ok, message){ if (!ok) throw new Error(message); assertions.push(message); }
+    try {
+      var openSheet = document.getElementById('openSheetSyncBtn');
+      openSheet.click();
+      check(!document.getElementById('sheetSyncModal').hidden, 'sheet sync modal opens through module wiring');
+      document.getElementById('closeSheetSyncBtn').click();
+      check(document.getElementById('sheetSyncModal').hidden, 'sheet sync modal closes through module wiring');
+
+      window.openConverterEditorModal({ title: 'browser storage failure', beats: 4, rawText: '[C] C4 - - -' });
+      document.getElementById('nsTitle').value = 'browser storage failure';
+      window.dbSaveSong = function(){ return Promise.reject(new Error('Injected storage failure')); };
+      await document.getElementById('saveNewSongBtn').click();
+      for (var failureWait = 0; failureWait < 100 && document.getElementById('saveNewSongBtn').disabled; failureWait++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
+      check(!document.getElementById('newSongModal').hidden, 'failed save keeps editor modal open');
+      check(!document.getElementById('storageStatus').hidden && document.getElementById('storageStatus').textContent.length > 0, 'failed save displays storage guidance');
+      check(document.getElementById('ocrStatusTxt').textContent.indexOf('저장하지 못했어요') >= 0, 'failed save displays guidance inside the editor');
+      check(!document.getElementById('saveNewSongBtn').disabled, 'failed save restores button enabled state');
+      check(window.curSong.id === originalSong.id, 'failed save preserves selected song');
+      check(window.customSongs.length === originalCustomSongs.length, 'failed save preserves custom song list');
+      window.dbSaveSong = originalSaveSong;
+      await document.getElementById('saveNewSongBtn').click();
+      for (var retryWait = 0; retryWait < 100 && !document.getElementById('newSongModal').hidden; retryWait++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
+      check(document.getElementById('newSongModal').hidden, 'retry success closes editor modal');
+      check(window.customSongs.some(function(song){ return song.title === 'browser storage failure'; }), 'retry success adds the custom song');
+      check((await dbGetAllSongs()).some(function(song){ return song.title === 'browser storage failure'; }), 'retry success persists the custom song in IndexedDB');
+      check(document.getElementById('storageStatus').hidden, 'retry success clears storage guidance');
+      check(document.getElementById('ocrStatusTxt').textContent === '', 'retry success clears editor guidance');
+      return assertions;
+    } finally {
+      window.dbSaveSong = originalSaveSong;
+      window.dbDeleteSong = originalDeleteSong;
+      window.curSong = originalSong;
+      if (document.getElementById('newSongModal') && !document.getElementById('newSongModal').hidden) document.getElementById('closeNewSongBtn').click();
+    }
+  })()`);
+  assert.ok(Array.isArray(result) && result.length >= 11, 'storage failure recovery and sheet module wiring pass');
+  process.stdout.write('Checks: storage recovery and sheet wiring ' + result.length + '\n');
+}
+
 async function main() {
   const browserBin = findBrowserBinary();
   if (!browserBin) {
@@ -500,6 +546,7 @@ async function main() {
 
     await testPracticeSessionLifecycle(cdp);
     await testSubdividedGuide(cdp);
+    await testStorageFailureRecovery(cdp);
 
     // Test editor modal interaction in browser
     await cdp.evaluate('window.openConverterEditorModal({ title: "browser-test-song", beats: 4, rawText: "[C] C4 -/D4 - - | browser test" })');
