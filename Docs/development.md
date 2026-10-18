@@ -53,7 +53,9 @@ node test/test-browser-smoke.js
 Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
 ```
 
-2026-10-19 결정: TAB·박자 카드·tooltip의 음이름과 구성음별 주법 표시는 `src/score.js`의 공통 formatter가 단일 진실 공급원이야. 그룹 대표 주법을 박 전체에 붙이면 아포얀도와 티란도가 섞인 박의 차이가 사라질 수 있어서 각 구성음 표기, TAB·박자 카드·tooltip 표시가 일치하는지 `test/test-score.js`와 브라우저 스모크로 확인해. 이 회귀 검사에는 렌더링 전후 악보 직렬화와 재생 이벤트 비교도 포함해 표시만 바뀌었는지 확인해.
+2026-10-19 결정: 음이름 표시는 `src/score.js`의 공통 formatter에서 음높이만 출력해. `!`·`~` 원문 주법 메타데이터와 재생 동작은 유지하지만, 음이름 뒤 기호나 주법 색으로 표시하면 시각 요소가 과밀해져 제거했어. `test/test-score.js`는 주법이 달라도 표기가 plain note name으로 같은지, formatter가 악보 객체를 바꾸지 않는지 확인해.
+
+2026-10-19 표시 계약: 지판 목표음은 개방현과 프렛 모두 같은 `target-note` 배지를 쓰고, TAB은 마지막 현 pill의 그림자까지 보이도록 하단 여백을 확보하면서 격자·현 이름·배경선 정렬을 유지해. 이 조정은 개방현 label의 색상 치환 불일치와 6현 하단 잘림을 막기 위한 거야.
 
 브라우저 스모크는 Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 실행 파일을 지정할 수 있어. 임시 HTTP 서버와 임시 브라우저 프로필을 사용하며 Web Audio API 경로를 실제 실행해. 이 테스트는 Node의 내장 `fetch`와 `WebSocket` 전역이 있는 환경이 필요해. 실행 환경은 `node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`로 확인할 수 있어. 자동화 검사는 실제 기기에서의 오디오 청취 품질을 확인하지 않아. 스크린샷 검증은 `test-artifacts/`에 새 파일을 만들 수 있으므로 기존 개인 자료를 보존해.
 

@@ -502,7 +502,7 @@ async function testConcertHallOfflineRender(client){
     'actual natural guide voices are cut by same-string reattack, a rest, and a loop hard stop in KS/classic offline rendering: '+JSON.stringify(render.naturalBoundaries));
   assert.ok(render.lv6FirstMeasure.renders.length === 4 && render.lv6FirstMeasure.renders.every(function(item){return item.peak < 1 && item.rms > 0 && item.eventCount === 10;}),
     'actual scheduleBeatGuide Lv.6 first measure renders audible, unclipped KS/classic dry/hall audio');
-  const artifact = path.join(root, 'test-artifacts', 'remove-note-length', 'audio-release-check-' + Date.now() + '.json');
+  const artifact = path.join(root, 'test-artifacts', 'clean-score-ui', 'audio-render-check-' + Date.now() + '.json');
   fs.mkdirSync(path.dirname(artifact), { recursive:true });
   const bassWavPaths = [];
   render.lv6FirstMeasure.bassComparison.forEach(function(item){
@@ -1153,10 +1153,28 @@ async function testSubdividedGuide(client) {
       updateActiveCursor(0, 1, true);
       check(emitted.map(function(event){ return event.midi; }).join(',') === '60,65' && emitted.map(function(event){ return event.str; }).join(',') === '3,2', 'preview plays both capo-adjusted pair pitches on strings three and two');
       var fretboardLow = document.querySelector('#fretboard .fb-open[data-str="3"]');
+      var fretboardLowMarker = fretboardLow && fretboardLow.querySelector('.fb-marker.target-note');
       var fretboardHigh = document.querySelector('#fretboard .fb-cell[data-str="2"][data-fret="1"] .target-note');
       var guideText = document.getElementById('guideNoteTxt').textContent;
       var guideHand = document.getElementById('guideRhTxt').textContent;
-      check(fretboardLow && fretboardLow.textContent.indexOf('솔') >= 0 && fretboardLow.textContent.indexOf('p') < 0 && getComputedStyle(fretboardLow).color === 'rgb(98, 212, 145)' && fretboardHigh && fretboardHigh.textContent.indexOf('도') >= 0, 'fretboard shows both written notes in the same green target style without a p label');
+      function directText(element){return Array.prototype.filter.call(element.childNodes,function(node){return node.nodeType===3;}).map(function(node){return node.textContent;}).join('').trim();}
+      var lowTargetStyle = fretboardLowMarker && getComputedStyle(fretboardLowMarker);
+      var highTargetStyle = fretboardHigh && getComputedStyle(fretboardHigh);
+      check(fretboardLow && fretboardLow.dataset.baseLabel==='3G' && directText(fretboardLow)==='' && fretboardLowMarker && fretboardLowMarker.textContent.indexOf('솔')>=0 && fretboardHigh && fretboardHigh.textContent.indexOf('도')>=0 &&
+        lowTargetStyle.borderRadius===highTargetStyle.borderRadius && lowTargetStyle.height===highTargetStyle.height && lowTargetStyle.backgroundColor===highTargetStyle.backgroundColor,
+        'open and fretted targets use matching green badge markers while the active open-string base label is hidden');
+      var priorChordDots=appState.showChordDots;
+      document.getElementById('toggleChordDotsBtn').click();
+      check(!!document.querySelector('#fretboard .fb-open[data-str="3"] .fb-marker.target-note') && !!document.querySelector('#fretboard .fb-cell[data-str="2"][data-fret="1"] .fb-marker.target-note'), 'toggling blue chord dots preserves green open and fretted target markers');
+      document.getElementById('toggleChordDotsBtn').click();
+      appState.showChordDots=priorChordDots;
+      var openPairScore=parseScore('[C] 0E4@1+0G3@3 - - -',4);
+      highlightFretboard('C',openPairScore.measures[0].beats[0],false,false,0);
+      check(document.querySelectorAll('#fretboard .fb-open .fb-marker.target-note').length===2,'simultaneous open-string targets each receive a green marker');
+      window.curSong=sourceSong;
+      highlightFretboard('C',sourceSong.measures[0].beats[0],false,false,0);
+      var restoredOpenThree=document.querySelector('#fretboard .fb-open[data-str="3"]');
+      check(restoredOpenThree.textContent===restoredOpenThree.dataset.baseLabel && !restoredOpenThree.querySelector('.fb-marker.target-note'), 'moving the target restores the inactive open-string base label');
       check(guideText.indexOf('겹음:') === 0 && guideText.indexOf('저음') < 0 && guideHand.indexOf('저음') < 0 && guideText.indexOf('엄지') < 0 && guideHand.indexOf('엄지') < 0 && guideText.indexOf('p(') < 0 && guideHand === '-', 'pair guide lists the notes without inferred hand roles');
       emitted = [];
       window.playSession = { inCountIn: false, nextBeatTime: 13, spb: 0.5, bpb: 3, bIdx: 1, mIdx: 0, loopCompleted: 0, endScheduled: false };
@@ -1198,7 +1216,7 @@ async function capturePimaScreenshots(client) {
     var score = document.getElementById('structuredScoreWrap');
     if (score) score.scrollIntoView({ block:'start' });
   })()`);
-  const screenshotDir = path.join(__dirname, '..', 'test-artifacts', 'remove-note-length');
+  const screenshotDir = path.join(__dirname, '..', 'test-artifacts', 'clean-score-ui');
   fs.mkdirSync(screenshotDir, { recursive:true });
   const prefix = 'explicit-pima-' + process.pid + '-' + Date.now();
   const outputs = [];
@@ -1215,44 +1233,78 @@ async function capturePimaScreenshots(client) {
 }
 
 async function captureBuiltinRomanceScreenshots(client, browserBin){
-  const screenshotDir = path.join(__dirname, '..', 'test-artifacts', 'remove-note-length');
+  const screenshotDir = path.join(__dirname, '..', 'test-artifacts', 'clean-score-ui');
   fs.mkdirSync(screenshotDir, { recursive:true });
   const browserName = path.basename(browserBin, path.extname(browserBin)).toLowerCase();
   const timestamp = Date.now();
-  const outputs = [];
+  const outputs = [], boundReports=[];
   try {
-    for (const viewport of [{ width:1280, height:900, label:'desktop' }, { width:390, height:844, label:'mobile' }]) {
+    for (const viewport of [{ width:1280, height:1600, label:'desktop' }, { width:390, height:1600, label:'mobile' }]) {
       await client.send('Emulation.setDeviceMetricsOverride', {
         width:viewport.width, height:viewport.height, deviceScaleFactor:1, mobile:viewport.width < 500
       });
       await client.evaluate(`(function(){
+        changeSongById('builtin-lv6-romance-full');
+        appState.scoreView='tab';
+        renderSong();
+        updateActiveCursor(0,0,false);
         var score=document.getElementById('structuredScoreWrap');
         if(score) score.scrollIntoView({block:'start'});
       })()`);
-      const pillBounds = await client.evaluate(`(function(){
-        var markers=Array.from(document.querySelectorAll('#measuresGrid .tab-fret-pill.note-fret, #measuresGrid .tab-note-rh'));
-        var failures=[];
-        markers.forEach(function(marker){
-          var cell=marker.closest('.tab-cell'), stave=marker.closest('.tab-stave-wrap');
-          if(!cell||!stave){failures.push({reason:'missing-container',className:marker.className});return;}
-          var bounds=marker.getBoundingClientRect(), cellBounds=cell.getBoundingClientRect(), staveBounds=stave.getBoundingClientRect();
-          if(bounds.left<cellBounds.left-1||bounds.right>cellBounds.right+1||bounds.left<staveBounds.left-1||bounds.right>staveBounds.right+1){
-            failures.push({className:marker.className,left:bounds.left,right:bounds.right,cellLeft:cellBounds.left,cellRight:cellBounds.right,staveLeft:staveBounds.left,staveRight:staveBounds.right});
-          }
-        });
-        return {count:markers.length,failures:failures};
+      const boundsEvidence = await client.evaluate(`(function(){
+        function measure(){
+          var markers=Array.from(document.querySelectorAll('#measuresGrid .tab-fret-pill.note-fret, #measuresGrid .tab-note-rh'));
+          var failures=[], samples=[];
+          markers.forEach(function(marker){
+            var cell=marker.closest('.tab-cell'), stave=marker.closest('.tab-stave-wrap');
+            if(!cell||!stave){failures.push({reason:'missing-container',className:marker.className});return;}
+            var bounds=marker.getBoundingClientRect(), cellBounds=cell.getBoundingClientRect(), staveBounds=stave.getBoundingClientRect();
+            var lineElements=Array.from(stave.querySelectorAll('.tab-line-h'));
+            var markerCenter=(bounds.top+bounds.bottom)/2;
+            var lineDelta=Math.min.apply(null,lineElements.map(function(line){return Math.abs(markerCenter-line.getBoundingClientRect().top);}));
+            var bottomGap=staveBounds.bottom-bounds.bottom;
+            samples.push({className:marker.className,top:bounds.top,bottom:bounds.bottom,bottomGap:bottomGap,lineDelta:lineDelta});
+            if(bounds.left<cellBounds.left-1||bounds.right>cellBounds.right+1||bounds.left<staveBounds.left-1||bounds.right>staveBounds.right+1){
+              failures.push({reason:'horizontal-bound',className:marker.className,left:bounds.left,right:bounds.right,cellLeft:cellBounds.left,cellRight:cellBounds.right,staveLeft:staveBounds.left,staveRight:staveBounds.right});
+            }
+            if(bounds.top<staveBounds.top||bounds.bottom>=staveBounds.bottom||!(bottomGap>0)||lineDelta>2){
+              failures.push({reason:'vertical-bound-or-line-alignment',className:marker.className,top:bounds.top,bottom:bounds.bottom,staveTop:staveBounds.top,staveBottom:staveBounds.bottom,bottomGap:bottomGap,lineDelta:lineDelta});
+            }
+          });
+          return {count:markers.length,failures:failures,samples:samples};
+        }
+        var actual=measure(), style=document.createElement('style');
+        style.textContent='.beats-row.tab-mode{height:130px;gap:0}.beat-cell.tab-cell{padding-bottom:8px;gap:2px}.tab-stave-side{padding-bottom:8px}.tab-cell-top{flex-shrink:1}.tab-cell-grid{flex-shrink:1}';
+        document.head.appendChild(style);
+        var legacy;
+        try{legacy=measure();}finally{style.remove();}
+        var open6=document.querySelector('#fretboard .fb-open[data-str="6"] .target-note');
+        var fret7=document.querySelector('#fretboard .fb-cell[data-str="1"][data-fret="7"] .target-note');
+        return {actual:actual,legacy:legacy,open6:open6&&open6.textContent,fret7:fret7&&fret7.textContent};
       })()`);
+      const pillBounds=boundsEvidence.actual;
       assert.ok(pillBounds.count>0, 'Lv.6 score renders fret pills and explicit right-hand markers');
       assert.deepEqual(pillBounds.failures, [], 'TAB fret pills and right-hand markers fit within their beat cells and stave');
+      assert.ok(pillBounds.samples.every(function(sample){return sample.bottomGap>0 && sample.lineDelta<=2;}), 'TAB pills align with string lines and keep positive bottom clearance: '+JSON.stringify(pillBounds.samples.slice(-8)));
+      assert.ok(boundsEvidence.legacy.failures.length>0,'legacy TAB geometry mutation is caught by the same bounds checker: '+JSON.stringify(boundsEvidence.legacy.failures.slice(-6)));
+      assert.ok(boundsEvidence.open6&&boundsEvidence.fret7,'TAB/fretboard screenshot shows the actual Lv.6 E2 open-6 and B4 fret-7 target markers');
       const image = await client.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
       const target = path.join(screenshotDir, 'builtin-romance-' + browserName + '-' + viewport.label + '-' + timestamp + '.png');
       fs.writeFileSync(target, Buffer.from(image.data, 'base64'));
       outputs.push(target);
+      boundReports.push({viewport:viewport.label,width:viewport.width,height:viewport.height,count:pillBounds.count,
+        minBottomGap:Math.min.apply(null,pillBounds.samples.map(function(sample){return sample.bottomGap;})),
+        maxLineDelta:Math.max.apply(null,pillBounds.samples.map(function(sample){return sample.lineDelta;})),
+        legacyFailureCount:boundsEvidence.legacy.failures.length,legacyFailures:boundsEvidence.legacy.failures,
+        open6:boundsEvidence.open6,fret7:boundsEvidence.fret7,screenshot:target});
     }
   } finally {
     await client.send('Emulation.setDeviceMetricsOverride', { width:1280, height:900, deviceScaleFactor:1, mobile:false });
   }
+  const boundsPath=path.join(screenshotDir,'tab-fretboard-bounds-'+browserName+'-'+timestamp+'.json');
+  fs.writeFileSync(boundsPath,JSON.stringify(boundReports,null,2)+'\n');
   process.stdout.write('Built-in Lv.6 Romance screenshots: ' + outputs.join(' ; ') + '\n');
+  process.stdout.write('TAB/fretboard geometry evidence: ' + boundsPath + '\n');
 }
 
 async function testBuiltinScores(client, browserBin){
@@ -1288,11 +1340,45 @@ async function testBuiltinScores(client, browserBin){
           results.push({id:builtin.id,view:view,measures:cards.length,hasNotes:hasNotes,errors:validation.errors.length});
         });
       });
+      changeSongById('builtin-lv5-romance');
+      appState.scoreView='card';
+      renderSong();
+      var lv5Card=document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="1"]');
+      if(!lv5Card) throw new Error('Lv.5 single-melody card is missing');
+      document.querySelectorAll('#measuresGrid .active-beat').forEach(function(cell){cell.classList.remove('active-beat');});
+      lv5Card.style.transition='none';
+      var lv5InactiveBackground=getComputedStyle(lv5Card).backgroundColor;
+      var lv5HasOldArpClass=lv5Card.classList.contains('arp-melody')||lv5Card.classList.contains('arp-sub');
+      updateActiveCursor(0,1,false);
+      var lv5ActiveCard=document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="1"]');
+      var lv5Active={classActive:lv5ActiveCard.classList.contains('active-beat'),background:getComputedStyle(lv5ActiveCard).backgroundColor};
+      changeSongById('builtin-lv1-butterfly');
+      appState.scoreView='card';
+      renderSong();
+      document.querySelectorAll('#measuresGrid .active-beat').forEach(function(cell){cell.classList.remove('active-beat');});
+      var plainCard=document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="0"]');
+      var lv1InactiveBackground=getComputedStyle(plainCard).backgroundColor;
       changeSongById('builtin-lv6-romance-full');
       appState.scoreView='tab';
       var romance=window.allSongs.find(function(song){return song.id==='builtin-lv6-romance-full';});
       if(!romance) throw new Error('Lv.6 Romance built-in score is missing');
       if(romance.beats!==3||Number(romance.bpm)!==56) throw new Error('Lv.6 Romance meter or tempo mismatch');
+      appState.scoreView='tab';
+      updateActiveCursor(0,0,false);
+      var open6=document.querySelector('#fretboard .fb-open[data-str="6"]');
+      var open6Marker=open6&&open6.querySelector('.fb-marker.target-note');
+      var fret7Marker=document.querySelector('#fretboard .fb-cell[data-str="1"][data-fret="7"] .fb-marker.target-note');
+      var openTargetStyle=open6Marker&&getComputedStyle(open6Marker),fretTargetStyle=fret7Marker&&getComputedStyle(fret7Marker);
+      var firstOpenTarget={open6Marker:open6Marker&&open6Marker.textContent,fret7Marker:fret7Marker&&fret7Marker.textContent,
+        baseLabel:open6&&open6.dataset.baseLabel,directLabel:open6?Array.prototype.filter.call(open6.childNodes,function(node){return node.nodeType===3;}).map(function(node){return node.textContent;}).join('').trim():null,
+        sameBadgeStyle:!!(openTargetStyle&&fretTargetStyle&&openTargetStyle.borderRadius===fretTargetStyle.borderRadius&&openTargetStyle.height===fretTargetStyle.height&&openTargetStyle.backgroundColor===fretTargetStyle.backgroundColor)};
+      var nextB3=romance.measures[0].beats[0].subNotes[1];
+      highlightFretboard('Em',nextB3,false,false,0);
+      var restoredOpen6=document.querySelector('#fretboard .fb-open[data-str="6"]');
+      var movedOpen2=document.querySelector('#fretboard .fb-open[data-str="2"]');
+      var fretboardTargets={first:firstOpenTarget,nextB3:nextB3.midi,open6Restored:restoredOpen6&&restoredOpen6.textContent===restoredOpen6.dataset.baseLabel,
+        open2Marker:movedOpen2&&movedOpen2.querySelector('.fb-marker.target-note')&&movedOpen2.querySelector('.fb-marker.target-note').textContent};
+      updateActiveCursor(0,0,false);
       var slotDuration=1;
       var sourceScore=serializeScoreMeasures(romance.measures,'\\n');
       function guideSignature(){
@@ -1343,17 +1429,19 @@ async function testBuiltinScores(client, browserBin){
         events.filter(function(event){return event.note.midi!==40&&event.note.midi!==71;}).length!==6) throw new Error('Lv.6 bass/melody/inner note counts are not 1/3/6');
       if(events[0].note.midi!==40||events[0].gain!==0.62||events[0].articulation!=='tirando'||
         events[1].note.midi!==71||events[1].gain!==1.16||events[1].articulation!=='apoyando') throw new Error('Lv.6 opening bass/melody articulation or gain mismatch');
-      var cardTitleHasPartArticulation=cardTitles[0].indexOf('E2~+B4! · B3~ · G3~')>=0&&cardTitles[1].indexOf('B4! · B3~ · G3~')>=0;
-      var cardTitleHasUniformArticulation=cardTitles.some(function(title){return title.indexOf('악보 지정 아포얀도(!)')>=0||title.indexOf('악보 지정 티란도(~)')>=0;});
+      var noArticulationGlyphs=tabLabels.concat(cardLabels,tabTitles,cardTitles).every(function(value){return !/[!~]/.test(value);});
+      var cardTitleHasUniformArticulation=cardTitles.some(function(title){return title.indexOf('악보 지정 아포얀도')>=0||title.indexOf('악보 지정 티란도')>=0;});
       var score=document.getElementById('structuredScoreWrap');
       if(score) score.scrollIntoView({block:'start'});
-      return {catalogCount:window.BUILTIN_SONGS.length,rendered:results,romance:{id:romance.id,bpm:romance.bpm,beats:romance.beats,
+      return {catalogCount:window.BUILTIN_SONGS.length,rendered:results,lv5Card:{inactiveBackground:lv5InactiveBackground,plainBackground:lv1InactiveBackground,
+        hasOldArpClass:lv5HasOldArpClass,activeClass:lv5Active.classActive,activeBackground:lv5Active.background},romance:{id:romance.id,bpm:romance.bpm,beats:romance.beats,
         firstMeasureBeats:first.beats.length,subdivisionCounts:first.beats.map(function(beat){return beat.subNotes.length;}),
-        durationName:getBeatDurationInfo(first.beats,0,romance.beats).durName,
+        durationName:getBeatDurationInfo(first.beats,0,romance.beats).durName,fretboardTargets:fretboardTargets,
         fingers:fingers.slice(0,4),tabLabels:tabLabels,tabTitles:tabTitles,tabRhBadges:tabRhBadges,
          cardLabels:cardLabels,cardTitles:cardTitles,cardDurationBadges:cardDurationBadges,cardArticulationClasses:cardArticulationClasses,
-        cardTitleHasPartArticulation:cardTitleHasPartArticulation,cardTitleHasUniformArticulation:cardTitleHasUniformArticulation,
+        cardTitleHasUniformArticulation:cardTitleHasUniformArticulation,noArticulationGlyphs:noArticulationGlyphs,
         serializationPreserved:serializeScoreMeasures(romance.measures,'\\n')===sourceScore,
+        sourceContainsArticulationTokens:/[!~]/.test(sourceScore),
         guidePreserved:JSON.stringify(guideSignature())===JSON.stringify(sourceGuide),
         guideEvents:events.map(function(event){return {midi:event.note.midi,when:event.when,gain:event.gain,
           articulation:event.articulation,str:event.str,duration:event.duration};})}};
@@ -1361,21 +1449,32 @@ async function testBuiltinScores(client, browserBin){
     assert.equal(review.catalogCount, 13, 'all built-in scores are reviewed');
     assert.equal(review.rendered.length, 26, 'each built-in score renders in tab and card views');
     assert.ok(review.rendered.every(function(item){return item.measures>0&&item.hasNotes&&item.errors===0;}), 'built-in score DOM and validation are clean');
+    assert.equal(review.lv5Card.hasOldArpClass,false,'Lv.5 card has no old melodic-blue or sub-voice class');
+    assert.equal(review.lv5Card.inactiveBackground,review.lv5Card.plainBackground,'inactive Lv.5 card uses the plain card background');
+    assert.equal(review.lv5Card.activeClass,true,'active beat selection remains highlighted in Lv.5 card view');
+    assert.notEqual(review.lv5Card.activeBackground,review.lv5Card.inactiveBackground,'active beat highlight remains distinct from the plain card background');
+    assert.ok(review.romance.fretboardTargets.first.baseLabel==='6E'&&review.romance.fretboardTargets.first.directLabel===''&&
+      review.romance.fretboardTargets.first.open6Marker.indexOf('미')>=0&&review.romance.fretboardTargets.first.fret7Marker.indexOf('시')>=0&&
+      review.romance.fretboardTargets.first.sameBadgeStyle,'actual Lv.6 first chord marks E2 open-6 and B4 fret-7 with the shared green badge style');
+    assert.equal(review.romance.fretboardTargets.nextB3,59,'actual next B3 part remains the open-string target');
+    assert.equal(review.romance.fretboardTargets.open6Restored,true,'moving the target to B3 restores the 6E open-string label');
+    assert.ok(review.romance.fretboardTargets.open2Marker.indexOf('시')>=0,'moving the target places a green badge on B3 open-2');
     assert.equal(review.romance.bpm, 56, 'Lv.6 Romance tempo is 56');
     assert.equal(review.romance.beats, 3, 'Lv.6 Romance uses three beats per measure');
     assert.deepEqual(review.romance.subdivisionCounts, [3,3,3], 'all first-measure beats use three subdivisions');
     assert.deepEqual(review.romance.fingers, ['p','a','m','i'], 'first measure TAB shows explicit p/a/m/i fingers');
-    assert.deepEqual(review.romance.tabLabels, ['E~+B!·B~·G~','B!·B~·G~','B!·B~·G~'], 'TAB labels show each Lv.6 note articulation independently');
-    assert.ok(review.romance.tabTitles[0].includes('E2~+B4! · B3~ · G3~'), 'first TAB title shows the bass, melody, and inner-note techniques');
-    assert.deepEqual(review.romance.tabRhBadges, [false,false,false], 'TAB articulation marks are included in pitch labels without old end badges');
-    assert.deepEqual(review.romance.cardLabels, ['E2~+B4! · B3~ · G3~','B4! · B3~ · G3~','B4! · B3~ · G3~'], 'card labels show each Lv.6 note articulation independently');
+    assert.deepEqual(review.romance.tabLabels, ['E+B·B·G','B·B·G','B·B·G'], 'compact TAB labels show pitches without articulation glyphs');
+    assert.deepEqual(review.romance.cardLabels, ['E2+B4 · B3 · G3','B4 · B3 · G3','B4 · B3 · G3'], 'card labels show pitches without articulation glyphs');
+    assert.ok(review.romance.noArticulationGlyphs,'TAB/card labels and tooltips contain no ! or ~ glyphs');
+    assert.ok(review.romance.tabTitles[0].includes('E2+B4 · B3 · G3'), 'first TAB title shows pitch names without articulation glyphs');
+    assert.deepEqual(review.romance.tabRhBadges, [false,false,false], 'pitch labels have no articulation badges');
     assert.ok(review.romance.durationName && review.romance.tabTitles[0].includes(review.romance.durationName), 'TAB tooltip shows shared part durations for the subdivisions');
     assert.ok(review.romance.cardTitles[0].includes(review.romance.durationName), 'card tooltip shows shared part durations for the subdivisions');
     assert.deepEqual(review.romance.cardDurationBadges, ['3분할','3분할','3분할'], 'shared-length notation keeps the existing group badges');
-    assert.ok(review.romance.cardTitleHasPartArticulation, 'card tooltip shows each pitch articulation');
     assert.equal(review.romance.cardTitleHasUniformArticulation, false, 'mixed articulation tooltip does not assign one technique to the whole beat');
     assert.deepEqual(review.romance.cardArticulationClasses, [false,false,false], 'mixed articulation card beats have no uniform apo/tir class');
     assert.equal(review.romance.serializationPreserved, true, 'TAB/card rendering leaves serialized built-in score unchanged');
+    assert.equal(review.romance.sourceContainsArticulationTokens,true,'source score keeps its written ! and ~ articulation metadata');
     assert.equal(review.romance.guidePreserved, true, 'TAB/card rendering leaves pitch, time, duration, and articulation guide events unchanged');
     assert.equal(review.romance.guideEvents.length, 10, 'first measure produces 10 guide note events');
     process.stdout.write('Browser checkpoint: all 13 built-in scores render in TAB/card; Lv.6 Romance first measure has explicit p/a/m/i and 10 timed guide notes\n');
@@ -1475,7 +1574,8 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=simple-length-1')), 'all app scripts use the shared simple-length revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=clean-score-ui-1')), 'all app scripts use the shared clean-score-ui revision');
+  assert.doesNotMatch(fs.readFileSync(path.join(root,'index.html'),'utf8'),/\.beat-cell\.arp-(?:melody|sub)\b/,'obsolete articulation color rules are removed from the score stylesheet');
   const browserBin = findBrowserBinary();
   if (!browserBin) {
     process.stdout.write('SKIP: No Chrome or Edge binary found for browser test\n');
@@ -1770,7 +1870,7 @@ async function main() {
 
     await cdp.send('Page.reload', { ignoreCache: true });
     await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.BUILTIN_SONGS.length === 13 && window.imageSongs.some(function(song){ return song.id === "browser-backup-image"; })', 8000);
-    const screenshotDir = path.join(__dirname, '..', 'test-artifacts', 'remove-note-length');
+    const screenshotDir = path.join(__dirname, '..', 'test-artifacts', 'clean-score-ui');
     let screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review.png');
     if (fs.existsSync(screenshotTarget)) screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review-' + Date.now() + '.png');
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });

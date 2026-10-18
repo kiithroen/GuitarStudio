@@ -316,8 +316,6 @@ function curCapo(){
           var cell = document.createElement('div');
           var extraCls = ' tab-cell';
           var uniformArticulation = getUniformBeatArticulation(b);
-          if (uniformArticulation === 'apoyando') extraCls += ' arp-melody';
-          else if (uniformArticulation === 'tirando') extraCls += ' arp-sub';
           if (((curSong.beats === 9 || curSong.beats === 6) && (bIdx === 3 || bIdx === 6)) || (curSong.beats === 8 && bIdx === 4)){
             extraCls += ' arp-group-start';
           }
@@ -328,8 +326,8 @@ function curCapo(){
           var effBass = getExplicitBass(b);
           var pitchLabel = formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(m.chord || '')});
           var articDesc = uniformArticulation === 'apoyando'
-            ? ' [악보 지정 아포얀도(!)]'
-            : (uniformArticulation === 'tirando' ? ' [악보 지정 티란도(~)]' : '');
+            ? ' [악보 지정 아포얀도]'
+            : (uniformArticulation === 'tirando' ? ' [악보 지정 티란도]' : '');
           var tabDurationInfo = getBeatDurationInfo(m.beats, bIdx, curSong.beats);
           cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + (pitchLabel ? ': ' + pitchLabel : '') +
             (pitchLabel && tabDurationInfo.durName && tabDurationInfo.kind !== 'rest' && tabDurationInfo.kind !== 'hold' ? ' · 길이: ' + tabDurationInfo.durName : '') +
@@ -575,11 +573,6 @@ function curCapo(){
           var cell = document.createElement('div');
           var extraCls = '';
           var uniformArticulation = getUniformBeatArticulation(b);
-          if (uniformArticulation === 'apoyando'){
-            extraCls += ' arp-melody';
-          } else if (uniformArticulation === 'tirando'){
-            extraCls += ' arp-sub';
-          }
           if (((curSong.beats === 9 || curSong.beats === 6) && (bIdx === 3 || bIdx === 6)) || (curSong.beats === 8 && bIdx === 4)){
             extraCls += ' arp-group-start';
           }
@@ -593,8 +586,8 @@ function curCapo(){
           cell.dataset.b = bIdx;
 
           var articDesc = uniformArticulation === 'apoyando'
-            ? ' [악보 지정 아포얀도(!)]'
-            : (uniformArticulation === 'tirando' ? ' [악보 지정 티란도(~)]' : '');
+            ? ' [악보 지정 아포얀도]'
+            : (uniformArticulation === 'tirando' ? ' [악보 지정 티란도]' : '');
 
           var detailDesc = m.no + '마디 ' + (bIdx + 1) + '박: ' +
             (mainKind === 'rest' ? '쉼' : (mainKind === 'hold' ? '유지' : (pitchLabel + ' · ' + durInfo.durName))) +

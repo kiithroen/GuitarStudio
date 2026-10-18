@@ -16,10 +16,10 @@ function firstBeat(source){
   return parsed.measures[0].beats[0];
 }
 
-test('labels keep per-component articulation on mixed chord subdivisions', function(){
+test('labels show plain note names on mixed chord subdivisions', function(){
   const beat = firstBeat('~E2+!B4/~B3/~G3 r r r');
-  assert.equal(score.formatBeatPitchLabel(beat, {compact:true}), 'E~+B!·B~·G~', 'labels keep per-component articulation on mixed chord subdivisions');
-  assert.equal(score.formatBeatPitchLabel(beat, {compact:false}), 'E2~+B4! · B3~ · G3~', 'noncompact labels preserve each component articulation');
+  assert.equal(score.formatBeatPitchLabel(beat, {compact:true}), 'E+B·B·G', 'compact labels omit articulation symbols');
+  assert.equal(score.formatBeatPitchLabel(beat, {compact:false}), 'E2+B4 · B3 · G3', 'noncompact labels omit articulation symbols');
 });
 
 test('chords and their hold chain display one common part duration', function(){
@@ -32,23 +32,24 @@ test('chords and their hold chain display one common part duration', function(){
   assert.equal(score.getBeatDurationInfo(beats, 1, 4).durName, '유지');
 });
 
-test('marks on either chord component do not leak to the other component', function(){
-  assert.equal(score.formatBeatPitchLabel(firstBeat('!C3+E4 D4 r G4'), {compact:false}), 'C3!+E4');
-  assert.equal(score.formatBeatPitchLabel(firstBeat('C3+!E4 D4 r G4'), {compact:false}), 'C3+E4!');
+test('articulation marks do not change plain chord component labels', function(){
+  assert.equal(score.formatBeatPitchLabel(firstBeat('!C3+E4 D4 r G4'), {compact:false}), 'C3+E4');
+  assert.equal(score.formatBeatPitchLabel(firstBeat('C3+!E4 D4 r G4'), {compact:false}), 'C3+E4');
   assert.equal(score.formatBeatPitchLabel(firstBeat('C3+E4 D4 r G4'), {compact:false}), 'C3+E4');
 });
 
 test('subdivision notes, three-note chords, and the legacy chord label follow compact rules', function(){
-  assert.equal(score.formatBeatPitchLabel(firstBeat('!C3/E4/~G4 D4 r A3'), {compact:true}), 'C!·E·G~');
+  assert.equal(score.formatBeatPitchLabel(firstBeat('!C3/E4/~G4 D4 r A3'), {compact:true}), 'C·E·G');
   assert.equal(score.formatBeatPitchLabel(firstBeat('C3+E4+G4 D4 r A3'), {compact:true, chord:'C'}), 'C');
   assert.equal(score.formatBeatPitchLabel(firstBeat('C3+E4+G4 D4 r A3'), {compact:true}), 'C+E+G');
   assert.equal(score.formatBeatPitchLabel(firstBeat('C3+E4+G4 D4 r A3'), {compact:false, chord:'C'}), 'C3+E4+G4');
   assert.equal(score.formatBeatPitchLabel(firstBeat('C3+E4+G4 D4 r A3'), {compact:false}), 'C3+E4+G4');
-  assert.equal(score.formatBeatPitchLabel(firstBeat('!C3+E4+G4 D4 r A3'), {compact:true, chord:'C'}), 'C!+E+G');
+  assert.equal(score.formatBeatPitchLabel(firstBeat('!C3+E4+G4 D4 r A3'), {compact:true, chord:'C'}), 'C');
 });
 
 test('single note, rest, hold, invalid, and parent articulation formatting are explicit', function(){
-  assert.equal(score.formatBeatPitchLabel(firstBeat('!E4 D4 r A3'), {compact:true}), 'E4!');
+  assert.equal(score.formatBeatPitchLabel(firstBeat('!E4 D4 r A3'), {compact:true}), 'E4');
+  assert.equal(score.formatBeatPitchLabel(firstBeat('~B4 C4 r G4'), {compact:false}), 'B4');
   const restHold = parser.parseScore('E4 - r G4', 4).measures[0].beats;
   assert.equal(score.formatBeatPitchLabel(parser.parseScore('r r r r', 4).measures[0].beats[0]), '쉼');
   assert.equal(score.formatBeatPitchLabel(restHold[1]), '유지');

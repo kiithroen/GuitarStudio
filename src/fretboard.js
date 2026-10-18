@@ -126,8 +126,8 @@ function initFretboard(){
       var lh = getExplicitLeftHand(sourceToken);
       var artic = targetNote.articulation;
       var articTag = targetNote.explicitArticulation && artic === 'apoyando'
-        ? ' · 아포얀도(눌러치기·!)'
-        : (targetNote.explicitArticulation && artic === 'tirando' ? ' · 티란도(뜯어치기·~)' : '');
+        ? ' · 아포얀도(눌러치기)'
+        : (targetNote.explicitArticulation && artic === 'tirando' ? ' · 티란도(뜯어치기)' : '');
 
       var songCapo = getSongCapo(curSong);
       var capoTag = songCapo > 0 ? (' [Capo ' + songCapo + ' 실음: ' + midiInfo(soundingMidi(targetNote.midi, songCapo)).en + ']') : '';
@@ -164,22 +164,18 @@ function initFretboard(){
 
       notesToHighlight.forEach(function(nt, componentIndex){
         var explicitLH = getExplicitLeftHand(sourceToken, targetNote.chordNotes && targetNote.chordNotes.length >= 2 ? componentIndex : undefined);
-        if (nt.fret === 0){
-          var openEl = $('#fretboard .fb-open[data-str="' + nt.str + '"]');
-          if (openEl){
-            openEl.style.color = '#62d491';
-            openEl.style.fontWeight = '700';
-            openEl.textContent = (openEl.dataset.baseLabel || '') + '·' + nt.ko + (explicitLH != null ? '(' + explicitLH + ')' : '');
-          }
+        var targetContainer = null;
+        if (nt.str && nt.fret === 0){
+          targetContainer = $('#fretboard .fb-open[data-str="' + nt.str + '"]');
         } else if (nt.str && nt.fret > 0){
-          var targetCell = $('#fretboard .fb-cell[data-str="' + nt.str + '"][data-fret="' + nt.fret + '"]');
-          if (targetCell){
-            targetCell.textContent = '';
-            var tmk = document.createElement('span');
-            tmk.className = 'fb-marker target-note';
-            tmk.textContent = nt.ko + (explicitLH != null ? '(' + explicitLH + ')' : '');
-            targetCell.appendChild(tmk);
-          }
+          targetContainer = $('#fretboard .fb-cell[data-str="' + nt.str + '"][data-fret="' + nt.fret + '"]');
+        }
+        if (targetContainer){
+          targetContainer.textContent = '';
+          var tmk = document.createElement('span');
+          tmk.className = 'fb-marker target-note';
+          tmk.textContent = nt.ko + (explicitLH != null ? '(' + explicitLH + ')' : '');
+          targetContainer.appendChild(tmk);
         }
       });
     } else if (ch){

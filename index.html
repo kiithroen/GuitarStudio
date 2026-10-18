@@ -172,9 +172,6 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .b-fingers{display:flex;gap:3px;font-size:10.5px;font-family:var(--font-num);white-space:nowrap}
 .b-lh{color:var(--ok);font-weight:700}
 .b-rh{color:var(--near);font-weight:700}
-.beat-cell.arp-melody{border-color:rgba(45,76,155,.5);background:var(--accent-soft)}
-.beat-cell.arp-sub{opacity:.9}
-.beat-cell.arp-sub .b-note{font-size:12px;font-weight:600}
 .beat-cell.arp-group-start{margin-left:3px;box-shadow:-3px 0 0 -1px var(--line)}
 
 /* 박자·리듬 카드 친절한 오선지 뷰 스타일 (운지 정보 제외, 박자·리듬·계이름 전용) */
@@ -200,20 +197,20 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 
 /* 6현 타브 (TAB) 악보 렌더링 스타일 */
 .tab-stave-wrap{position:relative;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-top:2px}
-.tab-stave-side{width:36px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:4px 2px 8px;background:var(--surface-2);border-right:1px solid var(--line);user-select:none;position:relative}
+.tab-stave-side{width:36px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:4px 2px 12px;background:var(--surface-2);border-right:1px solid var(--line);user-select:none;position:relative}
 .tab-badge-title{height:20px;display:flex;align-items:center;justify-content:center;font-family:var(--font-num);font-weight:900;font-size:11px;letter-spacing:.06em;color:var(--accent);line-height:1}
 .tab-str-names{position:relative;width:100%;height:90px;margin-top:8px}
 .tab-str-names span{position:absolute;left:0;right:0;transform:translateY(-50%);text-align:center;font-family:var(--font-num);font-size:9.5px;font-weight:800;color:var(--muted);line-height:1}
 .tab-stave-body{position:relative;flex:1;min-width:0}
 .tab-lines-bg{position:absolute;left:0;right:0;top:32px;height:90px;pointer-events:none}
 .tab-line-h{position:absolute;left:0;right:0;height:0;border-top:1px solid var(--line);opacity:.75}
-.beats-row.tab-mode{display:grid;grid-template-columns:repeat(var(--bpb,4),minmax(0,1fr));gap:0;margin-top:0;height:130px;position:relative;z-index:1}
-.beat-cell.tab-cell{border:none;border-right:1px dashed rgba(128,128,128,.2);border-radius:0;background:transparent;padding:4px 1px 8px;display:flex;flex-direction:column;align-items:center;position:relative;cursor:pointer;transition:background-color .08s,box-shadow .08s}
+.beats-row.tab-mode{display:grid;grid-template-columns:repeat(var(--bpb,4),minmax(0,1fr));gap:0;margin-top:0;height:134px;position:relative;z-index:1}
+.beat-cell.tab-cell{border:none;border-right:1px dashed rgba(128,128,128,.2);border-radius:0;background:transparent;padding:4px 1px 12px;display:flex;flex-direction:column;align-items:center;gap:0;position:relative;cursor:pointer;transition:background-color .08s,box-shadow .08s}
 .beat-cell.tab-cell:last-child{border-right:none}
 .beat-cell.tab-cell:hover{background:rgba(45,76,155,.07)}
 .beat-cell.tab-cell.active-beat{background:rgba(45,76,155,.18);transform:none;box-shadow:inset 0 0 0 2px var(--accent);color:inherit}
 .beat-cell.tab-cell.arp-group-start{border-left:2px solid var(--line)}
-.tab-cell-top{height:20px;display:flex;align-items:center;justify-content:center;gap:3px;font-size:11px;line-height:1;white-space:nowrap;overflow:hidden}
+.tab-cell-top{height:20px;flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:3px;font-size:11px;line-height:1;white-space:nowrap;overflow:hidden}
 .tab-cell-solfege-wrap{display:inline-flex;align-items:baseline;gap:2px}
 .tab-cell-solfege{font-weight:700;color:var(--accent);font-size:11.5px}
 .tab-cell-en{font-family:var(--font-num);font-weight:800;color:var(--accent);font-size:11px;letter-spacing:-0.2px}
@@ -222,7 +219,7 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .beat-cell.tab-cell.active-beat .tab-note-rh{color:inherit}
 .tab-cell-rh{font-family:var(--font-num);font-weight:700;color:var(--near);font-size:9.5px}
 .tab-note-rh{color:var(--muted);font-size:10px;font-family:var(--font-num);margin-left:3px}
-.tab-cell-grid{position:relative;width:100%;height:90px;margin-top:8px}
+.tab-cell-grid{position:relative;width:100%;height:90px;margin-top:8px;flex-shrink:0}
 .tab-fret-pill{position:absolute;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:16px;padding:0 2.5px;border-radius:4px;font-family:var(--font-num);font-size:11.5px;font-weight:800;line-height:1;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.08);z-index:2;white-space:nowrap}
 .tab-fret-pill.note-fret{color:var(--fg);border-color:rgba(45,76,155,.45)}
 .tab-fret-pill.tab-held-fret{opacity:.68;border-style:dashed;box-shadow:none}
@@ -420,7 +417,7 @@ body.practice-compact .fretboard{
 .fb-frets-header{display:grid;grid-template-columns:56px repeat(12,minmax(0,1fr));text-align:center;font-family:var(--font-num);font-size:11px;color:#d7c6b6;margin-bottom:4px}
 .fb-row{display:grid;grid-template-columns:56px repeat(12,minmax(0,1fr));align-items:center;height:28px;position:relative}
 .fb-row::after{content:"";position:absolute;left:56px;right:0;top:50%;height:var(--str-h,1.5px);background:var(--string);transform:translateY(-50%);z-index:1;opacity:.85}
-.fb-open{font-family:var(--font-num);font-size:11.5px;font-weight:600;color:#f3ece4;display:flex;align-items:center;gap:3px;z-index:2;padding-right:4px;white-space:nowrap}
+.fb-open{font-family:var(--font-num);font-size:11.5px;font-weight:600;color:#f3ece4;display:flex;align-items:center;gap:3px;z-index:2;padding-right:4px;white-space:nowrap;position:relative;height:100%;cursor:pointer}
 .fb-cell{height:100%;border-right:2px solid var(--wood-line);display:flex;align-items:center;justify-content:center;position:relative;z-index:2;cursor:pointer}
 .fb-cell:first-of-type{border-left:5px solid #e5dacb}
 .fb-marker{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-num);font-size:11px;font-weight:700;background:rgba(255,255,255,.18);color:#fff;white-space:nowrap;line-height:1;transition:transform .1s,background-color .1s;pointer-events:none;z-index:3}
@@ -837,17 +834,17 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=simple-length-1"></script>
-<script src="src/notation.js?v=simple-length-1"></script>
-<script src="src/rhythm.js?v=simple-length-1"></script>
-<script src="src/parser.js?v=simple-length-1"></script>
-<script src="src/score.js?v=simple-length-1"></script>
-<script src="src/audio.js?v=simple-length-1"></script>
-<script src="src/guide.js?v=simple-length-1"></script>
-<script src="src/image-analysis.js?v=simple-length-1"></script>
-<script src="src/fretboard.js?v=simple-length-1"></script>
-<script src="src/score-ui.js?v=simple-length-1"></script>
-<script src="src/sheets.js?v=simple-length-1"></script>
-<script src="src/app.js?v=simple-length-1"></script>
+<script src="src/storage.js?v=clean-score-ui-1"></script>
+<script src="src/notation.js?v=clean-score-ui-1"></script>
+<script src="src/rhythm.js?v=clean-score-ui-1"></script>
+<script src="src/parser.js?v=clean-score-ui-1"></script>
+<script src="src/score.js?v=clean-score-ui-1"></script>
+<script src="src/audio.js?v=clean-score-ui-1"></script>
+<script src="src/guide.js?v=clean-score-ui-1"></script>
+<script src="src/image-analysis.js?v=clean-score-ui-1"></script>
+<script src="src/fretboard.js?v=clean-score-ui-1"></script>
+<script src="src/score-ui.js?v=clean-score-ui-1"></script>
+<script src="src/sheets.js?v=clean-score-ui-1"></script>
+<script src="src/app.js?v=clean-score-ui-1"></script>
 </body>
 </html>
