@@ -47,14 +47,12 @@
     vol: 0.55,
     guideSound: true,
     acousticFx: true, // 고품질 음향 효과 (콘서트홀 리버브, 바디 공명, 2단 서스테인) 토글
-    autoBass: false,
     loopEnable: true,
     loopStart: 1,
     loopEnd: 8,
     speedTrainer: false,
     audioOffsetMs: 0
   });
-  if (typeof appState.autoBass !== 'boolean') appState.autoBass = false;
   if (typeof appState.acousticFx !== 'boolean') appState.acousticFx = true;
   if (typeof appState.audioOffsetMs !== 'number') appState.audioOffsetMs = 0;
   if (typeof appState.micScoring !== 'boolean') appState.micScoring = true; // 연습 중 마이크 정박·음정 채점 사용 여부
@@ -299,7 +297,7 @@ function editorCapo(){
     var cell = $('#measuresGrid .beat-cell[data-m="' + hitObj.mIdx + '"][data-b="' + hitObj.bIdx + '"]');
     if (!cell) return;
     var songCapo = getSongCapo(curSong);
-    var effBass = resolveEffectiveBass(m.chord, b, hitObj.bIdx);
+    var effBass = getExplicitBass(b);
     var matchMel = false;
     if (b.isSubdivided && b.subNotes && b.subNotes.length > 0){
       matchMel = b.subNotes.some(function(sn){ return sn.midi && (hitObj.midi % 12 === (soundingMidi(sn.midi, songCapo)) % 12); });
@@ -501,7 +499,7 @@ function editorCapo(){
           cell.className = 'beat-cell' + extraCls;
           cell.dataset.m = mIdx;
           cell.dataset.b = bIdx;
-          var effBass = resolveEffectiveBass(m.chord, b, bIdx);
+          var effBass = getExplicitBass(b);
 
           var articDesc = b.articulation === 'apoyando'
             ? (' [아포얀도 주선율 · ' + (b.explicitArticulation ? '악보지정(!)' : '최고음 자동추론') + ']')
@@ -528,11 +526,13 @@ function editorCapo(){
             } else if (b.isSubdivided && b.subNotes){
               enEl.textContent = b.subNotes.map(function(s){
                 if (s.tok === '-' || !s.en || s.en === '-') return '-';
-                if (s.chordNotes && s.chordNotes.length > 2){
+                if (s.chordNotes && s.chordNotes.length >= 2){
                   return s.chordNotes.map(function(cn){ return (cn.en || '').replace(/\d+$/, ''); }).filter(Boolean).join('+');
                 }
                 return s.en.replace(/\d+$/, '');
               }).join('·');
+            } else if (!b.isSubdivided && b.chordNotes && b.chordNotes.length === 2){
+              enEl.textContent = b.chordNotes.map(function(cn){ return cn.en || ''; }).filter(Boolean).join('+');
             } else {
               enEl.textContent = b.en || '';
             }
@@ -597,28 +597,6 @@ function editorCapo(){
             });
           } else if (b.isSubdivided && b.subNotes && b.subNotes.length > 1){
             var numSubs = b.subNotes.length;
-            var firstSub = b.subNotes[0];
-            var hasExplicitSubBass = b.subNotes.some(function(sn){ return sn && sn.bass && sn.bass.midi; });
-            var sameStrOnFirst = !!(effBass && !hasExplicitSubBass && effBass.str && firstSub && firstSub.str && effBass.str === firstSub.str);
-            var sameFretOnFirst = sameStrOnFirst && (effBass.fret === firstSub.fret);
-            var diffFretOnFirst = sameStrOnFirst && (effBass.fret !== firstSub.fret);
-
-            if (effBass && !hasExplicitSubBass && effBass.str){
-              var bPill = document.createElement('span');
-              bPill.className = 'tab-fret-pill bass-fret';
-              bPill.style.position = 'absolute';
-              bPill.style.top = ((effBass.str - 1) * 20) + '%';
-              bPill.style.left = ((0.5 / numSubs) * 100) + '%';
-              bPill.style.transform = diffFretOnFirst ? 'translate(-85%, -50%)' : 'translate(-50%, -50%)';
-              bPill.textContent = String(effBass.fret != null ? effBass.fret : 0);
-              if (effBass.lh){
-                var blh = document.createElement('span');
-                blh.className = 'tab-cell-lh';
-                blh.textContent = '(' + effBass.lh + ')';
-                bPill.appendChild(blh);
-              }
-              gridEl.appendChild(bPill);
-            }
             b.subNotes.forEach(function(sn, sIdx){
               var leftPct = (((sIdx + 0.5) / numSubs) * 100) + '%';
               function addSubPill(note, role, transform){
@@ -651,7 +629,7 @@ function editorCapo(){
               } else if (sn.chordNotes && sn.chordNotes.length > 2){
                 sn.chordNotes.forEach(function(cn, cnIdx){ addSubPill(cn, cnIdx === 0 ? 'bass-fret' : 'mel-fret'); });
               } else if (sn.chordNotes && sn.chordNotes.length === 2){
-                var subBass = resolveEffectiveBass(m.chord, sn, bIdx);
+                var subBass = getExplicitBass(sn);
                 var pairSameStr = !!(subBass && subBass.str && sn.str && subBass.str === sn.str);
                 var pairSameFret = pairSameStr && subBass.fret === sn.fret;
                 var pairBassTransform = pairSameStr && !pairSameFret ? 'translate(-85%, -50%)' : null;
@@ -659,15 +637,12 @@ function editorCapo(){
                 if (subBass && subBass.midi) addSubPill(subBass, 'bass-fret', pairBassTransform);
                 if (sn.midi && !pairSameFret) addSubPill(sn, 'mel-fret', pairMelTransform);
               } else if (sn.midi && sn.str){
-                if (sIdx === 0 && sameFretOnFirst){
-                  return;
-                }
                 var mPill = document.createElement('span');
                 mPill.className = 'tab-fret-pill mel-fret';
                 mPill.style.position = 'absolute';
                 mPill.style.top = ((sn.str - 1) * 20) + '%';
                 mPill.style.left = leftPct;
-                mPill.style.transform = (sIdx === 0 && diffFretOnFirst) ? 'translate(-15%, -50%)' : 'translate(-50%, -50%)';
+                mPill.style.transform = 'translate(-50%, -50%)';
                 mPill.textContent = String(sn.fret != null ? sn.fret : 0);
                 if (sn.lh != null && sn.lh > 0){
                   var mlh = document.createElement('span');
@@ -777,7 +752,6 @@ function editorCapo(){
           cell.dataset.m = mIdx;
           cell.dataset.b = bIdx;
 
-          var effBass = resolveEffectiveBass(m.chord, b, bIdx);
           var articDesc = b.articulation === 'apoyando'
             ? (' [아포얀도 주선율 · ' + (b.explicitArticulation ? '악보지정(!)' : '최고음 자동추론') + ']')
             : (b.articulation === 'tirando' ? (' [티란도 반주 · ' + (b.explicitArticulation ? '악보지정(~)' : '자동추론') + ']') : '');
@@ -809,12 +783,12 @@ function editorCapo(){
           var koEl = document.createElement('span');
           if (b.midi || (b.isSubdivided && b.subNotes)){
             koEl.className = 'b-ko-main';
-            if (!b.isSubdivided && b.chordNotes && b.chordNotes.length > 2){
+            if (!b.isSubdivided && b.chordNotes && b.chordNotes.length >= 2){
               koEl.textContent = b.chordNotes.map(function(c){ return c.ko; }).join('·');
             } else if (b.isSubdivided && b.subNotes){
               koEl.textContent = b.subNotes.map(function(s){
                 if (s.tok === '-' || s.ko === '유지') return '-';
-                if (s.chordNotes && s.chordNotes.length > 2) return s.chordNotes.map(function(c){ return c.ko; }).join('·');
+                if (s.chordNotes && s.chordNotes.length >= 2) return s.chordNotes.map(function(c){ return c.ko; }).join('·');
                 return s.ko;
               }).join(' · ');
             } else {
@@ -825,12 +799,14 @@ function editorCapo(){
             // 3. 옥타브 위치 및 영문 음높이 서브 표기 (가온 C4, 중간 E4 등)
             var subEl = document.createElement('span');
             subEl.className = 'b-note-sub';
-            if (!b.isSubdivided && b.chordNotes && b.chordNotes.length > 2){
-              subEl.textContent = '화음 ' + b.chordNotes[0].en + '~' + b.en;
+            if (!b.isSubdivided && b.chordNotes && b.chordNotes.length >= 2){
+              subEl.textContent = b.chordNotes.length === 2
+                ? b.chordNotes.map(function(c){ return c.en; }).join('+')
+                : '화음 ' + b.chordNotes[0].en + '~' + b.en;
             } else if (b.isSubdivided && b.subNotes){
               subEl.textContent = b.subNotes.map(function(s){
                 if (s.tok === '-' || s.en === '-') return '-';
-                if (s.chordNotes && s.chordNotes.length > 2) return s.chordNotes.map(function(c){ return c.en; }).join('+');
+                if (s.chordNotes && s.chordNotes.length >= 2) return s.chordNotes.map(function(c){ return c.en; }).join('+');
                 return s.en;
               }).join(' · ');
             } else {
@@ -1328,7 +1304,7 @@ function editorCapo(){
       }
 
       var beatObj = m.beats[bIdx];
-      var effBass = resolveEffectiveBass(m.chord, beatObj, bIdx);
+      var effBass = getExplicitBass(beatObj);
       var targetForFb = (beatObj && beatObj.isSubdivided && beatObj.subNotes)
         ? (beatObj.subNotes.find(function(s){ return s.midi != null; }) || beatObj)
         : beatObj;
@@ -1345,8 +1321,6 @@ function editorCapo(){
           });
         } else if (beatObj && beatObj.isSubdivided && beatObj.subNotes && beatObj.subNotes.length > 1){
           scheduleSubdividedGuide(beatObj, {
-            chordName: m.chord,
-            beatIndex: bIdx,
             startTime: nowT,
             subStep: 0.22,
             capo: songCapo,
@@ -1555,8 +1529,6 @@ function editorCapo(){
               var bObj = m.beats[s.bIdx];
               if (bObj.isSubdivided && bObj.subNotes && bObj.subNotes.length > 1){
                 scheduleSubdividedGuide(bObj, {
-                  chordName: m.chord,
-                  beatIndex: s.bIdx,
                   startTime: t,
                   subStep: s.spb / bObj.subNotes.length,
                   capo: songCapo,
@@ -1574,7 +1546,7 @@ function editorCapo(){
                   playGuitarNote(soundingMidi(cn.midi, songCapo), dur, nTime, gain, cn.articulation, cn.str);
                 });
               } else {
-                var effB = resolveEffectiveBass(m.chord, bObj, s.bIdx);
+                var effB = getExplicitBass(bObj);
                 var hasB = !!(effB && effB.midi);
                 if (hasB){
                   var bassDur = (s.bpb === 9 || s.bpb === 6) ? (s.spb * 8.2) : (s.spb * 2.2);

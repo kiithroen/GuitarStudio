@@ -37,7 +37,7 @@ function makeContext(capo){
     curCapo(){ return capo; },
     soundingMidi(midi, offset){ return Number(midi) + Number(offset || 0); },
     getSongCapo(song){ return song.capo || 0; },
-    resolveEffectiveBass(chord, beat, bIdx){ return context.appState.autoBass === false ? null : (beat.bass || null); },
+    getExplicitBass: parser.getExplicitBass,
     midiInfo(midi){ return { pos: { str: midi % 6 + 1 } }; },
     getMeasureCount(song){ return song.bars.length; },
     getFlatImageBar(index){ return context.imageBars[index]; },
@@ -99,7 +99,7 @@ test('warm cache applies song capo to subdivisions, chords, bass, image notes, s
     ] }]
   });
   assert.deepEqual(calls, [
-    [42, false, 6], [64, true, 2], [66, false, 4], [69, true, 3]
+    [64, true, 2], [42, false, 6], [66, false, 4], [69, true, 3]
   ]);
 
   calls.length = 0;
@@ -109,7 +109,7 @@ test('warm cache applies song capo to subdivisions, chords, bass, image notes, s
   assert.deepEqual(calls, [[67, false, 2]]);
 });
 
-test('warm cache follows explicit bass in parsed subNotes and keeps full chords when auto bass is off', function(){
+test('warm cache follows explicit bass in parsed subNotes and keeps full chords', function(){
   const parsed = parser.parseScore('[-] -/0E2+1C4 - - -', 4);
   const song = { type: 'structured', capo: 2, beats: parsed.beats, measures: parsed.measures };
   const { context } = makeContext(0);
@@ -117,11 +117,6 @@ test('warm cache follows explicit bass in parsed subNotes and keeps full chords 
   context.__audioHooks.replaceGetKsBuffer((midi, apo, str) => calls.push([midi, apo, str]));
   context.__audioHooks.warmKsCache(song);
   assert.deepEqual(calls, [[42, false, 6], [62, false, 2]]);
-
-  calls.length = 0;
-  context.appState.autoBass = false;
-  context.__audioHooks.warmKsCache(song);
-  assert.deepEqual(calls, [[62, false, 2]]);
 
   calls.length = 0;
   const chordSubNote = {

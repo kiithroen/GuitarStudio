@@ -333,7 +333,7 @@ async function testSubdividedGuide(client) {
       playing: window.isPlaying,
       measure: window.curMeasureIdx,
       beat: window.curBeatIdx,
-      state: { autoBass: appState.autoBass, guideSound: appState.guideSound, scoreView: appState.scoreView, beats: appState.beats, bpm: appState.bpm, loopStart: appState.loopStart, loopEnd: appState.loopEnd, loopEnable: appState.loopEnable }
+      state: { guideSound: appState.guideSound, scoreView: appState.scoreView, beats: appState.beats, bpm: appState.bpm, loopStart: appState.loopStart, loopEnd: appState.loopEnd, loopEnable: appState.loopEnable }
     };
     var assertions = [];
     var emitted = [];
@@ -346,7 +346,6 @@ async function testSubdividedGuide(client) {
       window.playGuitarNote = function(midi, duration, when, gain, articulation, str){ emitted.push({ midi: midi, duration: duration, when: when, gain: gain, articulation: articulation, str: str }); };
       window.scheduleMetronomeClick = function(){};
       window.actx = { currentTime: 2, outputLatency: 0, baseLatency: 0 };
-      appState.autoBass = false;
       appState.guideSound = true;
       appState.scoreView = 'tab';
       appState.beats = 4;
@@ -377,22 +376,18 @@ async function testSubdividedGuide(client) {
 
       var pairBeat = parseScore('[C] -/0E2+1C4/D4 - -', 4).measures[0].beats[0];
       var pairSong = { id: 'browser-guide-pair', title: 'Pair', badge: '', type: 'structured', beats: 4, measures: [{ no: 1, chord: 'C', autoChord: false, beats: [pairBeat] }] };
-      appState.autoBass = false;
       window.curSong = pairSong;
       window.actx.currentTime = 7;
       emitted = [];
       updateActiveCursor(0, 0, true);
-      check(emitted.map(function(event){ return event.midi; }).join(',') === '60,62', 'preview follows auto bass off suppression for an explicit pair');
-      var pairEventsOff = getSubdividedGuideEvents(pairBeat, { chordName: 'C', beatIndex: 0, startTime: 8, subStep: 0.2, capo: 0, beatsPerBar: 4, preview: false });
-      check(Array.from(pairEventsOff, function(event){ return event.note.midi; }).join(',') === '60,62', 'auto bass off suppresses explicit pair bass and keeps both melodies');
-      appState.autoBass = true;
+      check(emitted.map(function(event){ return event.midi; }).join(',') === '40,60,62', 'preview always plays every note in an explicitly entered pair');
+      var pairEvents = getSubdividedGuideEvents(pairBeat, { startTime: 8, subStep: 0.2, capo: 0, beatsPerBar: 4, preview: false });
+      check(Array.from(pairEvents, function(event){ return event.note.midi; }).join(',') === '40,60,62', 'subdivided guide always retains the explicit bass and both melodies');
       window.actx.currentTime = 7;
       emitted = [];
       updateActiveCursor(0, 0, true);
       check(emitted.map(function(event){ return event.midi; }).join(',') === '40,60,62' && Math.abs(emitted[0].when - 7.22) < 0.000001, 'preview plays explicit pair bass only at its subnote time');
-      var pairEventsOn = getSubdividedGuideEvents(pairBeat, { chordName: 'C', beatIndex: 0, startTime: 8, subStep: 0.2, capo: 0, beatsPerBar: 4, preview: false });
-      check(Array.from(pairEventsOn, function(event){ return event.note.midi; }).join(',') === '40,60,62', 'auto bass on plays explicit pair bass and both melodies');
-      check(pairEventsOn[0].when === 8.2, 'explicit pair bass plays only at its own subnote time');
+      check(pairEvents[0].when === 8.2, 'explicit pair bass plays only at its own subnote time');
 
       emitted = [];
       window.playSession = { inCountIn: false, nextBeatTime: 8, spb: 0.6, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
@@ -401,7 +396,6 @@ async function testSubdividedGuide(client) {
       schedulerTick();
       check(emitted.map(function(event){ return event.midi; }).join(',') === '40,60,62' && Math.abs(emitted[0].when - 8.2) < 0.000001, 'runtime plays explicit pair bass only at its subnote time');
 
-      appState.autoBass = true;
       var sameStringSong = { id: 'browser-guide-same-string', title: 'Same String', badge: '', type: 'structured', beats: 4, measures: parseScore('[C] 0E2+3G2/D4 - - -', 4).measures };
       window.curSong = sameStringSong;
       renderSong();
@@ -414,12 +408,46 @@ async function testSubdividedGuide(client) {
       check(sameFretPills.length === 1 && sameFretPills[0].classList.contains('bass-fret'), 'same-string same-fret pair draws one bass pill');
 
       var melodySong = { type: 'structured', measures: parseScore('[C] -/C4/D4 - -', 4).measures };
-      appState.autoBass = false;
-      var melodyEventsOff = getSubdividedGuideEvents(melodySong.measures[0].beats[0], { chordName: 'C', beatIndex: 0, startTime: 9, subStep: 0.2, capo: 0, beatsPerBar: 4, preview: false });
-      appState.autoBass = true;
-      var melodyEventsOn = getSubdividedGuideEvents(melodySong.measures[0].beats[0], { chordName: 'C', beatIndex: 0, startTime: 9, subStep: 0.2, capo: 0, beatsPerBar: 4, preview: false });
-      check(melodyEventsOff.length === 2 && melodyEventsOn.length === 3, 'automatic bass is added once only when enabled and no explicit subnote bass exists');
-      check(melodyEventsOn[0].note.midi === 48 && melodyEventsOn[0].when === 9, 'automatic bass is placed at beat start');
+      var melodyEvents = getSubdividedGuideEvents(melodySong.measures[0].beats[0], { startTime: 9, subStep: 0.2, capo: 0, beatsPerBar: 4, preview: false });
+      check(melodyEvents.length === 2, 'single-note subnotes in a chord-named bar receive no added bass');
+      check(melodyEvents.every(function(event){ return event.note.midi === 60 || event.note.midi === 62; }), 'single-note subnotes retain only the written pitches');
+
+      var sourceText = '[C] C3@5 G3@3+C4@2 E4@1\\n[C] C3@5 G3@3+C4@2 E4@1';
+      var source = parseScore(sourceText, 3);
+      var sourceSong = { id:'browser-written-pair-capo', title:'Written pair', type:'structured', beats:3, bpm:60, capo:5, measures:source.measures };
+      var originalPairToken = sourceSong.measures[0].beats[1].tok;
+      appState.scoreView = 'tab';
+      appState.beats = 3;
+      window.curSong = sourceSong;
+      renderSong();
+      var tabPairs = [0, 1].map(function(measureIndex){
+        var cell = document.querySelector('#measuresGrid .beat-cell[data-m="' + measureIndex + '"][data-b="1"]');
+        var pills = Array.prototype.slice.call(cell.querySelectorAll('.tab-fret-pill'));
+        return {
+          label: cell.querySelector('.tab-cell-en').textContent,
+          low: pills.some(function(p){ return p.classList.contains('bass-fret') && p.textContent.trim() === '0' && p.style.top === '40%'; }),
+          high: pills.some(function(p){ return p.classList.contains('mel-fret') && p.textContent.trim().indexOf('1') === 0 && p.style.top === '20%'; })
+        };
+      });
+      check(tabPairs.every(function(pair){ return pair.label === 'G3+C4' && pair.low && pair.high; }), 'both measures show the written G3 open third string and C4 first fret pair: ' + JSON.stringify(tabPairs));
+      appState.scoreView = 'card';
+      renderSong();
+      var pairCard = document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="1"]');
+      check(pairCard.querySelector('.b-ko-main').textContent === '솔·도' && pairCard.querySelector('.b-note-sub').textContent === 'G3+C4', 'beat card shows both pair solfege and octave names');
+      emitted = [];
+      window.actx.currentTime = 12;
+      updateActiveCursor(0, 1, true);
+      check(emitted.map(function(event){ return event.midi; }).join(',') === '60,65' && emitted.map(function(event){ return event.str; }).join(',') === '3,2', 'preview plays both capo-adjusted pair pitches on strings three and two');
+      var fretboardBass = document.querySelector('#fretboard .fb-open[data-str="3"]');
+      var fretboardMelody = document.querySelector('#fretboard .fb-cell[data-str="2"][data-fret="1"] .target-note');
+      check(fretboardBass && fretboardBass.textContent.indexOf('p솔') >= 0 && fretboardMelody && fretboardMelody.textContent.indexOf('도') >= 0, 'fretboard shows open-string G and first-fret C for the written pair');
+      emitted = [];
+      window.playSession = { inCountIn: false, nextBeatTime: 13, spb: 0.5, bpb: 3, bIdx: 1, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
+      window.isPlaying = true;
+      window.actx.currentTime = 12.95;
+      schedulerTick();
+      check(emitted.map(function(event){ return event.midi; }).join(',') === '60,65' && emitted.map(function(event){ return event.str; }).join(',') === '3,2', 'runtime plays both capo-adjusted pair pitches on their written strings');
+      check(sourceText === '[C] C3@5 G3@3+C4@2 E4@1\\n[C] C3@5 G3@3+C4@2 E4@1' && sourceSong.measures[0].beats[1].tok === originalPairToken, 'pair display and playback do not alter the source or saved token');
       return assertions;
     } finally {
       window.curSong = original.song;
@@ -539,10 +567,8 @@ async function main() {
     const measureCount = await cdp.evaluate('document.getElementById("measuresGrid").children.length');
     assert.ok(measureCount > 0, 'measures grid rendered in browser DOM');
 
-    const bassBtnText = await cdp.evaluate('document.getElementById("toggleAutoBassBtn").textContent');
-    assert.ok(bassBtnText.includes("꺼짐"), "autoBass toggle is off by default");
-    const bassBtnActive = await cdp.evaluate('document.getElementById("toggleAutoBassBtn").classList.contains("active")');
-    assert.equal(bassBtnActive, false, "autoBass button does not have active class by default");
+    const bassButtonAbsent = await cdp.evaluate('document.getElementById("toggleAutoBassBtn") === null');
+    assert.equal(bassButtonAbsent, true, 'automatic bass accompaniment toggle is removed');
     process.stdout.write('Browser checkpoint: boot and initial DOM passed\n');
 
     const canonicalTsv = await cdp.evaluate(`window.formatSongToSheetTsv('slash lyric', 4, 90, 'badge', [

@@ -250,7 +250,11 @@ async function main(){
   assert.equal(elements.get('fretboard').children.length, 7, 'fretboard initializes six strings and one header');
   assert.ok(elements.get('measuresGrid').children.length > 0, 'selected score renders measures');
   assert.equal(typeof context.parseScore, 'function', 'parser API is available to app scripts');
-  assert.equal(typeof context.resolveEffectiveBass, 'function', 'state-aware bass helper is exported after fretboard initialization');
+  assert.equal(typeof context.getExplicitBass, 'function', 'parser exports the common explicit bass-note helper');
+  const explicitBassBeat = context.parseScore('[C] G3@3+C4@2 - -', 3).measures[0].beats[0];
+  const explicitBass = context.getExplicitBass(explicitBassBeat);
+  assert.equal(explicitBass.midi, 55, 'common bass helper returns only the explicitly written lower note');
+  assert.equal(context.getExplicitBass(context.parseScore('[C] C4 - -', 3).measures[0].beats[0]), null, 'common bass helper does not infer a note from a chord');
 
   await elements.get('copyAiPromptBtn').dispatch('click');
   assert.match(copiedText, /E4@1\/F4@1/, 'AI prompt example uses a slash without spaces inside a beat');

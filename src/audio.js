@@ -369,8 +369,8 @@
       var s = str || defaultStringFor(midi);
       notes[midi + (isApo ? 'a' : 't') + (s || 0)] = [midi, isApo, s];
     }
-    function addBeatNotes(chordName, beat, bIdx){
-      var eb = resolveEffectiveBass(chordName, beat, bIdx);
+    function addBeatNotes(beat){
+      var eb = getExplicitBass(beat);
       if (beat.chordNotes && beat.chordNotes.length > 2){
         beat.chordNotes.forEach(function(cn){ add(cn.midi, cn.articulation === 'apoyando', cn.str); });
       } else {
@@ -380,11 +380,9 @@
     }
     if (song.type === 'structured'){
       song.measures.forEach(function(m){
-        m.beats.forEach(function(b, bIdx){
+        m.beats.forEach(function(b){
           if (b.isSubdivided && b.subNotes && b.subNotes.length){
             getSubdividedGuideEvents(b, {
-              chordName: m.chord,
-              beatIndex: bIdx,
               startTime: 0,
               subStep: 1 / b.subNotes.length,
               capo: capo,
@@ -394,7 +392,7 @@
               add(event.note.midi, event.articulation === 'apoyando', event.str);
             });
           } else {
-            addBeatNotes(m.chord, b, bIdx);
+            addBeatNotes(b);
           }
         });
       });

@@ -1,36 +1,5 @@
 function initFretboard(){
   'use strict';
-  function resolveEffectiveBass(chordName, beatObj, bIdx){
-    if (appState && appState.autoBass === false){
-      return null;
-    }
-    if (beatObj && beatObj.bass && beatObj.bass.midi){
-      return beatObj.bass;
-    }
-    if ((!appState || appState.autoBass !== false) && bIdx === 0 && chordName && chordName !== '-'){
-      var clean = cleanChordToken(chordName);
-      var norm = CHORD_BASS_TOKEN[clean] ? clean : (clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase());
-      var bTok = CHORD_BASS_TOKEN[norm];
-      if (bTok){
-        var bInf = parseNoteToken(bTok, 0);
-        if (bInf && (!beatObj || !beatObj.midi || bInf.midi < beatObj.midi)){
-          return {
-            tok: bTok,
-            midi: bInf.midi,
-            en: bInf.en,
-            ko: bInf.ko,
-            str: bInf.pos ? bInf.pos.str : 6,
-            fret: bInf.pos ? bInf.pos.fret : 0,
-            lh: bInf.pos ? bInf.pos.lh : 0,
-            rh: 'p',
-            isAutoBass: true
-          };
-        }
-      }
-    }
-    return null;
-  }
-
   // ---------- 지판(Fretboard) 렌더링 및 업데이트
   function buildFretboard(){
     var fb = $('#fretboard');
@@ -89,12 +58,6 @@ function initFretboard(){
       btn.classList.toggle('active', on);
       btn.textContent = on ? '파란 코드 점: 켜짐' : '파란 코드 점: 숨김';
     }
-    var bassOn = appState.autoBass !== false;
-    var bassBtn = $('#toggleAutoBassBtn');
-    if (bassBtn){
-      bassBtn.classList.toggle('active', bassOn);
-      bassBtn.textContent = bassOn ? '엄지(p) 베이스 동반: 켜짐' : '엄지(p) 베이스 동반: 꺼짐';
-    }
   }
 
   $('#toggleChordDotsBtn').addEventListener('click', function(){
@@ -102,41 +65,6 @@ function initFretboard(){
     saveAppState();
     syncChordDotsBtnUI();
     highlightFretboard(lastFbState.chordName, lastFbState.targetNote, false, lastFbState.isAutoChord, lastFbState.bIdx);
-  });
-
-  $('#toggleAutoBassBtn').addEventListener('click', function(){
-    appState.autoBass = !(appState.autoBass !== false);
-    saveAppState();
-    syncChordDotsBtnUI();
-    if (curSong && curSong.type === 'structured'){
-      renderStructuredMeasures();
-      var m = curSong.measures[curMeasureIdx] || curSong.measures[0];
-      if (m){
-        // 현재 박자에 베이스가 없으면 1박(bIdx=0)으로 커서를 옮겨서 즉시 베이스 ON/OFF 소리 차이를 들려줌
-        var curB = m.beats[curBeatIdx];
-        if (!curB || (!curB.bass && curBeatIdx !== 0)){
-          curBeatIdx = 0;
-        }
-      }
-    }
-    updateActiveCursor(curMeasureIdx, curBeatIdx, false);
-    // 토글 직후 베이스 유무 차이를 귀로 명확히 비교할 수 있도록 즉시 프리뷰 사운드 재생
-    if (curSong && curSong.type === 'structured'){
-      var mObj = curSong.measures[curMeasureIdx];
-      var bObj = mObj && mObj.beats[curBeatIdx];
-      if (mObj && bObj){
-        ensureAudioCtx();
-        var now = actx.currentTime;
-        var effB = resolveEffectiveBass(mObj.chord, bObj, curBeatIdx);
-        var cp = curCapo();
-        if (effB && effB.midi){
-          playGuitarNote(soundingMidi(effB.midi, cp), 1.35, now, 1.15, null, effB.str);
-          if (bObj.midi) playGuitarNote(soundingMidi(bObj.midi, cp), 0.95, now + 0.045, 1.0, null, bObj.str);
-        } else if (bObj.midi){
-          playGuitarNote(soundingMidi(bObj.midi, cp), 0.95, now, 1.0, null, bObj.str);
-        }
-      }
-    }
   });
 
   function highlightFretboard(chordName, targetNote, forceShowChord, isAutoChord, bIdx){
@@ -187,7 +115,7 @@ function initFretboard(){
       }
     }
 
-    var effBass = resolveEffectiveBass(chordName, targetNote, bIdx || 0);
+    var effBass = getExplicitBass(targetNote);
     var lhNames = { 0: '0 (개방현)', 1: '1번 (검지)', 2: '2번 (중지)', 3: '3번 (약지)', 4: '4번 (소지)' };
     var rhNames = { p: 'p (엄지 - 저음줄)', i: 'i (검지)', m: 'm (중지)', a: 'a (약지)' };
 
@@ -386,5 +314,4 @@ function initFretboard(){
   window.renderChordCards = renderChordCards;
   window.buildChordSvg = buildChordSvg;
   window.syncChordDotsBtnUI = syncChordDotsBtnUI;
-  window.resolveEffectiveBass = resolveEffectiveBass;
 }
