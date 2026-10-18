@@ -5436,7 +5436,7 @@ registerProcessor('onset', OnsetProc);
   buildNotePadButtons();
 
   function parseTextToVeBars(rawTxt, beats){
-    var lines = (rawTxt || '').split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+    var lines = (rawTxt || '').split(/\r?\n|\s+\/\s+|\s*\/\/\s*/).map(function(l){ return l.trim(); }).filter(Boolean);
     if (!lines.length){
       lines = ['[C] C4 - - - |'];
     }
@@ -5452,13 +5452,25 @@ registerProcessor('onset', OnsetProc);
         left = cm[2].trim();
       }
       if (chordSpec.needsInfer) anyNeedInfer = true;
-      var toks = left.split(/\s+/).filter(Boolean);
+      var toks = tokenizeMeasureBeats(left);
       var notes = [];
       var beatObjs = [];
       for (var b = 0; b < beats; b++){
-        var inf = parseNoteToken(toks[b] || '-', b);
-        notes.push(inf ? (inf.customTok || inf.en) : '-');
-        beatObjs.push({ midi: inf ? inf.midi : null });
+        var tok = toks[b] || '-';
+        if (tok.indexOf('/') >= 0){
+          notes.push(tok);
+          var subParts = tok.split('/');
+          var firstInf = null;
+          for (var si = 0; si < subParts.length; si++){
+            var p = parseNoteToken(subParts[si], b);
+            if (p && p.midi != null){ firstInf = p; break; }
+          }
+          beatObjs.push({ midi: firstInf ? firstInf.midi : null });
+        } else {
+          var inf = parseNoteToken(tok, b);
+          notes.push(inf ? (inf.customTok || inf.en) : '-');
+          beatObjs.push({ midi: inf ? inf.midi : null });
+        }
       }
       return {
         chord: chordSpec.chord,
@@ -5485,6 +5497,14 @@ registerProcessor('onset', OnsetProc);
   function serializeVeBarsToText(){
     return veState.bars.map(function(bar){
       var koLyrics = bar.notes.map(function(n){
+        if (!n || n === '-') return '-';
+        if (n.indexOf('/') >= 0){
+          return n.split('/').map(function(sub){
+            var sn = parseNoteToken(sub, 0);
+            if (!sn) return '-';
+            return sn.bass ? ('p' + sn.bass.ko + '+' + sn.ko) : sn.ko;
+          }).join('/');
+        }
         var inf = parseNoteToken(n, 0);
         if (!inf) return '-';
         return inf.bass ? ('p' + inf.bass.ko + '+' + inf.ko) : inf.ko;
@@ -5553,7 +5573,14 @@ registerProcessor('onset', OnsetProc);
             ? ' <span style="color:#1d4ed8;font-weight:800">!아포</span>'
             : ' <span style="color:#64748b;font-weight:700">~티란</span>';
         }
-        if (inf && inf.chordNotes && inf.chordNotes.length > 2){
+        if (tok.indexOf('/') >= 0){
+          var subs = tok.split('/');
+          var subKo = subs.map(function(stk){
+            var sn = parseNoteToken(stk, bIdx);
+            return sn ? ((sn.pos && sn.pos.lh != null ? sn.pos.lh : '') + sn.ko) : stk;
+          }).join('/');
+          cell.innerHTML = '<b>' + subKo + '</b><small style="color:#2563eb;font-weight:700">' + subs.length + '분할</small>';
+        } else if (inf && inf.chordNotes && inf.chordNotes.length > 2){
           cell.innerHTML = '<b>' + inf.chordNotes.map(function(c){ return c.ko; }).join('+') + '</b><small style="color:#b45309;font-weight:700">화음' + artBadge + '</small>';
         } else if (inf && inf.bass){
           cell.innerHTML = '<b>p' + inf.bass.ko + '+' + koLabel + '</b><small style="color:#b45309;font-weight:700">' + inf.bass.str + '줄+' + (inf.pos ? inf.pos.str + '줄' + inf.pos.fret : '') + artBadge + '</small>';
@@ -5959,7 +5986,7 @@ registerProcessor('onset', OnsetProc);
     var beats = Number($('#nsBeats').value) || 4;
     var bpm = Number($('#nsBpm').value) || 64;
     var raw = $('#nsMeasuresTxt').value.trim();
-    var lines = raw.split(/\r?\n|\s*\/\s*/).map(function(l){ return l.trim(); }).filter(Boolean);
+    var lines = raw.split(/\r?\n|\s+\/\s+|\s*\/\/\s*/).map(function(l){ return l.trim(); }).filter(Boolean);
     if (!lines.length){
       alert('최소 1마디 이상 입력해 주세요.');
       return;
