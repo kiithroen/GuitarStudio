@@ -357,7 +357,7 @@ async function testSubdividedGuide(client) {
       check(emitted.map(function(event){ return event.str; }).join(',') === '6,3,2,4,3,1', 'preview preserves each physical string');
       check(Math.abs(emitted[0].when - 2.22) < 0.000001 && Math.abs(emitted[3].when - 2.44) < 0.000001, 'preview starts chord groups at their subdivision positions');
       var pills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill'));
-      check(pills.length === 6, 'TAB grid renders every pitch in both subdivided chords');
+      check(pills.length === 6 && pills.every(function(p){ return p.classList.contains('note-fret'); }), 'TAB grid renders every subdivided pitch with the same neutral note style');
       check(pills.filter(function(p){ return Math.abs(parseFloat(p.style.left) - 50) < 0.001; }).length === 3 && pills.filter(function(p){ return Math.abs(parseFloat(p.style.left) - 83.3333333333) < 0.001; }).length === 3, 'TAB chord fingering pills stay at each subdivision position');
       var tabTop = document.querySelector('#measuresGrid .beat-cell[data-b="0"] .tab-cell-en');
       check(tabTop && tabTop.textContent === '-·E+G+C·D+A+F', 'TAB top label lists the component names within each subnote');
@@ -377,6 +377,9 @@ async function testSubdividedGuide(client) {
       var pairBeat = parseScore('[C] -/0E2+1C4/D4 - -', 4).measures[0].beats[0];
       var pairSong = { id: 'browser-guide-pair', title: 'Pair', badge: '', type: 'structured', beats: 4, measures: [{ no: 1, chord: 'C', autoChord: false, beats: [pairBeat] }] };
       window.curSong = pairSong;
+      renderSong();
+      var splitPairPills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill'));
+      check(splitPairPills.length === 3 && splitPairPills.every(function(p){ return p.classList.contains('note-fret'); }), 'subdivided pair notes use the same neutral pill style');
       window.actx.currentTime = 7;
       emitted = [];
       updateActiveCursor(0, 0, true);
@@ -386,7 +389,7 @@ async function testSubdividedGuide(client) {
       window.actx.currentTime = 7;
       emitted = [];
       updateActiveCursor(0, 0, true);
-      check(emitted.map(function(event){ return event.midi; }).join(',') === '40,60,62' && Math.abs(emitted[0].when - 7.22) < 0.000001, 'preview plays explicit pair bass only at its subnote time');
+      check(emitted.map(function(event){ return event.midi; }).join(',') === '40,60,62' && Math.abs(emitted[0].when - 7.22) < 0.000001, 'preview plays every explicit pair component at its subnote time');
       check(pairEvents[0].when === 8.2, 'explicit pair bass plays only at its own subnote time');
 
       emitted = [];
@@ -405,7 +408,7 @@ async function testSubdividedGuide(client) {
       window.curSong = sameFretSong;
       renderSong();
       var sameFretPills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill')).filter(function(p){ return Math.abs(parseFloat(p.style.left) - 25) < 0.001; });
-      check(sameFretPills.length === 1 && sameFretPills[0].classList.contains('bass-fret'), 'same-string same-fret pair draws one bass pill');
+      check(sameFretPills.length === 1 && sameFretPills[0].classList.contains('note-fret'), 'same-string same-fret pair draws one neutral note pill');
 
       var melodySong = { type: 'structured', measures: parseScore('[C] -/C4/D4 - -', 4).measures };
       var melodyEvents = getSubdividedGuideEvents(melodySong.measures[0].beats[0], { startTime: 9, subStep: 0.2, capo: 0, beatsPerBar: 4, preview: false });
@@ -425,22 +428,40 @@ async function testSubdividedGuide(client) {
         var pills = Array.prototype.slice.call(cell.querySelectorAll('.tab-fret-pill'));
         return {
           label: cell.querySelector('.tab-cell-en').textContent,
-          low: pills.some(function(p){ return p.classList.contains('bass-fret') && p.textContent.trim() === '0' && p.style.top === '40%'; }),
-          high: pills.some(function(p){ return p.classList.contains('mel-fret') && p.textContent.trim().indexOf('1') === 0 && p.style.top === '20%'; })
+          hasHandHint: !!cell.querySelector('.tab-cell-rh'),
+          low: pills.some(function(p){ return p.classList.contains('note-fret') && p.textContent.trim() === '0' && p.style.top === '40%'; }),
+          high: pills.some(function(p){ return p.classList.contains('note-fret') && p.textContent.trim().indexOf('1') === 0 && p.style.top === '20%'; }),
+          styles: pills.map(function(p){ var style = getComputedStyle(p); return [style.color, style.backgroundColor, style.borderColor].join('|'); })
         };
       });
-      check(tabPairs.every(function(pair){ return pair.label === 'G3+C4' && pair.low && pair.high; }), 'both measures show the written G3 open third string and C4 first fret pair: ' + JSON.stringify(tabPairs));
+      check(tabPairs.every(function(pair){ return pair.label === 'G3+C4' && !pair.hasHandHint && pair.low && pair.high && pair.styles.length === 2 && pair.styles[0] === pair.styles[1]; }), 'both measures show G3+C4 with same-style neutral pills and no p+m hint');
+      check(tabPairs[0].styles[0] === tabPairs[1].styles[0], 'pair pills have matching computed foreground, background, and border styles at rest');
+      updateActiveCursor(0, 1, false);
+      var activePair = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-m="0"][data-b="1"] .tab-fret-pill')).map(function(p){ var style = getComputedStyle(p); return [style.color, style.backgroundColor, style.borderColor].join('|'); });
+      check(activePair.length === 2 && activePair[0] === activePair[1] && activePair[0] !== tabPairs[0].styles[0], 'active pair pills share the same active foreground, background, and border styles');
       appState.scoreView = 'card';
       renderSong();
       var pairCard = document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="1"]');
       check(pairCard.querySelector('.b-ko-main').textContent === '솔·도' && pairCard.querySelector('.b-note-sub').textContent === 'G3+C4', 'beat card shows both pair solfege and octave names');
+      openConverterEditorModal({ title:'pair editor', beats:3, rawText:sourceText });
+      var editorPairCell = document.querySelectorAll('#veBarsGrid .ve-cell')[1];
+      check(editorPairCell.textContent.indexOf('솔+도') >= 0 && editorPairCell.textContent.indexOf('p솔') < 0, 'visual editor shows both pair notes without a bass prefix');
+      var editorChordSelect = document.querySelector('#veBarsGrid .ve-chord-sel');
+      editorChordSelect.value = 'G';
+      editorChordSelect.dispatchEvent(new Event('change', { bubbles:true }));
+      var generatedEditorText = document.getElementById('nsMeasuresTxt').value;
+      check(generatedEditorText.indexOf('솔+도') >= 0 && generatedEditorText.indexOf('p솔') < 0, 'generated editor lyrics list every chord note without a bass prefix');
+      document.getElementById('closeNewSongBtn').click();
       emitted = [];
       window.actx.currentTime = 12;
       updateActiveCursor(0, 1, true);
       check(emitted.map(function(event){ return event.midi; }).join(',') === '60,65' && emitted.map(function(event){ return event.str; }).join(',') === '3,2', 'preview plays both capo-adjusted pair pitches on strings three and two');
-      var fretboardBass = document.querySelector('#fretboard .fb-open[data-str="3"]');
-      var fretboardMelody = document.querySelector('#fretboard .fb-cell[data-str="2"][data-fret="1"] .target-note');
-      check(fretboardBass && fretboardBass.textContent.indexOf('p솔') >= 0 && fretboardMelody && fretboardMelody.textContent.indexOf('도') >= 0, 'fretboard shows open-string G and first-fret C for the written pair');
+      var fretboardLow = document.querySelector('#fretboard .fb-open[data-str="3"]');
+      var fretboardHigh = document.querySelector('#fretboard .fb-cell[data-str="2"][data-fret="1"] .target-note');
+      var guideText = document.getElementById('guideNoteTxt').textContent;
+      var guideHand = document.getElementById('guideRhTxt').textContent;
+      check(fretboardLow && fretboardLow.textContent.indexOf('솔') >= 0 && fretboardLow.textContent.indexOf('p') < 0 && getComputedStyle(fretboardLow).color === 'rgb(98, 212, 145)' && fretboardHigh && fretboardHigh.textContent.indexOf('도') >= 0, 'fretboard shows both written notes in the same green target style without a p label');
+      check(guideText.indexOf('겹음:') === 0 && guideText.indexOf('저음') < 0 && guideHand.indexOf('저음') < 0 && guideText.indexOf('엄지') < 0 && guideHand.indexOf('엄지') < 0 && guideText.indexOf('p(') < 0 && guideHand.indexOf('p(') < 0 && guideHand.indexOf('동시 탄현') >= 0, 'pair guide lists the notes without bass or thumb roles');
       emitted = [];
       window.playSession = { inCountIn: false, nextBeatTime: 13, spb: 0.5, bpb: 3, bIdx: 1, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
       window.isPlaying = true;

@@ -201,9 +201,6 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .b-fingers{display:flex;gap:3px;font-size:10.5px;font-family:var(--font-num);white-space:nowrap}
 .b-lh{color:var(--ok);font-weight:700}
 .b-rh{color:var(--near);font-weight:700}
-.b-bass{margin-top:2px;padding:1px 5px;border-radius:5px;background:rgba(245,158,11,.16);border:1px solid rgba(245,158,11,.55);color:#b45309;font-family:var(--font-num);font-size:10px;font-weight:700;white-space:nowrap;line-height:1.2}
-@media (prefers-color-scheme:dark){.b-bass{background:rgba(245,158,11,.22);color:#fbbf24}}
-.beat-cell.active-beat .b-bass{background:rgba(0,0,0,.28);border-color:rgba(255,255,255,.55);color:#ffd875}
 .beat-cell.arp-melody{border-color:rgba(45,76,155,.5);background:var(--accent-soft)}
 .beat-cell.arp-sub{opacity:.9}
 .beat-cell.arp-sub .b-note{font-size:12px;font-weight:600}
@@ -255,11 +252,8 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .tab-cell-rh{font-family:var(--font-num);font-weight:700;color:var(--near);font-size:9.5px}
 .tab-cell-grid{position:relative;width:100%;height:90px;margin-top:8px}
 .tab-fret-pill{position:absolute;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:16px;padding:0 2.5px;border-radius:4px;font-family:var(--font-num);font-size:11.5px;font-weight:800;line-height:1;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.08);z-index:2;white-space:nowrap}
-.tab-fret-pill.mel-fret{color:var(--fg);border-color:rgba(45,76,155,.45)}
-.beat-cell.tab-cell.active-beat .tab-fret-pill.mel-fret{background:var(--accent);color:#fff;border-color:var(--accent)}
-.tab-fret-pill.bass-fret{color:#b45309;background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.6)}
-@media (prefers-color-scheme:dark){.tab-fret-pill.bass-fret{color:#fbbf24;background:rgba(245,158,11,.24)}}
-.beat-cell.tab-cell.active-beat .tab-fret-pill.bass-fret{background:#f59e0b;color:#fff;border-color:#f59e0b}
+.tab-fret-pill.note-fret{color:var(--fg);border-color:rgba(45,76,155,.45)}
+.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret{background:var(--accent);color:#fff;border-color:var(--accent)}
 .tab-cell-lh{font-size:9px;font-weight:700;margin-left:1px;opacity:.85}
 .tab-rest-dash{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:var(--font-num);font-size:13px;color:var(--muted);font-weight:700}
 
@@ -462,7 +456,6 @@ body.practice-compact .fretboard{
 .fb-cell:first-of-type{border-left:5px solid #e5dacb}
 .fb-marker{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-num);font-size:11px;font-weight:700;background:rgba(255,255,255,.18);color:#fff;white-space:nowrap;line-height:1;transition:transform .1s,background-color .1s;pointer-events:none;z-index:3}
 .fb-marker.chord-tone{background:var(--accent);color:#fff}
-.fb-marker.bass-note{width:auto;min-width:36px;height:22px;padding:0 6px;border-radius:999px;background:#f5a623;color:#1f1100;font-size:11px;font-weight:800;border:1.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);z-index:4}
 .fb-marker.target-note{width:auto;min-width:34px;height:22px;padding:0 6px;border-radius:999px;background:#56e38f;color:#041b0c;font-size:11.5px;font-weight:800;border:1.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);z-index:5}
 
 .finger-guide{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
@@ -747,7 +740,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
         </div>
       </div>
 
-      <p class="hint">지판의 칸을 직접 누르면 해당 프렛의 기타 음이 재생돼요. 초록색 원은 악보 음, 주황색 원은 악보에 입력한 낮은 겹음, 파란색 원은 현재 마디 코드의 구성음이에요.</p>
+      <p class="hint">지판의 칸을 직접 누르면 해당 프렛의 기타 음이 재생돼요. 초록색 원은 악보 음, 파란색 원은 현재 마디 코드의 구성음이에요.</p>
 
       <!-- 곡에 등장하는 코드 운지 카드 -->
       <div>
@@ -973,7 +966,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap">
           <button type="button" class="btn sm" id="veApoyandoBtn" title="선택된 박자 음에 ! (아포얀도 주선율 강조) 또는 ~ (티란도 여린 반주) 표기를 전환합니다">! 아포얀도(강조) 전환</button>
-          <button type="button" class="btn sm" id="veBassCombineBtn" title="켜 두거나 Shift+클릭하면 현재 칸의 멜로디와 방금 누른 베이스 저음을 + 기호(예: 0E2+4B4)로 한 박자에 묶어 줍니다">+ 베이스 겹음 묶기: 꺼짐</button>
+          <button type="button" class="btn sm" id="veBassCombineBtn" title="켜 두거나 Shift+클릭하면 현재 칸의 음과 방금 누른 음을 + 기호(예: 0E2+4B4)로 한 박자에 묶어 줍니다">+ 겹음 묶기: 꺼짐</button>
           <button type="button" class="btn sm" id="veAutoChordBtn" title="멜로디 구성음과 곡의 조성을 분석해 마디별 어울리는 반주 코드를 자동으로 추측해 채웁니다">코드 자동 추론 (자동)</button>
           <button type="button" class="btn sm" id="veAddBarBtn">+ 마디 추가</button>
           <button type="button" class="btn sm danger" id="veDelBarBtn">- 마지막 마디 삭제</button>
