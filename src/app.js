@@ -95,6 +95,7 @@
   if (typeof appState.bodyAmount !== 'number') appState.bodyAmount = 1.0; // 울림통 공명 세기 (0~2, 1이 기본)
   if (typeof appState.sympAmount !== 'number') appState.sympAmount = 1.0; // 공명현 세기 (0~2, 0이면 꺼짐)
   if (appState.scoreView !== 'card') appState.scoreView = 'tab'; // 악보 보기 모드: 'tab' 6현 타브(기본) / 'card' 박자 카드
+  appState.isCompactPractice = false;
 
 
 function curCapo(){
@@ -3115,6 +3116,7 @@ function editorCapo(){
   initEditor();
   buildFretboard();
   renderHistoryTable();
+  setCompactPractice(false);
   Promise.all([
     loadExternalSongsJson(),
     dbGetAllSongs()

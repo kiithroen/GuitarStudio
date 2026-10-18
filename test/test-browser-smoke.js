@@ -234,12 +234,14 @@ async function main() {
     assert.ok(tabEnCount > 0, "tab mode renders English pitch names (CDE)");
 
     // 2. Verify compact practice mode toggle
+    const initialCompact = await cdp.evaluate('document.body.classList.contains("practice-compact")');
+    assert.equal(initialCompact, false, "compact practice mode is initially off after boot");
     await cdp.evaluate('document.getElementById("toggleCompactBtn").click()');
     const isCompact = await cdp.evaluate('document.body.classList.contains("practice-compact")');
-    assert.equal(isCompact, true, "compact practice mode activated successfully");
+    assert.equal(isCompact, true, "compact practice mode activated immediately on first click");
     await cdp.evaluate('document.getElementById("toggleCompactBtn").click()');
     const isCompactRestored = await cdp.evaluate('document.body.classList.contains("practice-compact")');
-    assert.equal(isCompactRestored, false, "compact practice mode toggled off successfully");
+    assert.equal(isCompactRestored, false, "compact practice mode toggled off successfully on second click");
 
     // 3. Verify youtube quick links query excludes [Lv..] tags
     const ytLinkText = await cdp.evaluate('document.querySelector("#ytQuickLinks a") ? document.querySelector("#ytQuickLinks a").textContent : ""');
