@@ -222,6 +222,20 @@ async function main() {
     const modalHidden = await cdp.evaluate('document.getElementById("newSongModal").hidden');
     assert.equal(modalHidden, true, 'editor modal closed cleanly');
 
+    // 1. Verify TAB mode does not render Korean solfege and renders English pitch names (CDE)
+    const tabSolfegeCount = await cdp.evaluate('document.querySelectorAll(".tab-cell-solfege").length');
+    assert.equal(tabSolfegeCount, 0, "tab mode does not render Korean solfege elements");
+    const tabEnCount = await cdp.evaluate('document.querySelectorAll(".tab-cell-en").length');
+    assert.ok(tabEnCount > 0, "tab mode renders English pitch names (CDE)");
+
+    // 2. Verify compact practice mode toggle
+    await cdp.evaluate('document.getElementById("toggleCompactBtn").click()');
+    const isCompact = await cdp.evaluate('document.body.classList.contains("practice-compact")');
+    assert.equal(isCompact, true, "compact practice mode activated successfully");
+    await cdp.evaluate('document.getElementById("toggleCompactBtn").click()');
+    const isCompactRestored = await cdp.evaluate('document.body.classList.contains("practice-compact")');
+    assert.equal(isCompactRestored, false, "compact practice mode toggled off successfully");
+
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');
 

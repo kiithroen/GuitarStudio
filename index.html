@@ -231,15 +231,15 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 
 /* 6현 타브 (TAB) 악보 렌더링 스타일 */
 .tab-stave-wrap{position:relative;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-top:2px}
-.tab-stave-side{width:36px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:3px 2px 2px;background:var(--surface-2);border-right:1px solid var(--line);user-select:none;position:relative}
+.tab-stave-side{width:36px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:4px 2px 8px;background:var(--surface-2);border-right:1px solid var(--line);user-select:none;position:relative}
 .tab-badge-title{height:20px;display:flex;align-items:center;justify-content:center;font-family:var(--font-num);font-weight:900;font-size:11px;letter-spacing:.06em;color:var(--accent);line-height:1}
-.tab-str-names{position:relative;width:100%;height:90px;margin-top:2px}
+.tab-str-names{position:relative;width:100%;height:90px;margin-top:8px}
 .tab-str-names span{position:absolute;left:0;right:0;transform:translateY(-50%);text-align:center;font-family:var(--font-num);font-size:9.5px;font-weight:800;color:var(--muted);line-height:1}
 .tab-stave-body{position:relative;flex:1;min-width:0}
-.tab-lines-bg{position:absolute;left:0;right:0;top:25px;height:90px;pointer-events:none}
+.tab-lines-bg{position:absolute;left:0;right:0;top:32px;height:90px;pointer-events:none}
 .tab-line-h{position:absolute;left:0;right:0;height:0;border-top:1px solid var(--line);opacity:.75}
-.beats-row.tab-mode{display:grid;grid-template-columns:repeat(var(--bpb,4),minmax(0,1fr));gap:0;margin-top:0;height:124px;position:relative;z-index:1}
-.beat-cell.tab-cell{border:none;border-right:1px dashed rgba(128,128,128,.2);border-radius:0;background:transparent;padding:3px 1px 2px;display:flex;flex-direction:column;align-items:center;position:relative;cursor:pointer;transition:background-color .08s,box-shadow .08s}
+.beats-row.tab-mode{display:grid;grid-template-columns:repeat(var(--bpb,4),minmax(0,1fr));gap:0;margin-top:0;height:130px;position:relative;z-index:1}
+.beat-cell.tab-cell{border:none;border-right:1px dashed rgba(128,128,128,.2);border-radius:0;background:transparent;padding:4px 1px 8px;display:flex;flex-direction:column;align-items:center;position:relative;cursor:pointer;transition:background-color .08s,box-shadow .08s}
 .beat-cell.tab-cell:last-child{border-right:none}
 .beat-cell.tab-cell:hover{background:rgba(45,76,155,.07)}
 .beat-cell.tab-cell.active-beat{background:rgba(45,76,155,.18);transform:none;box-shadow:inset 0 0 0 2px var(--accent);color:inherit}
@@ -249,12 +249,12 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .tab-cell-top{height:20px;display:flex;align-items:center;justify-content:center;gap:3px;font-size:11px;line-height:1;white-space:nowrap;overflow:hidden}
 .tab-cell-solfege-wrap{display:inline-flex;align-items:baseline;gap:2px}
 .tab-cell-solfege{font-weight:700;color:var(--accent);font-size:11.5px}
-.tab-cell-en{font-family:var(--font-num);font-weight:700;color:var(--muted);font-size:9.5px;letter-spacing:-0.2px}
+.tab-cell-en{font-family:var(--font-num);font-weight:800;color:var(--accent);font-size:11px;letter-spacing:-0.2px}
 .beat-cell.tab-cell.active-beat .tab-cell-solfege{color:var(--accent)}
-.beat-cell.tab-cell.active-beat .tab-cell-en{color:var(--accent);opacity:.9}
+.beat-cell.tab-cell.active-beat .tab-cell-en{color:var(--accent);opacity:1}
 .tab-cell-rh{font-family:var(--font-num);font-weight:700;color:var(--near);font-size:9.5px}
-.tab-cell-grid{position:relative;width:100%;height:90px;margin-top:2px}
-.tab-fret-pill{position:absolute;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:16px;padding:0 3px;border-radius:4px;font-family:var(--font-num);font-size:12px;font-weight:800;line-height:1;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.08);z-index:2;white-space:nowrap}
+.tab-cell-grid{position:relative;width:100%;height:90px;margin-top:8px}
+.tab-fret-pill{position:absolute;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:16px;padding:0 2.5px;border-radius:4px;font-family:var(--font-num);font-size:11.5px;font-weight:800;line-height:1;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.08);z-index:2;white-space:nowrap}
 .tab-fret-pill.mel-fret{color:var(--fg);border-color:rgba(45,76,155,.45)}
 .beat-cell.tab-cell.active-beat .tab-fret-pill.mel-fret{background:var(--accent);color:#fff;border-color:var(--accent)}
 .tab-fret-pill.bass-fret{color:#b45309;background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.6)}

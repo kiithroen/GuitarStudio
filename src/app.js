@@ -544,27 +544,26 @@ function editorCapo(){
             var solfegeWrap = document.createElement('span');
             solfegeWrap.className = 'tab-cell-solfege-wrap';
 
-            var solfege = document.createElement('span');
-            solfege.className = 'tab-cell-solfege';
-
             var enEl = document.createElement('span');
             enEl.className = 'tab-cell-en';
 
             if (b.chordNotes && b.chordNotes.length > 2){
-              solfege.textContent = '화음';
-              if (m.chord) enEl.textContent = cleanChordToken(m.chord);
+              if (m.chord){
+                enEl.textContent = cleanChordToken(m.chord);
+              } else {
+                enEl.textContent = b.chordNotes.map(function(c){
+                  return (c.en || '').replace(/\d+$/, '') || c.en || '';
+                }).filter(Boolean).join('·');
+              }
             } else if (b.isSubdivided && b.subNotes){
-              solfege.textContent = b.subNotes.map(function(s){ return (s.tok === '-' || s.ko === '유지') ? '-' : s.ko; }).join('·');
               enEl.textContent = b.subNotes.map(function(s){ return (s.tok === '-' || !s.en || s.en === '-') ? '-' : s.en.replace(/\d+$/, ''); }).join('·');
             } else {
-              solfege.textContent = b.ko;
-              enEl.textContent = b.en;
+              enEl.textContent = b.en || '';
             }
-            solfegeWrap.appendChild(solfege);
             if (enEl.textContent){
               solfegeWrap.appendChild(enEl);
+              topRow.appendChild(solfegeWrap);
             }
-            topRow.appendChild(solfegeWrap);
           }
           if (b.rh || effBass){
             var rhEl = document.createElement('span');
@@ -622,13 +621,18 @@ function editorCapo(){
             });
           } else if (b.isSubdivided && b.subNotes && b.subNotes.length > 1){
             var numSubs = b.subNotes.length;
+            var firstSub = b.subNotes[0];
+            var sameStrOnFirst = !!(effBass && effBass.str && firstSub && firstSub.str && effBass.str === firstSub.str);
+            var sameFretOnFirst = sameStrOnFirst && (effBass.fret === firstSub.fret);
+            var diffFretOnFirst = sameStrOnFirst && (effBass.fret !== firstSub.fret);
+
             if (effBass && effBass.str){
               var bPill = document.createElement('span');
               bPill.className = 'tab-fret-pill bass-fret';
               bPill.style.position = 'absolute';
               bPill.style.top = ((effBass.str - 1) * 20) + '%';
               bPill.style.left = ((0.5 / numSubs) * 100) + '%';
-              bPill.style.transform = 'translate(-50%, 0)';
+              bPill.style.transform = diffFretOnFirst ? 'translate(-85%, -50%)' : 'translate(-50%, -50%)';
               bPill.textContent = String(effBass.fret != null ? effBass.fret : 0);
               if (effBass.lh){
                 var blh = document.createElement('span');
@@ -646,17 +650,20 @@ function editorCapo(){
                 dash.textContent = '-';
                 dash.style.position = 'absolute';
                 dash.style.left = leftPct;
-                dash.style.top = '40%';
+                dash.style.top = '50%';
                 dash.style.transform = 'translate(-50%, -50%)';
                 dash.style.opacity = '0.4';
                 gridEl.appendChild(dash);
               } else if (sn.midi && sn.str){
+                if (sIdx === 0 && sameFretOnFirst){
+                  return;
+                }
                 var mPill = document.createElement('span');
                 mPill.className = 'tab-fret-pill mel-fret';
                 mPill.style.position = 'absolute';
                 mPill.style.top = ((sn.str - 1) * 20) + '%';
                 mPill.style.left = leftPct;
-                mPill.style.transform = 'translate(-50%, 0)';
+                mPill.style.transform = (sIdx === 0 && diffFretOnFirst) ? 'translate(-15%, -50%)' : 'translate(-50%, -50%)';
                 mPill.textContent = String(sn.fret != null ? sn.fret : 0);
                 if (sn.lh != null && sn.lh > 0){
                   var mlh = document.createElement('span');
@@ -668,11 +675,20 @@ function editorCapo(){
               }
             });
           } else {
+            var hasBass = !!(effBass && effBass.str);
+            var hasMel = !!(b.midi && b.str);
+            var sameStr = hasBass && hasMel && (effBass.str === b.str);
+            var sameFret = sameStr && (effBass.fret === b.fret);
+            var diffFret = sameStr && (effBass.fret !== b.fret);
+
             // 1. 베이스 프렛 (주황/골드)
-            if (effBass && effBass.str){
+            if (hasBass){
               var bPill = document.createElement('span');
               bPill.className = 'tab-fret-pill bass-fret';
               bPill.style.top = ((effBass.str - 1) * 20) + '%';
+              if (diffFret){
+                bPill.style.left = '38%';
+              }
               bPill.textContent = String(effBass.fret != null ? effBass.fret : 0);
               if (effBass.lh){
                 var blh = document.createElement('span');
@@ -684,19 +700,24 @@ function editorCapo(){
             }
 
             // 2. 멜로디 프렛 (인디고/블루)
-            if (b.midi && b.str){
-              var mPill = document.createElement('span');
-              mPill.className = 'tab-fret-pill mel-fret';
-              mPill.style.top = ((b.str - 1) * 20) + '%';
-              mPill.textContent = String(b.fret != null ? b.fret : 0);
-              if (b.lh != null){
-                var mlh = document.createElement('span');
-                mlh.className = 'tab-cell-lh';
-                mlh.textContent = '(' + b.lh + ')';
-                mPill.appendChild(mlh);
+            if (hasMel){
+              if (!sameFret){
+                var mPill = document.createElement('span');
+                mPill.className = 'tab-fret-pill mel-fret';
+                mPill.style.top = ((b.str - 1) * 20) + '%';
+                if (diffFret){
+                  mPill.style.left = '62%';
+                }
+                mPill.textContent = String(b.fret != null ? b.fret : 0);
+                if (b.lh != null){
+                  var mlh = document.createElement('span');
+                  mlh.className = 'tab-cell-lh';
+                  mlh.textContent = '(' + b.lh + ')';
+                  mPill.appendChild(mlh);
+                }
+                gridEl.appendChild(mPill);
               }
-              gridEl.appendChild(mPill);
-            } else if (!b.midi && !effBass){
+            } else if (!hasMel && !hasBass){
               var dash = document.createElement('span');
               dash.className = 'tab-rest-dash';
               dash.textContent = '-';
