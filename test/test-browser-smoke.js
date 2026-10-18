@@ -309,11 +309,10 @@ async function testPracticeSessionLifecycle(client) {
       playGuitarNote: window.playGuitarNote,
       scheduleMetronomeClick: window.scheduleMetronomeClick,
       highlightFretboard: window.highlightFretboard,
-      ensureMicWorklet: window.ensureMicWorklet,
       ensureAudioCtx: window.ensureAudioCtx,
-      state: { micScoring: appState.micScoring, guideSound: appState.guideSound, loopEnable: appState.loopEnable, loopStart: appState.loopStart, loopEnd: appState.loopEnd, bpm: appState.bpm },
+      warmKsCache: window.warmKsCache,
+      state: { guideSound: appState.guideSound, loopEnable: appState.loopEnable, loopStart: appState.loopStart, loopEnd: appState.loopEnd, bpm: appState.bpm },
       isPlaying: window.isPlaying,
-      isStarting: window.isStarting,
       playSession: window.playSession,
       song: window.curSong,
       measure: window.curMeasureIdx,
@@ -337,7 +336,7 @@ async function testPracticeSessionLifecycle(client) {
       appState.loopEnd = 1;
       window.curSong = { type: 'structured', measures: [{ beats: [{ isSubdivided: true, subNotes: [{}, { midi: 64, tok: 'E4' }] }, {}, {}, {}] }], title: 'lifecycle-test' };
 
-      var staleSession = { inCountIn: false, nextBeatTime: 1, spb: 1, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
+      var staleSession = { inCountIn: false, nextBeatTime: 1, spb: 1, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, endScheduled: false };
       window.playSession = staleSession;
       window.isPlaying = true;
       window.actx.currentTime = 0.95;
@@ -360,7 +359,7 @@ async function testPracticeSessionLifecycle(client) {
         window.curSong.measures[0].beats = [{}, {}, {}, { isSubdivided: true, subNotes: [{ midi: 65, tok: 'F4' }, { midi: 67, tok: 'G4' }] }];
         appState.bpm = bpm;
         var spb = 60 / bpm;
-        var session = { inCountIn: false, nextBeatTime: 1, spb: spb, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
+        var session = { inCountIn: false, nextBeatTime: 1, spb: spb, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, endScheduled: false };
         window.playSession = session;
         window.isPlaying = true;
         for (var beatIdx = 0; beatIdx < 4; beatIdx++){
@@ -387,60 +386,38 @@ async function testPracticeSessionLifecycle(client) {
         window.isPlaying = false;
       });
 
-      var pendingResolve;
       window.playSession = null;
       window.curSong = original.song;
-      window.ensureMicWorklet = function(){ return new Promise(function(resolve){ pendingResolve = resolve; }); };
       window.ensureAudioCtx = function(){};
-      appState.micScoring = true;
+      window.warmKsCache = function(){};
       window.actx = { currentTime: 0 };
-      var cancelledStart = startPractice();
-      check(window.isStarting === true && window.isPlaying === false, 'microphone wait enters starting state (starting=' + window.isStarting + ', playing=' + window.isPlaying + ', mic=' + appState.micScoring + ', resolver=' + !!pendingResolve + ')');
-      check(document.getElementById('playBtn').textContent === '연습 취소', 'play button exposes pending-start cancel action');
-      document.getElementById('playBtn').click();
-      check(window.isStarting === false, 'stop cancels pending start and clears starting state');
-      pendingResolve();
-      await cancelledStart;
-      check(window.isPlaying === false && window.playSession == null, 'cancelled microphone wait cannot start playback (playing=' + window.isPlaying + ', session=' + !!window.playSession + ', starting=' + window.isStarting + ')');
+      startPractice();
+      var firstSession = window.playSession;
+      check(window.isPlaying === true && firstSession && firstSession.inCountIn === true, 'practice starts synchronously with a count-in session');
+      check(!Object.prototype.hasOwnProperty.call(firstSession, 'hits') && !Object.prototype.hasOwnProperty.call(firstSession, 'lastOnsetObj'), 'practice session has no scoring or onset state');
+      check(document.getElementById('playBtn').textContent === '연습 정지', 'main play button immediately exposes stop action');
+      startPractice();
+      check(window.playSession === firstSession, 'duplicate start while playing is ignored');
+      stopPractice();
+      check(window.isPlaying === false && window.playSession == null, 'main play button session stops synchronously');
 
-      var compactResolve;
-      window.ensureMicWorklet = function(){ return new Promise(function(resolve){ compactResolve = resolve; }); };
-      window.playSession = null;
-      var compactCancelledStart = startPractice();
-      check(document.getElementById('compactPlayBtn').textContent === '⏹ 취소', 'compact play button exposes pending-start cancel action');
       document.getElementById('compactPlayBtn').click();
-      compactResolve();
-      await compactCancelledStart;
-      check(window.isPlaying === false && window.playSession == null, 'compact play button cancels pending microphone start');
+      check(window.isPlaying === true && window.playSession, 'compact play button starts immediately');
+      document.getElementById('compactPlayBtn').click();
+      check(window.isPlaying === false && window.playSession == null, 'compact play button stops immediately');
 
-      var switchResolve;
-      window.ensureMicWorklet = function(){ return new Promise(function(resolve){ switchResolve = resolve; }); };
-      window.curSong = original.song;
+      startPractice();
       var previousSong = window.curSong.id;
-      var switchedStart = startPractice();
       var nextSong = window.allSongs.find(function(song){ return song.id !== previousSong; });
       changeSongById(nextSong.id);
-      switchResolve();
-      await switchedStart;
-      check(window.isPlaying === false && window.playSession == null && window.curSong.id === nextSong.id, 'song change cancels pending microphone start');
+      check(window.isPlaying === false && window.playSession == null && window.curSong.id === nextSong.id, 'song change stops active practice');
 
-      var rebuildResolve;
-      window.ensureMicWorklet = function(){ return new Promise(function(resolve){ rebuildResolve = resolve; }); };
-      window.playSession = null;
-      var rebuildStart = startPractice();
-      rebuildSongSelect(window.curSong.id);
-      rebuildResolve();
-      await rebuildStart;
-      check(window.isPlaying === false && window.playSession == null, 'song select rebuild cancels pending microphone start');
-
-      var rejectStart;
-      window.ensureMicWorklet = function(){ return new Promise(function(resolve, reject){ rejectStart = reject; }); };
-      var failedStart = startPractice();
-      document.getElementById('compactPlayBtn').click();
-      document.getElementById('liveNoteKo').textContent = '새 상태';
-      rejectStart(new Error('cancelled permission request'));
-      await failedStart;
-      check(document.getElementById('liveNoteKo').textContent === '새 상태', 'stale microphone rejection cannot overwrite current status');
+      var spaceStart = new KeyboardEvent('keydown', { key: ' ', code:'Space', bubbles: true, cancelable: true });
+      window.dispatchEvent(spaceStart);
+      check(window.isPlaying === true && window.playSession, 'Space keyboard shortcut starts practice');
+      var spaceStop = new KeyboardEvent('keydown', { key: ' ', code:'Space', bubbles: true, cancelable: true });
+      window.dispatchEvent(spaceStop);
+      check(window.isPlaying === false && window.playSession == null, 'Space keyboard shortcut stops practice');
       return assertions;
     } finally {
       window.setTimeout = original.setTimeout;
@@ -448,11 +425,10 @@ async function testPracticeSessionLifecycle(client) {
       window.scheduleMetronomeClick = original.scheduleMetronomeClick;
       window.playGuitarNote = original.playGuitarNote;
       window.highlightFretboard = original.highlightFretboard;
-      window.ensureMicWorklet = original.ensureMicWorklet;
       window.ensureAudioCtx = original.ensureAudioCtx;
+      window.warmKsCache = original.warmKsCache;
       Object.keys(original.state).forEach(function(key){ appState[key] = original.state[key]; });
       window.isPlaying = original.isPlaying;
-      window.isStarting = original.isStarting;
       window.playSession = original.playSession;
       window.curSong = original.song;
       window.curMeasureIdx = original.measure;
@@ -462,6 +438,104 @@ async function testPracticeSessionLifecycle(client) {
   })()`);
   assert.ok(Array.isArray(result) && result.length >= 20, 'practice session lifecycle regressions pass');
   process.stdout.write('Checks: practice lifecycle ' + result.length + '\n');
+}
+
+async function testCaptureRemovalAndAudioOffset(client) {
+  const result = await client.evaluate(`(function(){
+    var original = { song:curSong, compact:appState.isCompactPractice, guide:appState.guideSound,
+      offset:appState.audioOffsetMs, playing:window.isPlaying, session:window.playSession };
+    var audit = window.__gsCaptureAudit;
+    function check(ok, message){ if (!ok) throw new Error(message); }
+    try {
+      var removedIds = ['tunerModal','tunerBtn','micScoreBtn','liveNote','liveErr','micFill','histBody','clearHistBtn','runCalibBtn'];
+      check(removedIds.every(function(id){ return document.getElementById(id) === null; }), 'capture, tuner, calibration, and scoring history DOM is removed');
+      check(typeof navigator.mediaDevices.getUserMedia === 'function' && typeof navigator.mediaDevices.enumerateDevices === 'function', 'capture audit stubs are installed before app startup');
+
+      document.getElementById('audioOffsetOpenBtn').click();
+      check(!document.getElementById('audioOffsetModal').hidden, 'manual output offset modal opens without requesting microphone access');
+      document.getElementById('btPresetWired').click();
+      check(appState.audioOffsetMs === 0 && document.getElementById('audioOffsetBadge').textContent === '0ms', 'wired preset keeps a zero output offset');
+      document.getElementById('btPresetNormal').click();
+      check(appState.audioOffsetMs === 180 && document.getElementById('audioOffsetBadge').textContent === '+180ms', 'normal Bluetooth preset applies 180ms');
+      document.getElementById('btPresetHeavy').click();
+      check(appState.audioOffsetMs === 240 && document.getElementById('audioOffsetBadge').textContent === '+240ms', 'heavy Bluetooth preset applies 240ms');
+      var range = document.getElementById('audioOffsetRange');
+      check(range.min === '0' && range.max === '400' && range.step === '5', 'manual output offset slider spans 0-400ms in 5ms steps');
+      range.value = '125'; range.dispatchEvent(new Event('input', { bubbles:true }));
+      check(appState.audioOffsetMs === 125 && document.getElementById('audioOffsetVal').textContent === '+125 ms', 'manual output offset updates app state and value label');
+      document.getElementById('closeAudioOffsetBtn').click();
+
+      startPractice();
+      check(window.isPlaying && window.playSession, 'normal practice starts with no capture API');
+      stopPractice();
+      setCompactPractice(true);
+      document.getElementById('compactPlayBtn').click();
+      check(window.isPlaying && window.playSession, 'compact practice starts with no capture API');
+      document.getElementById('compactPlayBtn').click();
+      check(!window.isPlaying && window.playSession == null, 'compact practice stops with no capture API');
+      setCompactPractice(false);
+      startPractice();
+      var otherSong = window.allSongs.find(function(song){ return song.id !== curSong.id; });
+      changeSongById(otherSong.id);
+      check(!window.isPlaying && window.playSession == null && curSong.id === otherSong.id, 'changing songs stops active practice without capture APIs');
+      if (original.song && curSong.id !== original.song.id) changeSongById(original.song.id);
+      check(audit.capture === 0 && audit.devices === 0 && audit.worklet === 0, 'practice, output settings, and song changes never request capture, enumerate devices, or load a worklet');
+      return { checks:13, counters:{ capture:audit.capture, devices:audit.devices, worklet:audit.worklet } };
+    } finally {
+      if (window.isPlaying) stopPractice();
+      appState.audioOffsetMs = original.offset;
+      appState.guideSound = original.guide;
+      setCompactPractice(original.compact);
+      if (original.song && curSong.id !== original.song.id) changeSongById(original.song.id);
+      window.playSession = original.session;
+      window.isPlaying = original.playing;
+      saveAppState();
+      syncCompactPlayButtons();
+    }
+  })()`);
+  assert.deepEqual(result.counters, { capture:0, devices:0, worklet:0 }, 'capture APIs and audio worklet remain unused after playback, modal, preset, and song changes');
+  process.stdout.write('Checks: capture-free audio offset and practice workflow ' + result.checks + '\n');
+}
+
+async function importLegacyBackup(client) {
+  await client.evaluate(`(function(){
+    var song = buildStructuredSong({ id:'browser-legacy-backup-song', title:'Legacy backup song', badge:'Custom', capo:3, bpm:84, beats:4, lines:['[C] C4 - - -'] });
+    var backup = { version:1, exportedAt:'2026-10-19T00:00:00.000Z', customSongs:[song], history:[{ sentinel:'old-backup-score' }], calib:{ lat:0.123, calibrated:true }, appState:{ bpm:84, audioOffsetMs:180, micScoring:true, micDeviceId:'removed-device', guideSound:true } };
+    var file = new File([JSON.stringify(backup)], 'legacy-backup.json', { type:'application/json' });
+    var transfer = new DataTransfer(); transfer.items.add(file);
+    var input = document.getElementById('importFileInput'); input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles:true }));
+    return true;
+  })()`);
+}
+
+async function testBackupExport(client) {
+  const result = await client.evaluate(`(async function(){
+    var original = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    var captured = null;
+    var timeoutId = null;
+    var resolveBlob;
+    var blobCreated = new Promise(function(resolve){ resolveBlob = resolve; });
+    try {
+      Object.defineProperty(URL, 'createObjectURL', { configurable:true, value:function(blob){ captured = blob; resolveBlob(blob); return 'blob:test-backup'; } });
+      var blobTimeout = new Promise(function(_, reject){ timeoutId = setTimeout(function(){ reject(new Error('Timed out waiting for backup Blob creation')); }, 5000); });
+      document.getElementById('exportJsonBtn').click();
+      await Promise.race([blobCreated, blobTimeout]);
+      var payload = JSON.parse(await captured.text());
+      return { keys:Object.keys(payload).sort(), version:payload.version, exportedAt:payload.exportedAt,
+        appStateKeys:Object.keys(payload.appState || {}), songs:Array.isArray(payload.customSongs) };
+    } finally {
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      if (original) Object.defineProperty(URL, 'createObjectURL', original);
+      else delete URL.createObjectURL;
+    }
+  })()`);
+  assert.deepEqual(result.keys, ['appState','customSongs','exportedAt','version'], 'backup export contains only the versioned app state and custom songs payload');
+  assert.equal(result.version, 1, 'backup format version remains 1');
+  assert.ok(result.exportedAt, 'backup export retains its exportedAt timestamp');
+  assert.equal(result.songs, true, 'backup export retains customSongs');
+  assert.ok(!result.appStateKeys.includes('micScoring') && !result.appStateKeys.includes('micDeviceId'), 'removed microphone settings are not re-exported');
+  process.stdout.write('Checks: legacy-compatible backup export shape 5\n');
 }
 
 async function testSubdividedGuide(client) {
@@ -479,7 +553,7 @@ async function testSubdividedGuide(client) {
       playing: window.isPlaying,
       measure: window.curMeasureIdx,
       beat: window.curBeatIdx,
-      state: { guideSound: appState.guideSound, scoreView: appState.scoreView, beats: appState.beats, bpm: appState.bpm, loopStart: appState.loopStart, loopEnd: appState.loopEnd, loopEnable: appState.loopEnable, micScoring: appState.micScoring }
+      state: { guideSound: appState.guideSound, scoreView: appState.scoreView, beats: appState.beats, bpm: appState.bpm, loopStart: appState.loopStart, loopEnd: appState.loopEnd, loopEnable: appState.loopEnable }
     };
     var assertions = [];
     var emitted = [];
@@ -520,7 +594,7 @@ async function testSubdividedGuide(client) {
       emitted = [];
       var timers = [];
       window.setTimeout = function(fn, delay){ timers.push({ fn: fn, delay: delay }); return timers.length; };
-      window.playSession = { inCountIn: false, nextBeatTime: 4, spb: 0.6, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
+      window.playSession = { inCountIn: false, nextBeatTime: 4, spb: 0.6, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, endScheduled: false };
       window.isPlaying = true;
       window.actx.currentTime = 3.95;
       schedulerTick();
@@ -549,7 +623,7 @@ async function testSubdividedGuide(client) {
       check(pairEvents[0].when === 8.2, 'explicit pair bass plays only at its own subnote time');
 
       emitted = [];
-      window.playSession = { inCountIn: false, nextBeatTime: 8, spb: 0.6, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
+      window.playSession = { inCountIn: false, nextBeatTime: 8, spb: 0.6, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, endScheduled: false };
       window.isPlaying = true;
       window.actx.currentTime = 7.95;
       schedulerTick();
@@ -578,7 +652,7 @@ async function testSubdividedGuide(client) {
       emitted = [];
       stopped = [];
       window.actx.currentTime = 39.99;
-      window.playSession = { inCountIn:false, nextBeatTime:40, spb:0.6, bpb:4, bIdx:0, mIdx:0, loopCompleted:0, resumeNextHold:false, hits:[], endScheduled:false };
+      window.playSession = { inCountIn:false, nextBeatTime:40, spb:0.6, bpb:4, bIdx:0, mIdx:0, loopCompleted:0, resumeNextHold:false, endScheduled:false };
       window.isPlaying = true;
       schedulerTick();
       window.actx.currentTime = 40.59;
@@ -590,7 +664,7 @@ async function testSubdividedGuide(client) {
 
       emitted = [];
       window.actx.currentTime = 50.59;
-      window.playSession = { inCountIn:false, nextBeatTime:50.6, spb:0.6, bpb:4, bIdx:1, mIdx:1, loopCompleted:0, resumeNextHold:false, hits:[], endScheduled:false };
+      window.playSession = { inCountIn:false, nextBeatTime:50.6, spb:0.6, bpb:4, bIdx:1, mIdx:1, loopCompleted:0, resumeNextHold:false, endScheduled:false };
       schedulerTick();
       check(emitted.length === 0, 'an ordinary internal hold slot schedules no new note-on');
 
@@ -601,7 +675,7 @@ async function testSubdividedGuide(client) {
       var loopStartSource = GuitarRhythm.resolveHold(clockScore.measures, loopStartHold);
       check(loopStartHold.kind === 'hold' && loopStartSource && loopStartSource.tok === 'G2@6+B2@5', 'loop-start test targets a cross-bar hold linked to the original chord');
       window.actx.currentTime = 59.99;
-      window.playSession = { inCountIn:false, nextBeatTime:60, spb:0.6, bpb:4, bIdx:0, mIdx:1, loopCompleted:0, resumeNextHold:false, hits:[], endScheduled:false };
+      window.playSession = { inCountIn:false, nextBeatTime:60, spb:0.6, bpb:4, bIdx:0, mIdx:1, loopCompleted:0, resumeNextHold:false, endScheduled:false };
       schedulerTick();
       check(emitted.length === 2 && emitted[0].midi !== emitted[1].midi && emitted[0].when === emitted[1].when, 'loop-start hold resumes the original chord once with simultaneous attacks');
       check(emitted.every(function(event){ return event.duration === 2.4; }), 'loop-start resumed chord clips to the four slots remaining in the loop');
@@ -609,7 +683,6 @@ async function testSubdividedGuide(client) {
       emitted = [];
       appState.loopStart = 1;
       appState.loopEnd = 3;
-      appState.micScoring = false;
       window.warmKsCache = function(){};
       window.curMeasureIdx = 1;
       window.curBeatIdx = 1;
@@ -636,7 +709,7 @@ async function testSubdividedGuide(client) {
 
       window.curSong = original.song;
       renderSong();
-      var clickSession = { inCountIn:false, nextBeatTime:10, spb:0.6, bpb:4, bIdx:0, mIdx:0, loopCompleted:0, hits:[], endScheduled:false };
+      var clickSession = { inCountIn:false, nextBeatTime:10, spb:0.6, bpb:4, bIdx:0, mIdx:0, loopCompleted:0, endScheduled:false };
       window.playSession = clickSession;
       window.isPlaying = true;
       emitted = [];
@@ -755,7 +828,7 @@ async function testSubdividedGuide(client) {
       check(fretboardLow && fretboardLow.textContent.indexOf('솔') >= 0 && fretboardLow.textContent.indexOf('p') < 0 && getComputedStyle(fretboardLow).color === 'rgb(98, 212, 145)' && fretboardHigh && fretboardHigh.textContent.indexOf('도') >= 0, 'fretboard shows both written notes in the same green target style without a p label');
       check(guideText.indexOf('겹음:') === 0 && guideText.indexOf('저음') < 0 && guideHand.indexOf('저음') < 0 && guideText.indexOf('엄지') < 0 && guideHand.indexOf('엄지') < 0 && guideText.indexOf('p(') < 0 && guideHand === '-', 'pair guide lists the notes without inferred hand roles');
       emitted = [];
-      window.playSession = { inCountIn: false, nextBeatTime: 13, spb: 0.5, bpb: 3, bIdx: 1, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
+      window.playSession = { inCountIn: false, nextBeatTime: 13, spb: 0.5, bpb: 3, bIdx: 1, mIdx: 0, loopCompleted: 0, endScheduled: false };
       window.isPlaying = true;
       window.actx.currentTime = 12.95;
       schedulerTick();
@@ -852,8 +925,8 @@ async function testInvalidStructuredPersistence(client) {
       appState.bpm = 88;
       saveAppState();
       window.isPlaying = true;
-      window.playSession = { hits:[] };
-      stopPractice(false);
+      window.playSession = {};
+      stopPractice();
       return { writes:writes.slice(), source:invalid.measures[0].beats[0].tok, invalidPlaybackBlocked:invalidPlaybackBlocked, appStateSaved:JSON.parse(localStorage.getItem('gs.state')).bpm === 88, songMetadataUntouched:invalid.lastBpm === undefined && invalid.lastPracticedAt === undefined };
     } finally {
       window.dbSaveSong = originalSave;
@@ -907,6 +980,26 @@ async function main() {
     await cdp.send('Page.enable');
     await cdp.send('Runtime.enable');
     await cdp.send('Log.enable');
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source:`(function(){
+      var key='__gsCaptureAudit';
+      var audit={ capture:0, devices:0, worklet:0 };
+      try {
+        if(localStorage.getItem('gs.history')===null) localStorage.setItem('gs.history','legacy-history-marker');
+        if(localStorage.getItem('gs.calib')===null) localStorage.setItem('gs.calib','legacy-calibration-marker');
+      } catch(_){}
+      try { var previous=JSON.parse(sessionStorage.getItem(key)||'null'); if(previous) audit=previous; } catch(_){}
+      function save(){ try { sessionStorage.setItem(key,JSON.stringify(audit)); } catch(_){} }
+      Object.defineProperty(window,'__gsCaptureAudit',{ configurable:true, get:function(){ return audit; } });
+      Object.defineProperty(navigator,'mediaDevices',{ configurable:true, get:function(){ return {
+        getUserMedia:function(){ audit.capture++; save(); throw new Error('Unexpected getUserMedia call'); },
+        enumerateDevices:function(){ audit.devices++; save(); throw new Error('Unexpected enumerateDevices call'); },
+        addEventListener:function(){}, removeEventListener:function(){}
+      }; }});
+      if(window.AudioWorklet && AudioWorklet.prototype && typeof AudioWorklet.prototype.addModule==='function'){
+        var original=AudioWorklet.prototype.addModule;
+        Object.defineProperty(AudioWorklet.prototype,'addModule',{ configurable:true, value:function(){ audit.worklet++; save(); return original.apply(this,arguments); } });
+      }
+    })();` });
 
     const appUrl = `http://127.0.0.1:${httpPort}/index.html`;
     await cdp.send('Page.navigate', { url: appUrl });
@@ -1086,9 +1179,29 @@ async function main() {
 
     await testPracticeSessionLifecycle(cdp);
     process.stdout.write('Browser checkpoint: practice session passed\n');
+    await testCaptureRemovalAndAudioOffset(cdp);
+    await testBackupExport(cdp);
     await testSubdividedGuide(cdp);
     await testStorageFailureRecovery(cdp);
     await testInvalidStructuredPersistence(cdp);
+
+    await importLegacyBackup(cdp);
+    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.customSongs.some(function(song){ return song.id === "browser-legacy-backup-song"; }) && appState.audioOffsetMs === 180', 8000);
+    const legacyBackup = await cdp.evaluate(`({ imported:customSongs.some(function(song){return song.id==='browser-legacy-backup-song';}),
+      offset:appState.audioOffsetMs, micScoring:Object.prototype.hasOwnProperty.call(appState,'micScoring'),
+      micDeviceId:Object.prototype.hasOwnProperty.call(appState,'micDeviceId'), captureAudit:window.__gsCaptureAudit,
+      savedState:JSON.parse(localStorage.getItem('gs.state')||'{}'),
+      rawHistory:localStorage.getItem('gs.history'), rawCalibration:localStorage.getItem('gs.calib') })`);
+    assert.equal(legacyBackup.imported, true, 'legacy backup import restores customSongs');
+    assert.equal(legacyBackup.offset, 180, 'legacy backup import preserves the manual output offset');
+    assert.equal(legacyBackup.micScoring, false, 'legacy backup import does not restore removed scoring state');
+    assert.equal(legacyBackup.micDeviceId, false, 'legacy backup import does not restore removed device selection');
+    assert.equal(Object.prototype.hasOwnProperty.call(legacyBackup.savedState, 'micScoring'), false, 'legacy import stores a cleaned appState');
+    assert.equal(Object.prototype.hasOwnProperty.call(legacyBackup.savedState, 'micDeviceId'), false, 'cleaned appState does not persist the removed device selection');
+    assert.equal(legacyBackup.rawHistory, 'legacy-history-marker', 'legacy raw history storage is left untouched');
+    assert.equal(legacyBackup.rawCalibration, 'legacy-calibration-marker', 'legacy raw calibration storage is left untouched');
+    assert.deepEqual(legacyBackup.captureAudit, { capture:0, devices:0, worklet:0 }, 'capture APIs and AudioWorklet remain unused through backup import and reload');
+    process.stdout.write('Browser checkpoint: legacy backup import cleanup and capture-free reload passed\n');
 
     // Test editor modal interaction in browser
     await cdp.evaluate('window.openConverterEditorModal({ title: "browser-test-song", beats: 4, rawText: "[C] C4 -/D4 - - | browser test" })');

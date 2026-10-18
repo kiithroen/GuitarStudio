@@ -1,6 +1,7 @@
 # 리듬과 오디오 유지보수 계약
 
 이 문서는 `src/rhythm.js`, `src/guide.js`, `src/audio.js`가 공유하는 현재 동작을 설명해. 사용자가 입력하는 문법은 [악보 입력 형식](score-format.md), 일반 사용 흐름은 [사용 안내](usage.md)를 봐.
+오디오 경로는 악보 이벤트와 메트로놈 소리를 출력하는 범위야. 마이크 입력 캡처나 입력음 분석은 포함하지 않아.
 
 ## 리듬 파생 정보
 
@@ -24,7 +25,7 @@ note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}` 형�
 
 `maxDurationSlots`는 현재 칸 시작부터 재생·루프 끝까지 남은 칸 수야. 분할 위치를 고려해 이벤트를 루프 경계에서 잘라. `getSubdividedGuideEvents`와 `scheduleSubdividedGuide`는 `subStep`을 `slotDuration = subStep * subNotes.length`로 바꿔 공통 경로를 사용해. `getSubdividedGuideEvents` 반환값은 기존대로 note 이벤트만 포함해.
 
-`scheduleBeatGuide`는 실음 MIDI에 카포를 한 번 적용해. 구조화 악보 이벤트는 `playGuitarNote(..., {exactDuration:true})`를 사용해. 명시 음표 길이는 note-off 시작 시각이고, 자연 release는 콘서트홀에서 0.06초, 드라이에서 0.035초의 시간 상수로 감쇠하며 직접음은 note-off 뒤 0.4초 안에 끝나. classic 음원의 tone decay는 명시 note-off와 분리돼 기존 합성 음형을 유지해. 쉼, 사용자 정지, 곡 교체, 루프 끝 같은 강제 경계는 직접음을 최대 15ms 안에 정리해. AudioWorklet·KS 합성·공명·기존 사용자 설정은 유지해.
+`scheduleBeatGuide`는 실음 MIDI에 카포를 한 번 적용해. 구조화 악보 이벤트는 `playGuitarNote(..., {exactDuration:true})`를 사용해. 명시 음표 길이는 note-off 시작 시각이고, 자연 release는 콘서트홀에서 0.06초, 드라이에서 0.035초의 시간 상수로 감쇠하며 직접음은 note-off 뒤 0.4초 안에 끝나. classic 음원의 tone decay는 명시 note-off와 분리돼 기존 합성 음형을 유지해. 쉼, 사용자 정지, 곡 교체, 루프 끝 같은 강제 경계는 직접음을 최대 15ms 안에 정리해. KS 합성·공명·기존 사용자 설정은 유지해.
 
 콘서트홀의 wet gain은 `CONCERT_HALL_WET_GAIN` 단일 상수 `0.35`를 초기 ON 라우팅과 실시간 ON 전환에서 함께 사용해. OFF는 `0`, dry gain은 기존 `0.88`과 40ms 전환을 유지해. 이 값은 wet 잔향만 조절하며 음원·명시 길이·IR을 바꾸지 않아.
 
@@ -34,8 +35,8 @@ classic 음원의 저음 명료도를 개선하려고 MIDI 55 미만에서만 �
 
 ## 재생음 정리와 시계
 
-`stopGuitarNotes(when)`는 예약된 탄현과 직접음, 공명현 재생음을 함께 정리해. 정지, 곡 교체, 기타 시뮬레이션 끄기, 새 연습 시작 전에 이전 프리뷰나 예약음이 이어지지 않게 사용해. 만료 여부는 예약 시각이 아니라 실제 `actx.currentTime`을 기준으로 판단해. 미래의 쉼을 예약한 뒤에도 그 시각이 오기 전에 정지를 요청하면 종료를 앞당길 수 있어야 해. 이후 정지 요청이 기존 종료를 늦춰서는 안 돼. 메트로놈, 마이크, 리버브 버스는 이 정리의 대상이 아니야.
+`stopGuitarNotes(when)`는 예약된 탄현과 직접음, 공명현 재생음을 함께 정리해. 정지, 곡 교체, 기타 시뮬레이션 끄기, 새 연습 시작 전에 이전 프리뷰나 예약음이 이어지지 않게 사용해. 만료 여부는 예약 시각이 아니라 실제 `actx.currentTime`을 기준으로 판단해. 미래의 쉼을 예약한 뒤에도 그 시각이 오기 전에 정지를 요청하면 종료를 앞당길 수 있어야 해. 이후 정지 요청이 기존 종료를 늦춰서는 안 돼. 메트로놈과 리버브 버스는 이 정리의 대상이 아니야.
 
 재생 중 BPM 변경은 이미 울리는 음을 재합성하지 않고 이후 스케줄부터 반영해. 루프 경계에서 각 회차의 템포로 길이를 계산해. 새 재생 엔진이나 독립 성부 scheduler를 만들지 마.
 
-검증은 이벤트 예약·음성 수명과 실제 청취·마이크 품질을 구분해. 명시하지 않은 주법, 독립 성부, 부모 주법 전파를 추가하지 마.
+검증은 이벤트 예약·음성 수명과 실제 청취 품질을 구분해. 명시하지 않은 주법, 독립 성부, 부모 주법 전파를 추가하지 마.

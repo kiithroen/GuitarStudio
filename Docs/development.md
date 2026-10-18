@@ -26,7 +26,7 @@ Guitar Studio는 번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱
 
 `parseScore`와 `GuitarNotation.validateScore`가 텍스트 악보의 파싱·검증 기준이야. `GuitarRhythm.annotate`는 파싱된 마디에 칸 길이, 시작 위치와 유지 체인을 계산하고 `resolveHold`는 유지의 원음 참조를 돌려줘. `guide.js`는 이 결과로 재생 이벤트를 만들고 `audio.js`에 예약해. 사용 문법은 [악보 입력 형식](score-format.md), 세부 오디오 계약은 [리듬·오디오 계약](beginner-rhythm.md)을 따라.
 
-`tok`와 원본 입력을 기준으로 파생 필드를 다시 계산해. IndexedDB에는 개인 악보가, localStorage에는 앱 설정과 기록이 저장돼. Google Sheets 연동은 읽기 전용이야. `soundingMidi`는 `src/parser.js`의 공통 카포 실음 변환 함수야.
+`tok`와 원본 입력을 기준으로 파생 필드를 다시 계산해. IndexedDB에는 개인 악보가, localStorage에는 앱 설정과 곡별 최근 연습 BPM·구간 이어가기 상태가 저장돼. Google Sheets 연동은 읽기 전용이야. `soundingMidi`는 `src/parser.js`의 공통 카포 실음 변환 함수야.
 
 완료된 작업은 모듈 분리와 공통 파서·카포 경로, 단위·스모크 테스트 추가, 초보 리듬 입력과 재생 계약 정리야. alphaTab 재생은 `codex/alphatab-player` 실험 브랜치에 남아 있고 main 앱은 기존 엔진을 사용해.
 
@@ -48,6 +48,6 @@ node test/test-browser-smoke.js
 Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
 ```
 
-브라우저 스모크는 Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 실행 파일을 지정할 수 있어. 임시 HTTP 서버와 임시 브라우저 프로필을 사용하며 Web Audio API 경로를 실제 실행해. 이 테스트는 Node의 내장 `fetch`와 `WebSocket` 전역이 있는 환경이 필요해. 실행 환경은 `node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`로 확인할 수 있어. 자동화 검사는 오디오 청취 품질이나 실제 마이크 판정을 확인하지 않아. 스크린샷 검증은 `test-artifacts/`에 새 파일을 만들 수 있으므로 기존 개인 자료를 보존해.
+브라우저 스모크는 Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 실행 파일을 지정할 수 있어. 임시 HTTP 서버와 임시 브라우저 프로필을 사용하며 Web Audio API 경로를 실제 실행해. 이 테스트는 Node의 내장 `fetch`와 `WebSocket` 전역이 있는 환경이 필요해. 실행 환경은 `node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`로 확인할 수 있어. 자동화 검사는 실제 기기에서의 오디오 청취 품질을 확인하지 않아. 스크린샷 검증은 `test-artifacts/`에 새 파일을 만들 수 있으므로 기존 개인 자료를 보존해.
 
 작업 범위와 필수 검증은 [AGENTS.md](../AGENTS.md)에 있어.

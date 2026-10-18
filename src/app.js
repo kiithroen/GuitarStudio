@@ -40,7 +40,13 @@
   var curMeasureIdx = 0;
   var curBeatIdx = 0;
 
-  var appState = ls.get('gs.state', {
+  function stripRemovedAudioSettings(state){
+    var clean = Object.assign({}, state || {});
+    delete clean.micScoring;
+    delete clean.micDeviceId;
+    return clean;
+  }
+  var appState = stripRemovedAudioSettings(ls.get('gs.state', {
     lastSongId: 'builtin-lv1-butterfly',
     bpm: 64,
     beats: 4,
@@ -52,11 +58,9 @@
     loopEnd: 8,
     speedTrainer: false,
     audioOffsetMs: 0
-  });
+  }));
   if (typeof appState.acousticFx !== 'boolean') appState.acousticFx = true;
   if (typeof appState.audioOffsetMs !== 'number') appState.audioOffsetMs = 0;
-  if (typeof appState.micScoring !== 'boolean') appState.micScoring = true; // 연습 중 마이크 정박·음정 채점 사용 여부
-  if (typeof appState.micDeviceId !== 'string') appState.micDeviceId = ''; // 마이크 입력 장치 (''이면 시스템 기본)
   if (appState.synthEngine !== 'classic') appState.synthEngine = 'ks'; // 기타 음원: 'ks' 물리 모델 / 'classic' 기존 합성음
   if (typeof appState.bodyAmount !== 'number') appState.bodyAmount = 1.0; // 울림통 공명 세기 (0~2, 1이 기본)
   if (typeof appState.sympAmount !== 'number') appState.sympAmount = 1.0; // 공명현 세기 (0~2, 0이면 꺼짐)
@@ -72,8 +76,6 @@ function editorCapo(){
   var el = document.getElementById('nsTitle');
   return getSongCapo({ title: el ? el.value : '', capo: typeof veState !== 'undefined' ? veState.sourceCapo : 0 });
 }
-  var calib = ls.get('gs.calib', { lat: 0.045, calibrated: false, at: null });
-  var historyList = ls.get('gs.history', []);
 
   // 이미지 악보 편집 상태
   var imgEditMode = true;
@@ -81,20 +83,14 @@ function editorCapo(){
   var selectedImgBar = null; // { sysIdx, barIdx }
 
   // 오디오 및 메트로놈 런타임 (어쿠스틱 바디 공명 + 콘서트홀 리버브 버스 포함)
-  var actx = null, workletNode = null, micStream = null, micSource = null, outGain = null;
+  var actx = null, outGain = null;
   var guitarBus = null, reverbNode = null, pluckNoiseBuf = null, clickBus = null;
   var dryGainNode = null, wetGainNode = null, bodyModes = [];
   var stringVoices = {}; // 줄 번호(1~6)별 현재 울리고 있는 보이스 목록 (같은 줄 재탄현 시 이전 음 정지용)
   // 기타 마스터 음량 (0.90에서 -1.6dB): 내장곡 실측 기준 로망스 원곡 9/8 첫 박(베이스+아포얀도 동시 탄현)을 제외한 모든 곡의 피크가 -1dBFS 아래
   var GUITAR_MASTER_GAIN = 0.75;
   var isPlaying = false;
-  var isStarting = false; // 연습 시작 중 마이크 권한·연결을 기다리는 동안 중복 시작 방지
-  var practiceStartToken = 0;
-  var isCalibrating = false;
-  var isTunerActive = false;
   var playSession = null;
-  var micLevel = 0;
-  var lastDetectedMidi = null;
 
   // ---------- 유틸 함수
   function tempoName(b){
@@ -107,8 +103,6 @@ function editorCapo(){
     if (b < 156) return 'Allegro';
     return 'Vivace';
   }
-  function fmtSigned(v){ var r = Math.round(v); if (r === 0) return '±0'; return r > 0 ? '+' + r : '-' + (-r); }
-  function classOfErr(ms){ var a = Math.abs(ms); return a <= 30 ? 'ok' : a <= 55 ? 'near' : 'off'; }
   function fmtDate(ts){
     var d = new Date(ts), p = function(n){ return (n < 10 ? '0' : '') + n; };
     return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
@@ -133,185 +127,6 @@ function editorCapo(){
       }
     }
     ls.set('gs.state', appState);
-  }
-
-  async function openMicStream(){
-    var base = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
-    if (appState.micDeviceId){
-      try {
-        return await navigator.mediaDevices.getUserMedia({ audio: Object.assign({ deviceId: { exact: appState.micDeviceId } }, base) });
-      } catch (e){
-        // 저장해 둔 장치가 분리된 경우에만 시스템 기본 마이크로 대체 (권한 거부 등은 그대로 알림)
-        if (!e || (e.name !== 'OverconstrainedError' && e.name !== 'NotFoundError')) throw e;
-      }
-    }
-    return navigator.mediaDevices.getUserMedia({ audio: base });
-  }
-
-  async function ensureMicWorklet(){
-    ensureAudioCtx();
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      throw new Error('이 브라우저에서는 마이크 입력을 쓸 수 없어요.');
-    }
-    if (!micStream){
-      micStream = await openMicStream();
-      if (micSource){ micSource.disconnect(); micSource = null; }
-    }
-    if (!workletNode){
-      var blob = new Blob([$('#worklet').textContent], { type: 'text/javascript' });
-      var url = URL.createObjectURL(blob);
-      await actx.audioWorklet.addModule(url);
-      URL.revokeObjectURL(url);
-      workletNode = new AudioWorkletNode(actx, 'onset', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
-      var sink = actx.createGain();
-      sink.gain.value = 0;
-      workletNode.connect(sink);
-      sink.connect(actx.destination);
-      workletNode.port.onmessage = onWorkletMessage;
-    }
-    if (!micSource){
-      micSource = actx.createMediaStreamSource(micStream);
-      micSource.connect(workletNode);
-    }
-    refreshMicDeviceList(); // 권한을 받은 뒤라 장치 이름이 보임
-  }
-
-  // 마이크를 열어 둔 채로 두면 블루투스 헤드셋이 통화 모드(HFP)에 머물러 재생 음질이 떨어지므로, 쓰는 곳이 없으면 바로 해제
-  function releaseMic(){
-    if (isTunerActive || isCalibrating || ((isPlaying || isStarting) && appState.micScoring)) return;
-    if (micSource){ micSource.disconnect(); micSource = null; }
-    if (micStream){
-      micStream.getTracks().forEach(function(tr){ tr.stop(); });
-      micStream = null;
-    }
-  }
-
-  async function refreshMicDeviceList(){
-    var sel = $('#micDeviceSelect');
-    if (!sel || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
-    var devs = [];
-    try {
-      devs = (await navigator.mediaDevices.enumerateDevices()).filter(function(d){ return d.kind === 'audioinput'; });
-    } catch (e){}
-    sel.textContent = '';
-    var defOpt = document.createElement('option');
-    defOpt.value = '';
-    defOpt.textContent = '시스템 기본 마이크';
-    sel.appendChild(defOpt);
-    var named = 0;
-    devs.forEach(function(d){
-      // 'default'·'communications'는 실제 장치의 별칭이라 목록에서 제외
-      if (!d.deviceId || d.deviceId === 'default' || d.deviceId === 'communications') return;
-      var o = document.createElement('option');
-      o.value = d.deviceId;
-      o.textContent = d.label || ('마이크 ' + (named + 1));
-      sel.appendChild(o);
-      named++;
-    });
-    if (!named){
-      var hintOpt = document.createElement('option');
-      hintOpt.disabled = true;
-      hintOpt.textContent = '(목록 불러오기를 눌러 마이크 권한을 허용하면 장치가 보여요)';
-      sel.appendChild(hintOpt);
-    }
-    sel.value = appState.micDeviceId;
-    if (sel.value !== appState.micDeviceId) sel.value = '';
-  }
-
-  function onWorkletMessage(e){
-    var d = e.data;
-    if (!d) return;
-    if (d.t === 'lv'){
-      if (d.l > micLevel) micLevel = d.l;
-      return;
-    }
-    if (d.t === 'tune'){
-      if (isTunerActive) updateTunerReading(d.hz);
-      return;
-    }
-    if (d.t === 'pitch'){
-      lastDetectedMidi = d.midi;
-      if (d.midi != null){
-        var inf = midiInfo(d.midi);
-        $('#liveNote').textContent = inf.en;
-        $('#liveNoteKo').textContent = inf.ko + (inf.pos ? ' (' + inf.pos.str + '줄 ' + inf.pos.fret + '프렛)' : '');
-      }
-      if (isPlaying && playSession && playSession.lastOnsetObj && playSession.lastOnsetObj.rawTime === d.time){
-        playSession.lastOnsetObj.midi = d.midi;
-        evaluateHitPitch(playSession.lastOnsetObj);
-      }
-      return;
-    }
-    if (d.t === 'on'){
-      if (isCalibrating && d.k === 1 && playSession && playSession.calClicks){
-        playSession.calHeard.push(d.time);
-        return;
-      }
-      if (d.k === 0 && isPlaying && playSession){
-        handleGuitarOnset(d.time);
-      }
-    }
-  }
-
-  function handleGuitarOnset(rawTime){
-    var s = playSession;
-    if (!s) return;
-    var totalOffset = calib.lat + ((appState.audioOffsetMs || 0) / 1000);
-    var t = rawTime - totalOffset;
-    if (t < s.measureStartTime - s.spb * 0.4) return;
-    var beatFloat = (t - s.measureStartTime) / s.spb;
-    var nearestBeat = Math.round(beatFloat);
-    var errMs = (beatFloat - nearestBeat) * s.spb * 1000;
-    if (Math.abs(errMs) > 220) return;
-
-    var cls = classOfErr(errMs);
-    $('#liveErr').textContent = fmtSigned(errMs) + ' ms';
-    $('#liveErr').dataset.cls = cls;
-
-    var needle = $('#liveNeedle');
-    needle.hidden = false;
-    needle.dataset.cls = cls;
-    var pct = 50 + Math.max(-100, Math.min(100, errMs)) / 2;
-    needle.style.left = pct + '%';
-
-    var hitObj = {
-      rawTime: rawTime,
-      t: t,
-      errMs: errMs,
-      cls: cls,
-      mIdx: curMeasureIdx,
-      bIdx: Math.max(0, Math.min(s.bpb - 1, nearestBeat % s.bpb)),
-      midi: null
-    };
-    s.hits.push(hitObj);
-    s.lastOnsetObj = hitObj;
-
-    // 구조화 악보 셀에 즉시 타이밍 피드백 표시
-    var cell = $('#measuresGrid .beat-cell[data-m="' + hitObj.mIdx + '"][data-b="' + hitObj.bIdx + '"]');
-    if (cell) cell.dataset.judge = cls;
-  }
-
-  function evaluateHitPitch(hitObj){
-    if (curSong.type !== 'structured') return;
-    var m = curSong.measures[hitObj.mIdx];
-    if (!m) return;
-    var b = m.beats[hitObj.bIdx];
-    if (!b || !hitObj.midi) return;
-    var cell = $('#measuresGrid .beat-cell[data-m="' + hitObj.mIdx + '"][data-b="' + hitObj.bIdx + '"]');
-    if (!cell) return;
-    var songCapo = getSongCapo(curSong);
-    var effBass = getExplicitBass(b);
-    var matchMel = false;
-    if (b.isSubdivided && b.subNotes && b.subNotes.length > 0){
-      matchMel = b.subNotes.some(function(sn){ return sn.midi && (hitObj.midi % 12 === (soundingMidi(sn.midi, songCapo)) % 12); });
-    } else if (b.midi){
-      matchMel = (hitObj.midi % 12 === (soundingMidi(b.midi, songCapo)) % 12);
-    }
-    var matchBass = effBass && (hitObj.midi % 12 === (soundingMidi(effBass.midi, songCapo)) % 12);
-    // 멜로디와 베이스 중 어느 쪽과도 음정이 다르면 off 표시
-    if (!matchMel && !matchBass){
-      cell.dataset.judge = 'off';
-    }
   }
 
   // ---------- 악보 렌더링: 1) 내장/텍스트 구조화 악보
@@ -1420,8 +1235,8 @@ function editorCapo(){
   }
 
   // ---------- 메트로놈 재생 루프 (카운트인 + 마디 진행 + 구간 반복 + 자동 가속)
-  async function startPractice(){
-    if (isPlaying || isStarting) return;
+  function startPractice(){
+    if (isPlaying) return;
     if (curSong && curSong.type === 'structured'){
       var validation = validateScore(serializeScoreMeasures(curSong.measures, '\n'), curSong.beats || appState.beats);
       if (validation.errors.length){
@@ -1430,34 +1245,9 @@ function editorCapo(){
         return;
       }
     }
-    var startToken = ++practiceStartToken;
     ensureAudioCtx();
     if (typeof stopGuitarNotes === 'function') stopGuitarNotes(actx.currentTime);
-    if (appState.micScoring){
-      isStarting = true;
-      syncCompactPlayButtons();
-      try {
-        await ensureMicWorklet();
-      } catch (e){
-        // 마이크가 없어도 메트로놈+악보 커서 연습은 정상 동작하도록 허용
-        if (startToken === practiceStartToken) $('#liveNoteKo').textContent = '마이크 없음 (뷰어 모드)';
-      } finally {
-        if (startToken === practiceStartToken){
-          isStarting = false;
-          syncCompactPlayButtons();
-        }
-      }
-    } else {
-      $('#liveNoteKo').textContent = '마이크 꺼짐 (채점 안 함)';
-    }
-    if (startToken !== practiceStartToken){
-      releaseMic();
-      return;
-    }
     warmKsCache(curSong);
-
-    // 이전 판정 흔적 초기화
-    $$('#measuresGrid .beat-cell').forEach(function(c){ delete c.dataset.judge; });
 
     var bpb = appState.beats;
     var spb = 60 / appState.bpm;
@@ -1482,9 +1272,7 @@ function editorCapo(){
       mIdx: curMeasureIdx,
       bIdx: curBeatIdx,
       loopCompleted: 0,
-      resumeNextHold: true,
-      hits: [],
-      lastOnsetObj: null
+      resumeNextHold: true
     };
 
     isPlaying = true;
@@ -1493,14 +1281,14 @@ function editorCapo(){
   }
 
   function syncCompactPlayButtons(){
-    var active = isPlaying || isStarting;
+    var active = isPlaying;
     if ($('#playBtn')){
-      $('#playBtn').textContent = isPlaying ? '연습 정지' : (isStarting ? '연습 취소' : '연습 시작');
+      $('#playBtn').textContent = isPlaying ? '연습 정지' : '연습 시작';
       $('#playBtn').classList.toggle('running', active);
     }
     if ($('#compactPlayBtn')){
-      $('#compactPlayBtn').textContent = isPlaying ? '⏹ 정지' : (isStarting ? '⏹ 취소' : '▶ 시작');
-      $('#compactPlayBtn').title = isPlaying ? '연습 정지 (단축키: Space)' : (isStarting ? '연습 시작 취소 (단축키: Space)' : '연습 시작 (단축키: Space)');
+      $('#compactPlayBtn').textContent = isPlaying ? '⏹ 정지' : '▶ 시작';
+      $('#compactPlayBtn').title = isPlaying ? '연습 정지 (단축키: Space)' : '연습 시작 (단축키: Space)';
       $('#compactPlayBtn').classList.toggle('danger', active);
       $('#compactPlayBtn').classList.toggle('primary', !active);
       $('#compactPlayBtn').classList.toggle('running', active);
@@ -1530,45 +1318,19 @@ function editorCapo(){
     }
   }
 
-  function stopPractice(saveRecord){
-    practiceStartToken++;
-    isStarting = false;
+  function stopPractice(){
     if (typeof stopGuitarNotes === 'function') stopGuitarNotes();
     if (!isPlaying){
       syncCompactPlayButtons();
-      releaseMic();
+      playSession = null;
       return;
     }
     isPlaying = false;
     syncCompactPlayButtons();
     $('#phaseTxt').textContent = '정지됨 · 마디를 클릭해 이어서 연습하세요';
     setLeds(-1);
-
-    if (saveRecord && playSession && playSession.hits.length >= 2){
-      var hits = playSession.hits;
-      var sum = 0, okCnt = 0;
-      hits.forEach(function(h){
-        sum += h.errMs;
-        if (Math.abs(h.errMs) <= 30) okCnt++;
-      });
-      var mean = sum / hits.length;
-      var okRate = okCnt / hits.length;
-      historyList.unshift({
-        at: Date.now(),
-        songTitle: curSong.title,
-        range: appState.loopStart + '~' + appState.loopEnd + '마디',
-        bpm: appState.bpm,
-        n: hits.length,
-        mean: mean,
-        okRate: okRate
-      });
-      historyList = historyList.slice(0, 40);
-      ls.set('gs.history', historyList);
-      renderHistoryTable();
-    }
     saveAppState();
     playSession = null;
-    releaseMic();
   }
 
   function schedulerTick(){
@@ -1679,7 +1441,7 @@ function editorCapo(){
               var endHwLat = (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010) + ((appState.audioOffsetMs || 0) / 1000);
               var endDelay = Math.max(0, (s.nextBeatTime + endHwLat - actx.currentTime) * 1000);
               setTimeout(function(){
-                if (playSession === s) stopPractice(true);
+                if (playSession === s) stopPractice();
               }, endDelay);
               return;
             }
@@ -1703,14 +1465,6 @@ function editorCapo(){
   }
 
   setInterval(schedulerTick, 25);
-
-  function frameLoop(){
-    requestAnimationFrame(frameLoop);
-    micLevel *= 0.86;
-    var pct = Math.min(100, Math.max(0, micLevel * 320));
-    $('#micFill').style.width = pct + '%';
-  }
-  requestAnimationFrame(frameLoop);
 
   // ---------- 콘솔 UI 바인딩
   function buildLeds(){
@@ -1750,11 +1504,6 @@ function editorCapo(){
     $('#engineBtn').title = isKs
       ? '물리 모델(Karplus-Strong) 나일론 현 음원 사용 중 (클릭하면 기존 합성음과 비교)'
       : '기존 합성음(삼각파+필터) 사용 중 (클릭하면 물리 모델 음원으로 전환)';
-    $('#micScoreBtn').setAttribute('data-active', String(appState.micScoring));
-    $('#micScoreBtn').textContent = appState.micScoring ? '마이크 채점' : '마이크 꺼짐';
-    $('#micScoreBtn').title = appState.micScoring
-      ? '연습 중 마이크로 정박·음정을 채점합니다 (클릭하면 끔 · 블루투스 이어폰만 쓸 때 끄면 재생 음질이 유지돼요)'
-      : '마이크를 쓰지 않고 메트로놈과 악보 커서만으로 연습합니다 (클릭하면 채점 켬)';
     if ($('#toggleFxBtn')){
       var isFx = !!appState.acousticFx;
       $('#toggleFxBtn').setAttribute('data-active', String(isFx));
@@ -1763,8 +1512,7 @@ function editorCapo(){
         ? '콘서트홀 풍성 음향 켜짐 (클릭 또는 F로 또렷한 드라이 톤 전환)'
         : '또렷한 드라이 톤 켜짐 (클릭 또는 F로 풍성한 콘서트홀 전환)';
     }
-    var btTxt = (appState.audioOffsetMs > 0) ? (' · BT +' + appState.audioOffsetMs + 'ms') : '';
-    $('#calibBadge').textContent = (calib.calibrated ? Math.round(calib.lat * 1000) + 'ms' : '기본 45ms') + btTxt;
+    updateAudioOffsetBadge();
     var defBpm = curSong ? (Number(curSong.bpm) || 64) : 64;
     if ($('#defaultBpmTxt')) $('#defaultBpmTxt').textContent = defBpm;
     if ($('#bpmResetBtn')){
@@ -1868,27 +1616,6 @@ function editorCapo(){
     }
   });
 
-  $('#micScoreBtn').addEventListener('click', async function(){
-    appState.micScoring = !appState.micScoring;
-    syncConsoleUI();
-    saveAppState();
-    if (!appState.micScoring){
-      releaseMic();
-      $('#liveNoteKo').textContent = '마이크 꺼짐 (채점 안 함)';
-    } else if (isPlaying){
-      // 연습 도중 다시 켜면 그 시점부터 바로 채점
-      try {
-        await ensureMicWorklet();
-        $('#liveNoteKo').textContent = '마이크 대기';
-      } catch (e){
-        $('#liveNoteKo').textContent = '마이크 없음 (뷰어 모드)';
-      }
-    } else {
-      $('#liveNoteKo').textContent = '마이크 대기';
-    }
-  });
-  if (!appState.micScoring) $('#liveNoteKo').textContent = '마이크 꺼짐 (채점 안 함)';
-
   if ($('#toggleFxBtn')){
     $('#toggleFxBtn').addEventListener('click', function(){
       appState.acousticFx = !appState.acousticFx;
@@ -1904,13 +1631,13 @@ function editorCapo(){
   }
 
   $('#playBtn').addEventListener('click', function(){
-    if (isPlaying || isStarting) stopPractice(true);
+    if (isPlaying) stopPractice();
     else startPractice();
   });
 
   if ($('#compactPlayBtn')){
     $('#compactPlayBtn').addEventListener('click', function(){
-      if (isPlaying || isStarting) stopPractice(true);
+      if (isPlaying) stopPractice();
       else startPractice();
     });
   }
@@ -1925,7 +1652,7 @@ function editorCapo(){
   window.addEventListener('keydown', function(e){
     var tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    if (!$('#newSongModal').hidden || !$('#tunerModal').hidden || !$('#calibModal').hidden || !$('#sheetSyncModal').hidden || !$('#backupModal').hidden || !$('#toneModal').hidden) return;
+    if (!$('#newSongModal').hidden || !$('#audioOffsetModal').hidden || !$('#sheetSyncModal').hidden || !$('#backupModal').hidden || !$('#toneModal').hidden) return;
 
     if (e.code === 'Space'){
       e.preventDefault();
@@ -2353,125 +2080,6 @@ function editorCapo(){
     if (curSong && !curSong.builtin) renameCurrentSong();
   });
 
-  // ---------- 6현 튜너 모달 (워크릿 YIN 연속 음정 추정 → 센트 단위 바늘)
-  var tunerTarget = null;  // 직접 고른 줄 (null이면 가장 가까운 줄 자동 선택)
-  var tunerHist = [];      // 최근 추정값(Hz): 중앙값으로 순간적인 튐 제거
-  var tunerCents = null;   // 바늘 떨림을 줄인 평활 센트값
-  var tunerSilent = 0;     // 소리가 없는 연속 프레임 수 (프레임 약 21ms)
-
-  function initTunerModal(){
-    var box = $('#tunerStrings');
-    box.textContent = '';
-    STRINGS.slice().reverse().forEach(function(st){
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'btn sm';
-      b.dataset.str = st.str;
-      b.style.flexDirection = 'column';
-      b.style.padding = '8px 4px';
-      b.innerHTML = '<b>' + st.name.split(' ')[0] + '</b><span style="font-size:11px;color:var(--muted)">' + st.name.split(' ')[1] + '</span>';
-      b.addEventListener('click', function(){
-        // 줄을 고르면 그 줄 기준으로 고정하고 기준음을 들려줌
-        tunerTarget = st;
-        syncTunerTargetUI(null);
-        playGuitarNote(st.midi, 1.8, null, null, null, st.str);
-      });
-      box.appendChild(b);
-    });
-  }
-  initTunerModal();
-
-  function syncTunerTargetUI(autoStr){
-    $$('#tunerStrings button').forEach(function(b){
-      var s = Number(b.dataset.str);
-      b.classList.toggle('active', tunerTarget ? s === tunerTarget.str : s === autoStr);
-    });
-    $('#tunerAutoBtn').classList.toggle('active', !tunerTarget);
-  }
-
-  function updateTunerReading(hz){
-    var guide = $('#tunerGuide');
-    if (!hz){
-      // 소리가 0.5초 이상 끊기면 대기 상태로 (마지막 표시는 흐리게 남김)
-      if (++tunerSilent === 24){
-        tunerHist = [];
-        tunerCents = null;
-        $('#tunerReadout').style.opacity = '0.45';
-        $('#tunerNeedle').dataset.cls = '';
-        guide.textContent = '줄을 하나씩 튕겨 보세요';
-        guide.style.color = 'var(--d-muted)';
-      }
-      return;
-    }
-    tunerSilent = 0;
-    tunerHist.push(hz);
-    if (tunerHist.length > 5) tunerHist.shift();
-    var med = tunerHist.slice().sort(function(a, b){ return a - b; })[tunerHist.length >> 1];
-    var midiF = 69 + 12 * Math.log2(med / 440);
-    var target = tunerTarget, autoStr = null;
-    if (!target){
-      target = STRINGS.reduce(function(best, s){ return Math.abs(midiF - s.midi) < Math.abs(midiF - best.midi) ? s : best; });
-      autoStr = target.str;
-    }
-    var cents = (midiF - target.midi) * 100;
-    // 다른 줄로 넘어가는 큰 변화는 즉시, 작은 흔들림은 부드럽게 따라감
-    tunerCents = (tunerCents == null || Math.abs(cents - tunerCents) > 30) ? cents : tunerCents + (cents - tunerCents) * 0.35;
-    var c = Math.round(tunerCents);
-    var cls = Math.abs(c) <= 3 ? 'ok' : (Math.abs(c) <= 15 ? 'near' : 'off');
-
-    $('#tunerReadout').style.opacity = '1';
-    $('#tunerReadout').textContent = target.name.split(' ')[0] + ' · ' + midiInfo(Math.round(midiF)).en;
-    $('#tunerCents').textContent = (c > 0 ? '+' + c : (c < 0 ? String(c) : '±0')) + ' 센트 · ' + med.toFixed(1) + ' Hz';
-    var needle = $('#tunerNeedle');
-    needle.style.left = (50 + Math.max(-50, Math.min(50, c))) + '%';
-    needle.dataset.cls = cls;
-    if (cls === 'ok'){
-      guide.textContent = target.name + ' 음정이 맞았어요!';
-      guide.style.color = 'var(--d-ok)';
-    } else {
-      guide.textContent = (Math.abs(c) > 100 ? '많이 ' : '') + (c < 0 ? '낮아요 · 줄감개를 조여 음을 올리세요' : '높아요 · 줄감개를 풀어 음을 내리세요');
-      guide.style.color = cls === 'near' ? 'var(--d-near)' : 'var(--d-off)';
-    }
-    syncTunerTargetUI(autoStr);
-  }
-
-  function setTunerAnalysis(on){
-    if (workletNode) workletNode.port.postMessage({ t: 'tuner', on: on });
-  }
-
-  $('#tunerAutoBtn').addEventListener('click', function(){
-    tunerTarget = null;
-    tunerCents = null;
-    syncTunerTargetUI(null);
-  });
-  $('#tunerBtn').addEventListener('click', function(){
-    isTunerActive = true;
-    $('#tunerModal').hidden = false;
-  });
-  $('#closeTunerBtn').addEventListener('click', function(){
-    isTunerActive = false;
-    $('#tunerModal').hidden = true;
-    setTunerAnalysis(false);
-    $('#tunerStartMicBtn').disabled = false;
-    $('#tunerStartMicBtn').textContent = '마이크로 튜닝 시작';
-    releaseMic();
-  });
-  $('#tunerStartMicBtn').addEventListener('click', async function(){
-    try {
-      await ensureMicWorklet();
-      if (!isTunerActive){ releaseMic(); return; } // 권한을 기다리는 사이 튜너를 닫은 경우
-      tunerHist = [];
-      tunerCents = null;
-      tunerSilent = 0;
-      setTunerAnalysis(true);
-      $('#tunerStartMicBtn').disabled = true;
-      $('#tunerStartMicBtn').textContent = '튜닝 중 (마이크 켜짐)';
-      $('#tunerGuide').textContent = '마이크가 켜졌어요. 기타 줄을 한 줄씩 튕겨 보세요.';
-    } catch (e){
-      $('#tunerGuide').textContent = e.message;
-    }
-  });
-
   // ---------- 음색 설정 모달 (울림통 공명 세기 · 공명현 세기)
   function syncToneUI(){
     var b = Math.round(appState.bodyAmount * 100), s = Math.round(appState.sympAmount * 100);
@@ -2518,7 +2126,12 @@ function editorCapo(){
     });
   });
 
-  // ---------- 지연 보정 모달 (블루투스 출력 + 마이크 입력)
+  // ---------- 수동 오디오 출력 지연 설정
+  function updateAudioOffsetBadge(){
+    var v = appState.audioOffsetMs || 0;
+    var text = (v > 0 ? '+' : '') + v + 'ms';
+    if ($('#audioOffsetBadge')) $('#audioOffsetBadge').textContent = text;
+  }
   function updateAudioOffsetUI(){
     var v = appState.audioOffsetMs || 0;
     if ($('#audioOffsetRange')) $('#audioOffsetRange').value = v;
@@ -2526,45 +2139,14 @@ function editorCapo(){
     if ($('#btPresetWired')) $('#btPresetWired').classList.toggle('primary', v === 0);
     if ($('#btPresetNormal')) $('#btPresetNormal').classList.toggle('primary', v === 180);
     if ($('#btPresetHeavy')) $('#btPresetHeavy').classList.toggle('primary', v === 240);
-    syncConsoleUI();
+    updateAudioOffsetBadge();
   }
-  $('#calibOpenBtn').addEventListener('click', function(){
+  $('#audioOffsetOpenBtn').addEventListener('click', function(){
     updateAudioOffsetUI();
-    refreshMicDeviceList();
-    $('#calibModal').hidden = false;
+    $('#audioOffsetModal').hidden = false;
   });
-
-  // 마이크 입력 장치 선택: 사용 중이면 새 장치로 즉시 교체
-  $('#micDeviceSelect').addEventListener('change', async function(e){
-    appState.micDeviceId = e.target.value;
-    saveAppState();
-    if (!micStream) return;
-    if (micSource){ micSource.disconnect(); micSource = null; }
-    micStream.getTracks().forEach(function(tr){ tr.stop(); });
-    micStream = null;
-    try {
-      await ensureMicWorklet();
-    } catch (err){
-      $('#calibModalStatus').textContent = '선택한 마이크를 열지 못했어요: ' + err.message;
-    }
-  });
-  // 권한을 아직 안 받았으면 장치 이름이 숨겨지므로 잠깐 마이크를 열어 권한만 받고 바로 닫음
-  $('#micDeviceRefreshBtn').addEventListener('click', async function(){
-    if (!micStream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-      try {
-        var tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
-        tmp.getTracks().forEach(function(tr){ tr.stop(); });
-      } catch (err){
-        $('#calibModalStatus').textContent = '마이크 권한이 없어 장치 목록을 볼 수 없어요.';
-      }
-    }
-    refreshMicDeviceList();
-  });
-  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener){
-    navigator.mediaDevices.addEventListener('devicechange', refreshMicDeviceList);
-  }
-  $('#closeCalibBtn').addEventListener('click', function(){
-    $('#calibModal').hidden = true;
+  $('#closeAudioOffsetBtn').addEventListener('click', function(){
+    $('#audioOffsetModal').hidden = true;
   });
   if ($('#audioOffsetRange')){
     $('#audioOffsetRange').addEventListener('input', function(e){
@@ -2573,78 +2155,14 @@ function editorCapo(){
       updateAudioOffsetUI();
     });
   }
-  if ($('#btPresetWired')){
-    $('#btPresetWired').addEventListener('click', function(){
-      appState.audioOffsetMs = 0;
-      saveAppState();
-      updateAudioOffsetUI();
-    });
-  }
-  if ($('#btPresetNormal')){
-    $('#btPresetNormal').addEventListener('click', function(){
-      appState.audioOffsetMs = 180;
-      saveAppState();
-      updateAudioOffsetUI();
-    });
-  }
-  if ($('#btPresetHeavy')){
-    $('#btPresetHeavy').addEventListener('click', function(){
-      appState.audioOffsetMs = 240;
-      saveAppState();
-      updateAudioOffsetUI();
-    });
-  }
-  $('#runCalibBtn').addEventListener('click', async function(){
-    if (isCalibrating) return;
-    try {
-      await ensureMicWorklet();
-    } catch (e){
-      $('#calibModalStatus').textContent = e.message;
-      return;
-    }
-    isCalibrating = true;
-    $('#runCalibBtn').disabled = true;
-    $('#calibModalStatus').textContent = '삐 소리를 내며 지연 시간을 측정 중입니다 (약 5초)...';
-
-    var t0 = actx.currentTime + 0.4;
-    var clicks = [];
-    for (var i = 0; i < 8; i++){
-      var ct = t0 + i * 0.55;
-      clicks.push(ct);
-      var o = actx.createOscillator(), g = actx.createGain();
-      o.frequency.value = 4200;
-      g.gain.setValueAtTime(0, ct);
-      g.gain.linearRampToValueAtTime(0.8, ct + 0.002);
-      g.gain.exponentialRampToValueAtTime(0.001, ct + 0.05);
-      // 메트로놈 클릭과 같은 출력 경로(리미터 룩어헤드 포함)로 내보내야 측정 지연이 실제 연습 상황과 일치
-      o.connect(g); g.connect(clickBus || actx.destination);
-      o.start(ct); o.stop(ct + 0.06);
-    }
-    playSession = { calClicks: clicks, calHeard: [] };
-
-    setTimeout(function(){
-      var heard = playSession ? playSession.calHeard : [];
-      var lats = [];
-      clicks.forEach(function(ct){
-        for (var j = 0; j < heard.length; j++){
-          var d = heard[j] - ct;
-          if (d >= 0.005 && d <= 0.45){ lats.push(d); break; }
-        }
-      });
-      isCalibrating = false;
-      releaseMic();
-      $('#runCalibBtn').disabled = false;
-      if (lats.length >= 4){
-        lats.sort(function(a, b){ return a - b; });
-        var med = lats[Math.floor(lats.length / 2)];
-        calib = { lat: med, calibrated: true, at: Date.now() };
-        ls.set('gs.calib', calib);
-        $('#calibModalStatus').textContent = '보정 완료: 지연 시간 ' + Math.round(med * 1000) + ' ms';
-      } else {
-        $('#calibModalStatus').textContent = '소리를 충분히 감지하지 못했어요. 볼륨을 높이고 다시 시도해 주세요 (기본 45ms 유지).';
-      }
-      syncConsoleUI();
-    }, 5200);
+  if ($('#btPresetWired')) $('#btPresetWired').addEventListener('click', function(){
+    appState.audioOffsetMs = 0; saveAppState(); updateAudioOffsetUI();
+  });
+  if ($('#btPresetNormal')) $('#btPresetNormal').addEventListener('click', function(){
+    appState.audioOffsetMs = 180; saveAppState(); updateAudioOffsetUI();
+  });
+  if ($('#btPresetHeavy')) $('#btPresetHeavy').addEventListener('click', function(){
+    appState.audioOffsetMs = 240; saveAppState(); updateAudioOffsetUI();
   });
 
   // ---------- 백업 및 복원
@@ -2659,8 +2177,6 @@ function editorCapo(){
       version: 1,
       exportedAt: new Date().toISOString(),
       appState: appState,
-      calib: calib,
-      history: historyList,
       customSongs: songs
     };
     var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
@@ -2691,8 +2207,7 @@ function editorCapo(){
             await dbSaveSong(data.customSongs[i]);
           }
         }
-        if (data.appState) ls.set('gs.state', data.appState);
-        if (data.history) ls.set('gs.history', data.history);
+        if (data.appState) ls.set('gs.state', stripRemovedAudioSettings(data.appState));
         clearStorageError();
         location.reload();
       } catch (err){
@@ -2700,49 +2215,6 @@ function editorCapo(){
       }
     };
     fr.readAsText(f);
-  });
-
-  // ---------- 기록 테이블 렌더링
-  function renderHistoryTable(){
-    var tb = $('#histBody');
-    tb.textContent = '';
-    if (!historyList.length){
-      var tr = document.createElement('tr');
-      var td = document.createElement('td');
-      td.colSpan = 6;
-      td.style.textAlign = 'center';
-      td.style.color = 'var(--muted)';
-      td.textContent = '아직 연습 기록이 없어요. 연습 시작 후 정지를 누르면 기록이 남아요.';
-      tr.appendChild(td);
-      tb.appendChild(tr);
-      return;
-    }
-    historyList.forEach(function(h){
-      var tr = document.createElement('tr');
-      var okPct = Math.round((h.okRate || 0) * 100);
-      var cells = [
-        { t: fmtDate(h.at) },
-        { t: h.songTitle + ' (' + h.range + ')' },
-        { t: h.bpm + ' BPM' },
-        { t: h.n + '음' },
-        { t: fmtSigned(h.mean) + ' ms', cls: classOfErr(h.mean) },
-        { t: okPct + '%', cls: okPct >= 70 ? 'ok' : okPct >= 45 ? 'near' : 'off' }
-      ];
-      cells.forEach(function(c){
-        var td = document.createElement('td');
-        td.textContent = c.t;
-        if (c.cls) td.dataset.cls = c.cls;
-        tr.appendChild(td);
-      });
-      tb.appendChild(tr);
-    });
-  }
-
-  $('#clearHistBtn').addEventListener('click', function(){
-    if (!confirm('연습 기록을 모두 지울까요?')) return;
-    historyList = [];
-    ls.set('gs.history', historyList);
-    renderHistoryTable();
   });
 
   // ---------- 초기화 및 곡 목록 구성
@@ -2789,7 +2261,7 @@ function editorCapo(){
   }
 
   function rebuildSongSelect(selectId){
-    stopPractice(false);
+    stopPractice();
     allSongs = BUILTIN_SONGS.concat(sheetSongs).concat(customSongs);
     var sel = $('#songSelect');
     sel.textContent = '';
@@ -2841,7 +2313,7 @@ function editorCapo(){
   }
 
   function changeSongById(songId){
-    stopPractice(false);
+    stopPractice();
     curMeasureIdx = 0;
     curBeatIdx = 0;
     var found = allSongs.find(function(s){ return s.id === songId; });
@@ -2876,7 +2348,6 @@ function editorCapo(){
   initEditor();
   initSheetSync();
   buildFretboard();
-  renderHistoryTable();
   setCompactPractice(false);
   Promise.all([
     loadExternalSongsJson(),

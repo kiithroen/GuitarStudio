@@ -139,32 +139,6 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 #bpmResetBtn:hover{border-color:var(--d-fg);color:var(--d-fg)}
 #bpmResetBtn.active{background:rgba(98,212,145,.14);border-color:var(--d-ok);color:var(--d-ok);font-weight:600}
 
-/* 실시간 마이크/음정 게이지 */
-.gauge-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.pitch-box{display:flex;align-items:baseline;gap:5px}
-.pitch-note{font-family:var(--font-num);font-size:20px;font-weight:700;color:var(--d-fg)}
-.pitch-ko{font-size:12px;color:var(--d-near);font-weight:600}
-.err-box{font-family:var(--font-num);font-size:16px;font-weight:600}
-.err-box[data-cls="ok"]{color:var(--d-ok)}
-.err-box[data-cls="near"]{color:var(--d-near)}
-.err-box[data-cls="off"]{color:var(--d-off)}
-.mini-scale{position:relative;height:12px;background:var(--d-bg);border-radius:5px;overflow:hidden;border:1px solid var(--d-line)}
-.mini-zone{position:absolute;left:37.5%;width:25%;top:0;bottom:0;background:rgba(98,212,145,.18)}
-.mini-needle{position:absolute;top:0;bottom:0;left:50%;width:3px;background:var(--d-fg);transform:translateX(-50%);transition:left .1s ease-out}
-.mini-needle[data-cls="ok"]{background:var(--d-ok)}
-.mini-needle[data-cls="near"]{background:var(--d-near)}
-.mini-needle[data-cls="off"]{background:var(--d-off)}
-.mic-row{display:flex;align-items:center;gap:8px}
-.mic-bar{flex:1;height:4px;border-radius:2px;background:var(--d-line);overflow:hidden}
-.mic-fill{height:100%;width:0;background:var(--d-ok);transition:width .06s}
-.tuner-meter{position:relative;width:100%;height:18px;margin:10px auto 6px;max-width:360px;background:var(--d-surface);border:1px solid var(--d-muted);border-radius:9px;overflow:hidden}
-.tuner-meter::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--d-muted)}
-.tuner-zone{position:absolute;top:0;bottom:0;left:47%;width:6%;background:rgba(98,212,145,.35)}
-.tuner-needle{position:absolute;top:0;bottom:0;left:50%;width:4px;margin-left:-2px;border-radius:2px;background:var(--d-muted);transition:left .08s linear}
-.tuner-needle[data-cls="ok"]{background:var(--d-ok)}
-.tuner-needle[data-cls="near"]{background:var(--d-near)}
-.tuner-needle[data-cls="off"]{background:var(--d-off)}
-
 /* 악보 영역 */
 .score-toolbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid var(--line)}
 .score-toolbar-left{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
@@ -192,9 +166,6 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .beat-cell:hover{border-color:var(--accent)}
 .beat-cell.active-beat{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);transform:translateY(-2px)}
 .beat-cell.active-beat .b-ko,.beat-cell.active-beat .b-tab,.beat-cell.active-beat .b-rh,.beat-cell.active-beat .b-lh{color:var(--accent-ink)}
-.beat-cell[data-judge="ok"]{border-color:var(--ok);background:var(--ok-soft)}
-.beat-cell[data-judge="near"]{border-color:var(--near);background:var(--near-soft)}
-.beat-cell[data-judge="off"]{border-color:var(--off);background:var(--off-soft)}
 .b-note{font-family:var(--font-num);font-size:13.5px;font-weight:700;line-height:1.1;white-space:nowrap}
 .b-ko{font-size:12px;font-weight:700;color:var(--accent);white-space:nowrap}
 .b-tab{font-family:var(--font-num);font-size:11px;color:var(--muted);white-space:nowrap;letter-spacing:-.02em}
@@ -241,8 +212,6 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .beat-cell.tab-cell:hover{background:rgba(45,76,155,.07)}
 .beat-cell.tab-cell.active-beat{background:rgba(45,76,155,.18);transform:none;box-shadow:inset 0 0 0 2px var(--accent);color:inherit}
 .beat-cell.tab-cell.arp-group-start{border-left:2px solid var(--line)}
-.beat-cell.tab-cell[data-judge="ok"]{background:rgba(98,212,145,.14);box-shadow:inset 0 0 0 1.5px var(--ok)}
-.beat-cell.tab-cell[data-judge="near"]{background:rgba(245,158,11,.14);box-shadow:inset 0 0 0 1.5px var(--near)}
 .tab-cell-top{height:20px;display:flex;align-items:center;justify-content:center;gap:3px;font-size:11px;line-height:1;white-space:nowrap;overflow:hidden}
 .tab-cell-solfege-wrap{display:inline-flex;align-items:baseline;gap:2px}
 .tab-cell-solfege{font-weight:700;color:var(--accent);font-size:11.5px}
@@ -308,7 +277,6 @@ body.practice-compact #editStructuredBtn,
 body.practice-compact #editBarMetaBtn,
 body.practice-compact #convertImgToScoreBtn,
 body.practice-compact .ref-img-details,
-body.practice-compact .tbl-wrap,
 body.practice-compact footer {
   display: none !important;
 }
@@ -512,15 +480,6 @@ body.practice-compact .fretboard{
 .ref-img-details summary{cursor:pointer;font-weight:600;font-size:13.5px;color:var(--accent)}
 .ref-img-details img{max-width:100%;max-height:280px;display:block;margin:8px auto 0;border-radius:8px;border:1px solid var(--line)}
 
-/* 기록 테이블 */
-.tbl-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
-th{font-weight:600;color:var(--muted);text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap}
-td{text-align:right;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
-th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
-td[data-cls="ok"]{color:var(--ok);font-weight:600}
-td[data-cls="near"]{color:var(--near);font-weight:600}
-td[data-cls="off"]{color:var(--off);font-weight:600}
 </style>
 </head>
 <body>
@@ -532,8 +491,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
       <span class="sub">클래식 기타 · 동요 · 교본 악보 메트로놈 &amp; 운지 가이드</span>
     </div>
     <div class="top-actions">
-      <button type="button" class="btn sm" id="tunerBtn">6현 튜너</button>
-      <button type="button" class="btn sm" id="calibOpenBtn">지연 보정 (<span id="calibBadge">기본 45ms</span>)</button>
+      <button type="button" class="btn sm" id="audioOffsetOpenBtn">출력 지연 (<span id="audioOffsetBadge">0ms</span>)</button>
       <button type="button" class="btn sm" id="toneOpenBtn">음색 설정</button>
       <button type="button" class="btn sm" id="backupBtn">백업·복원</button>
     </div>
@@ -561,8 +519,8 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
     </div>
   </section>
 
-  <!-- 연습 콘솔: 메트로놈, 구간 반복, 속도 훈련기, 실시간 음정/정박 게이지 -->
-  <section class="stage" aria-label="메트로놈 및 실시간 감지 콘솔">
+  <!-- 연습 콘솔: 메트로놈, 구간 반복, 속도 훈련기 -->
+  <section class="stage" aria-label="메트로놈 및 연습 컨트롤">
     <div class="st-top">
       <span class="phase" id="phaseTxt">대기 중 · 악보 마디를 누르면 그곳부터 시작하거나 구간을 지정해요</span>
       <div class="leds" id="leds"></div>
@@ -626,26 +584,11 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
         </div>
       </div>
 
-      <!-- 3. 시작/정지 + 마이크 음정·정박 판정 -->
+      <!-- 3. 시작/정지 -->
       <div class="stage-box">
         <div class="play-row">
           <button type="button" class="go-btn" id="playBtn">연습 시작</button>
           <button type="button" class="sound-toggle" id="guideSoundBtn" aria-pressed="true" title="앱의 기타 연주 소리를 끄고 메트로놈만 들으며 내 실제 기타로 연습합니다 (단축키: G)">기타 시뮬레이션: 켜짐</button>
-        </div>
-        <div class="gauge-row">
-          <div class="pitch-box">
-            <span class="pitch-note" id="liveNote">--</span>
-            <span class="pitch-ko" id="liveNoteKo">마이크 대기</span>
-          </div>
-          <div class="err-box" id="liveErr">-- ms</div>
-        </div>
-        <div class="mini-scale">
-          <div class="mini-zone"></div>
-          <div class="mini-needle" id="liveNeedle" hidden></div>
-        </div>
-        <div class="mic-row">
-          <button type="button" class="fx-toggle" id="micScoreBtn" data-active="true">마이크 채점</button>
-          <div class="mic-bar" title="마이크 입력 레벨"><div class="mic-fill" id="micFill"></div></div>
         </div>
       </div>
     </div>
@@ -788,54 +731,11 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
     </section>
   </div>
 
-  <!-- 연습 기록 및 성장 로그 -->
-  <section class="panel" aria-label="연습 기록">
-    <div class="panel-head">
-      <h2>연습 기록 (곡별 달성 BPM &amp; 정박률)</h2>
-      <button type="button" class="btn sm danger" id="clearHistBtn">기록 비우기</button>
-    </div>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>일시</th>
-            <th>연습곡 (구간)</th>
-            <th>템포</th>
-            <th>인식 음</th>
-            <th>평균 오차</th>
-            <th>정박률 (±30ms)</th>
-          </tr>
-        </thead>
-        <tbody id="histBody"></tbody>
-      </table>
-    </div>
-  </section>
 </main>
 
 <!-- 숨김 파일 입력 (이미지 / PDF 업로드용) -->
 <input type="file" id="fileInput" accept="image/*,.pdf,application/pdf" hidden>
 <input type="file" id="ocrModalFileInput" accept="image/*" hidden>
-
-<!-- 모달 1: 6현 클래식 기타 튜너 -->
-<div class="modal-backdrop" id="tunerModal" hidden>
-  <div class="modal" role="dialog" aria-labelledby="tunerTitle">
-    <div class="panel-head">
-      <h2 id="tunerTitle">클래식 기타 6현 튜너</h2>
-      <button type="button" class="btn sm" id="closeTunerBtn">닫기</button>
-    </div>
-    <p class="hint">마이크로 기타 줄 소리를 들어 센트 단위로 음정을 보여줘요. 줄 번호를 누르면 기준음이 울리고 그 줄 기준으로 고정되며, 자동이면 가장 가까운 줄에 맞춰요.</p>
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px" id="tunerStrings"></div>
-    <button type="button" class="btn sm active" id="tunerAutoBtn" style="align-self:flex-start">자동 (가장 가까운 줄)</button>
-    <div class="stage" style="text-align:center;padding:16px">
-      <div style="font-size:13px;color:var(--d-muted)">감지된 음</div>
-      <div style="font-family:var(--font-num);font-size:38px;font-weight:700" id="tunerReadout">--</div>
-      <div class="tuner-meter" aria-hidden="true"><div class="tuner-zone"></div><div class="tuner-needle" id="tunerNeedle"></div></div>
-      <div class="num" style="font-size:13px;color:var(--d-muted)" id="tunerCents">-- 센트 · -- Hz</div>
-      <div style="font-size:14px;color:var(--d-near);margin-top:4px" id="tunerGuide">마이크 켜기 버튼을 누르고 한 줄씩 튕기세요</div>
-    </div>
-    <button type="button" class="btn primary" id="tunerStartMicBtn">마이크로 튜닝 시작</button>
-  </div>
-</div>
 
 <!-- 모달: 음색 설정 (울림통 공명 · 공명현) -->
 <div class="modal-backdrop" id="toneModal" hidden>
@@ -868,50 +768,30 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
   </div>
 </div>
 
-<!-- 모달 2: 지연 보정 (마이크 입력 + 블루투스 출력) -->
-<div class="modal-backdrop" id="calibModal" hidden>
-  <div class="modal" role="dialog" aria-labelledby="calibTitle">
+<!-- 모달: 출력 지연 보정 -->
+<div class="modal-backdrop" id="audioOffsetModal" hidden>
+  <div class="modal" role="dialog" aria-labelledby="audioOffsetTitle">
     <div class="panel-head">
-      <h2 id="calibTitle">지연 보정 (블루투스 &amp; 마이크)</h2>
-      <button type="button" class="btn sm" id="closeCalibBtn">닫기</button>
+      <h2 id="audioOffsetTitle">출력 지연 보정</h2>
+      <button type="button" class="btn sm" id="closeAudioOffsetBtn">닫기</button>
     </div>
-
-    <!-- 1. 오디오 출력 장치 (블루투스 지연 보정) -->
     <div style="margin:12px 0 16px;padding:12px;background:var(--card-sub);border-radius:8px;border:1px solid var(--border)">
-      <div style="font-weight:600;margin-bottom:6px">1. 오디오 출력 장치 (블루투스 지연 보정)</div>
-      <p class="hint" style="margin-bottom:10px">블루투스 무선 이어폰/스피커는 무선 전송 특성상 150~250ms 지연이 발생합니다. 화면 커서 점등과 정박 채점 판정을 이에 맞게 보정하여 소리와 완벽히 일치시킵니다.</p>
+      <p class="hint" style="margin-bottom:10px">무선 이어폰이나 스피커에서 소리보다 화면 커서가 먼저 움직이면 지연값을 조절해 맞춰 보세요.</p>
       <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
         <button type="button" class="btn sm" id="btPresetWired">유선/내장 스피커 (0ms)</button>
         <button type="button" class="btn sm" id="btPresetNormal">블루투스 이어폰 (+180ms)</button>
         <button type="button" class="btn sm" id="btPresetHeavy">블루투스 헤드셋 (+240ms)</button>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
-        <label for="audioOffsetRange" style="font-size:12px;color:var(--text-dim);white-space:nowrap">출력 지연 오프셋:</label>
+        <label for="audioOffsetRange" style="font-size:12px;color:var(--text-dim);white-space:nowrap">출력 지연:</label>
         <input type="range" id="audioOffsetRange" min="0" max="400" step="5" value="0" style="flex:1">
         <span class="num" id="audioOffsetVal" style="font-weight:700;min-width:60px;text-align:right">+0 ms</span>
       </div>
     </div>
-
-    <!-- 2. 마이크 루프백 자동 보정 -->
-    <div style="padding:12px;background:var(--card-sub);border-radius:8px;border:1px solid var(--border)">
-      <div style="font-weight:600;margin-bottom:6px">2. 마이크 입력 장치 &amp; 자동 보정</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <label for="micDeviceSelect" style="font-size:12px;color:var(--muted);white-space:nowrap">입력 장치:</label>
-        <select id="micDeviceSelect" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg)"></select>
-        <button type="button" class="btn sm" id="micDeviceRefreshBtn">목록 불러오기</button>
-      </div>
-      <p class="hint" style="margin-bottom:8px">블루투스 이어폰의 마이크를 쓰면 이어폰이 통화 모드로 바뀌어 재생 음질이 크게 떨어져요. 노트북 내장 마이크나 USB 마이크를 고르세요. 장치를 바꾸면 아래 자동 보정을 다시 해 주세요.</p>
-      <p class="hint">스피커 소리가 마이크로 다시 들어오는 왕복 시간(ms)을 측정해 정박 채점 오차를 없앱니다 (유선/내장 스피커 권장).</p>
-      <div class="fg-card" style="margin:8px 0">
-        <span class="label">현재 마이크 측정 지연</span>
-        <span class="fg-val num" id="calibModalStatus">아직 보정 안 됨 (기본값 45ms 사용 중)</span>
-      </div>
-      <button type="button" class="btn primary" id="runCalibBtn">6초 자동 보정 시작</button>
-    </div>
   </div>
 </div>
 
-<!-- 모달 3: AI 채팅(안티그래비티/제미니) 연동 & 원클릭 계이름 비주얼 에디터 -->
+<!-- 모달: 악보 입력 및 비주얼 에디터 -->
 <div class="modal-backdrop" id="newSongModal" hidden>
   <div class="modal wide" role="dialog" aria-labelledby="newSongTitle">
     <div class="panel-head">
@@ -998,7 +878,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
   </div>
 </div>
 
-<!-- 모달 4: 마디 코드/메모 수정 (이미지 악보 마디 클릭 시) -->
+<!-- 모달: 마디 코드/메모 수정 (이미지 악보 마디 클릭 시) -->
 <div class="modal-backdrop" id="barEditModal" hidden>
   <div class="modal" role="dialog" aria-labelledby="barEditTitle">
     <div class="panel-head">
@@ -1023,23 +903,23 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
   </div>
 </div>
 
-<!-- 모달 5: 백업 및 복원 -->
+<!-- 모달: 백업 및 복원 -->
 <div class="modal-backdrop" id="backupModal" hidden>
   <div class="modal" role="dialog" aria-labelledby="backupTitle">
     <div class="panel-head">
-      <h2 id="backupTitle">연습 데이터 백업 · 복원</h2>
+      <h2 id="backupTitle">개인 악보·앱 설정 백업 · 복원</h2>
       <button type="button" class="btn sm" id="closeBackupBtn">닫기</button>
     </div>
-    <p class="hint">이 앱은 저작권 보호를 위해 서버에 악보를 업로드하지 않고 현재 기기 브라우저(IndexedDB)에만 저장합니다. 다른 폰이나 태블릿, PC로 옮기려면 백업 파일을 내보내세요.</p>
+    <p class="hint">개인 악보와 앱 설정은 현재 기기의 브라우저에 저장돼요. 다른 기기로 옮기려면 백업 파일을 내보내세요.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button type="button" class="btn primary" id="exportJsonBtn">전체 데이터 파일로 내보내기 (.json)</button>
+      <button type="button" class="btn primary" id="exportJsonBtn">개인 악보·앱 설정 파일로 내보내기 (.json)</button>
       <button type="button" class="btn" id="importJsonBtn">백업 파일 불러오기</button>
       <input type="file" id="importFileInput" accept=".json,application/json" hidden>
     </div>
   </div>
 </div>
 
-<!-- 모달 6: 내 구글 드라이브 스프레드시트 연동 -->
+<!-- 모달: 내 구글 드라이브 스프레드시트 연동 -->
 <div class="modal-backdrop" id="sheetSyncModal" hidden>
   <div class="modal wide" role="dialog" aria-labelledby="sheetSyncTitle">
     <div class="panel-head">
@@ -1076,218 +956,6 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
     </div>
   </div>
 </div>
-
-<!-- AudioWorklet 스크립트 (on-the-beat의 정박/음정 감지 엔진 계승) -->
-<script id="worklet" type="text/plain">
-function makeFFT(N){
-  const lg = Math.log2(N), rev = new Uint16Array(N), cs = new Float32Array(N / 2), sn = new Float32Array(N / 2);
-  for (let i = 0; i < N; i++){ let r = 0, x = i; for (let b = 0; b < lg; b++){ r = (r << 1) | (x & 1); x >>= 1; } rev[i] = r; }
-  for (let i = 0; i < N / 2; i++){ cs[i] = Math.cos(-2 * Math.PI * i / N); sn[i] = Math.sin(-2 * Math.PI * i / N); }
-  return function(re, im){
-    for (let i = 0; i < N; i++){ const j = rev[i]; if (j > i){ let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
-    for (let size = 2; size <= N; size <<= 1){
-      const half = size >> 1, step = N / size;
-      for (let i = 0; i < N; i += size){
-        for (let j = 0; j < half; j++){
-          const k = j * step, wr = cs[k], wi = sn[k], a = i + j, b = a + half;
-          const tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
-          re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
-        }
-      }
-    }
-  };
-}
-function hann(N){ const w = new Float32Array(N); let s = 0; for (let i = 0; i < N; i++){ w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N); s += w[i]; } return { w: w, sum: s }; }
-// 튜너용 연속 음정 추정 (YIN): 차이 함수를 FFT 상관으로 계산하고 누적 평균 정규화 최솟값을 포물선 보간해 센트 단위 정밀도
-// W=2048 창이면 60Hz(6번줄 E2 82Hz 아래)까지 감지, 낮은 기음이 약한 노트북 마이크 입력에서도 옥타브 오류 없음
-function makeYin(sr, W){
-  const half = W / 2, fft = makeFFT(W);
-  const aRe = new Float32Array(W), aIm = new Float32Array(W), bRe = new Float32Array(W), bIm = new Float32Array(W);
-  const cm = new Float32Array(half);
-  const tauMin = Math.floor(sr / 1100), tauMax = Math.min(half - 2, Math.ceil(sr / 60));
-  return function(x){
-    let e = 0;
-    for (let i = 0; i < W; i++) e += x[i] * x[i];
-    const rms = Math.sqrt(e / W);
-    if (rms < 0.003) return { hz: null, rms: rms };
-    for (let i = 0; i < W; i++){ aRe[i] = i < half ? x[i] : 0; aIm[i] = 0; bRe[i] = x[i]; bIm[i] = 0; }
-    fft(aRe, aIm); fft(bRe, bIm);
-    for (let k = 0; k < W; k++){
-      const re = aRe[k] * bRe[k] + aIm[k] * bIm[k], im = aRe[k] * bIm[k] - aIm[k] * bRe[k];
-      aRe[k] = re; aIm[k] = -im;
-    }
-    fft(aRe, aIm); // aRe[t] / W = Σ x[j]·x[j+t]
-    let e0 = 0;
-    for (let j = 0; j < half; j++) e0 += x[j] * x[j];
-    let eT = e0, run = 0;
-    cm[0] = 1;
-    for (let t = 1; t < half; t++){
-      eT += x[t + half - 1] * x[t + half - 1] - x[t - 1] * x[t - 1];
-      const d = e0 + eT - 2 * aRe[t] / W;
-      run += d;
-      cm[t] = run > 0 ? d * t / run : 1;
-    }
-    let tau = -1;
-    for (let t = tauMin; t <= tauMax; t++){
-      if (cm[t] < 0.15){ while (t + 1 <= tauMax && cm[t + 1] < cm[t]) t++; tau = t; break; }
-    }
-    if (tau < 0) return { hz: null, rms: rms };
-    const a = cm[tau - 1], b = cm[tau], c = cm[tau + 1], den = a - 2 * b + c;
-    return { hz: sr / (tau + (den !== 0 ? 0.5 * (a - c) / den : 0)), conf: 1 - b, rms: rms };
-  };
-}
-const NOTE_LO = 40, NOTE_HI = 84;
-const HARM = [1, 0.9, 0.8, 0.7, 0.6, 0.5];
-
-class OnsetProc extends AudioWorkletProcessor {
-  constructor(){
-    super();
-    const N = 1024;
-    this.N = N; this.sr = sampleRate;
-    this.buf = new Float32Array(N); this.re = new Float32Array(N); this.im = new Float32Array(N);
-    const hw = hann(N); this.win = hw.w; this.norm = 2 / hw.sum;
-    this.fft = makeFFT(N);
-    this.C = 1000; this.mu = 3; this.kAvg = 0.03;
-    this.bands = [
-      this.mkBand(70, 1500, { delta: 0.045, lambda: 1.0, confirm: 2.0, refr: 0.05 }),
-      this.mkBand(3000, 6500, { delta: 0.06, lambda: 1.0, confirm: 1.3, refr: 0.2 })
-    ];
-    const PN = 4096;
-    this.PN = PN; this.pfft = makeFFT(PN); this.pwin = hann(PN).w;
-    this.pa = new Float32Array(PN); this.pai = new Float32Array(PN);
-    this.pb = new Float32Array(PN); this.pbi = new Float32Array(PN);
-    const bw = this.sr / PN;
-    this.kLo = Math.ceil(70 / bw);
-    this.kMax = Math.min(PN / 2 - 1, Math.ceil(7000 / bw));
-    this.D = new Float32Array(this.kMax + 1);
-    this.cands = [];
-    for (let m = NOTE_LO; m <= NOTE_HI; m++){
-      const f0 = 440 * Math.pow(2, (m - 69) / 12), hs = [];
-      for (let h = 1; h <= HARM.length; h++){
-        const f = f0 * h;
-        const k0 = Math.max(1, Math.floor(f * 0.9856 / bw)), k1 = Math.min(this.kMax, Math.ceil(f * 1.0146 / bw));
-        hs.push(k0, k1);
-      }
-      this.cands.push({ m: m, f0: f0, hs: hs });
-    }
-    this.RN = 16384; this.ring = new Float32Array(this.RN); this.jobs = [];
-    this.PRE_GAP = 600; this.POST_SKIP = 200;
-    this.hops = 0; this.peak = 0; this.blocks = 0;
-    // 튜너 모드: 튜너 화면이 열려 있을 때만 1024샘플마다 연속 음정 추정 (약 21ms 간격)
-    this.TW = 2048; this.yin = makeYin(this.sr, this.TW); this.tbuf = new Float32Array(this.TW);
-    this.tunerOn = false; this.tunerAcc = 0;
-    this.port.onmessage = (e) => { if (e.data && e.data.t === 'tuner') this.tunerOn = !!e.data.on; };
-  }
-  mkBand(lo, hi, c){
-    const k0 = Math.max(1, Math.ceil(lo * this.N / this.sr));
-    const k1 = Math.min(this.N / 2 - 1, Math.floor(hi * this.N / this.sr));
-    const len = k1 - k0 + 1, hist = [];
-    for (let i = 0; i <= this.mu; i++) hist.push(new Float32Array(len));
-    return { k0, k1, len, hist, head: 0, avg: 0, armed: true, last: -1e9, cand: null, c };
-  }
-  analyze(tEnd, detect){
-    const N = this.N, re = this.re, im = this.im, buf = this.buf, w = this.win;
-    for (let i = 0; i < N; i++){ re[i] = buf[i] * w[i]; im[i] = 0; }
-    this.fft(re, im);
-    for (let k = 0; k < 2; k++){
-      const b = this.bands[k], c = b.c;
-      const cur = b.hist[b.head], old = b.hist[(b.head + 1) % (this.mu + 1)];
-      let flux = 0;
-      for (let j = 0; j < b.len; j++){
-        const kk = b.k0 + j;
-        const m = Math.sqrt(re[kk] * re[kk] + im[kk] * im[kk]) * this.norm;
-        const L = Math.log(1 + this.C * m);
-        cur[j] = L;
-        let p = old[j];
-        if (j > 0 && old[j - 1] > p) p = old[j - 1];
-        if (j < b.len - 1 && old[j + 1] > p) p = old[j + 1];
-        const d = L - p;
-        if (d > 0) flux += d;
-      }
-      flux /= b.len;
-      b.head = (b.head + 1) % (this.mu + 1);
-      const thr = c.delta + c.lambda * b.avg;
-      b.avg += (flux - b.avg) * this.kAvg;
-      if (!detect) continue;
-      if (b.cand){
-        if (flux > b.cand.max) b.cand.max = flux;
-        if (++b.cand.n >= 3){
-          if (b.cand.max > b.cand.thr * c.confirm){
-            this.port.postMessage({ t: 'on', k: k, time: b.cand.t, str: b.cand.max });
-            b.last = b.cand.t;
-            if (k === 0) this.jobs.push({ s: Math.round(b.cand.t * this.sr), time: b.cand.t });
-          }
-          b.cand = null; b.armed = false;
-        }
-      } else if (!b.armed){
-        if (tEnd - b.last > c.refr && flux < thr) b.armed = true;
-      } else if (flux > thr){
-        b.cand = { t: tEnd, max: flux, n: 0, thr: thr };
-      }
-    }
-  }
-  pitch(job){
-    const PN = this.PN, mask = this.RN - 1, ring = this.ring, w = this.pwin;
-    const a = this.pa, ai = this.pai, b = this.pb, bi = this.pbi, D = this.D;
-    const s0 = job.s - this.PRE_GAP - PN, s1 = job.s + this.POST_SKIP;
-    for (let i = 0; i < PN; i++){
-      a[i] = ring[(s0 + i) & mask] * w[i]; ai[i] = 0;
-      b[i] = ring[(s1 + i) & mask] * w[i]; bi[i] = 0;
-    }
-    this.pfft(a, ai); this.pfft(b, bi);
-    let tot = 0, fresh = 0;
-    for (let k = 1; k <= this.kMax; k++){
-      const ma = Math.sqrt(a[k] * a[k] + ai[k] * ai[k]), mb = Math.sqrt(b[k] * b[k] + bi[k] * bi[k]);
-      const d = mb - ma;
-      D[k] = d > 0 ? d : 0;
-      if (k >= this.kLo){ tot += mb; fresh += D[k]; }
-    }
-    let best = null, bs = 0;
-    for (let c = 0; c < this.cands.length; c++){
-      const hs = this.cands[c].hs;
-      let s = 0;
-      for (let h = 0; h < HARM.length; h++){
-        let mx = 0;
-        for (let k = hs[2 * h]; k <= hs[2 * h + 1]; k++) if (D[k] > mx) mx = D[k];
-        s += HARM[h] * mx;
-      }
-      if (s > bs){ bs = s; best = this.cands[c].m; }
-    }
-    const ratio = tot > 0 ? fresh / tot : 0;
-    const ok = best !== null && ratio > 0.10 && bs > 0.4;
-    this.port.postMessage({ t: 'pitch', time: job.time, midi: ok ? best : null });
-  }
-  process(inputs){
-    const ch = inputs[0] && inputs[0][0];
-    if (ch && ch.length){
-      const n = ch.length, fr = currentFrame, mask = this.RN - 1;
-      for (let i = 0; i < n; i++){
-        const x = ch[i], a = x < 0 ? -x : x;
-        if (a > this.peak) this.peak = a;
-        this.ring[(fr + i) & mask] = x;
-      }
-      this.buf.copyWithin(0, n);
-      this.buf.set(ch, this.N - n);
-      this.hops++;
-      this.analyze((fr + n) / this.sr, this.hops > 16);
-      const end = fr + n;
-      while (this.jobs.length && end >= this.jobs[0].s + this.POST_SKIP + this.PN) this.pitch(this.jobs.shift());
-      if (this.tunerOn && (this.tunerAcc += n) >= 1024){
-        this.tunerAcc = 0;
-        for (let i = 0; i < this.TW; i++) this.tbuf[i] = this.ring[(end - this.TW + i) & mask];
-        const r = this.yin(this.tbuf);
-        this.port.postMessage({ t: 'tune', hz: r.hz, conf: r.conf, rms: r.rms });
-      }
-    }
-    if (++this.blocks >= 10){
-      this.port.postMessage({ t: 'lv', l: this.peak });
-      this.peak = 0; this.blocks = 0;
-    }
-    return true;
-  }
-}
-registerProcessor('onset', OnsetProc);
-</script>
 
 <script src="src/storage.js"></script>
 <script src="src/notation.js"></script>

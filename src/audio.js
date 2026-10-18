@@ -84,7 +84,7 @@
       outGain.gain.value = GUITAR_MASTER_GAIN;
 
       // 마스터 리미터는 -3dB에서 여유를 확보해 여러 현의 순간 합산 피크를 누름
-      // (DynamicsCompressorNode는 약 6ms 룩어헤드 지연이 있으므로 기타·클릭·보정음 모두 이 노드를 거쳐 타이밍을 맞춤)
+      // (DynamicsCompressorNode는 약 6ms 룩어헤드 지연이 있으므로 기타와 클릭이 이 노드를 거쳐 타이밍을 맞춤)
       var comp = actx.createDynamicsCompressor();
       comp.threshold.value = -3.0;
       comp.knee.value = 0;
@@ -92,7 +92,7 @@
       comp.attack.value = 0.001;
       comp.release.value = 0.10;
 
-      // 메트로놈 클릭·지연 보정음 전용 버스 (기타 마스터 음량과 독립, 리미터만 공유)
+      // 메트로놈 클릭 전용 버스 (기타 마스터 음량과 독립, 리미터만 공유)
       clickBus = actx.createGain();
       clickBus.gain.value = 1.0;
 
@@ -579,7 +579,7 @@
     addSympatheticResonance(midi, t, scale, sNo);
   }
 
-  // 가이드 쉼이나 위치 변경에서 기타 보이스만 끊고 클릭·마이크 경로는 유지한다.
+  // 가이드 쉼이나 위치 변경에서 기타 보이스만 끊고 클릭 경로는 유지한다.
   function stopGuitarNotes(when){
     if (!actx) return;
     var t = when != null ? Number(when) : actx.currentTime;
@@ -692,6 +692,3 @@
       step++;
     }
   }
-
-  // ---------- 마이크 입력 연결 (튜너 & 정박/음정 채점 겸용)
-  // 선택한 입력 장치로 마이크 열기 (블루투스 이어폰 대신 내장/USB 마이크를 쓰면 이어폰 재생이 고음질 모드로 유지됨)
