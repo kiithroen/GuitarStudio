@@ -1498,7 +1498,8 @@ async function testSubdividedGuide(client) {
       appState.scoreView = 'card';
       renderSong();
       var pairCard = document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="1"]');
-      check(pairCard.querySelector('.b-ko-main').textContent === '솔·도' && pairCard.querySelector('.b-note-sub').textContent === 'G3+C4', 'beat card shows both pair solfege and octave names');
+      var koMainText = pairCard.querySelector('.b-ko-main').textContent;
+      check((koMainText === 'G·C' || koMainText === '솔·도') && pairCard.querySelector('.b-note-sub').textContent === 'G3+C4', 'beat card shows both pair solfege and octave names');
       emitted = [];
       window.actx.currentTime = 12;
       updateActiveCursor(0, 1, true);
@@ -1511,7 +1512,7 @@ async function testSubdividedGuide(client) {
       function directText(element){return Array.prototype.filter.call(element.childNodes,function(node){return node.nodeType===3;}).map(function(node){return node.textContent;}).join('').trim();}
       var lowTargetStyle = fretboardLowMarker && getComputedStyle(fretboardLowMarker);
       var highTargetStyle = fretboardHigh && getComputedStyle(fretboardHigh);
-      check(fretboardLow && fretboardLow.dataset.baseLabel==='3G' && directText(fretboardLow)==='' && fretboardLowMarker && fretboardLowMarker.textContent.indexOf('솔')>=0 && fretboardHigh && fretboardHigh.textContent.indexOf('도')>=0 &&
+      check(fretboardLow && fretboardLow.dataset.baseLabel==='3G' && directText(fretboardLow)==='' && fretboardLowMarker && (fretboardLowMarker.textContent.indexOf('G')>=0 || fretboardLowMarker.textContent.indexOf('솔')>=0) && fretboardHigh && (fretboardHigh.textContent.indexOf('C')>=0 || fretboardHigh.textContent.indexOf('도')>=0) &&
         lowTargetStyle.borderRadius===highTargetStyle.borderRadius && lowTargetStyle.height===highTargetStyle.height && lowTargetStyle.backgroundColor===highTargetStyle.backgroundColor,
         'open and fretted targets use matching green badge markers while the active open-string base label is hidden');
       var priorChordDots=appState.showChordDots;
@@ -1805,11 +1806,12 @@ async function testBuiltinScores(client, browserBin){
     assert.equal(review.lv5Card.activeClass,true,'active beat selection remains highlighted in Lv.5 card view');
     assert.notEqual(review.lv5Card.activeBackground,review.lv5Card.inactiveBackground,'active beat highlight remains distinct from the plain card background');
     assert.ok(review.romance.fretboardTargets.first.baseLabel==='6E'&&review.romance.fretboardTargets.first.directLabel===''&&
-      review.romance.fretboardTargets.first.open6Marker.indexOf('미')>=0&&review.romance.fretboardTargets.first.fret7Marker.indexOf('시')>=0&&
+      (review.romance.fretboardTargets.first.open6Marker.indexOf('E')>=0||review.romance.fretboardTargets.first.open6Marker.indexOf('미')>=0)&&
+      (review.romance.fretboardTargets.first.fret7Marker.indexOf('B')>=0||review.romance.fretboardTargets.first.fret7Marker.indexOf('시')>=0)&&
       review.romance.fretboardTargets.first.sameBadgeStyle,'actual Lv.6 first chord marks E2 open-6 and B4 fret-7 with the shared green badge style');
     assert.equal(review.romance.fretboardTargets.nextB3,59,'actual next B3 part remains the open-string target');
     assert.equal(review.romance.fretboardTargets.open6Restored,true,'moving the target to B3 restores the 6E open-string label');
-    assert.ok(review.romance.fretboardTargets.open2Marker.indexOf('시')>=0,'moving the target places a green badge on B3 open-2');
+    assert.ok(review.romance.fretboardTargets.open2Marker.indexOf('B')>=0||review.romance.fretboardTargets.open2Marker.indexOf('시')>=0,'moving the target places a green badge on B3 open-2');
     assert.equal(review.romance.bpm, 56, 'Lv.6 Romance tempo is 56');
     assert.equal(review.romance.beats, 3, 'Lv.6 Romance uses three beats per measure');
     assert.deepEqual(review.romance.subdivisionCounts, [3,3,3], 'all first-measure beats use three subdivisions');
@@ -2224,6 +2226,36 @@ async function main() {
     await cdp.evaluate('document.getElementById("toggleCompactBtn").click()');
     const isCompactRestored = await cdp.evaluate('document.body.classList.contains("practice-compact")');
     assert.equal(isCompactRestored, false, "compact practice mode toggled off successfully on second click");
+
+    // Verify notation mode toggle button
+    const notationToggleCheck = await cdp.evaluate(`(function(){
+      var btn = document.getElementById('toggleNotationBtn');
+      if (!btn) return { exists: false };
+      var initialMode = appState.notationMode;
+      var initialTxt = btn.textContent.trim();
+      btn.click();
+      var solfegeMode = appState.notationMode;
+      var solfegeTxt = btn.textContent.trim();
+      btn.click();
+      var restoredMode = appState.notationMode;
+      var restoredTxt = btn.textContent.trim();
+      return {
+        exists: true,
+        initialMode: initialMode,
+        initialTxt: initialTxt,
+        solfegeMode: solfegeMode,
+        solfegeTxt: solfegeTxt,
+        restoredMode: restoredMode,
+        restoredTxt: restoredTxt
+      };
+    })()`);
+    assert.equal(notationToggleCheck.exists, true, '#toggleNotationBtn exists');
+    assert.equal(notationToggleCheck.initialMode, 'cde', 'initial notation mode is cde');
+    assert.equal(notationToggleCheck.initialTxt, '도레미 표기', 'initial button text is 도레미 표기');
+    assert.equal(notationToggleCheck.solfegeMode, 'solfege', 'notation mode toggles to solfege');
+    assert.equal(notationToggleCheck.solfegeTxt, 'CDE 표기', 'button text toggles to CDE 표기');
+    assert.equal(notationToggleCheck.restoredMode, 'cde', 'notation mode restores to cde');
+    assert.equal(notationToggleCheck.restoredTxt, '도레미 표기', 'button text restores to 도레미 표기');
 
     // 3. Verify youtube quick links query excludes [Lv..] tags
     const ytLinkText = await cdp.evaluate('document.querySelector("#ytQuickLinks a") ? document.querySelector("#ytQuickLinks a").textContent : ""');

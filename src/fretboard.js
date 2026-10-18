@@ -41,11 +41,26 @@ function initFretboard(){
         cell.dataset.fret = f;
         cell.dataset.midi = midi;
         var inf = midiInfo(midi);
-        cell.title = st.str + '번줄 ' + f + '프렛: ' + inf.en + ' (' + inf.ko + ')';
+        cell.title = st.str + '번줄 ' + f + '프렛: ' + inf.en;
         cell.addEventListener('click', (function(m){ return function(){ playGuitarNote(soundingMidi(m, curCapo()), 0.9, null, null, null, st.str); }; })(midi));
         row.appendChild(cell);
       }
       fb.appendChild(row);
+    });
+    updateFretboardCellTitles();
+  }
+
+  function updateFretboardCellTitles(){
+    var isSolfege = (typeof appState !== 'undefined' && appState.notationMode === 'solfege');
+    $$('#fretboard .fb-cell').forEach(function(cell){
+      var str = cell.dataset.str;
+      var f = cell.dataset.fret;
+      var midi = Number(cell.dataset.midi);
+      if (!str || !f || isNaN(midi)) return;
+      var inf = midiInfo(midi);
+      cell.title = isSolfege
+        ? (str + '번줄 ' + f + '프렛: ' + inf.ko + ' (' + inf.en + ')')
+        : (str + '번줄 ' + f + '프렛: ' + inf.en);
     });
   }
 
@@ -132,8 +147,9 @@ function initFretboard(){
       var songCapo = getSongCapo(curSong);
       var capoTag = songCapo > 0 ? (' [Capo ' + songCapo + ' 실음: ' + midiInfo(soundingMidi(targetNote.midi, songCapo)).en + ']') : '';
 
+      var isSolfege = (appState && appState.notationMode === 'solfege');
       if (targetNote.chordNotes && targetNote.chordNotes.length >= 2){
-        var noteNames = targetNote.chordNotes.map(function(c){ return c.str + '줄 ' + c.ko + (c.fret === 0 ? '(개방)' : '(' + c.fret + '프)'); }).join(' + ');
+        var noteNames = targetNote.chordNotes.map(function(c){ var name = isSolfege ? c.ko : (c.en ? c.en.replace(/\d+$/, '') : c.ko); return c.str + '줄 ' + name + (c.fret === 0 ? '(개방)' : '(' + c.fret + '프)'); }).join(' + ');
         var noteHeading = targetNote.chordNotes.length === 2 ? '겹음: ' : (chordName ? cleanChordToken(chordName) + ' 화음: ' : '화음: ');
         $('#guideNoteTxt').textContent = noteHeading + noteNames + capoTag + articTag;
         var lhStrs = targetNote.chordNotes.map(function(c, componentIndex){
@@ -152,7 +168,12 @@ function initFretboard(){
           ? '오른손 운지: ' + rhParts.join(' + ')
           : '-';
       } else {
-        $('#guideNoteTxt').textContent = info.en + ' (' + info.ko + ') · ' + str + '번줄 ' + (fret === 0 ? '개방현' : fret + '프렛') + capoTag + articTag;
+        if (isSolfege){
+          var octDigit = (info.en ? (info.en.match(/\d+$/) || [''])[0] : '');
+          $('#guideNoteTxt').textContent = info.ko + octDigit + ' (' + info.en + ') · ' + str + '번줄 ' + (fret === 0 ? '개방현' : fret + '프렛') + capoTag + articTag;
+        } else {
+          $('#guideNoteTxt').textContent = info.en + ' · ' + str + '번줄 ' + (fret === 0 ? '개방현' : fret + '프렛') + capoTag + articTag;
+        }
         $('#guideLhTxt').textContent = lh == null ? '미지정' : (lhNames[lh] || (lh + '번 손가락'));
         var rhFinger = getExplicitRightHand(sourceToken, 0);
         $('#guideRhTxt').textContent = rhFinger ? rhFinger + ' (' + RIGHT_HAND_NAMES[rhFinger] + ')' : '-';
@@ -160,7 +181,7 @@ function initFretboard(){
 
       var notesToHighlight = (targetNote.chordNotes && targetNote.chordNotes.length >= 2)
         ? targetNote.chordNotes
-        : [{ str: str, fret: fret, lh: lh, ko: info.ko }];
+        : [{ str: str, fret: fret, lh: lh, ko: info.ko, en: info.en }];
 
       notesToHighlight.forEach(function(nt, componentIndex){
         var explicitLH = getExplicitLeftHand(sourceToken, targetNote.chordNotes && targetNote.chordNotes.length >= 2 ? componentIndex : undefined);
@@ -174,12 +195,18 @@ function initFretboard(){
           targetContainer.textContent = '';
           var tmk = document.createElement('span');
           tmk.className = 'fb-marker target-note';
-          tmk.textContent = nt.ko + (explicitLH != null ? '(' + explicitLH + ')' : '');
+          var noteLabel = isSolfege ? nt.ko : (nt.en ? nt.en.replace(/\d+$/, '') : (nt.ko || ''));
+          tmk.textContent = noteLabel + (explicitLH != null ? '(' + explicitLH + ')' : '');
           targetContainer.appendChild(tmk);
         }
       });
     } else if (ch){
-      $('#guideNoteTxt').textContent = ch.name;
+      var isSolfege = (appState && appState.notationMode === 'solfege');
+      if (isSolfege){
+        $('#guideNoteTxt').textContent = ch.name;
+      } else {
+        $('#guideNoteTxt').textContent = cleanChordToken(chordName) + ' 코드';
+      }
       $('#guideLhTxt').textContent = ch.desc;
       $('#guideRhTxt').textContent = '-';
     } else {
@@ -296,4 +323,5 @@ function initFretboard(){
   window.renderChordCards = renderChordCards;
   window.buildChordSvg = buildChordSvg;
   window.syncChordDotsBtnUI = syncChordDotsBtnUI;
+  window.updateFretboardCellTitles = updateFretboardCellTitles;
 }

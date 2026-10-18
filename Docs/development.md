@@ -64,6 +64,9 @@ Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName; i
 
 2026-10-19 표시 계약: 지판 목표음은 개방현과 프렛 모두 같은 `target-note` 배지를 쓰고, TAB은 마지막 현 pill의 그림자까지 보이도록 하단 여백을 확보하면서 격자·현 이름·배경선 정렬을 유지해. 이 조정은 개방현 label의 색상 치환 불일치와 6현 하단 잘림을 막기 위한 거야.
 
+2026-10-19 결정: 화면 내 CDE 및 도레미 표기법이 혼재되던 문제를 해결하여 기본값을 CDE 표기법으로 통일하고, 상단 헤더에 `도레미 표기 / CDE 표기` 전환 버튼을 추가해 원클릭으로 전환할 수 있게 했어. 박자 및 음표 표시 문자열은 `src/score.js`의 `formatBeatPitchLabel`과 `getNoteDisplayName`을 단일 진실 공급원(SSOT)으로 삼아 일관되게 포맷팅해.
+
 브라우저 스모크는 Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 실행 파일을 지정할 수 있어. 임시 HTTP 서버와 임시 브라우저 프로필을 사용하며 Web Audio API 경로를 실제 실행해. 이 테스트는 Node의 내장 `fetch`와 `WebSocket` 전역이 있는 환경이 필요해. 실행 환경은 `node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`로 확인할 수 있어. 자동화 검사는 실제 기기에서의 오디오 청취 품질을 확인하지 않아. 스크린샷 검증은 `test-artifacts/`에 새 파일을 만들 수 있으므로 기존 개인 자료를 보존해.
 
 작업 범위와 필수 검증은 [AGENTS.md](../AGENTS.md)에 있어.
+

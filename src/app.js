@@ -64,6 +64,7 @@
   if (typeof appState.sympAmount !== 'number') appState.sympAmount = 1.0; // 공명현 세기 (0~2, 0이면 꺼짐)
   if (appState.scoreView !== 'card') appState.scoreView = 'tab'; // 악보 보기 모드: 'tab' 6현 타브(기본) / 'card' 박자 카드
   if (CLICK_MODES.indexOf(appState.clickMode) < 0) appState.clickMode = 'all';
+  if (appState.notationMode !== 'solfege') appState.notationMode = 'cde';
   appState.isCompactPractice = false;
 
 
@@ -695,20 +696,24 @@ function curCapo(){
           cell.appendChild(rhythmHead);
 
           // 2. 오선지 음이름 (계이름) 또는 쉼표 기호 (한글 쉼표 대신 1박 옆에 있던 음표/쉼표 기호만 표시)
+          var isSolfege = appState.notationMode === 'solfege';
           var koEl = document.createElement('span');
           if (b.midi || (b.isSubdivided && b.subNotes)){
             koEl.className = 'b-ko-main';
+            function getDisplayPitch(p){
+              if (p.kind === 'rest' || /^[rR]$/.test(p.tok || '')) return '쉼';
+              if (p.kind === 'hold' || p.ko === '유지') return '유지';
+              if (p.chordNotes && p.chordNotes.length >= 2){
+                return p.chordNotes.map(function(c){ return isSolfege ? c.ko : (c.en ? c.en.replace(/\d+$/, '') : c.ko); }).join('·');
+              }
+              return isSolfege ? p.ko : (p.en ? p.en.replace(/\d+$/, '') : p.ko);
+            }
             if (!b.isSubdivided && b.chordNotes && b.chordNotes.length >= 2){
-              koEl.textContent = b.chordNotes.map(function(c){ return c.ko; }).join('·');
+              koEl.textContent = b.chordNotes.map(function(c){ return isSolfege ? c.ko : (c.en ? c.en.replace(/\d+$/, '') : c.ko); }).join('·');
             } else if (b.isSubdivided && b.subNotes){
-              koEl.textContent = b.subNotes.map(function(s){
-                if (s.kind === 'rest' || /^[rR]$/.test(s.tok || '')) return '쉼';
-                if (s.kind === 'hold' || s.ko === '유지') return '유지';
-                if (s.chordNotes && s.chordNotes.length >= 2) return s.chordNotes.map(function(c){ return c.ko; }).join('·');
-                return s.ko;
-              }).join(' · ');
+              koEl.textContent = b.subNotes.map(getDisplayPitch).join(' · ');
             } else {
-              koEl.textContent = b.ko;
+              koEl.textContent = isSolfege ? b.ko : (b.en ? b.en.replace(/\d+$/, '') : b.ko);
             }
             cell.appendChild(koEl);
 
@@ -2153,6 +2158,35 @@ function curCapo(){
     });
   });
 
+  // ---------- 계이름 / 음이름 표기법 전환 (CDE <-> 도레미)
+  function syncNotationModeUI(){
+    var isSolfege = appState.notationMode === 'solfege';
+    var btn = $('#toggleNotationBtn');
+    if (btn){
+      btn.textContent = isSolfege ? 'CDE 표기' : '도레미 표기';
+      btn.setAttribute('aria-pressed', String(isSolfege));
+      btn.classList.toggle('active', isSolfege);
+      btn.title = isSolfege
+        ? '음이름 표기법을 CDE로 전환합니다 (현재: 도레미)'
+        : '계이름 표기법을 도레미로 전환합니다 (현재: CDE)';
+    }
+    if (typeof updateFretboardCellTitles === 'function') updateFretboardCellTitles();
+  }
+
+  function setNotationMode(mode){
+    appState.notationMode = (mode === 'solfege') ? 'solfege' : 'cde';
+    saveAppState();
+    syncNotationModeUI();
+    if (curSong && curSong.type === 'structured') renderStructuredMeasures();
+    updateActiveCursor(curMeasureIdx, curBeatIdx, false);
+  }
+
+  if ($('#toggleNotationBtn')){
+    $('#toggleNotationBtn').addEventListener('click', function(){
+      setNotationMode(appState.notationMode === 'solfege' ? 'cde' : 'solfege');
+    });
+  }
+
   // ---------- 수동 오디오 출력 지연 설정
   function updateAudioOffsetBadge(){
     var v = appState.audioOffsetMs || 0;
@@ -2428,6 +2462,7 @@ function curCapo(){
   scoreEditorHooks.init();
   buildFretboard();
   setCompactPractice(false);
+  syncNotationModeUI();
   Promise.all([
     loadExternalSongsJson(),
     dbGetImageSongs().catch(function(error){ reportStorageError(error); return []; })

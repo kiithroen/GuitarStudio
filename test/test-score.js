@@ -78,4 +78,38 @@ test('formatting leaves parser objects unchanged', function(){
   assert.equal(JSON.stringify(beat), before);
 });
 
+test('getNoteDisplayName formats note according to mode and omitOctave', function(){
+  const note = { kind: 'note', en: 'C4', ko: '도' };
+  assert.equal(score.getNoteDisplayName(note, 'cde', false), 'C4');
+  assert.equal(score.getNoteDisplayName(note, 'cde', true), 'C');
+  assert.equal(score.getNoteDisplayName(note, 'solfege', false), '도4');
+  assert.equal(score.getNoteDisplayName(note, 'solfege', true), '도');
+
+  assert.equal(score.getNoteDisplayName({ kind: 'rest' }, 'cde'), '쉼');
+  assert.equal(score.getNoteDisplayName({ kind: 'hold' }, 'solfege'), '유지');
+  assert.equal(score.getNoteDisplayName({ kind: 'invalid' }, 'cde'), '오류');
+  assert.equal(score.getNoteDisplayName(null, 'cde'), '오류');
+});
+
+test('formatBeatPitchLabel supports notationMode for cde and solfege', function(){
+  const single = firstBeat('E4 D4 r A3');
+  assert.equal(score.formatBeatPitchLabel(single, {notationMode:'cde'}), 'E4');
+  assert.equal(score.formatBeatPitchLabel(single, {notationMode:'solfege'}), '미4');
+
+  const chord = firstBeat('C3+E4 D4 r A3');
+  assert.equal(score.formatBeatPitchLabel(chord, {notationMode:'cde'}), 'C3+E4');
+  assert.equal(score.formatBeatPitchLabel(chord, {notationMode:'solfege'}), '도3+미4');
+
+  const chord3 = firstBeat('C3+E4+G4 D4 r A3');
+  assert.equal(score.formatBeatPitchLabel(chord3, {compact:true, notationMode:'solfege'}), '도+미+솔');
+  assert.equal(score.formatBeatPitchLabel(chord3, {compact:true, notationMode:'cde'}), 'C+E+G');
+
+
+  const sub = firstBeat('C3/E4 D4 r A3');
+  assert.equal(score.formatBeatPitchLabel(sub, {compact:false, notationMode:'cde'}), 'C3 · E4');
+  assert.equal(score.formatBeatPitchLabel(sub, {compact:false, notationMode:'solfege'}), '도3 · 미4');
+  assert.equal(score.formatBeatPitchLabel(sub, {compact:true, notationMode:'solfege'}), '도·미');
+});
+
 process.stdout.write('1..' + checks + '\n');
+

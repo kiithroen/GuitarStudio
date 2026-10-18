@@ -57,17 +57,25 @@ var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./
     return infoForPart(b);
   }
 
+  function getNoteDisplayName(note, mode, omitOctave){
+    mode = (mode === 'solfege') ? 'solfege' : 'cde';
+    omitOctave = !!omitOctave;
+    if (!note || note.kind === 'invalid') return '오류';
+    if (note.kind === 'rest') return '쉼';
+    if (note.kind === 'hold') return '유지';
+    if (mode === 'solfege'){
+      return omitOctave ? (note.ko || '') : ((note.ko || '') + (note.en ? (note.en.match(/\d+$/) || [''])[0] : ''));
+    }
+    return omitOctave ? (note.en ? note.en.replace(/\d+$/, '') : '') : (note.en || '');
+  }
+
   function formatBeatPitchLabel(beat, options){
     var opts = options || {};
     var compact = opts.compact === true;
+    var mode = (opts && opts.notationMode) || (typeof appState !== 'undefined' && appState.notationMode) || 'cde';
     var isGroup = !!(beat && beat.kind === 'group' && Array.isArray(beat.subNotes));
     function formatNote(note, omitOctave){
-      if (!note || note.kind === 'invalid') return '오류';
-      if (note.kind === 'rest') return '쉼';
-      if (note.kind === 'hold') return '유지';
-      var name = note.en || '';
-      if (omitOctave) name = name.replace(/\d+$/, '');
-      return name;
+      return getNoteDisplayName(note, mode, omitOctave);
     }
     function formatPart(part, omitOctave){
       if (!part || part.kind === 'invalid') return '오류';
@@ -111,6 +119,7 @@ var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./
     return notes.every(function(note){ return note.articulation === articulation; }) ? articulation : null;
   }
 
+if (typeof window !== 'undefined'){ window.getNoteDisplayName = getNoteDisplayName; }
 
+if (typeof module !== 'undefined' && module.exports){ module.exports = { NOTE_DUR_SVGS: NOTE_DUR_SVGS, getBeatDurationInfo: getBeatDurationInfo, formatBeatPitchLabel: formatBeatPitchLabel, getUniformBeatArticulation: getUniformBeatArticulation, getNoteDisplayName: getNoteDisplayName }; }
 
-if (typeof module !== 'undefined' && module.exports){ module.exports = { NOTE_DUR_SVGS: NOTE_DUR_SVGS, getBeatDurationInfo: getBeatDurationInfo, formatBeatPitchLabel: formatBeatPitchLabel, getUniformBeatArticulation: getUniformBeatArticulation }; }
