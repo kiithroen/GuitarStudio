@@ -70,6 +70,8 @@ Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName; i
 
 2026-10-19 결정: 코드 지판(파란 점)에서 개방현(`fret === 0`)인 경우 글자색 변경 대신 프렛 셀과 동일한 원형 마커(`.fb-marker.chord-tone`)를 생성하여 '0'을 표시하도록 통일했어. 연주음(초록 마커)과 겹칠 때는 기존의 container 초기화 후 덮어쓰기 로직에 따라 연주음 마커가 우선 표시돼.
 
+2026-10-19 결정: 악보 바로 위 툴바(`scoreToolbar`)에 시작 버튼(`compactPlayBtn`)과 곡 선택 드롭다운(`compactSongSelect`)이 일반 뷰와 콤팩트 뷰에서 모두 일관되게 노출되도록 통일했어. 이에 따라 상단 패널의 중복 연습곡 선택 행은 숨김(`hidden`) 처리해 DOM·테스트 호환성을 유지하고, 콘솔 3번째 박스를 제거한 후 기타 시뮬레이션 토글 버튼(`guideSoundBtn`)을 1번째 박스(템포/BPM) 헤더의 콘서트홀 버튼 옆으로 이동해 `.fx-toggle` 스타일을 적용했어. 콘솔 그리드는 2열(`1.15fr 1fr`)로 정돈했으며, 기존 스모크 테스트 호환용 `playBtn`은 hidden 버튼으로 보존했어.
+
 브라우저 스모크는 Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 실행 파일을 지정할 수 있어. 임시 HTTP 서버와 임시 브라우저 프로필을 사용하며 Web Audio API 경로를 실제 실행해. 이 테스트는 Node의 내장 `fetch`와 `WebSocket` 전역이 있는 환경이 필요해. 실행 환경은 `node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`로 확인할 수 있어. 자동화 검사는 실제 기기에서의 오디오 청취 품질을 확인하지 않아. 스크린샷 검증은 `test-artifacts/`에 새 파일을 만들 수 있으므로 기존 개인 자료를 보존해.
 
 작업 범위와 필수 검증은 [AGENTS.md](../AGENTS.md)에 있어.

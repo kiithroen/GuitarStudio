@@ -100,7 +100,7 @@ h3{margin:0;font-size:14.5px;font-weight:600}
 
 /* 콘솔 (메트로놈 + 컨트롤) */
 .stage{background:var(--d-bg);color:var(--d-fg);border:1px solid var(--d-line);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
-.stage-grid{display:grid;grid-template-columns:1.15fr 1.15fr 1fr;gap:10px;align-items:stretch}
+.stage-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:10px;align-items:stretch}
 @media (max-width:860px){.stage-grid{grid-template-columns:1fr}}
 .stage-box{background:var(--d-surface);border:1px solid var(--d-line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;gap:6px;min-height:130px;box-sizing:border-box}
 
@@ -143,6 +143,10 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .score-toolbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid var(--line)}
 .score-toolbar-left{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
 .score-toolbar-right{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:100%;min-width:0;flex-shrink:1}
+#compactPlayBtn{display:inline-flex;align-items:center;justify-content:center;font-weight:800;padding:4px 10px;font-size:12.5px;border-radius:7px;white-space:nowrap;flex-shrink:0}
+#compactSongSelect{display:inline-block;min-width:140px;max-width:300px;height:30px;font-size:12.5px;font-weight:600;padding:2px 8px;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#compactStatusBadge{display:inline-flex;align-items:center;font-family:var(--font-num);font-weight:700;font-size:11.5px;padding:2px 7px;white-space:nowrap;flex-shrink:0}
+#scoreTitle,#scoreTypeBadge{display:none}
 .tab-seg{display:inline-flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
 .tab-seg button{border:0;background:transparent;padding:5px 11px;border-radius:7px;font-size:13px;color:var(--muted);font-weight:500}
 .tab-seg button[aria-selected="true"]{background:var(--surface);color:var(--fg);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
@@ -497,11 +501,11 @@ body.practice-compact .fretboard{
   <!-- 곡 선택 & 저장/이어가기 바 -->
   <section class="panel" aria-label="연습곡 선택 및 이어가기">
     <div class="song-bar">
-      <div class="song-select-row">
+      <div class="song-select-row" hidden>
         <label for="songSelect" class="label">연습곡</label>
         <select id="songSelect" class="song-select" aria-label="연습곡 선택"></select>
       </div>
-      <div class="top-actions">
+      <div class="top-actions" style="margin-left:0">
         <button type="button" class="btn primary" id="uploadImgBtn">+ 교본 사진/PDF 악보 올리기</button>
         <button type="button" class="btn" id="openSheetSyncBtn">구글 시트 연동</button>
         <button type="button" class="btn sm" id="renameSongBtn" hidden title="이 악보의 이름을 변경합니다">이름 변경</button>
@@ -532,6 +536,7 @@ body.practice-compact .fretboard{
             <button type="button" class="btn sm" id="bpmResetBtn" style="height:22px;padding:0 7px;font-size:11px" title="이 악보의 기본 권장 BPM으로 초기화합니다">기본 BPM (<span id="defaultBpmTxt">64</span>)</button>
             <button type="button" class="fx-toggle" id="engineBtn" data-active="true">물리음원</button>
             <button type="button" class="fx-toggle" id="toggleFxBtn" data-active="true" title="리버브·바디공명·긴 서스테인 특수효과 토글 (단축키: F)">콘서트홀</button>
+            <button type="button" class="fx-toggle" id="guideSoundBtn" data-active="true" aria-pressed="true" title="앱의 기타 연주 소리를 끄고 메트로놈만 들으며 내 실제 기타로 연습합니다 (단축키: G)">기타 시뮬레이션</button>
           </div>
         </div>
         <div class="bpm-ctrl">
@@ -588,30 +593,24 @@ body.practice-compact .fretboard{
         </div>
       </div>
 
-      <!-- 3. 시작/정지 -->
-      <div class="stage-box">
-        <div class="play-row">
-          <button type="button" class="go-btn" id="playBtn">연습 시작</button>
-          <button type="button" class="sound-toggle" id="guideSoundBtn" aria-pressed="true" title="앱의 기타 연주 소리를 끄고 메트로놈만 들으며 내 실제 기타로 연습합니다 (단축키: G)">기타 시뮬레이션: 켜짐</button>
-        </div>
-      </div>
     </div>
+    <button type="button" id="playBtn" hidden aria-hidden="true" tabindex="-1"></button>
   </section>
 
   <!-- 악보 뷰어 섹션 -->
   <section class="panel" aria-label="악보 및 메트로놈 커서">
     <div class="score-toolbar" id="scoreToolbar">
       <div class="score-toolbar-left">
-        <button type="button" class="btn primary sm" id="compactPlayBtn" style="font-weight:800;padding:3px 8px;font-size:11.5px;white-space:nowrap;flex-shrink:0" title="연습 시작 또는 일시 정지 (단축키: Space)" hidden>▶ 시작</button>
-        <select id="compactSongSelect" class="compact-song-select" aria-label="연습곡 선택" title="연습곡 변경" hidden></select>
-        <h2 id="scoreTitle">작은 별 (Twinkle Twinkle Little Star)</h2>
+        <button type="button" class="btn primary sm" id="compactPlayBtn" style="font-weight:800;padding:3px 8px;font-size:11.5px;white-space:nowrap;flex-shrink:0" title="연습 시작 또는 일시 정지 (단축키: Space)">▶ 시작</button>
+        <select id="compactSongSelect" class="compact-song-select" aria-label="연습곡 선택" title="연습곡 변경"></select>
+        <h2 id="scoreTitle" hidden>작은 별 (Twinkle Twinkle Little Star)</h2>
         <button type="button" class="btn sm" id="renameScoreTitleBtn" hidden style="min-height:28px;padding:0 8px;font-size:12px" title="곡 이름 변경">✏️ 이름 변경</button>
-        <span class="badge accent" id="scoreTypeBadge">내장 동요 · 다장조(C)</span>
+        <span class="badge accent" id="scoreTypeBadge" hidden>내장 동요 · 다장조(C)</span>
         <div class="tab-seg" id="scoreModeSeg" role="tablist" aria-label="악보 보기 모드" style="margin-left:2px;flex-shrink:0">
           <button type="button" id="scoreModeTabBtn" role="tab" aria-selected="true" title="6현 가로선 타브(TAB) 악보로 보기 (단축키: T)">타브</button>
           <button type="button" id="scoreModeCardBtn" role="tab" aria-selected="false" title="박자·음표 길이 및 계이름(친절한 오선지) 카드 뷰 (단축키: T)">카드</button>
         </div>
-        <span class="badge" id="compactStatusBadge" style="font-family:var(--font-num);font-weight:700" hidden>64 BPM · 1마디</span>
+        <span class="badge" id="compactStatusBadge" style="font-family:var(--font-num);font-weight:700">64 BPM · 1마디</span>
       </div>
       <div class="score-toolbar-right">
         <span class="hint" id="scoreClickHint">마디 클릭: 시작 위치 / Shift+클릭: 끝 마디</span>

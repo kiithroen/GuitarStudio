@@ -363,6 +363,16 @@ async function testTemporaryScoreEditor(client){
     process.stdout.write('Artifact: '+target+'\n');
   }
   await captureMobileToolbar('ordinary-toolbar-mobile');
+  const ordinaryToolbarCheck = await client.evaluate(`(function(){
+    var play = document.getElementById('compactPlayBtn');
+    var song = document.getElementById('compactSongSelect');
+    return {
+      playVisible: play && getComputedStyle(play).display !== 'none',
+      songVisible: song && getComputedStyle(song).display !== 'none'
+    };
+  })()`);
+  assert.equal(ordinaryToolbarCheck.playVisible, true, 'ordinary score toolbar exposes play button');
+  assert.equal(ordinaryToolbarCheck.songVisible, true, 'ordinary score toolbar exposes song select');
   const badStyleControl=await client.evaluate(`(function(){
     var style=document.createElement('style');style.textContent='.score-toolbar-right{min-width:420px !important;max-width:none !important;flex-shrink:0 !important}';document.head.appendChild(style);
     try {
