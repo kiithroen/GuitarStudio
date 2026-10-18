@@ -144,6 +144,7 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .score-toolbar-left{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
 .score-toolbar-right{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:100%;min-width:0;flex-shrink:1}
 #compactPlayBtn{display:inline-flex;align-items:center;justify-content:center;font-weight:800;padding:4px 10px;font-size:12.5px;border-radius:7px;white-space:nowrap;flex-shrink:0}
+#rewindToFirstBtn{display:inline-flex;align-items:center;justify-content:center;font-weight:600;padding:4px 9px;font-size:12px;border-radius:7px;white-space:nowrap;flex-shrink:0}
 #compactSongSelect{display:inline-block;min-width:140px;max-width:300px;height:30px;font-size:12.5px;font-weight:600;padding:2px 8px;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #compactStatusBadge{display:inline-flex;align-items:center;font-family:var(--font-num);font-weight:700;font-size:11.5px;padding:2px 7px;white-space:nowrap;flex-shrink:0}
 #scoreTitle,#scoreTypeBadge{display:none}
@@ -354,6 +355,14 @@ body.practice-compact #compactPlayBtn{
   display: inline-flex !important;
   padding: 4px 8px !important;
   font-size: 11.5px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+body.practice-compact #rewindToFirstBtn{
+  display: inline-flex !important;
+  padding: 4px 6px !important;
+  font-size: 11px !important;
   white-space: nowrap !important;
   flex-shrink: 0 !important;
 }
@@ -602,6 +611,7 @@ body.practice-compact .fretboard{
     <div class="score-toolbar" id="scoreToolbar">
       <div class="score-toolbar-left">
         <button type="button" class="btn primary sm" id="compactPlayBtn" style="font-weight:800;padding:3px 8px;font-size:11.5px;white-space:nowrap;flex-shrink:0" title="연습 시작 또는 일시 정지 (단축키: Space)">▶ 시작</button>
+        <button type="button" class="btn sm" id="rewindToFirstBtn" style="font-weight:600;padding:3px 8px;font-size:11.5px;white-space:nowrap;flex-shrink:0" title="악보 맨 처음(1마디)으로 이동하고 스크롤을 초기화합니다 (단축키: Home)">처음으로</button>
         <select id="compactSongSelect" class="compact-song-select" aria-label="연습곡 선택" title="연습곡 변경"></select>
         <h2 id="scoreTitle" hidden>작은 별 (Twinkle Twinkle Little Star)</h2>
         <button type="button" class="btn sm" id="renameScoreTitleBtn" hidden style="min-height:28px;padding:0 8px;font-size:12px" title="곡 이름 변경">✏️ 이름 변경</button>

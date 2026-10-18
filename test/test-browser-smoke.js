@@ -373,6 +373,22 @@ async function testTemporaryScoreEditor(client){
   })()`);
   assert.equal(ordinaryToolbarCheck.playVisible, true, 'ordinary score toolbar exposes play button');
   assert.equal(ordinaryToolbarCheck.songVisible, true, 'ordinary score toolbar exposes song select');
+  const rewindCheck = await client.evaluate(`(function(){
+    var btn = document.getElementById('rewindToFirstBtn');
+    if (!btn || getComputedStyle(btn).display === 'none') return { visible: false };
+    // 임의 마디로 이동 후 버튼 클릭
+    var lastCard = document.querySelector('#measuresGrid .measure-card:last-child');
+    if (lastCard) lastCard.click();
+    var beforeIdx = window.curMeasureIdx;
+    btn.click();
+    return {
+      visible: true,
+      beforeIdx: beforeIdx,
+      afterIdx: window.curMeasureIdx
+    };
+  })()`);
+  assert.equal(rewindCheck.visible, true, 'rewindToFirstBtn is visible in score toolbar');
+  assert.equal(rewindCheck.afterIdx, 0, 'clicking rewindToFirstBtn restores active measure cursor to 0');
   const badStyleControl=await client.evaluate(`(function(){
     var style=document.createElement('style');style.textContent='.score-toolbar-right{min-width:420px !important;max-width:none !important;flex-shrink:0 !important}';document.head.appendChild(style);
     try {

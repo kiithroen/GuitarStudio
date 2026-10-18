@@ -1386,6 +1386,31 @@ function curCapo(){
     playSession = null;
   }
 
+  function resetToFirstMeasure(){
+    var wasPlaying = isPlaying;
+    if (wasPlaying) stopPractice();
+    curMeasureIdx = 0;
+    curBeatIdx = 0;
+    if (appState.loopStart > 1){
+      appState.loopStart = 1;
+      appState.loopEnd = getMeasureCount(curSong);
+      if ($('#loopStart')) $('#loopStart').value = appState.loopStart;
+      if ($('#loopEnd')) $('#loopEnd').value = appState.loopEnd;
+      updateLoopClasses();
+    }
+    saveAppState();
+    updateActiveCursor(0, 0, !wasPlaying);
+    if ($('#structuredScoreWrap')){
+      $('#structuredScoreWrap').scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    }
+    if ($('#imgStageScroll')){
+      $('#imgStageScroll').scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    }
+    if (wasPlaying){
+      startPractice();
+    }
+  }
+
   function schedulerTick(){
     if (!isPlaying || !playSession || !actx) return;
     var s = playSession;
@@ -1707,13 +1732,19 @@ function curCapo(){
     });
   }
 
+  if ($('#rewindToFirstBtn')){
+    $('#rewindToFirstBtn').addEventListener('click', function(){
+      resetToFirstMeasure();
+    });
+  }
+
   if ($('#toggleCompactBtn')){
     $('#toggleCompactBtn').addEventListener('click', function(){
       setCompactPractice(!appState.isCompactPractice);
     });
   }
 
-  // 메인 화면 키보드 단축키 (Space: 연습 시작/정지, G: 소리 토글, F: 특수효과 토글, T: 타브/박자카드 토글, P: 집중연습뷰, Esc: 전체화면)
+  // 메인 화면 키보드 단축키 (Space: 연습 시작/정지, G: 소리 토글, F: 특수효과 토글, T: 타브/박자카드 토글, P: 집중연습뷰, Home: 처음으로, Esc: 전체화면)
   window.addEventListener('keydown', function(e){
     var tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -1722,6 +1753,9 @@ function curCapo(){
     if (e.code === 'Space'){
       e.preventDefault();
       $('#playBtn').click();
+    } else if (e.key === 'Home'){
+      e.preventDefault();
+      if ($('#rewindToFirstBtn')) $('#rewindToFirstBtn').click();
     } else if (e.key === 'g' || e.key === 'G' || e.key === 'ㅎ'){
       e.preventDefault();
       $('#guideSoundBtn').click();
