@@ -87,6 +87,8 @@ function initEditor(){
 
   var veState = {
     editingSongId: null,
+    sourceCapo: 0,
+    sourceYtUrl: '',
     refImageDataUrl: null,
     padMode: ls.get('gs.padMode', 'string'),
     bassCombine: false,
@@ -268,7 +270,14 @@ function initEditor(){
             var sn = parseNoteToken(stk, bIdx);
             return sn ? ((sn.pos && sn.pos.lh != null ? sn.pos.lh : '') + sn.ko) : stk;
           }).join('/');
-          cell.innerHTML = '<b>' + subKo + '</b><small style="color:#2563eb;font-weight:700">' + subs.length + '분할</small>';
+          var subLabel = document.createElement('b');
+          subLabel.textContent = subKo;
+          var subCount = document.createElement('small');
+          subCount.style.color = '#2563eb';
+          subCount.style.fontWeight = '700';
+          subCount.textContent = subs.length + '분할';
+          cell.appendChild(subLabel);
+          cell.appendChild(subCount);
         } else if (inf && inf.chordNotes && inf.chordNotes.length > 2){
           cell.innerHTML = '<b>' + inf.chordNotes.map(function(c){ return c.ko; }).join('+') + '</b><small style="color:#b45309;font-weight:700">화음' + artBadge + '</small>';
         } else if (inf && inf.bass){
@@ -464,7 +473,10 @@ function initEditor(){
   });
 
   function openConverterEditorModal(opts){
+    opts = opts || {};
     veState.editingSongId = opts.editingSongId || null;
+    veState.sourceCapo = Number(opts.capo) || 0;
+    veState.sourceYtUrl = opts.ytUrl || '';
     veState.refImageDataUrl = opts.imageDataUrl || null;
     veState.beats = opts.beats || 4;
     $('#nsTitle').value = opts.title || '내 연습곡';
@@ -509,6 +521,8 @@ function initEditor(){
       title: curSong.title,
       beats: curSong.beats || 4,
       bpm: curSong.bpm || 64,
+      capo: getSongCapo(curSong),
+      ytUrl: curSong.ytUrl || '',
       rawText: '[G] B3 B3 B3 - | 종 소 리 -\n[G] B3 B3 B3 - | 울 려 라 -\n[G] B3 D4 G3 A3 | 종 소 리 울\n[G] B3 - - - | 려 - - -'
     });
     $('#ocrStatusTxt').textContent = '[제미니/안티그래비티 질문용 프롬프트 복사]를 눌러 채팅에서 변환한 텍스트를 붙여넣거나, 위 사진의 숫자를 보고 아래 패드로 톡톡 찍어 입력해 주세요.';
@@ -529,6 +543,8 @@ function initEditor(){
       title: isReadOnlySource ? (curSong.title + ' (내 버전)') : curSong.title,
       beats: curSong.beats || 4,
       bpm: curSong.bpm || 64,
+      capo: getSongCapo(curSong),
+      ytUrl: curSong.ytUrl || '',
       rawText: lines
     });
   });
@@ -606,12 +622,13 @@ function initEditor(){
       '',
       '[3. 박자표 및 서브토큰(8분·16분·점음표) 분할 규칙 ★가장 중요★]',
       '- 원곡의 박자표(3/4박자는 마디당 3박, 4/4박자는 마디당 4박)를 반드시 그대로 유지해줘 (박자 수를 임의로 2배로 늘리지 말 것).',
+      '- 마디 구분자와 박 안의 서브토큰은 달라: 박 안 슬래시는 공백 없이 쓰고, 마디 구분 슬래시에는 앞뒤 공백을 둬.',
       '- 한 박 안에서 음이 쪼개질 때는 슬래시(`/`)를 사용해 서브토큰으로 분할 표기해줘:',
       '  * 8분음표 2개 (반박+반박): `0E4/1F4` 또는 `3C3+1C4/3D4`',
-      '  * 점4분음표(1.5박) + 8분음표(0.5박): 앞 박에 `0E4`, 뒷 박에 `- / 3D4` (앞 음이 1.5박 유지되고 엇박에 뒷음 탄현)',
+      '  * 점4분음표(1.5박) + 8분음표(0.5박): 앞 박에 `0E4`, 뒷 박에 `-/3D4` (앞 음이 1.5박 유지되고 엇박에 뒷음 탄현)',
       '  * 셋잇단음표 (한 박 3분할): `0E4/1F4/3G4`',
       '  * 16분음표 4개 (한 박 4분할): `(0E4/1F4/3G4/4A4)` 또는 `0E4/1F4/3G4/4A4`',
-      '  * 엇박자 (8분 쉼표 + 8분음표): `- / 3D4`',
+      '  * 엇박자 (8분 쉼표 + 8분음표): `-/3D4`',
       '  * 정박 쉼표 또는 유지음: `-`',
       '  * 못갖춘마디(픽업): 앞의 빈 박은 `-`로 채우고 픽업 박 배치 (예: 3/4박자 3박 픽업 -> `- - 1C4/1C4`)',
       '',
@@ -688,6 +705,8 @@ function initEditor(){
       builtin: false,
       bpm: bpm,
       beats: beats,
+      capo: veState.sourceCapo,
+      ytUrl: veState.sourceYtUrl,
       lines: lines
     });
     if (veState.refImageDataUrl){
