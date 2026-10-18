@@ -89,6 +89,7 @@ function initEditor(){
     editingSongId: null,
     sourceCapo: 0,
     sourceYtUrl: '',
+    sourceBadge: '',
     refImageDataUrl: null,
     padMode: ls.get('gs.padMode', 'string'),
     bassCombine: false,
@@ -97,6 +98,25 @@ function initEditor(){
     selBar: 0,
     selBeat: 0
   };
+
+  function scoreValidationText(result){
+    return result.errors.concat(result.warnings).map(function(item){
+      return (item.measure ? item.measure + '마디' : '') + (item.beat ? ' ' + item.beat + '박' : '') + ': ' + item.message;
+    }).join('\n');
+  }
+  function refreshScoreValidation(){
+    var status = $('#scoreValidationStatus');
+    if (!status) return {errors:[],warnings:[]};
+    var result = validateScore($('#nsMeasuresTxt').value, veState.beats);
+    status.textContent = scoreValidationText(result);
+    return result;
+  }
+  function stopVisualEditOnScoreError(){
+    var result = refreshScoreValidation();
+    if (!result.errors.length) return false;
+    $('#scoreValidationStatus').textContent += '\n입력 오류를 고친 뒤 시각 편집을 사용해줘.';
+    return true;
+  }
 
   function syncVeBassCombineBtn(){
     var btn = $('#veBassCombineBtn');
@@ -111,6 +131,7 @@ function initEditor(){
   });
 
   function toggleSelectedCellArticulation(forceMode){
+    if (stopVisualEditOnScoreError()) return;
     var bar = veState.bars[veState.selBar];
     if (!bar) return;
     var curTok = bar.notes[veState.selBeat] || '-';
@@ -186,7 +207,7 @@ function initEditor(){
   buildNotePadButtons();
 
   function serializeVeBarsToText(){
-    return veState.bars.map(function(bar){
+    var measures = veState.bars.map(function(bar){
       var koLyrics = bar.notes.map(function(n){
         if (!n || n === '-') return '-';
         if (n.indexOf('/') >= 0){
@@ -203,12 +224,14 @@ function initEditor(){
       var chTag = (!bar.chord || bar.chord === '-')
         ? '-'
         : (bar.chord + (bar.autoChord ? '(자동)' : ''));
-      return '[' + chTag + '] ' + bar.notes.join(' ') + ' | ' + (bar.lyric || koLyrics);
-    }).join('\n');
+      return { chord: chTag, autoChord: false, notes: bar.notes, lyric: bar.lyric || koLyrics };
+    });
+    return serializeScoreMeasures(measures, '\n');
   }
 
   function syncVeToTextarea(){
     $('#nsMeasuresTxt').value = serializeVeBarsToText();
+    refreshScoreValidation();
   }
 
   function renderVeBarsGrid(){
@@ -238,6 +261,7 @@ function initEditor(){
         sel.appendChild(opt);
       });
       sel.addEventListener('change', function(){
+        if (stopVisualEditOnScoreError()) { sel.value = bar.chord || '-'; return; }
         bar.chord = sel.value;
         bar.autoChord = false; // 사용자가 직접 선택하면 (자동) 표시 해제
         syncVeToTextarea();
@@ -307,6 +331,7 @@ function initEditor(){
   }
 
   function applyNoteToSelectedCell(tok, isShift){
+    if (stopVisualEditOnScoreError()) return;
     if (!veState.bars.length){
       veState.bars.push({ chord: 'C', autoChord: true, notes: new Array(veState.beats).fill('-'), lyric: '' });
     }
@@ -392,6 +417,7 @@ function initEditor(){
   });
 
   $('#veAutoChordBtn').addEventListener('click', function(){
+    if (stopVisualEditOnScoreError()) return;
     if (!veState.bars.length) return;
     // 사용자가 직접 입력/선택한 코드(!bar.autoChord && bar.chord !== '-')는 유지하고,
     // 코드가 비어 있거나('-') 기존에 (자동)으로 추론된 마디만 추론 대상으로 지정
@@ -434,6 +460,7 @@ function initEditor(){
   });
 
   $('#veAddBarBtn').addEventListener('click', function(){
+    if (stopVisualEditOnScoreError()) return;
     veState.bars.push({
       chord: '-',
       autoChord: true,
@@ -447,6 +474,7 @@ function initEditor(){
   });
 
   $('#veDelBarBtn').addEventListener('click', function(){
+    if (stopVisualEditOnScoreError()) return;
     if (veState.bars.length <= 1) return;
     veState.bars.pop();
     veState.selBar = Math.min(veState.selBar, veState.bars.length - 1);
@@ -457,16 +485,22 @@ function initEditor(){
   $('#nsBeats').addEventListener('change', function(){
     var newB = Number($('#nsBeats').value) || 4;
     veState.beats = newB;
-    veState.bars.forEach(function(bar){
-      while (bar.notes.length < newB) bar.notes.push('-');
-      if (bar.notes.length > newB) bar.notes = bar.notes.slice(0, newB);
-    });
+    var validation = refreshScoreValidation();
+    if (validation.errors.length){
+      $('#scoreValidationStatus').textContent += '\n새 박자 기준 입력 오류를 고치기 전까지 원문과 미리보기를 보존했어.';
+      return;
+    }
+    veState.bars = parseTextToVeBars($('#nsMeasuresTxt').value, newB);
     veState.selBeat = Math.min(veState.selBeat, newB - 1);
-    syncVeToTextarea();
     renderVeBarsGrid();
   });
 
   $('#nsMeasuresTxt').addEventListener('input', function(){
+    var validation = refreshScoreValidation();
+    if (validation.errors.length){
+      $('#scoreValidationStatus').textContent += '\n입력 오류를 고친 뒤 시각 편집을 사용해줘. 미리보기는 현재 오류 때문에 갱신하지 않았어.';
+      return;
+    }
     veState.bars = parseTextToVeBars($('#nsMeasuresTxt').value, veState.beats);
     veState.selBar = Math.min(veState.selBar, Math.max(0, veState.bars.length - 1));
     renderVeBarsGrid();
@@ -477,6 +511,7 @@ function initEditor(){
     veState.editingSongId = opts.editingSongId || null;
     veState.sourceCapo = Number(opts.capo) || 0;
     veState.sourceYtUrl = opts.ytUrl || '';
+    veState.sourceBadge = opts.badge || '';
     veState.refImageDataUrl = opts.imageDataUrl || null;
     veState.beats = opts.beats || 4;
     $('#nsTitle').value = opts.title || '내 연습곡';
@@ -493,7 +528,13 @@ function initEditor(){
     if (opts.rawText){
       $('#nsMeasuresTxt').value = opts.rawText;
     }
-    veState.bars = parseTextToVeBars($('#nsMeasuresTxt').value, veState.beats);
+    var validation = refreshScoreValidation();
+    if (validation.errors.length){
+      veState.bars = [];
+      $('#scoreValidationStatus').textContent += '\n입력 오류 때문에 시각 미리보기를 만들지 않았어.';
+    } else {
+      veState.bars = parseTextToVeBars($('#nsMeasuresTxt').value, veState.beats);
+    }
     veState.selBar = 0;
     veState.selBeat = 0;
     renderVeBarsGrid();
@@ -512,30 +553,45 @@ function initEditor(){
     });
   });
 
+  $('#convertLegacyScoreBtn').addEventListener('click', function(){
+    var converted = GuitarNotationMigration.convertLegacyScoreText($('#nsMeasuresTxt').value, veState.beats);
+    if (converted.errors.length){
+      $('#scoreValidationStatus').textContent = scoreValidationText(converted) + '\n변환 오류를 고친 뒤 다시 시도해줘.';
+      return;
+    }
+    $('#nsMeasuresTxt').value = converted.text;
+    if (converted.title) $('#nsTitle').value = converted.title;
+    if (converted.beats) { veState.beats = converted.beats; $('#nsBeats').value = String(converted.beats); }
+    if (converted.bpm) $('#nsBpm').value = String(converted.bpm);
+    if (converted.badge) veState.sourceBadge = converted.badge;
+    refreshScoreValidation();
+    veState.bars = parseTextToVeBars(converted.text, veState.beats);
+    renderVeBarsGrid();
+  });
+
   // 2) 업로드한 사진 악보에서 [이 사진을 내 악보로 변환] 클릭 시
   $('#convertImgToScoreBtn').addEventListener('click', function(){
     if (!curSong || curSong.type !== 'image') return;
+    var beats = curSong.beats || 4;
+    var placeholder = '[-] ' + new Array(beats).fill('-').join(' ');
     openConverterEditorModal({
       editingSongId: curSong.id,
       imageDataUrl: curSong.imageDataUrl,
       title: curSong.title,
-      beats: curSong.beats || 4,
-      bpm: curSong.bpm || 64,
+      beats: beats,
+      bpm: appState.bpm || curSong.bpm || 64,
       capo: getSongCapo(curSong),
       ytUrl: curSong.ytUrl || '',
-      rawText: '[G] B3 B3 B3 - | 종 소 리 -\n[G] B3 B3 B3 - | 울 려 라 -\n[G] B3 D4 G3 A3 | 종 소 리 울\n[G] B3 - - - | 려 - - -'
+      badge: curSong.badge || '',
+      rawText: placeholder
     });
-    $('#ocrStatusTxt').textContent = '[제미니/안티그래비티 질문용 프롬프트 복사]를 눌러 채팅에서 변환한 텍스트를 붙여넣거나, 위 사진의 숫자를 보고 아래 패드로 톡톡 찍어 입력해 주세요.';
+    $('#ocrStatusTxt').textContent = '아직 음을 변환하지 않았어요. 사진을 확인해 직접 입력하거나, 프롬프트로 변환한 내용을 붙여넣어 주세요.';
   });
 
   // 3) 기존 구조화 악보에서 [악보 마디·계이름 빠른 수정] 클릭 시
   $('#editStructuredBtn').addEventListener('click', function(){
     if (!curSong || curSong.type !== 'structured') return;
-    var lines = curSong.measures.map(function(m){
-      var bStr = m.beats.map(function(b){ return (b.tok && b.tok !== '-') ? b.tok : (b.en || '-'); }).join(' ');
-      var chTag = !m.chord ? '-' : (m.chord + (m.autoChord ? '(자동)' : ''));
-      return '[' + chTag + '] ' + bStr + ' | ' + (m.lyric || '');
-    }).join('\n');
+    var lines = serializeScoreMeasures(curSong.measures, '\n');
     var isReadOnlySource = !!(curSong.builtin || curSong.fromSheet);
     openConverterEditorModal({
       editingSongId: isReadOnlySource ? null : curSong.id,
@@ -545,6 +601,7 @@ function initEditor(){
       bpm: curSong.bpm || 64,
       capo: getSongCapo(curSong),
       ytUrl: curSong.ytUrl || '',
+      badge: curSong.badge || '',
       rawText: lines
     });
   });
@@ -595,65 +652,8 @@ function initEditor(){
   });
 
   // ---------- AI 채팅(제미니 / 안티그래비티) 질문용 프롬프트 복사 & 시트 TSV 복사
-  function buildAiPromptText(beats){
-    var bpb = beats || 4;
-    return [
-      '첨부한 기타 악보 사진(오선보 또는 6선 타브 TAB 악보)을 보고 guitar-studio 앱에 바로 붙여넣을 수 있게 마디별로 정확히 변환해줘.',
-      '',
-      '[1. 타브(TAB) 6선 악보인 경우]',
-      '- 6개의 선은 위에서부터 순서대로 1번줄(e고음), 2번줄(B), 3번줄(G), 4번줄(D), 5번줄(A), 6번줄(E저음)이야.',
-      '- 선 위의 숫자는 프렛 번호(0은 개방현)를 뜻해.',
-      '- 음 기호는 [왼손운지번호]+[음이름과 옥타브] 형태로 표기해줘 (기본 왼손: 0=개방현, 1=검지, 2=중지, 3=약지, 4=소지):',
-      '  * 1번줄: 0=0E4, 1=1F4, 2=2F#4, 3=3G4, 4=4G#4, 5=4A4@1 등',
-      '  * 2번줄: 0=0B3, 1=1C4, 2=2C#4, 3=3D4, 4=4D#4, 5=4E4@2 등',
-      '  * 3번줄: 0=0G3, 1=1G#3, 2=2A3, 3=3A#3 등',
-      '  * 4번줄: 0=0D3, 1=1D#3, 2=2E3, 3=3F3, 4=4F#3 등',
-      '  * 5번줄: 0=0A2, 1=1A#2, 2=2B2, 3=3C3, 4=4C#3 등',
-      '  * 6번줄: 0=0E2, 1=1F2(엄지 T), 2=2F#2, 3=3G2 등 (6줄 1프렛 F2를 엄지로 누르는 악보는 1F2 표기)',
-      '- 특정 줄 지정이 필요한 고포지션은 뒤에 `@줄번호`를 붙일 수 있어 (예: `3D4@2`, `4E4@2`).',
-      '',
-      '[2. 핑거스타일 / 화음 (베이스 + 멜로디 동시 탄현)]',
-      '- 같은 박자에 세로로 동시에 튕기는 음(엄지 베이스 저음 + 멜로디 고음)은 반드시 `베이스+멜로디`처럼 `+`로 묶어서 표기해줘.',
-      '  * 예: `3C3+1C4` (5줄 3프렛 도 + 2줄 1프렛 도)',
-      '  * 예: `3G2+3D4` (6줄 3프렛 솔 + 2줄 3프렛 레)',
-      '  * 예: `0A2+0E4` (5줄 개방 라 + 1줄 개방 미)',
-      '  * 예: `1F2+2A3` (6줄 1프렛 파 + 3줄 2프렛 라)',
-      '- 3음 이상 동시에 치거나 롤 아르페지오(글리산도 스트럼)로 연주하는 화음은 `3C3+2E3+0G3+1C4`처럼 저음줄부터 고음줄까지 모든 구성음을 `+`로 연결해서 표기해줘.',
-      '',
-      '[3. 박자표 및 서브토큰(8분·16분·점음표) 분할 규칙 ★가장 중요★]',
-      '- 원곡의 박자표(3/4박자는 마디당 3박, 4/4박자는 마디당 4박)를 반드시 그대로 유지해줘 (박자 수를 임의로 2배로 늘리지 말 것).',
-      '- 마디 구분자와 박 안의 서브토큰은 달라: 박 안 슬래시는 공백 없이 쓰고, 마디 구분 슬래시에는 앞뒤 공백을 둬.',
-      '- 한 박 안에서 음이 쪼개질 때는 슬래시(`/`)를 사용해 서브토큰으로 분할 표기해줘:',
-      '  * 8분음표 2개 (반박+반박): `0E4/1F4` 또는 `3C3+1C4/3D4`',
-      '  * 점4분음표(1.5박) + 8분음표(0.5박): 앞 박에 `0E4`, 뒷 박에 `-/3D4` (앞 음이 1.5박 유지되고 엇박에 뒷음 탄현)',
-      '  * 셋잇단음표 (한 박 3분할): `0E4/1F4/3G4`',
-      '  * 16분음표 4개 (한 박 4분할): `(0E4/1F4/3G4/4A4)` 또는 `0E4/1F4/3G4/4A4`',
-      '  * 엇박자 (8분 쉼표 + 8분음표): `-/3D4`',
-      '  * 정박 쉼표 또는 유지음: `-`',
-      '  * 못갖춘마디(픽업): 앞의 빈 박은 `-`로 채우고 픽업 박 배치 (예: 3/4박자 3박 픽업 -> `- - 1C4/1C4`)',
-      '',
-      '[4. 카포(Capo) 표기 규칙 ★절대 혼동 금지★]',
-      '- 악보 상단에 `Capo. fret 4`, `Capo 5` 등이 적혀 있더라도, 타브 선 위의 숫자는 카포를 0프렛으로 간주하는 **상대 프렛 번호 그대로** 적어줘 (절대 카포 숫자를 프렛에 더해서 7프렛, 9프렛 등으로 변조하지 말 것!).',
-      '- 코드 기호와 음이름도 악보에 인쇄된 상대 폼(`[C]`, `[G]`, `0E4`, `1C4`, `3D4`...) 그대로 표기해줘.',
-      '- 대신 곡 제목이나 설명에 `(Capo 4)` 또는 `(Capo 5)`라고 카포 위치를 반드시 적어줘 (앱 엔진이 이를 읽고 자동으로 실음 피치와 마이크 판정을 보정함).',
-      '',
-      '[5. 코드 기호]',
-      '- 원본 악보 상단에 적힌 코드 기호는 `[C]`, `[G]`, `[Am]`, `[Em]`, `[F]`처럼 마디 맨 앞에 표기해줘.',
-      '- 코드 표기가 없다면 조성과 강박 선율을 화성학적으로 분석해 `[C(자동)]`, `[G(자동)]`처럼 `(자동)`을 붙여 표기해줘.',
-      '',
-      '[출력 형식 1: 앱 내 [새 악보 만들기] 붙여넣기용 (한 줄에 한 마디, 파이프 | 뒤에 마디 설명)]',
-      '[C] 3C3+1C4 0G3 1C4/3D4 | 1마디: 도(베이스)+도 솔 도-레(8분음표)',
-      '[C] 3C3+0E4 0G3 3G4     | 2마디: 도(베이스)+미 솔 솔',
-      '[G/B] 2B2+3D4 0G3 3D4   | 3마디: 시(베이스)+레 솔 레',
-      '[Am] 0A2+1C4 2A3 0E4/1C4| 4마디: 라(베이스)+도 라 미-도(8분음표)',
-      '',
-      '[출력 형식 2: 구글 스프레드시트 A열 붙여넣기용 (코드블록 안에 탭 구분 1줄, 마디 사이는 / 로 연결)]',
-      '곡제목 (Capo 4)\t' + bpb + '\t76\t핑거스타일 변환곡\t[C] 3C3+1C4 0G3 1C4/3D4 | 1마디: 도-레 / [C] 3C3+0E4 0G3 3G4 | 2마디: 솔 / [G/B] 2B2+3D4 0G3 3D4 | 3마디: 레'
-    ].join('\n');
-  }
-
   $('#copyAiPromptBtn').addEventListener('click', async function(){
-    var txt = buildAiPromptText(veState.beats);
+    var txt = buildAiPromptText(veState.beats, Number($('#nsBpm').value) || 64);
     try {
       await navigator.clipboard.writeText(txt);
       $('#ocrStatusTxt').textContent = '프롬프트가 복사되었어요! 제미니(또는 안티그래비티) 채팅창에 악보 사진과 함께 붙여넣으세요.';
@@ -665,16 +665,28 @@ function initEditor(){
   function formatSongToSheetTsv(title, beats, bpm, badge, linesArr){
     var cleanTitle = (title || '내 연습곡').replace(/\t|\r|\n/g, ' ').trim();
     var cleanBadge = (badge || '구글 시트 악보').replace(/\t|\r|\n/g, ' ').trim();
-    var joinedMeasures = (linesArr || []).map(function(l){ return l.trim(); }).filter(Boolean).join(' / ');
+    var measures = linesArr || [];
+    var raw = measures.length && typeof measures[0] === 'object'
+      ? serializeScoreMeasures(measures, '\n')
+      : measures.join('\n');
+    var validation = validateScore(raw, Number(beats) || 4);
+    if (validation.errors.length) throw new Error('악보 오류: ' + validation.errors[0].message);
+    var parsed = parseScore(raw, Number(beats) || 4);
+    var canonical = parsed.measures.map(function(m){
+      return { chord: m.chord || '-', autoChord: !!m.autoChord, notes: m.beats.map(function(b){ return b.tok || '-' ; }), lyric: m.lyric || '' };
+    });
+    var joinedMeasures = serializeScoreMeasures(canonical, ' // ');
     return [cleanTitle, String(beats || 4), String(bpm || 64), cleanBadge, joinedMeasures].join('\t');
   }
 
   $('#copyVeRowTsvBtn').addEventListener('click', async function(){
+    if (refreshScoreValidation().errors.length) return;
     var title = $('#nsTitle').value.trim() || '내 연습곡';
     var beats = Number($('#nsBeats').value) || 4;
     var bpm = Number($('#nsBpm').value) || 64;
-    var lines = splitScoreMeasures($('#nsMeasuresTxt').value);
-    var tsv = formatSongToSheetTsv(title, beats, bpm, '구글 시트 연동곡 · ' + beats + '/4박자', lines);
+    var tsv;
+    try { tsv = formatSongToSheetTsv(title, beats, bpm, veState.sourceBadge || ('구글 시트 연동곡 · ' + beats + '/4박자'), [$('#nsMeasuresTxt').value]); }
+    catch (e){ $('#ocrStatusTxt').textContent = e.message; return; }
     try {
       await navigator.clipboard.writeText(tsv);
       $('#ocrStatusTxt').textContent = '구글 시트 한 줄(TSV) 복사 완료! 내 구글 스프레드시트 빈 행의 A열 칸을 클릭하고 Ctrl+V를 누르세요.';
@@ -692,11 +704,13 @@ function initEditor(){
     if (saveButton.disabled) return;
     saveButton.disabled = true;
     try {
+    if (refreshScoreValidation().errors.length) return;
     var title = $('#nsTitle').value.trim() || '내 연습곡';
     var beats = Number($('#nsBeats').value) || 4;
     var bpm = Number($('#nsBpm').value) || 64;
     var raw = $('#nsMeasuresTxt').value.trim();
-    var lines = splitScoreMeasures(raw);
+    var parsedText = parseScore(raw, beats);
+    var lines = serializeScoreMeasures(parsedText.measures, '\n').split('\n');
     if (!lines.length){
       alert('최소 1마디 이상 입력해 주세요.');
       return;
@@ -705,7 +719,7 @@ function initEditor(){
     var song = buildStructuredSong({
       id: targetId,
       title: title,
-      badge: veState.refImageDataUrl ? ('교본 변환 악보 · ' + beats + '/4박자') : ('직접 만든 악보 · ' + beats + '/4박자'),
+      badge: veState.sourceBadge || (veState.refImageDataUrl ? ('교본 변환 악보 · ' + beats + '/4박자') : ('직접 만든 악보 · ' + beats + '/4박자')),
       builtin: false,
       bpm: bpm,
       beats: beats,
@@ -724,6 +738,13 @@ function initEditor(){
     $('#newSongModal').hidden = true;
     clearStorageError();
     rebuildSongSelect(song.id);
+    } catch (error){
+      if (error && error.name === 'ScoreValidationError'){
+        var result = {errors:error.errors || [{message:error.message}],warnings:[]};
+        $('#scoreValidationStatus').textContent = scoreValidationText(result);
+      } else {
+        throw error;
+      }
     } finally {
       saveButton.disabled = false;
     }

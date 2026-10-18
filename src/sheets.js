@@ -93,13 +93,11 @@
       var parsedSongs = [];
 
       var hiddenTitles = silent ? ls.get('gs.hiddenSheetSongs', []) : [];
-      if (!silent) ls.set('gs.hiddenSheetSongs', []);
 
       rows.forEach(function(cols, rIdx){
         var c0 = (cols[0] || '').trim();
         if (!c0) return;
         if (c0 === '곡 제목' || c0 === '제목' || c0.toLowerCase() === 'title') return;
-        if (hiddenTitles.indexOf(c0) >= 0) return;
 
         var title = c0;
         var beats = 4;
@@ -111,16 +109,31 @@
         if (c1.indexOf('[') === 0 || c1.indexOf('|') >= 0){
           rawScoreParts = cols.slice(1);
         } else {
-          beats = Math.round(Number(c1)) || 4;
-          bpm = Math.round(Number((cols[2] || '').trim())) || 64;
+          var beatText = c1.trim();
+          var bpmText = (cols[2] || '').trim();
+          var beatValue = beatText ? Number(beatText) : 4;
+          var bpmValue = bpmText ? Number(bpmText) : 64;
+          if (!Number.isFinite(beatValue) || Math.floor(beatValue) !== beatValue || [2,3,4,6,8,9].indexOf(beatValue) < 0){
+            throw new Error('시트 ' + (rIdx + 1) + '행: 박자는 2, 3, 4, 6, 8, 9 중 하나여야 해.');
+          }
+          if (!Number.isFinite(bpmValue) || Math.floor(bpmValue) !== bpmValue || bpmValue < 1){
+            throw new Error('시트 ' + (rIdx + 1) + '행: BPM은 1 이상의 정수여야 해.');
+          }
+          beats = beatValue;
+          bpm = bpmValue;
           badge = (cols[3] || '').trim() || ('구글 시트 연동곡 · ' + beats + '/4박자');
           rawScoreParts = cols.slice(4);
         }
 
         var rawJoined = rawScoreParts.map(function(x){ return (x || '').trim(); }).filter(Boolean).join('\n');
         var lines = splitScoreMeasures(rawJoined);
-
+        var validation = validateScore(rawJoined, beats);
+        if (validation.errors.length){
+          var detail = validation.errors[0];
+          throw new Error('시트 ' + (rIdx + 1) + '행 ' + detail.measure + '마디' + (detail.beat ? ' ' + detail.beat + '박' : '') + ': ' + detail.message);
+        }
         if (!lines.length) return;
+        if (hiddenTitles.indexOf(c0) >= 0) return;
 
         var songId = 'sheet-song-' + rIdx;
         var titleOverrides = ls.get('gs.sheetTitleOverrides', {});
@@ -140,6 +153,7 @@
       });
 
       sheetSongs = parsedSongs;
+      if (!silent) ls.set('gs.hiddenSheetSongs', []);
       ls.set('gs.sheetUrl', rawUrl.trim());
       var nowStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
       $('#sheetSyncStatus').textContent = '연동 완료 (' + nowStr + ') · 총 ' + parsedSongs.length + '곡을 내 구글 시트에서 불러왔어요.';
@@ -179,7 +193,7 @@
     });
 
     $('#copySheetTemplateBtn').addEventListener('click', async function(){
-      var header = ['곡 제목', '박자', 'BPM', '교본 쪽수/설명', '마디 악보 (줄바꿈 또는 / 로 마디 구분)'].join('\t');
+      var header = ['곡 제목', '박자', 'BPM', '교본 쪽수/설명', '마디 악보 (줄바꿈 또는 // 로 마디 구분, 박내 분할은 /)'].join('\t');
       var sample1 = formatSongToSheetTsv(
         '징글 벨즈 (교본 24쪽)',
         4,
@@ -207,9 +221,7 @@
         return;
       }
       var lines = curSong.measures.map(function(m){
-        var bStr = m.beats.map(function(b){ return (b.tok && b.tok !== '-') ? b.tok : (b.en || '-'); }).join(' ');
-        var chTag = !m.chord ? '-' : (m.chord + (m.autoChord ? '(자동)' : ''));
-        return '[' + chTag + '] ' + bStr + ' | ' + (m.lyric || '');
+        return { chord: m.chord || '-', autoChord: !!m.autoChord, notes: m.beats.map(function(b){ return (b.tok && b.tok !== '-') ? b.tok : (b.en || '-'); }), lyric: m.lyric || '' };
       });
       var tsv = formatSongToSheetTsv(curSong.title, curSong.beats, curSong.bpm, curSong.badge, lines);
       try {

@@ -543,8 +543,117 @@ async function main() {
     assert.ok(bassBtnText.includes("꺼짐"), "autoBass toggle is off by default");
     const bassBtnActive = await cdp.evaluate('document.getElementById("toggleAutoBassBtn").classList.contains("active")');
     assert.equal(bassBtnActive, false, "autoBass button does not have active class by default");
+    process.stdout.write('Browser checkpoint: boot and initial DOM passed\n');
+
+    const canonicalTsv = await cdp.evaluate(`window.formatSongToSheetTsv('slash lyric', 4, 90, 'badge', [
+      '[C] C4 - - - | 너 / 나',
+      '[G] G3 - - - | "https://example.test/a|b"'
+    ])`);
+    const canonicalColumns = canonicalTsv.split('\t');
+    assert.equal(canonicalColumns.length, 5, 'canonical TSV keeps five columns');
+    assert.ok(canonicalColumns[4].includes(' // '), 'canonical TSV joins measures with //');
+    assert.equal(canonicalColumns[4].includes('\n'), false, 'canonical TSV score stays on one row');
+    assert.ok(canonicalColumns[4].includes('| "너 / 나"'), 'slash lyric is JSON quoted and preserved');
+    assert.ok(canonicalColumns[4].includes('"https://example.test/a|b"'), 'URL and pipe lyric characters are preserved');
+
+    const notationUi = await cdp.evaluate(`(function(){
+      var textarea = document.getElementById('nsMeasuresTxt');
+      var status = document.getElementById('scoreValidationStatus');
+      var raw = '[C] C4 D4 E4 F4 G4 | "overflow"';
+      openConverterEditorModal({ title: 'overflow', beats: 4, rawText: raw });
+      var preserved = textarea.value === raw && document.getElementById('veBarsGrid').children.length === 0;
+      var overflowDiagnostic = status.textContent;
+      var beatSelect = document.getElementById('nsBeats');
+      beatSelect.value = '6';
+      beatSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      var beatRecovery = textarea.value === raw && veState.beats === 6 && veState.bars.length === 1 && veState.bars[0].notes.length === 6;
+      openConverterEditorModal({ title: 'invalid save', beats: 4, rawText: raw });
+      var before = customSongs.length;
+      document.getElementById('saveNewSongBtn').click();
+      var invalidSaveBlocked = customSongs.length === before && textarea.value === raw;
+      document.getElementById('closeNewSongBtn').click();
+      var originalSong = curSong;
+      var specialLyric = 'slash // pipe | quote " and /';
+      var source = buildStructuredSong({ id:'browser-lyric-roundtrip', title:'lyric', beats:4, lines:['[C] C4 - - -'] });
+      source.measures[0].lyric = specialLyric;
+      curSong = source;
+      document.getElementById('editStructuredBtn').click();
+      var lyricRoundTrip = decodeMeasureLine(document.getElementById('nsMeasuresTxt').value).lyric === specialLyric;
+      document.getElementById('closeNewSongBtn').click();
+      curSong = originalSong;
+      openConverterEditorModal({ title: 'legacy', beats: 4, rawText: '[C] C4 - - - / [G] G3 - - -' });
+      var legacyInitiallyUnprojected = document.getElementById('veBarsGrid').children.length === 0;
+      document.getElementById('convertLegacyScoreBtn').click();
+      var convertedText = textarea.value;
+      var legacyConverted = veState.bars.length === 2 && convertedText.includes('[C]') && convertedText.includes('[G]');
+      document.getElementById('closeNewSongBtn').click();
+      return { preserved:preserved, overflowDiagnostic:overflowDiagnostic, beatRecovery:beatRecovery, invalidSaveBlocked:invalidSaveBlocked, lyricRoundTrip:lyricRoundTrip, legacyInitiallyUnprojected:legacyInitiallyUnprojected, legacyConverted:legacyConverted };
+    })()`);
+    assert.equal(notationUi.preserved, true, 'overflow input remains intact and is not projected');
+    assert.match(notationUi.overflowDiagnostic, /5박/, 'overflow input reports its excess beat');
+    assert.equal(notationUi.beatRecovery, true, 'changing to a matching meter safely restores projection');
+    assert.equal(notationUi.invalidSaveBlocked, true, 'invalid score cannot be saved');
+    assert.equal(notationUi.lyricRoundTrip, true, 'structured edit opening preserves JSON lyric delimiters');
+    assert.equal(notationUi.legacyInitiallyUnprojected, true, 'legacy slash text waits for explicit conversion');
+    assert.equal(notationUi.legacyConverted, true, 'explicit converter creates the two new-format measures');
+    process.stdout.write('Browser checkpoint: notation and migration UI passed\n');
+
+    const imageUi = await cdp.evaluate(`(async function(){
+      var savedSong = curSong;
+      var savedBpm = appState.bpm;
+      var savedScanner = window.scanImageBarlines;
+      var savedAlert = window.alert;
+      var alerts = [];
+      var target = { id:'browser-image-convert', title:'Image source', type:'image', badge:'Source badge', beats:4, bpm:77, imageDataUrl:'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=', systems:[{x:0.1,y:0.1,w:0.8,h:0.3,bars:[{chord:'C',note:'C4',memo:'keep',w:1,custom:'keep'}]}] };
+      try {
+        window.alert = function(message){ alerts.push(String(message)); };
+        appState.bpm = 91;
+        curSong = target;
+        document.getElementById('convertImgToScoreBtn').click();
+        var defaultText = document.getElementById('nsMeasuresTxt').value;
+        var defaultOk = defaultText === '[-] - - - -';
+        var metadataOk = document.getElementById('nsBpm').value === '91' && veState.sourceBadge === 'Source badge' && veState.refImageDataUrl === target.imageDataUrl;
+        document.getElementById('closeNewSongBtn').click();
+
+        var resolveScan;
+        window.scanImageBarlines = function(){ return new Promise(function(resolve){ resolveScan = resolve; }); };
+        document.getElementById('autoDetectBarsBtn').click();
+        await new Promise(function(resolve){ setTimeout(resolve, 0); });
+        var switched = Object.assign({}, target, { id:'browser-image-switched', systems:[{x:0.2,y:0.2,w:0.5,h:0.2,bars:[]}] });
+        curSong = switched;
+        resolveScan([0.1, 0.3, 0.5]);
+        await new Promise(function(resolve){ setTimeout(resolve, 20); });
+        var staleIgnored = target.systems[0].bars.length === 1 && switched.systems[0].bars.length === 0;
+
+        curSong = target;
+        window.scanImageBarlines = function(){ return Promise.resolve([0.1, 0.3]); };
+        document.getElementById('autoDetectBarsBtn').click();
+        await new Promise(function(resolve){ setTimeout(resolve, 20); });
+        var metadataPreserved = target.systems[0].bars.length === 1 && target.systems[0].bars[0].chord === 'C' && target.systems[0].bars[0].note === 'C4' && target.systems[0].bars[0].memo === 'keep' && target.systems[0].bars[0].custom === 'keep';
+        window.scanImageBarlines = function(){ return Promise.resolve([0.1, 0.2, 0.3]); };
+        document.getElementById('autoDetectBarsBtn').click();
+        await new Promise(function(resolve){ setTimeout(resolve, 20); });
+        var countMismatchProtected = target.systems[0].bars.length === 1 && target.systems[0].bars[0].chord === 'C' && target.systems[0].bars[0].note === 'C4' && target.systems[0].bars[0].memo === 'keep' && target.systems[0].bars[0].custom === 'keep';
+        return {defaultOk:defaultOk, metadataOk:metadataOk, staleIgnored:staleIgnored, metadataPreserved:metadataPreserved, countMismatchProtected:countMismatchProtected, sameCountAlert:alerts.some(function(message){ return message.indexOf('마디 영역만 추정') >= 0; }), mismatchAlert:alerts.some(function(message){ return message.indexOf('기존 음표·코드') >= 0; })};
+      } finally {
+        curSong = savedSong;
+        appState.bpm = savedBpm;
+        window.scanImageBarlines = savedScanner;
+        window.alert = savedAlert;
+        renderSong();
+      }
+    })()`);
+    assert.equal(imageUi.defaultOk, true, 'image conversion begins with the blank score template');
+    assert.equal(imageUi.metadataOk, true, 'image conversion carries selected BPM, source badge, and image');
+    assert.equal(imageUi.staleIgnored, true, 'late image analysis cannot mutate after song switch');
+    assert.equal(imageUi.metadataPreserved, true, 'auto-detection preserves existing bar metadata');
+    assert.equal(imageUi.countMismatchProtected, true, 'bar-count change refuses to overwrite manual bar metadata');
+    assert.equal(imageUi.sameCountAlert, true, 'same-count auto-detection reports successful boundary estimation');
+    assert.equal(imageUi.mismatchAlert, true, 'manual-data bar-count mismatch reports that it was preserved');
+    process.stdout.write('Browser checkpoint: image conversion safeguards passed\n');
 
     await testPracticeSessionLifecycle(cdp);
+    process.stdout.write('Browser checkpoint: practice session passed\n');
     await testSubdividedGuide(cdp);
     await testStorageFailureRecovery(cdp);
 
@@ -562,9 +671,10 @@ async function main() {
     assert.equal(modalHidden, true, 'editor modal closed cleanly');
 
     await cdp.evaluate('window.__gsInjected = 0; window.openConverterEditorModal({ beats: 4, rawText: "[-] <img/src=x/onerror=window.__gsInjected=1>/C4 - - -" });');
-    const editorTokenSafety = await cdp.evaluate('({ images: document.querySelectorAll("#veBarsGrid img").length, text: document.getElementById("veBarsGrid").textContent, injected: window.__gsInjected })');
-    assert.equal(editorTokenSafety.images, 0, 'editor token text does not create image elements');
-    assert.ok(editorTokenSafety.text.includes('<img'), 'editor token text remains literal text');
+    const editorTokenSafety = await cdp.evaluate('({ images: document.querySelectorAll("#veBarsGrid img").length, raw: document.getElementById("nsMeasuresTxt").value, diagnostic: document.getElementById("scoreValidationStatus").textContent, injected: window.__gsInjected })');
+    assert.equal(editorTokenSafety.images, 0, 'invalid editor token does not create preview image elements');
+    assert.ok(editorTokenSafety.raw.includes('<img'), 'invalid editor source remains literal in the textarea');
+    assert.match(editorTokenSafety.diagnostic, /알 수 없는 음표 토큰/, 'invalid editor token receives a validation error');
     assert.notEqual(editorTokenSafety.injected, 1, 'editor token cannot execute injected markup');
     await cdp.evaluate('document.getElementById("closeNewSongBtn").click()');
 

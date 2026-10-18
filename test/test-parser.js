@@ -58,10 +58,11 @@ test('held-note dotted rhythm C4 -/D4 has a 1.5 beat duration', function(){
   assert.equal(beats[1].subNotes[0].tok, '-');
 });
 
-test('measure separators are newline, CRLF, spaced slash, and double slash only', function(){
+test('measure separators are newline, CRLF, and double slash; single slash remains inside a bar', function(){
   assert.deepEqual(parser.splitScoreMeasures('C4 -\nD4 -'), ['C4 -', 'D4 -']);
   assert.deepEqual(parser.splitScoreMeasures('C4 -\r\nD4 -'), ['C4 -', 'D4 -']);
-  assert.deepEqual(parser.splitScoreMeasures('C4 - / D4 -'), ['C4 -', 'D4 -']);
+  assert.deepEqual(parser.splitScoreMeasures('C4 - / D4 -'), ['C4 - / D4 -']);
+  assert.ok(parse('C4 - / D4 -', 4).errors.some(e => e.code === 'ISOLATED_SLASH'));
   assert.deepEqual(parser.splitScoreMeasures('C4 -//D4 -'), ['C4 -', 'D4 -']);
   assert.deepEqual(parser.splitScoreMeasures('a/b E3/G3'), ['a/b E3/G3']);
   const grouped = parse('[C] C4,D4 (E4 F4) - -', 4).measures[0];
