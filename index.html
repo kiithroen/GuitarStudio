@@ -1825,10 +1825,23 @@ registerProcessor('onset', OnsetProc);
 
   function getSongCapo(song){
     if (!song) return 0;
-    if (song.capo != null && isFinite(song.capo)) return Math.max(0, Math.min(12, Number(song.capo)));
+    // 제목/배지 표기를 우선 적용 (저장 후 곡 이름을 바꿔 카포를 추가/변경해도 즉시 반영)
     var str = (song.title || '') + ' ' + (song.badge || '');
-    var m = str.match(/capo\s*[:.]?\s*(?:fret\s*)?(\d+)/i);
-    return m ? Math.max(0, Math.min(12, Number(m[1]))) : 0;
+    var m = str.match(/(?:capo|카포)\s*[:.]?\s*(?:fret\s*)?(\d+)/i);
+    if (m) return Math.max(0, Math.min(12, Number(m[1])));
+    if (song.capo != null && isFinite(song.capo)) return Math.max(0, Math.min(12, Number(song.capo)));
+    return 0;
+  }
+
+  // 현재 선택된 곡의 카포 오프셋 (지판 클릭, 코드 미리듣기 등 곡 문맥의 미리듣기용)
+  function curCapo(){
+    return curSong ? getSongCapo(curSong) : 0;
+  }
+
+  // 악보 편집 모달의 제목 입력값(예: "곡명 (Capo 4)")에서 카포 오프셋을 읽음
+  function editorCapo(){
+    var el = document.getElementById('nsTitle');
+    return el ? getSongCapo({ title: el.value }) : 0;
   }
 
   function tokenizeMeasureBeats(str){
@@ -2129,7 +2142,7 @@ registerProcessor('onset', OnsetProc);
       openEl.dataset.baseLabel = st.name.split(' ')[0];
       openEl.textContent = openEl.dataset.baseLabel;
       openEl.title = st.name + ' (클릭하면 소리 재생)';
-      openEl.addEventListener('click', function(){ playGuitarNote(st.midi, 0.9, null, null, null, st.str); });
+      openEl.addEventListener('click', function(){ playGuitarNote(st.midi + curCapo(), 0.9, null, null, null, st.str); });
       row.appendChild(openEl);
 
       for (var f = 1; f <= 12; f++){
@@ -2141,7 +2154,7 @@ registerProcessor('onset', OnsetProc);
         cell.dataset.midi = midi;
         var inf = midiInfo(midi);
         cell.title = st.str + '번줄 ' + f + '프렛: ' + inf.en + ' (' + inf.ko + ')';
-        cell.addEventListener('click', (function(m){ return function(){ playGuitarNote(m, 0.9, null, null, null, st.str); }; })(midi));
+        cell.addEventListener('click', (function(m){ return function(){ playGuitarNote(m + curCapo(), 0.9, null, null, null, st.str); }; })(midi));
         row.appendChild(cell);
       }
       fb.appendChild(row);
@@ -2196,11 +2209,12 @@ registerProcessor('onset', OnsetProc);
         ensureAudioCtx();
         var now = actx.currentTime;
         var effB = resolveEffectiveBass(mObj.chord, bObj, curBeatIdx);
+        var cp = curCapo();
         if (effB && effB.midi){
-          playGuitarNote(effB.midi, 1.35, now, 1.15, null, effB.str);
-          if (bObj.midi) playGuitarNote(bObj.midi, 0.95, now + 0.045, 1.0, null, bObj.str);
+          playGuitarNote(effB.midi + cp, 1.35, now, 1.15, null, effB.str);
+          if (bObj.midi) playGuitarNote(bObj.midi + cp, 0.95, now + 0.045, 1.0, null, bObj.str);
         } else if (bObj.midi){
-          playGuitarNote(bObj.midi, 0.95, now, 1.0, null, bObj.str);
+          playGuitarNote(bObj.midi + cp, 0.95, now, 1.0, null, bObj.str);
         }
       }
     }
@@ -3027,12 +3041,13 @@ registerProcessor('onset', OnsetProc);
     ensureAudioCtx();
     var now = actx.currentTime;
     var step = 0;
-    // 6번줄부터 1번줄까지 아르페지오로 울리기
+    var cp = curCapo();
+    // 6번줄부터 1번줄까지 아르페지오로 울리기 (카포 곡은 실음 피치로 보정)
     for (var i = 0; i < 6; i++){
       var fret = ch.frets[i];
       if (fret < 0) continue;
       var strObj = STRINGS[5 - i];
-      var midi = strObj.midi + fret;
+      var midi = strObj.midi + fret + cp;
       playGuitarNote(midi, 1.1, now + step * 0.07, null, null, strObj.str);
       step++;
     }
@@ -3223,7 +3238,7 @@ registerProcessor('onset', OnsetProc);
   function renderSong(){
     if (!curSong) return;
     var songCapo = getSongCapo(curSong);
-    var capoBadgeTxt = songCapo > 0 ? (' · Capo ' + songCapo) : '';
+    var capoBadgeTxt = (songCapo > 0 && !/(?:capo|카포)\s*[:.]?\s*(?:fret\s*)?\d/i.test(curSong.badge || '')) ? (' · Capo ' + songCapo) : '';
     $('#scoreTitle').textContent = curSong.title;
     $('#scoreTypeBadge').textContent = (curSong.badge || (curSong.type === 'image' ? '교본 사진/PDF 악보' : '직접 만든 악보')) + capoBadgeTxt;
     var canRenameOrDelete = !curSong.builtin;
@@ -5368,7 +5383,7 @@ registerProcessor('onset', OnsetProc);
     bar.notes[veState.selBeat] = nextInf ? (nextInf.customTok || nextInf.en) : nextRaw;
     if (nextInf && nextInf.midi){
       var sc = nextArt === 'apoyando' ? 1.16 : (nextArt === 'tirando' ? 0.62 : 1.0);
-      playGuitarNote(nextInf.midi, nextArt === 'apoyando' ? 1.0 : 0.7, null, sc, nextArt);
+      playGuitarNote(nextInf.midi + editorCapo(), nextArt === 'apoyando' ? 1.0 : 0.7, null, sc, nextArt);
     }
     syncVeToTextarea();
     renderVeBarsGrid();
@@ -5586,13 +5601,14 @@ registerProcessor('onset', OnsetProc);
     var inf = parseNoteToken(nextRawTok, veState.selBeat);
     bar.notes[veState.selBeat] = inf ? (inf.customTok || inf.en) : '-';
     if (inf){
+      var ecp = editorCapo();
       if (inf.chordNotes && inf.chordNotes.length > 2){
         inf.chordNotes.forEach(function(cn, i){
-          playGuitarNote(cn.midi, i === 0 ? 0.75 : 0.55, actx.currentTime + (i * 0.025), 0.9, null, cn.str);
+          playGuitarNote(cn.midi + ecp, i === 0 ? 0.75 : 0.55, actx.currentTime + (i * 0.025), 0.9, null, cn.str);
         });
       } else {
-        if (inf.bass && inf.bass.midi) playGuitarNote(inf.bass.midi, 0.75);
-        if (inf.midi) playGuitarNote(inf.midi, 0.45);
+        if (inf.bass && inf.bass.midi) playGuitarNote(inf.bass.midi + ecp, 0.75);
+        if (inf.midi) playGuitarNote(inf.midi + ecp, 0.45);
       }
     }
 
