@@ -91,18 +91,21 @@ var scoreEditorHooks = (function(){
     var structured = !!(curSong && curSong.type === 'structured');
     var status = structured ? scoreDrafts.status(curSong.id) : {dirty:false,temporary:false,canUndo:false};
     var controls = document.getElementById('scoreDraftControls');
-    if (controls) controls.hidden = !structured;
     var node = statusNode();
     var undo = document.getElementById('undoScoreEditBtn');
     var reset = document.getElementById('resetScoreDraftBtn');
     if (node){
-      node.hidden = !structured;
       if (structured){
-        node.textContent = pendingEdit && pendingEdit.songId === curSong.id
+        var msg = pendingEdit && pendingEdit.songId === curSong.id
           ? (pendingEdit.kind === 'edit' ? (pendingEdit.index + 1) + '마디 편집 중 · 적용하거나 취소해줘.' : (pendingEdit.index + 2) + '마디 추가 초안 · 적용하거나 취소해줘.')
           : (status.temporary
             ? '임시 악보 · 새로고침하면 사라져. 보관하려면 악보 복사해.'
-            : (status.dirty ? '임시 수정됨 · 새로고침하면 사라져. 보관하려면 악보 복사해.' : '원본 악보'));
+            : (status.dirty ? '임시 수정됨 · 새로고침하면 사라져. 보관하려면 악보 복사해.' : ''));
+        node.textContent = msg;
+        node.hidden = !msg;
+      } else {
+        node.textContent = '';
+        node.hidden = true;
       }
     }
     if (undo){
@@ -112,6 +115,10 @@ var scoreEditorHooks = (function(){
     if (reset){
       reset.hidden = !structured || (!status.dirty && !status.temporary);
       reset.disabled = !!pendingEdit;
+    }
+    if (controls){
+      var hasControlsContent = !!(node && !node.hidden && node.textContent) || (undo && !undo.hidden) || (reset && !reset.hidden);
+      controls.hidden = !structured || !hasControlsContent;
     }
     var copy = document.getElementById('copyCurSongTsvBtn');
     if (copy) copy.hidden = !structured;

@@ -140,14 +140,20 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 #bpmResetBtn.active{background:rgba(98,212,145,.14);border-color:var(--d-ok);color:var(--d-ok);font-weight:600}
 
 /* 악보 영역 */
-.score-toolbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid var(--line)}
-.score-toolbar-left{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
-.score-toolbar-right{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:100%;min-width:0;flex-shrink:1}
+.score-toolbar{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.score-toolbar-left{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;flex:1 1 auto}
+.score-toolbar-right{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:100%;min-width:0;flex-shrink:0}
+.score-toolbar-right > button{flex-shrink:0;white-space:nowrap}
 #compactPlayBtn{display:inline-flex;align-items:center;justify-content:center;font-weight:800;padding:4px 10px;font-size:12.5px;border-radius:7px;white-space:nowrap;flex-shrink:0}
 #rewindToFirstBtn{display:inline-flex;align-items:center;justify-content:center;font-weight:600;padding:4px 9px;font-size:12px;border-radius:7px;white-space:nowrap;flex-shrink:0}
-#compactSongSelect{display:inline-block;min-width:140px;max-width:300px;height:30px;font-size:12.5px;font-weight:600;padding:2px 8px;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#compactSongSelect{display:inline-block;min-width:120px;max-width:240px;height:30px;font-size:12.5px;font-weight:600;padding:2px 8px;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #compactStatusBadge{display:inline-flex;align-items:center;font-family:var(--font-num);font-weight:700;font-size:11.5px;padding:2px 7px;white-space:nowrap;flex-shrink:0}
-#scoreTitle,#scoreTypeBadge{display:none}
+#scoreTitle,#scoreTypeBadge,#scoreClickHint{display:none}
+@media (min-width: 640px){
+  .score-toolbar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden}
+  .score-toolbar-left{flex-wrap:nowrap}
+  .score-toolbar-right{flex-wrap:nowrap}
+}
 .tab-seg{display:inline-flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
 .tab-seg button{border:0;background:transparent;padding:5px 11px;border-radius:7px;font-size:13px;color:var(--muted);font-weight:500}
 .tab-seg button[aria-selected="true"]{background:var(--surface);color:var(--fg);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
