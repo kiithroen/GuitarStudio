@@ -119,7 +119,7 @@
           if (typeof parsed !== 'string') throw Error('lyric must be string');
           lyric = parsed;
         } catch(e){
-          errors.push({code:'INVALID_LYRIC_QUOTE', message:'가사 JSON 문자열의 따옴표, escape 또는 닫힌 뒤 문자를 확인해줘.'});
+          errors.push({code:'INVALID_LYRIC_QUOTE', message:'마디 메모·가사 JSON 문자열의 따옴표, escape 또는 닫힌 뒤 문자를 확인해줘.'});
           lyric = rawLyric;
         }
       } else lyric = rawLyric;

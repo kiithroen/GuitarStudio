@@ -7,7 +7,7 @@ Guitar Studio는 번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱
 | 파일 | 역할 |
 |---|---|
 | `src/storage.js` | DOM과 분리된 IndexedDB 저장소 |
-| `src/notation.js` | 입력 줄 토큰화, 가사·코드 머리표, 직렬화와 구조 검증 |
+| `src/notation.js` | 입력 줄 토큰화, 마디 메모·가사·코드 머리표, 직렬화와 구조 검증 |
 | `src/rhythm.js` | 칸 길이와 쉼·유지 체인 분석 |
 | `src/parser.js` | `parseScore`, 음·화음·운지 파싱, 카포와 실음 계산 |
 | `src/score.js` | 화면의 박자·음가 표시 |
@@ -27,6 +27,8 @@ Guitar Studio는 번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱
 `parseScore`와 `GuitarNotation.validateScore`가 텍스트 악보의 파싱·검증 기준이야. `GuitarRhythm.annotate`는 파싱된 마디에 칸 길이, 시작 위치와 유지 체인을 계산하고 `resolveHold`는 유지의 원음 참조를 돌려줘. `guide.js`는 이 결과로 재생 이벤트를 만들고 `audio.js`에 예약해. 사용 문법은 [악보 입력 형식](score-format.md), 세부 오디오 계약은 [리듬·오디오 계약](beginner-rhythm.md)을 따라.
 
 `tok`와 원본 입력을 기준으로 파생 필드를 다시 계산해. IndexedDB에는 개인 악보가, localStorage에는 앱 설정과 곡별 최근 연습 BPM·구간 이어가기 상태가 저장돼. Google Sheets 연동은 읽기 전용이야. `soundingMidi`는 `src/parser.js`의 공통 카포 실음 변환 함수야.
+
+마디 메모와 가사는 같은 `lyric` 필드로 파싱하고 JSON 문자열로 직렬화해.
 
 완료된 작업은 모듈 분리와 공통 파서·카포 경로, 단위·스모크 테스트 추가, 초보 리듬 입력과 재생 계약 정리야. alphaTab 재생은 `codex/alphatab-player` 실험 브랜치에 남아 있고 main 앱은 기존 엔진을 사용해.
 
