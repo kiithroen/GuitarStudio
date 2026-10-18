@@ -18,7 +18,7 @@
 - `src/sheets.js`: 구글 시트 JSONP 동기화와 복사 동작을 제공하며, 시트 UI 이벤트는 `initSheetSync()`에서 등록한다.
 - `src/app.js`: 앱 상태, 저장소·시트 연동, 연습 화면과 앱 부팅을 관리한다.
 - `test/test-audio.js`: Node 내장 `vm`으로 실제 `src/audio.js`를 실행해 카포 공명과 캐시 예열을 검증한다.
-- `test/test-guide.js`: 공통 분할음 이벤트의 화음 구성, 베이스 토글, 카포와 재생 시각을 검증한다.
+- `test/test-guide.js`: 공통 분할음 이벤트의 화음 구성, 카포와 재생 시각을 검증한다.
 - `test/test-storage.js`: IndexedDB 모듈의 저장·삭제 완료와 오류 처리를 스텁으로 검증한다.
 - `test/test-sheets.js`: 시트 동기화의 JSONP 응답 처리를 모의 데이터로 검증한다.
 - `test/test-image-conversion.js`: 프롬프트 예시의 파싱과 이미지 마디선 좌표 분석을 검증한다.
@@ -27,6 +27,8 @@
 - `test/test-browser-smoke.js`: Node.js 내장 http/WebSocket 및 CDP(Chrome DevTools Protocol)를 사용해 Headless Chrome/Edge 환경에서 실제 DOM 렌더링, 모달 인터랙션, 콘솔 에러 유무를 검증한다.
 
 페이지는 기존처럼 `index.html`을 직접 열거나 정적 웹 서버에서 실행할 수 있다. HTML은 `src/storage.js`, `src/notation.js`, `src/parser.js`, `src/score.js`, `src/audio.js`, `src/guide.js`, `src/ai-prompt.js`, `src/image-analysis.js`, `src/fretboard.js`, `src/editor.js`, `src/sheets.js`, `src/app.js` 순서로 classic script를 로드한다. 따라서 별도 빌드나 패키지 설치가 필요하지 않으며, 공유 함수는 `window` 전역 이름을 유지한다. 저장소 모듈은 DOM을 참조하지 않는다. 지판, 에디터, 시트 UI 이벤트는 앱 상태가 준비된 뒤 각각 `initFretboard()`, `initEditor()`, `initSheetSync()`에서 등록한다.
+
+자동 베이스 반주 추가 기능은 없다. 악보에 `+`로 입력한 음은 모두 표시하고 재생한다.
 
 ## 악보 문법과 오류 처리
 

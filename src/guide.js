@@ -8,19 +8,11 @@ function getSubdividedGuideEvents(beat, options){
   var beatsPerBar = Number(options.beatsPerBar) || 4;
   var beatDuration = subStep * noteCount;
   var bassDuration = preview ? 1.25 : beatDuration * ((beatsPerBar === 6 || beatsPerBar === 9) ? 8.2 : 2.2);
-  var explicitBass = beat.subNotes.some(function(note){ return note && note.bass && note.bass.midi; });
 
   var events = [];
   function addEvent(note, duration, when, gain, articulation, str){
     if (!note || !note.midi) return;
     events.push({ note: note, duration: duration, when: when, gain: gain, articulation: articulation, str: str });
-  }
-
-  if (!explicitBass){
-    var automaticBass = resolveEffectiveBass(options.chordName, beat, options.beatIndex);
-    if (automaticBass && automaticBass.midi){
-      addEvent(automaticBass, bassDuration, startTime, 1.12, null, automaticBass.str);
-    }
   }
 
   beat.subNotes.forEach(function(note, noteIndex){
@@ -40,9 +32,9 @@ function getSubdividedGuideEvents(beat, options){
     }
 
     if (note.chordNotes && note.chordNotes.length === 2){
-      var explicitSubBass = resolveEffectiveBass(options.chordName, note, options.beatIndex);
-      if (explicitSubBass && explicitSubBass.midi){
-        addEvent(explicitSubBass, bassDuration, noteTime, 1.12, null, explicitSubBass.str);
+      var explicitBass = getExplicitBass(note);
+      if (explicitBass){
+        addEvent(explicitBass, bassDuration, noteTime, 1.12, null, explicitBass.str);
       }
     }
 

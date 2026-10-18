@@ -474,16 +474,9 @@
     }
   }
 
-  // 코드별 클래식 기타 표준 근음 베이스 토큰 (엄지 p 탄현용)
-  var CHORD_BASS_TOKEN = {
-    'C': '3C3', 'C7': '3C3', 'Cm': '1C3',
-    'G': '2G2', 'G7': '3G2', 'Gm': '1G2',
-    'F': '3F3', 'Fm': '3F3', 'F#m': '1F#2',
-    'D': '0D3', 'Dm': '0D3', 'D7': '0D3',
-    'A': '0A2', 'Am': '0A2', 'A7': '0A2',
-    'E': '0E2', 'Em': '0E2', 'E7': '0E2',
-    'B7': '2B2', 'Bm': '1B2'
-  };
+  function getExplicitBass(beat){
+    return beat && beat.bass && beat.bass.midi ? beat.bass : null;
+  }
 
   function parseBracketChordSpec(rawChord){
     var s = (rawChord || '').trim();
@@ -635,13 +628,14 @@
 
   var api = {
     NOTE_EN: NOTE_EN, NOTE_KO: NOTE_KO, STRINGS: STRINGS, FIRST_POS: FIRST_POS,
-    CHORD_DB: CHORD_DB, CHORD_BASS_TOKEN: CHORD_BASS_TOKEN,
+    CHORD_DB: CHORD_DB,
     cleanChordToken: cleanChordToken, lookupChord: lookupChord, midiInfo: midiInfo,
     inferChordsForMeasures: inferChordsForMeasures,
     parseNoteToken: parseNoteToken, annotateMeasureArticulation: annotateMeasureArticulation,
     parseBracketChordSpec: parseBracketChordSpec, tokenizeMeasureBeats: tokenizeMeasureBeats,
     decodeMeasureLine: GuitarNotation.decodeMeasureLine, serializeScoreMeasures: serializeScoreMeasures, validateScore: validateScore,
     getSongCapo: getSongCapo, soundingMidi: soundingMidi, splitScoreMeasures: splitScoreMeasures,
+    getExplicitBass: getExplicitBass,
     parseScore: parseScore, buildStructuredSong: buildStructuredSong,
     projectScoreToEditorBars: projectScoreToEditorBars, parseTextToVeBars: parseTextToVeBars
   };

@@ -38,6 +38,15 @@ test('bass plus melody and multi-note chords preserve roles and ascending arpegg
   assert.equal(chord.chordNotes[3].midi, 71);
 });
 
+test('explicit bass helper returns only the bass attached to the beat', function(){
+  const beat={bass:{midi:40,str:6}};
+  assert.equal(parser.getExplicitBass(beat),beat.bass);
+  assert.equal(parser.getExplicitBass(null),null);
+  assert.equal(parser.getExplicitBass({bass:{midi:0}}),null);
+  assert.equal(parser.getExplicitBass({}),null);
+  assert.equal(Object.prototype.hasOwnProperty.call(parser,'CHORD_BASS_TOKEN'),false);
+});
+
 test('two, three, and four subdivisions preserve tokens and duration fractions', function(){
   for (const [token, count] of [['C4/D4', 2], ['C4/D4/E4', 3], ['C4/D4/E4/F4', 4]]){
     const measure = parse('[C] ' + token + ' - - -', 4).measures[0];
