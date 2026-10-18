@@ -209,6 +209,11 @@ async function main() {
     const measureCount = await cdp.evaluate('document.getElementById("measuresGrid").children.length');
     assert.ok(measureCount > 0, 'measures grid rendered in browser DOM');
 
+    const bassBtnText = await cdp.evaluate('document.getElementById("toggleAutoBassBtn").textContent');
+    assert.ok(bassBtnText.includes("꺼짐"), "autoBass toggle is off by default");
+    const bassBtnActive = await cdp.evaluate('document.getElementById("toggleAutoBassBtn").classList.contains("active")');
+    assert.equal(bassBtnActive, false, "autoBass button does not have active class by default");
+
     // Test editor modal interaction in browser
     await cdp.evaluate('window.openConverterEditorModal({ title: "browser-test-song", beats: 4, rawText: "[C] C4 -/D4 - - | browser test" })');
     const modalVisible = await cdp.evaluate('!document.getElementById("newSongModal").hidden');
