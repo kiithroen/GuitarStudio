@@ -84,10 +84,11 @@ await test('sync parses every sheet row without applying or changing legacy visi
     { c: [{ v: '곡 제목' }] },
     { c: [{ v: 'Visible' }, { v: '4' }, { v: '90' }, { v: 'badge' }, { v: '[C] C4 - - - | one / lyric' }] },
     { c: [{ v: 'Hidden' }, { v: '4' }, { v: '80' }, { v: 'badge' }, { v: '[G] G3 - - - | lyric/slash' }] },
-    { c: [{ v: 'Override me' }, { v: '[G] 2E3/0G3 - - - | lyric / slash' }] }
+    { c: [{ v: 'Override me' }, { v: '[G] 2E3/0G3 - - - | lyric / slash' }] },
+    { c: [{ v: 'Right hand' }, { v: '[C] C4:i 1C4@2:i+E4:a - -' }] }
   ] } });
   assert.equal(await promise, true);
-  assert.equal(h.context.sheetSongs.length, 3);
+  assert.equal(h.context.sheetSongs.length, 4);
   assert.equal(h.context.sheetSongs[0].id, 'sheet-song-1');
   assert.equal(h.context.sheetSongs[0].measures.length, 1);
   assert.equal(h.context.sheetSongs[0].measures[0].lyric, 'one / lyric');
@@ -95,6 +96,8 @@ await test('sync parses every sheet row without applying or changing legacy visi
   assert.equal(h.context.sheetSongs[1].measures[0].lyric, 'lyric/slash');
   assert.equal(h.context.sheetSongs[1].measures.length, 1);
   assert.equal(h.context.sheetSongs[2].title, 'Override me');
+  assert.equal(h.context.sheetSongs[3].measures[0].beats[0].tok, 'C4:i');
+  assert.equal(h.context.sheetSongs[3].measures[0].beats[1].tok, '1C4@2:i+E4:a');
   assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.hiddenSheetSongs', null))), ['Hidden']);
   assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.sheetTitleOverrides', null))), { 'sheet-song-3': 'Override title' });
   assert.equal(h.context.rebuilt.at(-1), 'sheet-song-1');
@@ -129,6 +132,18 @@ await test('invalid sheet row preserves previous songs and settings', async func
   assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.hiddenSheetSongs', []))), ['Keep hidden']);
   assert.match(h.elements.sheetSyncStatus.textContent, /1행/);
   assert.equal(h.context.rebuilt.at(-1), 'builtin-last');
+});
+await test('removed apoyando aliases and malformed right-hand suffixes block sheet imports', async function(){
+  const previous = JSON.parse(JSON.stringify(h.context.sheetSongs));
+  for (const token of ['C4>', 'C4^', 'C4:i!']){
+    const pending = h.context.syncGoogleSheetSongs('https://docs.google.com/spreadsheets/d/sheet1234567890123456/edit', false);
+    const cb = callbackName(h.scripts.at(-1));
+    h.context[cb]({ table: { rows: [
+      { c: [{ v: 'Invalid token' }, { v: '4' }, { v: '80' }, { v: 'badge' }, { v: '[C] ' + token + ' - - -' }] }
+    ] } });
+    assert.equal(await pending, false, token + ' is rejected');
+    assert.deepEqual(JSON.parse(JSON.stringify(h.context.sheetSongs)), previous, token + ' leaves existing sheet songs intact');
+  }
 });
 await test('initSheetSync registers handlers once and keeps manual/silent behaviors distinct', function(){
   h.context.initSheetSync(); h.context.initSheetSync();

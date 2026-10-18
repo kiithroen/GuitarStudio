@@ -11,7 +11,7 @@
 
 음의 `durationUnits`는 뒤이은 연속 유지까지 포함한 길이야. hold의 값은 그 위치부터 유지 체인 끝까지 남은 길이고, rest는 자체 길이야. `tieFrom`은 hold만 갖는 `{measureIndex,beatIndex,subIndex}` 원음 위치야. `resolveHold(measures,part)`는 해당 실제 음 시작 part 또는 `null`을 반환해. 쉼은 체인을 끝내.
 
-원문 `tok`와 음·현·프렛·명시 운지를 보존하고 리듬 파생 필드는 원문을 파싱해 다시 계산해. `notationVersion`은 기존 2를 유지해. 분석 이벤트의 `part`는 실제 음 시작 part를 참조하며, 이벤트 배열을 곡에 저장해 순환 참조를 만들지 마. 잘못된 기존 악보를 자동으로 DB에 덮어쓰지 말고 원문을 보존해.
+원문 `tok`와 음·현·프렛·명시 왼손 운지·명시 오른손 운지(`:p`, `:i`, `:m`, `:a`)를 보존하고 리듬 파생 필드는 원문을 파싱해 다시 계산해. 오른손 운지는 표시용 metadata이며 음색, gain, 타이밍, 피치와 재생 동작에 영향을 주지 않아. `notationVersion`은 기존 2를 유지해. 분석 이벤트의 `part`는 실제 음 시작 part를 참조하며, 이벤트 배열을 곡에 저장해 순환 참조를 만들지 마. 잘못된 기존 악보를 자동으로 DB에 덮어쓰지 말고 원문을 보존해.
 
 `parseScore`는 검증을 위해 `validateScore`를 호출해. `validateScore`가 `parseScore`를 다시 부르는 순환을 만들지 마. `src/notation.js`는 문장·칸 구조를 검증하고 `src/parser.js`가 음표와 코드 토큰 검사를 추가해.
 

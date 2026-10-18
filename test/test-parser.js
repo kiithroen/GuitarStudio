@@ -39,6 +39,46 @@ test('single notes retain English, Korean, octave, fingering, and string overrid
   assert.equal(overridden.customTok, '1E4@2');
 });
 
+test('explicit right-hand suffixes stay attached to their written note only', function(){
+  for (const finger of ['p','i','m','a']){
+    const note=parser.parseNoteToken('C4:'+finger,0);
+    assert.equal(note.pos.rh,finger);
+    assert.equal(note.customTok,'C4:'+finger);
+    assert.equal(parser.getExplicitRightHand('C4:'+finger),finger);
+  }
+  for (const token of ['1C4:i','!1C4@2:i','~E4:a','도4:m','D4(4):i']){
+    assert.ok(parser.parseNoteToken(token,0),token);
+    assert.equal(parser.getExplicitRightHand(token),token.slice(-1));
+  }
+  assert.equal(parser.parseNoteToken('C4:i').midi,60);
+  const ordered=parser.parseNoteToken('E4:a+C3:p',0);
+  assert.deepEqual(ordered.chordNotes.map(n=>[n.midi,n.rh]),[[48,'p'],[64,'a']]);
+  assert.equal(ordered.bass.rh,'p');
+  assert.equal(ordered.pos.rh,'a');
+  assert.deepEqual(ordered.chordNotes.map(n=>n.tok),['C3:p','E4:a']);
+  assert.equal(parser.getExplicitRightHand('E4:a+C3:p',0),'p');
+  assert.equal(parser.getExplicitRightHand('E4:a+C3:p',1),'a');
+  assert.equal(parser.getExplicitRightHand('E4:a+C3:p',2),null);
+  assert.equal(parser.getExplicitRightHand('C4/D4:i'),null);
+  assert.equal(parser.getExplicitRightHand('C4/D4'),null);
+  assert.equal(parser.getExplicitRightHand('C4',1),null);
+  const mixed=parser.parseScore('C3:p+E4:i C4 r -',4).measures[0].beats[0];
+  assert.deepEqual(mixed.chordNotes.map(n=>n.rh),['p','i']);
+  assert.equal(parser.parseScore('C4/D4:i r r r',4).measures[0].beats[0].subNotes[1].rh,'i');
+  assert.equal(parser.parseScore('C4 D4:i r r',4).measures[0].beats[0].rh,null);
+  assert.equal(parser.parseScore('C4:i - r r',4).measures[0].beats[1].rh,null);
+  assert.equal(parser.parseScore('r:i C4 - -',4).errors.length>0,true);
+  for (const invalid of ['C4:P','C4:x','C4:','C4:im','C4:i:m','C4:i@2','r:i','-:p','C4:i!','C4!:i','C3:p+E4:i!','C3:p+E4:i~','H4:i','C2@1:i']){
+    assert.equal(parser.parseNoteToken(invalid,0),null,invalid);
+    assert.ok(parser.parseScore(invalid+' - - -',4).errors.length,invalid+' validates as an error');
+  }
+  for (const invalid of ['>C4','C4>','^C4','C4^']) assert.equal(parser.parseNoteToken(invalid,0),null,invalid);
+  const roundTrip=parser.parseScore('[C] E4:a+C3:p C4:i/D4:m 도4:p r | "hands"',4);
+  const serialized=parser.serializeScoreMeasures(roundTrip.measures);
+  assert.match(serialized,/E4:a\+C3:p C4:i\/D4:m 도4:p/);
+  assert.deepEqual(parser.parseScore(serialized,4).measures[0].beats.map(b=>b.tok),roundTrip.measures[0].beats.map(b=>b.tok));
+});
+
 test('bass plus melody and multi-note chords preserve roles and ascending arpeggio order', function(){
   const pair = parser.parseNoteToken('0E2+4B4', 0);
   assert.equal(pair.bass.midi, 40);

@@ -141,11 +141,21 @@ function initFretboard(){
           return c.str + '줄 ' + (explicitLH == null ? '미지정' : (explicitLH === 0 ? '0' : explicitLH + '번'));
         }).join(' + ');
         $('#guideLhTxt').textContent = '왼손 운지: ' + lhStrs;
-        $('#guideRhTxt').textContent = '-';
+        var hasExplicitRH = targetNote.chordNotes.some(function(c, componentIndex){
+          return !!getExplicitRightHand(sourceToken, componentIndex);
+        });
+        var rhParts = targetNote.chordNotes.map(function(c, componentIndex){
+          var finger = getExplicitRightHand(sourceToken, componentIndex);
+          return c.str + '줄 ' + (finger ? finger + ' (' + RIGHT_HAND_NAMES[finger] + ')' : '미지정');
+        });
+        $('#guideRhTxt').textContent = hasExplicitRH
+          ? '오른손 운지: ' + rhParts.join(' + ')
+          : '-';
       } else {
         $('#guideNoteTxt').textContent = info.en + ' (' + info.ko + ') · ' + str + '번줄 ' + (fret === 0 ? '개방현' : fret + '프렛') + capoTag + articTag;
         $('#guideLhTxt').textContent = lh == null ? '미지정' : (lhNames[lh] || (lh + '번 손가락'));
-        $('#guideRhTxt').textContent = '-';
+        var rhFinger = getExplicitRightHand(sourceToken, 0);
+        $('#guideRhTxt').textContent = rhFinger ? rhFinger + ' (' + RIGHT_HAND_NAMES[rhFinger] + ')' : '-';
       }
 
       var notesToHighlight = (targetNote.chordNotes && targetNote.chordNotes.length >= 2)

@@ -38,6 +38,17 @@ test('validation catches isolated slash, excess beats, unknown notes, empty part
   assert.equal(result.errors[0].measure,1);
   assert.equal(result.errors[0].beat,null);
 });
+
+test('right-hand suffix validation preserves octave and string diagnostics', function(){
+  const octave=parser.parseScore('C:i - - -',4);
+  assert.ok(octave.warnings.some(e=>e.code==='AMBIGUOUS_OCTAVE'));
+  const impossible=parser.parseScore('C2@1:i - - -',4);
+  assert.ok(impossible.errors.some(e=>e.code==='INVALID_STRING_OVERRIDE'));
+  for(const token of ['C4:P','C4:x','C4:im','C4:i:m','C4:i@2','r:i','-:p','C3:p+E4:i!','C3:p+E4:i~']){
+    const result=parser.parseScore(token+' - - -',4);
+    assert.ok(result.errors.length,token+' must remain invalid');
+  }
+});
 test('parser and validator share grouped subdivision splitting', function(){
   const result=parser.parseScore('[C] (C4 D4) - - -',4);
   assert.equal(result.errors.length,0);
@@ -92,6 +103,7 @@ test('explicit left-hand lookup reads only source token fingering', function(){
 });
 test('same-string collisions apply only inside a simultaneous chord', function(){
   assert.ok(parser.validateScore('[C] E4@1+F4@1 - - -',4).errors.some(e=>e.code==='STRING_COLLISION'));
+  assert.ok(parser.validateScore('[C] E4@1!+F4@1 - - -',4).errors.some(e=>e.code==='STRING_COLLISION'));
   assert.ok(!parser.validateScore('[C] E4@1/F4@1 - - -',4).errors.some(e=>e.code==='STRING_COLLISION'));
   assert.ok(parser.validateScore('[C] C4+F5 - - -',4).errors.some(e=>e.code==='GUITAR_RANGE'));
 });

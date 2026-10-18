@@ -113,18 +113,18 @@ test('a pitch matching only the uncapped open E string no longer excites it unde
   assert.equal(result.oscillators.some(o => Math.abs(o.frequency.value - 440 * Math.pow(2, (64 - 69) / 12)) < 0.01), false);
 });
 
-test('warm cache applies song capo to subdivisions, chords, bass, image notes, strings, and articulation', function(){
+test('warm cache applies song capo to subdivisions, chords, bass, image notes, strings, and articulation without right-hand metadata effects', function(){
   const { context } = makeContext(0);
   const calls = [];
   context.__audioHooks.replaceGetKsBuffer((midi, apo, str) => calls.push([midi, apo, str]));
   context.__audioHooks.warmKsCache({
     type: 'structured', capo: 2,
     measures: [{ chord: 'C', beats: [
-      { midi: 60, str: 1, bass: { midi: 40, str: 6 }, isSubdivided: true,
+      { midi: 60, str: 1, rh: 'p', bass: { midi: 40, str: 6, rh: 'a' }, isSubdivided: true,
         subNotes: [
-          { midi: 62, str: 2, articulation: 'apoyando' },
+          { midi: 62, str: 2, rh: 'i', articulation: 'apoyando' },
           { midi: 64, str: 3, chordNotes: [
-            { midi: 40, str: 6 }, { midi: 64, str: 4 }, { midi: 67, str: 3, articulation: 'apoyando' }
+            { midi: 40, str: 6, rh: 'p' }, { midi: 64, str: 4, rh: 'm' }, { midi: 67, str: 3, rh: 'a', articulation: 'apoyando' }
           ] }
         ] }
     ] }]

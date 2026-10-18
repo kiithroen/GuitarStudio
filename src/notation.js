@@ -219,19 +219,19 @@
             if (!chordPart) return;
             var parsed = parseNoteToken ? parseNoteToken(chordPart, measureIndex * bpb + beatIndex) : null;
             if (!parsed){
-              if (/@\d+$/.test(chordPart)){
+              if (/@\d+(?::[pima])?$/.test(chordPart)){
                 add(errors, 'INVALID_STRING_OVERRIDE', measureNo, beatIndex + 1, '현 지정 음표를 기타에서 연주할 수 없어: ' + chordPart);
               }
               add(errors, 'UNKNOWN_NOTE', measureNo, beatIndex + 1, '알 수 없는 음표 토큰 ' + chordPart + ' 가 있어.');
               return;
             }
-            if (/@\d+$/.test(chordPart) && !parsed.pos){
+            if (/@\d+(?::[pima])?$/.test(chordPart) && !parsed.pos){
               add(errors, 'INVALID_STRING_OVERRIDE', measureNo, beatIndex + 1, '현 지정 음표를 기타에서 연주할 수 없어: ' + chordPart);
             }
             if (!parsed.pos){
               add(errors, 'GUITAR_RANGE', measureNo, beatIndex + 1, '기타에서 연주할 수 없는 음역이야: ' + chordPart);
             }
-            if (/^[!>^~]?[A-Ga-g][#b♯♭♮]?$/.test(chordPart)){
+            if (/^[!~]?[A-Ga-g][#b♯♭♮]?(?::[pima])?$/.test(chordPart)){
               add(warnings, 'AMBIGUOUS_OCTAVE', measureNo, beatIndex + 1, '옥타브가 생략된 음표 ' + chordPart + ' 는 기본 옥타브 4로 해석돼.');
             }
             components.push({token:chordPart, note:parsed});

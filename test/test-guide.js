@@ -95,6 +95,14 @@ assert.deepEqual(Array.from(context.getBeatGuideEvents(explicitTir, { startTime:
   ['tirando', 0.62], [null, 1.0]
 ], 'parsed explicit tirando applies only to its written subdivision');
 
+const plainForHand = parser.parseScore('E4 - - -',4).measures[0].beats[0];
+const markedForHand = parser.parseScore('E4:a - - -',4).measures[0].beats[0];
+const plainEvent = context.getBeatGuideEvents(plainForHand,{startTime:3,slotDuration:0.7})[0];
+const markedEvent = context.getBeatGuideEvents(markedForHand,{startTime:3,slotDuration:0.7})[0];
+assert.deepEqual([markedEvent.when,markedEvent.duration,markedEvent.note.midi,markedEvent.str,markedEvent.gain,markedEvent.articulation],
+  [plainEvent.when,plainEvent.duration,plainEvent.note.midi,plainEvent.str,plainEvent.gain,plainEvent.articulation],
+  'right-hand metadata does not change guide timing, pitch, string, gain, or articulation');
+
 const parsedRestMeasures = parser.parseScore('[C] C4 r D4 E4 // - - - -', 4).measures;
 const parsedRestEvents = context.getBeatGuideEvents(parsedRestMeasures[0].beats[0], {
   startTime:2, slotDuration:0.5, measures:parsedRestMeasures, capo:3

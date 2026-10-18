@@ -188,6 +188,7 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .b-ko-main.b-rest-sym{display:flex;align-items:center;justify-content:center;min-height:26px;margin:2px 0}
 .b-ko-main.b-rest-sym .dur-svg{width:14px;height:22px;color:var(--muted);transition:color .08s}
 .b-note-sub{font-size:10.5px;color:var(--muted);font-weight:600;line-height:1.1;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.b-right-hand{font-size:11px;color:var(--muted);white-space:normal}
 .beat-cell.active-beat .b-idx-badge{background:rgba(255,255,255,.25);color:var(--accent-ink)}
 .beat-cell.active-beat .b-dur-badge{color:var(--accent-ink)}
 .beat-cell.active-beat .dur-svg{color:var(--accent-ink)}
@@ -218,7 +219,9 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .tab-cell-en{font-family:var(--font-num);font-weight:800;color:var(--accent);font-size:11px;letter-spacing:-0.2px}
 .beat-cell.tab-cell.active-beat .tab-cell-solfege{color:var(--accent)}
 .beat-cell.tab-cell.active-beat .tab-cell-en{color:var(--accent);opacity:1}
+.beat-cell.tab-cell.active-beat .tab-note-rh{color:inherit}
 .tab-cell-rh{font-family:var(--font-num);font-weight:700;color:var(--near);font-size:9.5px}
+.tab-note-rh{color:var(--muted);font-size:10px;font-family:var(--font-num);margin-left:3px}
 .tab-cell-grid{position:relative;width:100%;height:90px;margin-top:8px}
 .tab-fret-pill{position:absolute;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:16px;padding:0 2.5px;border-radius:4px;font-family:var(--font-num);font-size:11.5px;font-weight:800;line-height:1;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.08);z-index:2;white-space:nowrap}
 .tab-fret-pill.note-fret{color:var(--fg);border-color:rgba(45,76,155,.45)}
@@ -649,7 +652,7 @@ body.practice-compact .fretboard{
         </div>
       </div>
 
-      <p class="hint">지판의 칸을 직접 누르면 해당 프렛의 기타 음이 재생돼요. 초록색 원은 악보 음, 파란색 원은 현재 마디 코드의 구성음이에요.</p>
+      <p class="hint">지판의 칸을 직접 누르면 해당 프렛의 기타 음이 재생돼요. 초록색 원은 악보 음, 파란색 원은 현재 마디 코드의 구성음이에요. 오른손 p/i/m/a는 악보에 지정한 경우만 표시돼요.</p>
 
       <!-- 곡에 등장하는 코드 운지 카드 -->
       <div>
@@ -834,17 +837,17 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=image-library-1"></script>
-<script src="src/notation.js?v=image-library-1"></script>
-<script src="src/rhythm.js?v=image-library-1"></script>
-<script src="src/parser.js?v=image-library-1"></script>
-<script src="src/score.js?v=image-library-1"></script>
-<script src="src/audio.js?v=image-library-1"></script>
-<script src="src/guide.js?v=image-library-1"></script>
-<script src="src/image-analysis.js?v=image-library-1"></script>
-<script src="src/fretboard.js?v=image-library-1"></script>
-<script src="src/score-ui.js?v=image-library-1"></script>
-<script src="src/sheets.js?v=image-library-1"></script>
-<script src="src/app.js?v=image-library-1"></script>
+<script src="src/storage.js?v=explicit-pima-1"></script>
+<script src="src/notation.js?v=explicit-pima-1"></script>
+<script src="src/rhythm.js?v=explicit-pima-1"></script>
+<script src="src/parser.js?v=explicit-pima-1"></script>
+<script src="src/score.js?v=explicit-pima-1"></script>
+<script src="src/audio.js?v=explicit-pima-1"></script>
+<script src="src/guide.js?v=explicit-pima-1"></script>
+<script src="src/image-analysis.js?v=explicit-pima-1"></script>
+<script src="src/fretboard.js?v=explicit-pima-1"></script>
+<script src="src/score-ui.js?v=explicit-pima-1"></script>
+<script src="src/sheets.js?v=explicit-pima-1"></script>
+<script src="src/app.js?v=explicit-pima-1"></script>
 </body>
 </html>

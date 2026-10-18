@@ -614,6 +614,21 @@ async function testSubdividedGuide(client) {
       check(emitted.map(function(event){ return event.midi; }).join(',') === '42,57,62,52,59,67', 'runtime uses capo-adjusted pitches for every chord note');
       check(timers.length >= 3, 'runtime schedules beat and later subnote UI updates');
 
+      var pimaSubdivisionScore = parseScore('[C] E4@1:i/F4@1:m - - -', 4);
+      window.curSong = { id:'browser-guide-pima-subdivision', title:'Pima subdivision', type:'structured', beats:4, measures:pimaSubdivisionScore.measures };
+      renderSong();
+      timers.length = 0;
+      window.playSession = { inCountIn:false, nextBeatTime:9, spb:0.6, bpb:4, bIdx:0, mIdx:0, loopCompleted:0, endScheduled:false };
+      window.isPlaying = true;
+      window.actx.currentTime = 8.95;
+      schedulerTick();
+      var pimaUiTimers = timers.slice().sort(function(a, b){ return a.delay - b.delay; });
+      check(pimaUiTimers.length >= 2, 'scheduler queues the note and later subdivision fretboard updates');
+      pimaUiTimers[0].fn();
+      check(document.getElementById('guideRhTxt').textContent === 'i (검지)', 'first scheduled subdivision shows its explicit right-hand finger');
+      pimaUiTimers[pimaUiTimers.length - 1].fn();
+      check(document.getElementById('guideRhTxt').textContent === 'm (중지)', 'later scheduled subdivision updates the fretboard right-hand finger');
+
       var pairParsed = parseScore('[C] r/0E2+1C4/D4 - - -', 4);
       var pairBeat = pairParsed.measures[0].beats[0];
       var pairSong = { id: 'browser-guide-pair', title: 'Pair', badge: '', type: 'structured', beats: 4, measures: pairParsed.measures };
@@ -783,6 +798,47 @@ async function testSubdividedGuide(client) {
       updateActiveCursor(0, 3, false);
       check(document.getElementById('guideLhTxt').textContent.indexOf('3줄 0 + 2줄 1번') >= 0 && document.getElementById('guideRhTxt').textContent === '-', 'pair fretboard guide shows each explicit LH component and no RH estimate');
 
+      var explicitRightHandText = '[C] !1C4@2:i E4@1:a+C3@5:p C3@5:p+E4@1 E4@1:i/F4@1:m';
+      var explicitRightHandScore = parseScore(explicitRightHandText, 4);
+      window.curSong = { id:'browser-explicit-right-hand', title:'Explicit right hand', type:'structured', beats:4, measures:explicitRightHandScore.measures };
+      appState.scoreView = 'tab';
+      renderSong();
+      function rightHandPills(beatIndex){
+        var cell = document.querySelector('#measuresGrid .beat-cell[data-b="' + beatIndex + '"]');
+        return Array.prototype.slice.call(cell.querySelectorAll('.tab-note-rh')).map(function(span){ return span.textContent; });
+      }
+      var actualPimaPills = [0,1,2,3].map(function(index){ return rightHandPills(index).join(','); });
+      check(actualPimaPills.join('|') === 'i|p,a|p|i,m', 'TAB note-on pills show explicit pima by source component for single notes, MIDI-sorted chords, partial chords, and subdivisions: ' + JSON.stringify(actualPimaPills));
+      updateActiveCursor(0, 0, false);
+      check(document.getElementById('guideRhTxt').textContent === 'i (검지)', 'single-note fretboard guide shows the written right-hand finger and name');
+      updateActiveCursor(0, 1, false);
+      check(document.getElementById('guideRhTxt').textContent === '오른손 운지: 5줄 p (엄지) + 1줄 a (약지)', 'fretboard guide maps MIDI-sorted chord fingers to their written strings');
+      appState.scoreView = 'card';
+      renderSong();
+      var pimaCard = document.querySelector('#measuresGrid .beat-cell[data-b="1"]');
+      check(pimaCard.querySelector('.b-right-hand').textContent === '오른손 5줄 p + 1줄 a', 'beat card shows MIDI-sorted chord fingers and strings');
+      var partialPimaCard = document.querySelector('#measuresGrid .beat-cell[data-b="2"]');
+      check(partialPimaCard.querySelector('.b-right-hand').textContent === '오른손 5줄 p + 1줄 미지정', 'beat card identifies a chord component without written right-hand fingering');
+      var dividedPimaCard = document.querySelector('#measuresGrid .beat-cell[data-b="3"]');
+      check(dividedPimaCard.querySelector('.b-right-hand').textContent === '오른손 i / m', 'beat card lists right-hand fingers in subdivision order');
+      var mixedSubHandScore = parseScore('[C] E4@1:i/C3@5+F4@1 - - -', 4);
+      window.curSong = { id:'browser-mixed-sub-hand', title:'Mixed subdivision hand', type:'structured', beats:4, measures:mixedSubHandScore.measures };
+      appState.scoreView = 'card';
+      renderSong();
+      var mixedSubHandCard = document.querySelector('#measuresGrid .beat-cell[data-b="0"]');
+      check(mixedSubHandCard.querySelector('.b-right-hand').textContent === '오른손 i / -', 'subdivided chord part with no explicit fingers is shown as a dash');
+      var noSubHandScore = parseScore('[C] C3@5+E4@1/F4@2+G4@3 - - -', 4);
+      window.curSong = { id:'browser-no-sub-hand', title:'No subdivision hand', type:'structured', beats:4, measures:noSubHandScore.measures };
+      renderSong();
+      check(!document.querySelector('#measuresGrid .beat-cell[data-b="0"] .b-right-hand'), 'subdivisions with no explicit right-hand fingers have no card label');
+      var pimaTsv = formatSongToSheetTsv('Pima roundtrip', 4, 64, 'badge', explicitRightHandScore.measures);
+      check(pimaTsv.indexOf('!1C4@2:i E4@1:a+C3@5:p C3@5:p+E4@1 E4@1:i/F4@1:m') >= 0, 'TSV serialization keeps articulation, chord, partial, and subdivision pima suffixes');
+      var holdRightHandScore = parseScore('[C] C4:i - - -', 4);
+      window.curSong = { id:'browser-right-hand-hold', title:'Right hand hold', type:'structured', beats:4, measures:holdRightHandScore.measures };
+      appState.scoreView = 'tab';
+      renderSong();
+      check(rightHandPills(1).length === 0, 'hold ghost pill has no right-hand finger marker');
+
       window.curSong = sourceSong;
       renderSong();
       updateActiveCursor(0, 1, false);
@@ -830,6 +886,32 @@ async function testSubdividedGuide(client) {
   })()`);
   assert.ok(Array.isArray(result) && result.length >= 19, 'subdivided guide regressions pass');
   process.stdout.write('Checks: subdivided guide ' + result.length + '\n');
+}
+
+async function capturePimaScreenshots(client) {
+  const original = await client.evaluate(`({ id:curSong && curSong.id, view:appState.scoreView })`);
+  await client.evaluate(`(function(){
+    var parsed = parseScore('[C] !1C4@2:i E4@1:a+C3@5:p C3@5:p+E4@1 E4@1:i/F4@1:m', 4);
+    window.curSong = { id:'browser-pima-screenshot', title:'Explicit right hand', type:'structured', beats:4, measures:parsed.measures };
+    appState.scoreView = 'tab';
+    renderSong();
+    var score = document.getElementById('structuredScoreWrap');
+    if (score) score.scrollIntoView({ block:'start' });
+  })()`);
+  const screenshotDir = path.join(__dirname, '..', 'test-artifacts');
+  fs.mkdirSync(screenshotDir, { recursive:true });
+  const prefix = 'explicit-pima-' + process.pid + '-' + Date.now();
+  const outputs = [];
+  for (const viewport of [{ width:1280, height:900, label:'desktop' }, { width:390, height:844, label:'mobile' }]) {
+    await client.send('Emulation.setDeviceMetricsOverride', { width:viewport.width, height:viewport.height, deviceScaleFactor:1, mobile:viewport.width < 500 });
+    const image = await client.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+    const target = path.join(screenshotDir, prefix + '-' + viewport.label + '.png');
+    fs.writeFileSync(target, Buffer.from(image.data, 'base64'));
+    outputs.push(target);
+  }
+  await client.send('Emulation.setDeviceMetricsOverride', { width:1280, height:900, deviceScaleFactor:1, mobile:false });
+  await client.evaluate(`(function(){ if (window.changeSongById) changeSongById(${JSON.stringify(original.id)}); appState.scoreView = ${JSON.stringify(original.view)}; renderSong(); })()`);
+  process.stdout.write('Pima screenshots: ' + outputs.join(' ; ') + '\n');
 }
 
 async function testStorageFailureRecovery(client) {
@@ -910,7 +992,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=image-library-1')), 'all app scripts use the image-library revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=explicit-pima-1')), 'all app scripts use the explicit pima revision');
   const browserBin = findBrowserBinary();
   if (!browserBin) {
     process.stdout.write('SKIP: No Chrome or Edge binary found for browser test\n');
@@ -1147,6 +1229,7 @@ async function main() {
     await testCaptureRemovalAndAudioOffset(cdp);
     await testBackupExport(cdp);
     await testSubdividedGuide(cdp);
+    await capturePimaScreenshots(cdp);
     await testStorageFailureRecovery(cdp);
     await testInvalidStructuredPersistence(cdp);
 

@@ -414,6 +414,7 @@ function curCapo(){
                   clh.textContent = '(' + explicitLH + ')';
                   cPill.appendChild(clh);
                 }
+                appendExplicitRightHand(cPill, beatToken, cnIdx);
                 gridEl.appendChild(cPill);
               }
             });
@@ -438,6 +439,7 @@ function curCapo(){
                   lh.textContent = '(' + explicitLH + ')';
                   pill.appendChild(lh);
                 }
+                appendExplicitRightHand(pill, subToken, componentIndex);
                 gridEl.appendChild(pill);
               }
               if (sn.kind === 'hold' || sn.kind === 'rest' || sn.tok === '-' || /^[rR]$/.test(sn.tok || '')){
@@ -499,6 +501,7 @@ function curCapo(){
                   mlh.textContent = '(' + explicitLH + ')';
                   mPill.appendChild(mlh);
                 }
+                appendExplicitRightHand(mPill, subToken, 0);
                 gridEl.appendChild(mPill);
               }
             });
@@ -525,6 +528,7 @@ function curCapo(){
                 blh.textContent = '(' + bassLH + ')';
                 bPill.appendChild(blh);
               }
+              appendExplicitRightHand(bPill, beatToken, 0);
               gridEl.appendChild(bPill);
             }
 
@@ -545,6 +549,7 @@ function curCapo(){
                   mlh.textContent = '(' + melodyLH + ')';
                   mPill.appendChild(mlh);
                 }
+                appendExplicitRightHand(mPill, beatToken, b.chordNotes && b.chordNotes.length >= 2 ? 1 : 0);
                 gridEl.appendChild(mPill);
               }
             } else if (!hasMel && !hasBass){
@@ -669,6 +674,13 @@ function curCapo(){
               subEl.textContent = getOctaveLabel(b.midi) + ' ' + b.en;
             }
             cell.appendChild(subEl);
+            var rightHandLabel = getBeatRightHandLabel(b);
+            if (rightHandLabel){
+              var rightHandEl = document.createElement('span');
+              rightHandEl.className = 'b-right-hand';
+              rightHandEl.textContent = rightHandLabel;
+              cell.appendChild(rightHandEl);
+            }
           } else if (mainKind === 'hold') {
             koEl.className = 'b-ko-main b-hold-label';
             koEl.textContent = '유지';

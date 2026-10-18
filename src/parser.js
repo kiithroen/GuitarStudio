@@ -245,16 +245,30 @@
   function parseNoteToken(tok, altIdx){
     if (!tok || tok === '-' || tok === '.') return null;
     tok = tok.trim();
+    // 화음 끝의 주법 postfix가 마지막 구성음의 오른손 suffix에 붙는 조합은 금지한다.
+    if (/:([pima])[!~]$/.test(tok)) return null;
 
-    // 악보 주법 명시 기호 추출: ! 또는 > (아포얀도/주선율 강조), ~ (티란도/여린 반주 내성)
+    // 오른손 운지는 음표별로만 적고 잘못된 콜론 표기는 음표로 복구하지 않는다.
+    var explicitRh = null;
+    if (tok.indexOf(':') >= 0 && tok.indexOf('+') < 0){
+      var rhMatch = tok.match(/:([pima])$/);
+      if (!rhMatch || tok.indexOf(':') !== tok.lastIndexOf(':')) return null;
+      explicitRh = rhMatch[1];
+      tok = tok.slice(0, -rhMatch[0].length);
+    }
+    if (explicitRh && /[!~]$/.test(tok)) return null;
+    // >와 ^는 더 이상 아포얀도 별칭이 아니다.
+    if (/[>^]/.test(tok)) return null;
+
+    // 악보 주법 명시 기호 추출: ! (아포얀도), ~ (티란도)
     var explicitArtic = null;
-    if (/^[!>^]/.test(tok)){
+    if (/^!/.test(tok)){
       explicitArtic = 'apoyando';
       tok = tok.slice(1).trim();
     } else if (/^~/.test(tok)){
       explicitArtic = 'tirando';
       tok = tok.slice(1).trim();
-    } else if (/[!>^]$/.test(tok)){
+    } else if (/!$/.test(tok)){
       explicitArtic = 'apoyando';
       tok = tok.slice(0, -1).trim();
     } else if (/~$/.test(tok)){
@@ -284,10 +298,10 @@
       var bassInf = parsedSub[0];
       var melInf = parsedSub[parsedSub.length - 1];
       var bassPos = bassInf.pos ? Object.assign({}, bassInf.pos) : { str: 6, fret: 0, lh: null, rh: null };
-      var cleanBassCustom = (bassInf.customTok || '').replace(/^[!>^~]+|[!>^~]+$/g, '');
+      var cleanBassCustom = (bassInf.customTok || '').replace(/^[!~]+|[!~]+$/g, '');
       var bassTokStr = cleanBassCustom || bassInf.en;
       var melPos = melInf.pos ? Object.assign({}, melInf.pos) : null;
-      var cleanMelCustom = (melInf.customTok || '').replace(/^[!>^~]+|[!>^~]+$/g, '');
+      var cleanMelCustom = (melInf.customTok || '').replace(/^[!~]+|[!~]+$/g, '');
       var melTokStr = cleanMelCustom || melInf.en;
       var articPrefix = inheritedArtic === 'apoyando' ? '!' : (inheritedArtic === 'tirando' ? '~' : '');
       melInf.bass = {
@@ -298,7 +312,7 @@
         str: bassPos.str,
         fret: bassPos.fret,
         lh: bassPos.lh,
-        rh: null
+        rh: bassPos.rh == null ? null : bassPos.rh
       };
       if (inheritedArtic){
         melInf.articulation = inheritedArtic;
@@ -308,7 +322,7 @@
       // 3음 이상 화음(코드 롤/아르페지오) 지원
       var chordNotes = parsedSub.map(function(ps){
         var pos = ps.pos ? Object.assign({}, ps.pos) : { str: 1, fret: 0, lh: null, rh: null };
-        var cleanTok = (ps.customTok || '').replace(/^[!>^~]+|[!>^~]+$/g, '');
+        var cleanTok = (ps.customTok || '').replace(/^[!~]+|[!~]+$/g, '');
         var tokStr = cleanTok || ps.en;
         return {
           tok: tokStr,
@@ -318,7 +332,7 @@
           str: pos.str,
           fret: pos.fret,
           lh: pos.lh,
-          rh: null,
+          rh: pos.rh == null ? null : pos.rh,
           articulation: ps.articulation || inheritedArtic
         };
       });
@@ -360,10 +374,11 @@
       if (info && info.pos){
         var newPos = Object.assign({}, info.pos);
         if (customLh != null) newPos.lh = customLh;
+        if (explicitRh) newPos.rh = explicitRh;
         info.pos = newPos;
         var baseKoTok = customLh != null ? customLh + info.en : info.en;
-        if (articPfx || customLh != null){
-          info.customTok = articPfx + baseKoTok;
+        if (articPfx || customLh != null || explicitRh){
+          info.customTok = articPfx + baseKoTok + (explicitRh ? ':' + explicitRh : '');
         }
       }
       if (explicitArtic){
@@ -384,6 +399,7 @@
       if (pitch >= -1){
         var midi = (oct + 1) * 12 + pitch;
         var inf = midiInfo(midi);
+        if (explicitRh && strOverride && (!inf || !inf.pos)) return null;
         if (inf && inf.pos){
           var posCopy = Object.assign({}, inf.pos);
           if (strOverride && STRINGS[strOverride - 1]){
@@ -396,6 +412,7 @@
           posCopy.lh = null;
           posCopy.rh = null;
           if (lhOverride != null) posCopy.lh = lhOverride;
+          if (explicitRh) posCopy.rh = explicitRh;
           inf.pos = posCopy;
           var coreTok = inf.en;
           if (strOverride){
@@ -403,8 +420,8 @@
           } else if (lhOverride != null){
             coreTok = lhOverride + inf.en;
           }
-          if (articPfx || strOverride || lhOverride != null){
-            inf.customTok = articPfx + coreTok;
+          if (articPfx || strOverride || lhOverride != null || explicitRh){
+            inf.customTok = articPfx + coreTok + (explicitRh ? ':' + explicitRh : '');
           }
         }
         if (explicitArtic){
@@ -430,6 +447,21 @@
       if (componentIndex !== 0) return null;
     }
     return parsed.pos && parsed.pos.lh != null ? parsed.pos.lh : null;
+  }
+
+  function getExplicitRightHand(token, componentIndex){
+    var parts = GuitarNotation.splitBeatSubtokens(token);
+    if (parts.length !== 1) return null;
+    var parsed = parseNoteToken(parts[0], 0);
+    if (!parsed) return null;
+    if (componentIndex != null){
+      if (parsed.chordNotes){
+        var component = parsed.chordNotes[componentIndex];
+        return component && component.rh != null ? component.rh : null;
+      }
+      if (componentIndex !== 0) return null;
+    }
+    return parsed.pos && parsed.pos.rh != null ? parsed.pos.rh : null;
   }
 
   // 명시된 아포얀도/티란도만 남긴다. 자동 주법 추론은 수행하지 않는다.
@@ -592,6 +624,7 @@
     inferChordsForMeasures: inferChordsForMeasures,
     parseNoteToken: parseNoteToken, annotateMeasureArticulation: annotateMeasureArticulation,
     getExplicitLeftHand: getExplicitLeftHand,
+    getExplicitRightHand: getExplicitRightHand,
     parseBracketChordSpec: parseBracketChordSpec, tokenizeMeasureBeats: tokenizeMeasureBeats,
     decodeMeasureLine: GuitarNotation.decodeMeasureLine, serializeScoreMeasures: serializeScoreMeasures, validateScore: validateScore,
     getSongCapo: getSongCapo, soundingMidi: soundingMidi, splitScoreMeasures: splitScoreMeasures,

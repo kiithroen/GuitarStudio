@@ -1,5 +1,53 @@
 'use strict';
 
+var RIGHT_HAND_NAMES = { p: '엄지', i: '검지', m: '중지', a: '약지' };
+
+function appendExplicitRightHand(parent, token, componentIndex){
+  var finger = getExplicitRightHand(token, componentIndex);
+  if (!finger) return;
+  var span = document.createElement('span');
+  span.className = 'tab-note-rh';
+  span.textContent = finger;
+  span.title = '오른손 ' + finger + ' (' + RIGHT_HAND_NAMES[finger] + ')';
+  parent.appendChild(span);
+}
+
+function formatChordRightHandLabel(token, notes){
+  return (notes || []).map(function(note, index){
+    var finger = getExplicitRightHand(token, index);
+    return (note.str || '?') + '줄 ' + (finger || '미지정');
+  }).join(' + ');
+}
+
+function getBeatRightHandLabel(beat){
+  if (!beat) return '';
+  if (beat.isSubdivided && beat.subNotes){
+    var hasExplicit = false;
+    var labels = beat.subNotes.map(function(part){
+      if (part.kind === 'rest' || part.kind === 'hold' || !part.midi && !(part.chordNotes && part.chordNotes.length)) return '-';
+      var token = part.tok || part.customTok || part.en;
+      if (part.chordNotes && part.chordNotes.length >= 2){
+        var chordHasExplicit = part.chordNotes.some(function(note, index){ return !!getExplicitRightHand(token, index); });
+        hasExplicit = hasExplicit || chordHasExplicit;
+        return chordHasExplicit ? formatChordRightHandLabel(token, part.chordNotes) : '-';
+      }
+      var finger = getExplicitRightHand(token, 0);
+      hasExplicit = hasExplicit || !!finger;
+      return finger || '-';
+    });
+    return hasExplicit ? '오른손 ' + labels.join(' / ') : '';
+  }
+  if (beat.kind === 'rest' || beat.kind === 'hold' || !beat.midi) return '';
+  var token = beat.tok || beat.customTok || beat.en;
+  if (beat.chordNotes && beat.chordNotes.length >= 2){
+    var chordLabel = formatChordRightHandLabel(token, beat.chordNotes);
+    return beat.chordNotes.some(function(note, index){ return !!getExplicitRightHand(token, index); })
+      ? '오른손 ' + chordLabel : '';
+  }
+  var finger = getExplicitRightHand(token, 0);
+  return finger ? '오른손 ' + finger : '';
+}
+
 function syncScoreModeUI(){
   var isTab = appState.scoreView !== 'card';
   if ($('#scoreModeTabBtn')) $('#scoreModeTabBtn').setAttribute('aria-selected', String(isTab));
