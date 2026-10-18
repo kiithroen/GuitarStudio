@@ -10,6 +10,7 @@ const root = path.resolve(__dirname, '..');
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.ico': 'image/x-icon'
@@ -90,6 +91,8 @@ class CdpClient {
     this.pending = new Map();
     this.events = [];
     this.consoleErrors = [];
+    this.badResponses = [];
+    this.failedRequests = [];
   }
 
   async connect() {
@@ -114,6 +117,12 @@ class CdpClient {
         if (msg.method === 'Runtime.exceptionThrown') {
           this.consoleErrors.push(msg.params.exceptionDetails.text + ' ' + (msg.params.exceptionDetails.exception?.description || ''));
         }
+        if (msg.method === 'Network.responseReceived' && msg.params.response.status >= 400) {
+          this.badResponses.push(msg.params.response.url + ' ' + msg.params.response.status);
+        }
+        if (msg.method === 'Network.loadingFailed') {
+          this.failedRequests.push(msg.params.errorText + ' ' + msg.params.requestId);
+        }
       }
     };
   }
@@ -126,11 +135,12 @@ class CdpClient {
     });
   }
 
-  async evaluate(expression) {
+  async evaluate(expression, userGesture = false) {
     const res = await this.send('Runtime.evaluate', {
       expression,
       returnByValue: true,
-      awaitPromise: true
+      awaitPromise: true,
+      userGesture
     });
     if (res.exceptionDetails) {
       throw new Error('Evaluation error: ' + (res.exceptionDetails.exception?.description || res.exceptionDetails.text));
@@ -157,659 +167,464 @@ async function waitForCondition(client, expression, timeoutMs = 5000) {
   throw new Error('Timed out waiting for condition: ' + expression);
 }
 
-async function testPracticeSessionLifecycle(client) {
-  const result = await client.evaluate(`(async function(){
-    var original = {
-      setTimeout: window.setTimeout,
-      actx: window.actx,
-      scheduleMetronomeClick: window.scheduleMetronomeClick,
-      playGuitarNote: window.playGuitarNote,
-      scheduleMetronomeClick: window.scheduleMetronomeClick,
-      highlightFretboard: window.highlightFretboard,
-      ensureMicWorklet: window.ensureMicWorklet,
-      ensureAudioCtx: window.ensureAudioCtx,
-      state: { micScoring: appState.micScoring, guideSound: appState.guideSound, loopEnable: appState.loopEnable, loopStart: appState.loopStart, loopEnd: appState.loopEnd, bpm: appState.bpm },
-      isPlaying: window.isPlaying,
-      isStarting: window.isStarting,
-      playSession: window.playSession,
-      song: window.curSong,
-      measure: window.curMeasureIdx,
-      beat: window.curBeatIdx
-    };
-    var assertions = [];
-    function check(ok, message){ if (!ok) throw new Error(message); assertions.push(message); }
-    try {
-      var timers = [];
-      var clicks = [];
-      var highlights = 0;
-      var notes = [];
-      window.setTimeout = function(fn, delay){ timers.push({ fn: fn, delay: delay }); return timers.length; };
-      window.scheduleMetronomeClick = function(time){ clicks.push(time); };
-      window.highlightFretboard = function(){ highlights++; };
-      window.playGuitarNote = function(midi, duration, time){ notes.push({ midi: midi, duration: duration, time: time }); };
-      window.actx = { currentTime: 0, outputLatency: 0.02, baseLatency: 0.01 };
-      appState.guideSound = false;
-      appState.loopEnable = false;
-      appState.loopStart = 1;
-      appState.loopEnd = 1;
-      window.curSong = { type: 'structured', measures: [{ beats: [{ isSubdivided: true, subNotes: [{}, { midi: 64, tok: 'E4' }] }, {}, {}, {}] }], title: 'lifecycle-test' };
-
-      var staleSession = { inCountIn: false, nextBeatTime: 1, spb: 1, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
-      window.playSession = staleSession;
-      window.isPlaying = true;
-      window.actx.currentTime = 0.95;
-      schedulerTick();
-      check(timers.length === 2, 'beat UI and guide-off subnote UI callbacks captured');
-      var currentMeasureBefore = window.curMeasureIdx;
-      var currentBeatBefore = window.curBeatIdx;
-      window.playSession = { sentinel: true };
-      timers[0].fn();
-      timers[1].fn();
-      check(window.curMeasureIdx === currentMeasureBefore && window.curBeatIdx === currentBeatBefore, 'stale beat UI callback ignored after session replacement');
-      check(highlights === 0, 'stale subnote UI callback ignored after session replacement');
-      window.isPlaying = false;
-
-      [30, 60, 240].forEach(function(bpm){
-        timers = [];
-        clicks = [];
-        notes = [];
-        appState.guideSound = true;
-        window.curSong.measures[0].beats = [{}, {}, {}, { isSubdivided: true, subNotes: [{ midi: 65, tok: 'F4' }, { midi: 67, tok: 'G4' }] }];
-        appState.bpm = bpm;
-        var spb = 60 / bpm;
-        var session = { inCountIn: false, nextBeatTime: 1, spb: spb, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
-        window.playSession = session;
-        window.isPlaying = true;
-        for (var beatIdx = 0; beatIdx < 4; beatIdx++){
-          window.actx.currentTime = session.nextBeatTime - 0.01;
-          schedulerTick();
-        }
-        check(session.endScheduled === true, 'tempo ' + bpm + ': final beat marks session ending');
-        check(clicks.length === 4, 'tempo ' + bpm + ': exactly four in-range beats scheduled');
-        check(notes.length === 2 && Math.abs(notes[1].time - (session.nextBeatTime - spb / 2)) < 0.000001, 'tempo ' + bpm + ': final beat subdivision is scheduled before session stop');
-        var endTimers = timers.filter(function(timer){ return Math.abs(timer.delay - Math.max(0, (session.nextBeatTime + 0.03 - window.actx.currentTime) * 1000)) < 0.01; });
-        check(endTimers.length === 1, 'tempo ' + bpm + ': one latency-aligned stop is scheduled');
-        var clicksBefore = clicks.length;
-        window.actx.currentTime = session.nextBeatTime + spb * 2;
-        schedulerTick();
-        check(clicks.length === clicksBefore, 'tempo ' + bpm + ': no out-of-range beat after final beat');
-        var uiTimers = timers.filter(function(timer){ return timer !== endTimers[0]; });
-        var replacement = { sentinel: true };
-        window.playSession = replacement;
-        window.curMeasureIdx = 42;
-        window.curBeatIdx = 43;
-        uiTimers.forEach(function(timer){ timer.fn(); });
-        endTimers[0].fn();
-        check(window.isPlaying === true && window.playSession === replacement, 'tempo ' + bpm + ': stale UI and stop callbacks ignored');
-        window.isPlaying = false;
-      });
-
-      var pendingResolve;
-      window.playSession = null;
-      window.ensureMicWorklet = function(){ return new Promise(function(resolve){ pendingResolve = resolve; }); };
-      window.ensureAudioCtx = function(){};
-      appState.micScoring = true;
-      window.actx = { currentTime: 0 };
-      var cancelledStart = startPractice();
-      check(window.isStarting === true && window.isPlaying === false, 'microphone wait enters starting state (starting=' + window.isStarting + ', playing=' + window.isPlaying + ', mic=' + appState.micScoring + ', resolver=' + !!pendingResolve + ')');
-      check(document.getElementById('playBtn').textContent === '연습 취소', 'play button exposes pending-start cancel action');
-      document.getElementById('playBtn').click();
-      check(window.isStarting === false, 'stop cancels pending start and clears starting state');
-      pendingResolve();
-      await cancelledStart;
-      check(window.isPlaying === false && window.playSession == null, 'cancelled microphone wait cannot start playback (playing=' + window.isPlaying + ', session=' + !!window.playSession + ', starting=' + window.isStarting + ')');
-
-      var compactResolve;
-      window.ensureMicWorklet = function(){ return new Promise(function(resolve){ compactResolve = resolve; }); };
-      window.playSession = null;
-      var compactCancelledStart = startPractice();
-      check(document.getElementById('compactPlayBtn').textContent === '⏹ 취소', 'compact play button exposes pending-start cancel action');
-      document.getElementById('compactPlayBtn').click();
-      compactResolve();
-      await compactCancelledStart;
-      check(window.isPlaying === false && window.playSession == null, 'compact play button cancels pending microphone start');
-
-      var switchResolve;
-      window.ensureMicWorklet = function(){ return new Promise(function(resolve){ switchResolve = resolve; }); };
-      window.curSong = original.song;
-      var previousSong = window.curSong.id;
-      var switchedStart = startPractice();
-      var nextSong = window.allSongs.find(function(song){ return song.id !== previousSong; });
-      changeSongById(nextSong.id);
-      switchResolve();
-      await switchedStart;
-      check(window.isPlaying === false && window.playSession == null && window.curSong.id === nextSong.id, 'song change cancels pending microphone start');
-
-      var rebuildResolve;
-      window.ensureMicWorklet = function(){ return new Promise(function(resolve){ rebuildResolve = resolve; }); };
-      window.playSession = null;
-      var rebuildStart = startPractice();
-      rebuildSongSelect(window.curSong.id);
-      rebuildResolve();
-      await rebuildStart;
-      check(window.isPlaying === false && window.playSession == null, 'song select rebuild cancels pending microphone start');
-
-      var rejectStart;
-      window.ensureMicWorklet = function(){ return new Promise(function(resolve, reject){ rejectStart = reject; }); };
-      var failedStart = startPractice();
-      document.getElementById('compactPlayBtn').click();
-      document.getElementById('liveNoteKo').textContent = '새 상태';
-      rejectStart(new Error('cancelled permission request'));
-      await failedStart;
-      check(document.getElementById('liveNoteKo').textContent === '새 상태', 'stale microphone rejection cannot overwrite current status');
-      return assertions;
-    } finally {
-      window.setTimeout = original.setTimeout;
-      window.actx = original.actx;
-      window.scheduleMetronomeClick = original.scheduleMetronomeClick;
-      window.playGuitarNote = original.playGuitarNote;
-      window.highlightFretboard = original.highlightFretboard;
-      window.ensureMicWorklet = original.ensureMicWorklet;
-      window.ensureAudioCtx = original.ensureAudioCtx;
-      Object.keys(original.state).forEach(function(key){ appState[key] = original.state[key]; });
-      window.isPlaying = original.isPlaying;
-      window.isStarting = original.isStarting;
-      window.playSession = original.playSession;
-      window.curSong = original.song;
-      window.curMeasureIdx = original.measure;
-      window.curBeatIdx = original.beat;
-      syncCompactPlayButtons();
-    }
-  })()`);
-  assert.ok(Array.isArray(result) && result.length >= 20, 'practice session lifecycle regressions pass');
-  process.stdout.write('Checks: practice lifecycle ' + result.length + '\n');
-}
-
-async function testSubdividedGuide(client) {
-  const result = await client.evaluate(`(async function(){
-    var original = {
-      song: window.curSong,
-      actx: window.actx,
-      playGuitarNote: window.playGuitarNote,
-      scheduleMetronomeClick: window.scheduleMetronomeClick,
-      ensureAudioCtx: window.ensureAudioCtx,
-      setTimeout: window.setTimeout,
-      session: window.playSession,
-      playing: window.isPlaying,
-      measure: window.curMeasureIdx,
-      beat: window.curBeatIdx,
-      state: { guideSound: appState.guideSound, scoreView: appState.scoreView, beats: appState.beats, bpm: appState.bpm, loopStart: appState.loopStart, loopEnd: appState.loopEnd, loopEnable: appState.loopEnable }
-    };
-    var assertions = [];
-    var emitted = [];
-    function check(ok, message){ if (!ok) throw new Error(message); assertions.push(message); }
-    try {
-      var parsedGuide = parseScore('[C] -/0E2+0G3+1C4/0D3+0A3+1F4 - -', 4);
-      var song = { id: 'browser-guide-regression', title: 'Guide Capo 2', type: 'structured', beats: parsedGuide.beats, bpm: 60, capo: 2, measures: parsedGuide.measures };
-      window.curSong = song;
-      window.ensureAudioCtx = function(){};
-      window.playGuitarNote = function(midi, duration, when, gain, articulation, str){ emitted.push({ midi: midi, duration: duration, when: when, gain: gain, articulation: articulation, str: str }); };
-      window.scheduleMetronomeClick = function(){};
-      window.actx = { currentTime: 2, outputLatency: 0, baseLatency: 0 };
-      appState.guideSound = true;
-      appState.scoreView = 'tab';
-      appState.beats = 4;
-      renderSong();
-      emitted = [];
-      updateActiveCursor(0, 0, true);
-      check(emitted.length === 6, 'preview preserves both full chords after the leading rest');
-      check(emitted.map(function(event){ return event.midi; }).join(',') === '42,57,62,52,59,67', 'preview applies capo while retaining every chord pitch');
-      check(emitted.map(function(event){ return event.str; }).join(',') === '6,3,2,4,3,1', 'preview preserves each physical string');
-      check(Math.abs(emitted[0].when - 2.22) < 0.000001 && Math.abs(emitted[3].when - 2.44) < 0.000001, 'preview starts chord groups at their subdivision positions');
-      var pills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill'));
-      check(pills.length === 6 && pills.every(function(p){ return p.classList.contains('note-fret'); }), 'TAB grid renders every subdivided pitch with the same neutral note style');
-      check(pills.filter(function(p){ return Math.abs(parseFloat(p.style.left) - 50) < 0.001; }).length === 3 && pills.filter(function(p){ return Math.abs(parseFloat(p.style.left) - 83.3333333333) < 0.001; }).length === 3, 'TAB chord fingering pills stay at each subdivision position');
-      var tabTop = document.querySelector('#measuresGrid .beat-cell[data-b="0"] .tab-cell-en');
-      check(tabTop && tabTop.textContent === '-·E+G+C·D+A+F', 'TAB top label lists the component names within each subnote');
-
-      emitted = [];
-      var timers = [];
-      window.setTimeout = function(fn, delay){ timers.push({ fn: fn, delay: delay }); return timers.length; };
-      window.playSession = { inCountIn: false, nextBeatTime: 4, spb: 0.6, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
-      window.isPlaying = true;
-      window.actx.currentTime = 3.95;
-      schedulerTick();
-      check(emitted.length === 6 && emitted[0].when > 4, 'runtime does not sound notes at the leading rest');
-      check(Math.abs(emitted[0].when - 4.2) < 0.000001 && Math.abs(emitted[3].when - 4.4) < 0.000001, 'runtime schedules both chords at their subdivisions');
-      check(emitted.map(function(event){ return event.midi; }).join(',') === '42,57,62,52,59,67', 'runtime uses capo-adjusted pitches for every chord note');
-      check(timers.length >= 3, 'runtime schedules beat and later subnote UI updates');
-
-      var pairBeat = parseScore('[C] -/0E2+1C4/D4 - -', 4).measures[0].beats[0];
-      var pairSong = { id: 'browser-guide-pair', title: 'Pair', badge: '', type: 'structured', beats: 4, measures: [{ no: 1, chord: 'C', autoChord: false, beats: [pairBeat] }] };
-      window.curSong = pairSong;
-      renderSong();
-      var splitPairPills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill'));
-      check(splitPairPills.length === 3 && splitPairPills.every(function(p){ return p.classList.contains('note-fret'); }), 'subdivided pair notes use the same neutral pill style');
-      window.actx.currentTime = 7;
-      emitted = [];
-      updateActiveCursor(0, 0, true);
-      check(emitted.map(function(event){ return event.midi; }).join(',') === '40,60,62', 'preview always plays every note in an explicitly entered pair');
-      var pairEvents = getSubdividedGuideEvents(pairBeat, { startTime: 8, subStep: 0.2, capo: 0, beatsPerBar: 4, preview: false });
-      check(Array.from(pairEvents, function(event){ return event.note.midi; }).join(',') === '40,60,62', 'subdivided guide always retains the explicit bass and both melodies');
-      window.actx.currentTime = 7;
-      emitted = [];
-      updateActiveCursor(0, 0, true);
-      check(emitted.map(function(event){ return event.midi; }).join(',') === '40,60,62' && Math.abs(emitted[0].when - 7.22) < 0.000001, 'preview plays every explicit pair component at its subnote time');
-      check(pairEvents[0].when === 8.2, 'explicit pair bass plays only at its own subnote time');
-
-      emitted = [];
-      window.playSession = { inCountIn: false, nextBeatTime: 8, spb: 0.6, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
-      window.isPlaying = true;
-      window.actx.currentTime = 7.95;
-      schedulerTick();
-      check(emitted.map(function(event){ return event.midi; }).join(',') === '40,60,62' && Math.abs(emitted[0].when - 8.2) < 0.000001, 'runtime plays explicit pair bass only at its subnote time');
-
-      var sameStringSong = { id: 'browser-guide-same-string', title: 'Same String', badge: '', type: 'structured', beats: 4, measures: parseScore('[C] 0E2+3G2/D4 - - -', 4).measures };
-      window.curSong = sameStringSong;
-      renderSong();
-      var sameStringPills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill')).filter(function(p){ return Math.abs(parseFloat(p.style.left) - 25) < 0.001; });
-      check(sameStringPills.length === 2 && sameStringPills[0].style.transform === 'translate(-85%, -50%)' && sameStringPills[1].style.transform === 'translate(-15%, -50%)', 'same-string pair TAB frets separate horizontally');
-      var sameFretSong = { id: 'browser-guide-same-fret', title: 'Same Fret', badge: '', type: 'structured', beats: 4, measures: parseScore('[C] 0E2+2E2/D4 - - -', 4).measures };
-      window.curSong = sameFretSong;
-      renderSong();
-      var sameFretPills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill')).filter(function(p){ return Math.abs(parseFloat(p.style.left) - 25) < 0.001; });
-      check(sameFretPills.length === 1 && sameFretPills[0].classList.contains('note-fret'), 'same-string same-fret pair draws one neutral note pill');
-
-      var melodySong = { type: 'structured', measures: parseScore('[C] -/C4/D4 - -', 4).measures };
-      var melodyEvents = getSubdividedGuideEvents(melodySong.measures[0].beats[0], { startTime: 9, subStep: 0.2, capo: 0, beatsPerBar: 4, preview: false });
-      check(melodyEvents.length === 2, 'single-note subnotes in a chord-named bar receive no added bass');
-      check(melodyEvents.every(function(event){ return event.note.midi === 60 || event.note.midi === 62; }), 'single-note subnotes retain only the written pitches');
-
-      var sourceText = '[C] C3@5 G3@3+C4@2 E4@1\\n[C] C3@5 G3@3+C4@2 E4@1';
-      var source = parseScore(sourceText, 3);
-      var sourceSong = { id:'browser-written-pair-capo', title:'Written pair', type:'structured', beats:3, bpm:60, capo:5, measures:source.measures };
-      var originalPairToken = sourceSong.measures[0].beats[1].tok;
-      appState.scoreView = 'tab';
-      appState.beats = 3;
-      window.curSong = sourceSong;
-      renderSong();
-      var tabPairs = [0, 1].map(function(measureIndex){
-        var cell = document.querySelector('#measuresGrid .beat-cell[data-m="' + measureIndex + '"][data-b="1"]');
-        var pills = Array.prototype.slice.call(cell.querySelectorAll('.tab-fret-pill'));
-        return {
-          label: cell.querySelector('.tab-cell-en').textContent,
-          hasHandHint: !!cell.querySelector('.tab-cell-rh'),
-          low: pills.some(function(p){ return p.classList.contains('note-fret') && p.textContent.trim() === '0' && p.style.top === '40%'; }),
-          high: pills.some(function(p){ return p.classList.contains('note-fret') && p.textContent.trim().indexOf('1') === 0 && p.style.top === '20%'; }),
-          styles: pills.map(function(p){ var style = getComputedStyle(p); return [style.color, style.backgroundColor, style.borderColor].join('|'); })
-        };
-      });
-      check(tabPairs.every(function(pair){ return pair.label === 'G3+C4' && !pair.hasHandHint && pair.low && pair.high && pair.styles.length === 2 && pair.styles[0] === pair.styles[1]; }), 'both measures show G3+C4 with same-style neutral pills and no p+m hint');
-      check(tabPairs[0].styles[0] === tabPairs[1].styles[0], 'pair pills have matching computed foreground, background, and border styles at rest');
-      sourceSong.measures.forEach(function(measure){
-        measure.beats.forEach(function(beat){
-          if (beat.tok.indexOf('G3@3+C4@2') < 0) return;
-          beat.lh = 3;
-          beat.rh = 'p';
-          if (beat.bass) { beat.bass.lh = 4; beat.bass.rh = 'p'; }
-          (beat.chordNotes || []).forEach(function(component, index){ component.lh = index + 1; component.rh = index ? 'i' : 'p'; });
-        });
-      });
-      renderSong();
-      updateActiveCursor(0, 1, false);
-      var oldMetadataPair = document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="1"]');
-      check(oldMetadataPair.querySelectorAll('.tab-cell-lh').length === 0 && !oldMetadataPair.querySelector('.tab-cell-rh'), 'old inferred lh/rh metadata is ignored when original pair token has no LH digits');
-      check(document.getElementById('guideLhTxt').textContent.indexOf('3줄 미지정 + 2줄 미지정') >= 0 && document.getElementById('guideRhTxt').textContent === '-', 'fretboard guide ignores old inferred hand metadata');
-
-      var explicitHandText = '[C] 1C4 4D4@2 0E4 0G3@3+1C4@2';
-      var explicitHandScore = parseScore(explicitHandText, 4);
-      window.curSong = { id:'browser-explicit-left-hand', title:'Explicit LH', type:'structured', beats:4, measures:explicitHandScore.measures };
-      renderSong();
-      function pillLabels(beatIndex){
-        return Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="' + beatIndex + '"] .tab-fret-pill')).map(function(p){ return p.textContent.trim(); });
-      }
-      check(pillLabels(0).join(',') === '1(1)' && pillLabels(1).join(',') === '3(4)' && pillLabels(2).join(',') === '0(0)' && pillLabels(3).join(',') === '0(0),1(1)', 'TAB displays only directly written LH digits, including zero, for single notes and pairs');
-      updateActiveCursor(0, 0, false);
-      check(document.getElementById('guideLhTxt').textContent.indexOf('1번') >= 0 && document.getElementById('guideRhTxt').textContent === '-', 'single-note fretboard guide shows explicit LH and no RH estimate');
-      updateActiveCursor(0, 3, false);
-      check(document.getElementById('guideLhTxt').textContent.indexOf('3줄 0 + 2줄 1번') >= 0 && document.getElementById('guideRhTxt').textContent === '-', 'pair fretboard guide shows each explicit LH component and no RH estimate');
-
-      openConverterEditorModal({ title:'explicit LH editor', beats:4, rawText:explicitHandText });
-      var explicitEditorCells = Array.prototype.slice.call(document.querySelectorAll('#veBarsGrid .ve-cell')).slice(0, 4).map(function(cell){ return cell.querySelector('b').textContent; });
-      check(explicitEditorCells.join(',') === '1도,4레,0미,0솔+1도', 'visual editor displays source LH digits only for explicit notes');
-      document.getElementById('padModeStringBtn').click();
-      var padButtonText = document.querySelector('#notePadRows .np-btn b').textContent;
-      check(padButtonText === '미4', 'note pad labels show pitch and octave without inferred LH digits');
-      document.getElementById('nsTitle').value = 'Explicit LH round trip';
-      document.getElementById('saveNewSongBtn').click();
-      for (var waitIndex = 0; waitIndex < 50 && !window.curSong.title.includes('Explicit LH round trip'); waitIndex++){
-        await new Promise(function(resolve){ original.setTimeout.call(window, resolve, 20); });
-      }
-      check(window.curSong.title === 'Explicit LH round trip', 'explicit LH score saves through the editor flow');
-      document.getElementById('editStructuredBtn').click();
-      var firstEditorCell = document.querySelector('#veBarsGrid .ve-cell');
-      firstEditorCell.click();
-      document.getElementById('veApoyandoBtn').click();
-      document.getElementById('saveNewSongBtn').click();
-      var secondSaveButton = document.getElementById('saveNewSongBtn');
-      for (var saveWaitIndex = 0; saveWaitIndex < 50 && secondSaveButton.disabled; saveWaitIndex++){
-        await new Promise(function(resolve){ original.setTimeout.call(window, resolve, 20); });
-      }
-      check(!secondSaveButton.disabled, 'edited explicit LH score completes its second save');
-      document.getElementById('editStructuredBtn').click();
-      var reopenedText = document.getElementById('nsMeasuresTxt').value;
-      check(reopenedText.indexOf('!1C4') >= 0 && reopenedText.indexOf('4D4@2') >= 0 && reopenedText.indexOf('0E4') >= 0 && reopenedText.indexOf('0G3@3+1C4@2') >= 0, 'edited score reopens with explicit LH prefixes, including default-position fingers, intact');
-      document.getElementById('closeNewSongBtn').click();
-
-      window.curSong = sourceSong;
-      renderSong();
-      updateActiveCursor(0, 1, false);
-      var activePair = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-m="0"][data-b="1"] .tab-fret-pill')).map(function(p){ var style = getComputedStyle(p); return [style.color, style.backgroundColor, style.borderColor].join('|'); });
-      check(activePair.length === 2 && activePair[0] === activePair[1] && activePair[0] !== tabPairs[0].styles[0], 'active pair pills share the same active foreground, background, and border styles');
-      appState.scoreView = 'card';
-      renderSong();
-      var pairCard = document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="1"]');
-      check(pairCard.querySelector('.b-ko-main').textContent === '솔·도' && pairCard.querySelector('.b-note-sub').textContent === 'G3+C4', 'beat card shows both pair solfege and octave names');
-      openConverterEditorModal({ title:'pair editor', beats:3, rawText:sourceText });
-      var editorPairCell = document.querySelectorAll('#veBarsGrid .ve-cell')[1];
-      check(editorPairCell.textContent.indexOf('솔+도') >= 0 && editorPairCell.textContent.indexOf('p솔') < 0, 'visual editor shows both pair notes without a bass prefix');
-      var editorChordSelect = document.querySelector('#veBarsGrid .ve-chord-sel');
-      editorChordSelect.value = 'G';
-      editorChordSelect.dispatchEvent(new Event('change', { bubbles:true }));
-      var generatedEditorText = document.getElementById('nsMeasuresTxt').value;
-      check(generatedEditorText.indexOf('솔+도') >= 0 && generatedEditorText.indexOf('p솔') < 0, 'generated editor lyrics list every chord note without a bass prefix');
-      document.getElementById('closeNewSongBtn').click();
-      emitted = [];
-      window.actx.currentTime = 12;
-      updateActiveCursor(0, 1, true);
-      check(emitted.map(function(event){ return event.midi; }).join(',') === '60,65' && emitted.map(function(event){ return event.str; }).join(',') === '3,2', 'preview plays both capo-adjusted pair pitches on strings three and two');
-      var fretboardLow = document.querySelector('#fretboard .fb-open[data-str="3"]');
-      var fretboardHigh = document.querySelector('#fretboard .fb-cell[data-str="2"][data-fret="1"] .target-note');
-      var guideText = document.getElementById('guideNoteTxt').textContent;
-      var guideHand = document.getElementById('guideRhTxt').textContent;
-      check(fretboardLow && fretboardLow.textContent.indexOf('솔') >= 0 && fretboardLow.textContent.indexOf('p') < 0 && getComputedStyle(fretboardLow).color === 'rgb(98, 212, 145)' && fretboardHigh && fretboardHigh.textContent.indexOf('도') >= 0, 'fretboard shows both written notes in the same green target style without a p label');
-      check(guideText.indexOf('겹음:') === 0 && guideText.indexOf('저음') < 0 && guideHand.indexOf('저음') < 0 && guideText.indexOf('엄지') < 0 && guideHand.indexOf('엄지') < 0 && guideText.indexOf('p(') < 0 && guideHand === '-', 'pair guide lists the notes without inferred hand roles');
-      emitted = [];
-      window.playSession = { inCountIn: false, nextBeatTime: 13, spb: 0.5, bpb: 3, bIdx: 1, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
-      window.isPlaying = true;
-      window.actx.currentTime = 12.95;
-      schedulerTick();
-      check(emitted.map(function(event){ return event.midi; }).join(',') === '60,65' && emitted.map(function(event){ return event.str; }).join(',') === '3,2', 'runtime plays both capo-adjusted pair pitches on their written strings');
-      check(sourceText === '[C] C3@5 G3@3+C4@2 E4@1\\n[C] C3@5 G3@3+C4@2 E4@1' && sourceSong.measures[0].beats[1].tok === originalPairToken, 'pair display and playback do not alter the source or saved token');
-      return assertions;
-    } finally {
-      window.curSong = original.song;
-      window.actx = original.actx;
-      window.playGuitarNote = original.playGuitarNote;
-      window.scheduleMetronomeClick = original.scheduleMetronomeClick;
-      window.ensureAudioCtx = original.ensureAudioCtx;
-      window.setTimeout = original.setTimeout;
-      window.playSession = original.session;
-      window.isPlaying = original.playing;
-      window.curMeasureIdx = original.measure;
-      window.curBeatIdx = original.beat;
-      Object.keys(original.state).forEach(function(key){ appState[key] = original.state[key]; });
-      if (original.song) renderSong();
-      Object.keys(original.state).forEach(function(key){ appState[key] = original.state[key]; });
-    }
-  })()`);
-  assert.ok(Array.isArray(result) && result.length >= 19, 'subdivided guide regressions pass');
-  process.stdout.write('Checks: subdivided guide ' + result.length + '\n');
-}
-
-async function testStorageFailureRecovery(client) {
-  const result = await client.evaluate(`(async function(){
-    var originalSaveSong = window.dbSaveSong;
-    var originalDeleteSong = window.dbDeleteSong;
-    var originalSong = window.curSong;
-    var originalCustomSongs = window.customSongs.slice();
-    var assertions = [];
-    function check(ok, message){ if (!ok) throw new Error(message); assertions.push(message); }
-    try {
-      var openSheet = document.getElementById('openSheetSyncBtn');
-      openSheet.click();
-      check(!document.getElementById('sheetSyncModal').hidden, 'sheet sync modal opens through module wiring');
-      document.getElementById('closeSheetSyncBtn').click();
-      check(document.getElementById('sheetSyncModal').hidden, 'sheet sync modal closes through module wiring');
-
-      window.openConverterEditorModal({ title: 'browser storage failure', beats: 4, rawText: '[C] C4 - - -' });
-      document.getElementById('nsTitle').value = 'browser storage failure';
-      window.dbSaveSong = function(){ return Promise.reject(new Error('Injected storage failure')); };
-      await document.getElementById('saveNewSongBtn').click();
-      for (var failureWait = 0; failureWait < 100 && document.getElementById('saveNewSongBtn').disabled; failureWait++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
-      check(!document.getElementById('newSongModal').hidden, 'failed save keeps editor modal open');
-      check(!document.getElementById('storageStatus').hidden && document.getElementById('storageStatus').textContent.length > 0, 'failed save displays storage guidance');
-      check(document.getElementById('ocrStatusTxt').textContent.indexOf('저장하지 못했어요') >= 0, 'failed save displays guidance inside the editor');
-      check(!document.getElementById('saveNewSongBtn').disabled, 'failed save restores button enabled state');
-      check(window.curSong.id === originalSong.id, 'failed save preserves selected song');
-      check(window.customSongs.length === originalCustomSongs.length, 'failed save preserves custom song list');
-      window.dbSaveSong = originalSaveSong;
-      await document.getElementById('saveNewSongBtn').click();
-      for (var retryWait = 0; retryWait < 100 && !document.getElementById('newSongModal').hidden; retryWait++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
-      check(document.getElementById('newSongModal').hidden, 'retry success closes editor modal');
-      check(window.customSongs.some(function(song){ return song.title === 'browser storage failure'; }), 'retry success adds the custom song');
-      check((await dbGetAllSongs()).some(function(song){ return song.title === 'browser storage failure'; }), 'retry success persists the custom song in IndexedDB');
-      check(document.getElementById('storageStatus').hidden, 'retry success clears storage guidance');
-      check(document.getElementById('ocrStatusTxt').textContent === '', 'retry success clears editor guidance');
-      return assertions;
-    } finally {
-      window.dbSaveSong = originalSaveSong;
-      window.dbDeleteSong = originalDeleteSong;
-      window.curSong = originalSong;
-      if (document.getElementById('newSongModal') && !document.getElementById('newSongModal').hidden) document.getElementById('closeNewSongBtn').click();
-    }
-  })()`);
-  assert.ok(Array.isArray(result) && result.length >= 11, 'storage failure recovery and sheet module wiring pass');
-  process.stdout.write('Checks: storage recovery and sheet wiring ' + result.length + '\n');
-}
-
 async function main() {
-  const browserBin = findBrowserBinary();
-  if (!browserBin) {
+  const browserBinary = findBrowserBinary();
+  if (!browserBinary) {
     process.stdout.write('SKIP: No Chrome or Edge binary found for browser test\n');
     return;
   }
 
-  const { server, port: httpPort } = await createStaticServer();
+  const { server, port } = await createStaticServer();
   const cdpPort = 9333 + Math.floor(Math.random() * 200);
-  const tempProfileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-browser-smoke-'));
-
-  const chromeProc = spawn(browserBin, [
-    '--headless=new',
-    `--remote-debugging-port=${cdpPort}`,
-    `--user-data-dir=${tempProfileDir}`,
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--disable-background-networking',
-    '--disable-gpu',
-    'about:blank'
+  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-alpha-smoke-'));
+  const resolvedTempDir = path.resolve(os.tmpdir());
+  const resolvedProfileDir = path.resolve(profileDir);
+  assert.ok(resolvedProfileDir.startsWith(resolvedTempDir + path.sep),
+    'Chrome profile is inside the system temp directory');
+  assert.ok(path.basename(resolvedProfileDir).startsWith('gs-alpha-smoke-'),
+    'Chrome profile has the expected temporary prefix');
+  const browser = spawn(browserBinary, [
+    '--headless=new', `--remote-debugging-port=${cdpPort}`,
+    `--user-data-dir=${profileDir}`, '--no-first-run', '--no-default-browser-check',
+    '--disable-background-networking', '--disable-gpu', 'about:blank'
   ], { stdio: 'ignore' });
-
   let cdp = null;
 
   try {
     const wsUrl = await waitForCdpEndpoint(cdpPort, 12000);
     cdp = new CdpClient(wsUrl);
     await cdp.connect();
-
     await cdp.send('Page.enable');
     await cdp.send('Runtime.enable');
     await cdp.send('Log.enable');
+    await cdp.send('Network.enable');
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1280, height: 900, deviceScaleFactor: 1, mobile: false
+    });
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `window.__micRequests=0;
+        navigator.mediaDevices.getUserMedia=function(){window.__micRequests++;return Promise.reject(new Error("unexpected microphone request"));};
+        Object.defineProperty(window, 'TabEngine', {
+          configurable: true,
+          set(engine) {
+            Object.defineProperty(window, 'TabEngine', { configurable: true, writable: true, value: engine });
+            const originalCreate = engine.create.bind(engine);
+            engine.create = (element, callbacks) => {
+              const observedCallbacks = {
+                ...callbacks,
+                onPosition(position) {
+                  window.__testPosition = position;
+                  callbacks?.onPosition?.(position);
+                }
+              };
+              const controller = originalCreate(element, observedCallbacks);
+              window.__testController = controller;
+              return controller;
+            };
+          }
+        });`
+    });
+    try {
+      await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' });
+    } catch (_) {}
 
-    const appUrl = `http://127.0.0.1:${httpPort}/index.html`;
+    const appUrl = `http://127.0.0.1:${port}/index.html`;
     await cdp.send('Page.navigate', { url: appUrl });
+    try {
+      await waitForCondition(cdp,
+        'document.readyState==="complete" && document.getElementById("appStatus").textContent==="재생 준비 완료" && !document.getElementById("playPauseBtn").disabled',
+        25000);
+    } catch (error) {
+      const state = await cdp.evaluate(`({
+        readyState: document.readyState,
+        appStatus: document.getElementById('appStatus')?.textContent,
+        storageStatus: document.getElementById('storageStatus')?.textContent,
+        playDisabled: document.getElementById('playPauseBtn')?.disabled,
+        scoreSvg: !!document.querySelector('#score svg'),
+        AlphaTabType: typeof window.AlphaTab,
+        alphaTabType: typeof window.alphaTab,
+        consoleErrors: window.__unused || null
+      })`);
+      throw new Error(error.message + '; initial state=' + JSON.stringify(state)
+        + '; browser errors=' + JSON.stringify(cdp.consoleErrors)
+        + '; bad responses=' + JSON.stringify(cdp.badResponses)
+        + '; failed requests=' + JSON.stringify(cdp.failedRequests));
+    }
 
-    // Wait until boot completes
-    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.allSongs.length === 14 && window.curSong != null', 8000);
+    assert.ok(await cdp.evaluate('document.querySelector("#score svg")'), 'real alphaTab renderer produced SVG');
+    assert.ok(await cdp.evaluate('document.querySelector("#score svg text")'), 'score notation was rendered');
+    assert.deepEqual(cdp.consoleErrors, [], 'initial score render produces no worker errors');
+    const songCount = await cdp.evaluate('document.getElementById("songSelect").options.length');
+    assert.ok(songCount > 0, 'song library loaded');
+    if (songCount > 1) {
+      await cdp.evaluate(`(() => {
+        const select = document.getElementById('songSelect');
+        select.value = select.options[1].value;
+        select.dispatchEvent(new Event('change'));
+        select.value = select.options[0].value;
+        select.dispatchEvent(new Event('change'));
+      })()`);
+      await waitForCondition(cdp,
+        'document.getElementById("songTitle").textContent===document.getElementById("songSelect").selectedOptions[0].textContent.replace(/^시트 · /,"") && document.getElementById("appStatus").textContent==="재생 준비 완료"',
+        20000);
+      assert.deepEqual(cdp.consoleErrors, [], 'rapid song selection produces no worker errors');
+    }
 
-    // Assert initial app state in real browser
-    const songCount = await cdp.evaluate('window.allSongs.length');
-    assert.equal(songCount, 14, 'browser loaded 14 songs from songs.json');
-
-    const curSongId = await cdp.evaluate('window.curSong.id');
-    assert.equal(curSongId, 'builtin-lv1-butterfly', 'default song selected in browser');
-
-    const fretboardChildren = await cdp.evaluate('document.getElementById("fretboard").children.length');
-    assert.equal(fretboardChildren, 7, 'fretboard DOM elements rendered (6 strings + header)');
-
-    const measureCount = await cdp.evaluate('document.getElementById("measuresGrid").children.length');
-    assert.ok(measureCount > 0, 'measures grid rendered in browser DOM');
-
-    const bassButtonAbsent = await cdp.evaluate('document.getElementById("toggleAutoBassBtn") === null');
-    assert.equal(bassButtonAbsent, true, 'automatic bass accompaniment toggle is removed');
-    process.stdout.write('Browser checkpoint: boot and initial DOM passed\n');
-
-    const canonicalTsv = await cdp.evaluate(`window.formatSongToSheetTsv('slash lyric', 4, 90, 'badge', [
-      '[C] C4 - - - | 너 / 나',
-      '[G] G3 - - - | "https://example.test/a|b"'
-    ])`);
-    const canonicalColumns = canonicalTsv.split('\t');
-    assert.equal(canonicalColumns.length, 5, 'canonical TSV keeps five columns');
-    assert.ok(canonicalColumns[4].includes(' // '), 'canonical TSV joins measures with //');
-    assert.equal(canonicalColumns[4].includes('\n'), false, 'canonical TSV score stays on one row');
-    assert.ok(canonicalColumns[4].includes('| "너 / 나"'), 'slash lyric is JSON quoted and preserved');
-    assert.ok(canonicalColumns[4].includes('"https://example.test/a|b"'), 'URL and pipe lyric characters are preserved');
-
-    const notationUi = await cdp.evaluate(`(function(){
-      var textarea = document.getElementById('nsMeasuresTxt');
-      var status = document.getElementById('scoreValidationStatus');
-      var raw = '[C] C4 D4 E4 F4 G4 | "overflow"';
-      openConverterEditorModal({ title: 'overflow', beats: 4, rawText: raw });
-      var preserved = textarea.value === raw && document.getElementById('veBarsGrid').children.length === 0;
-      var overflowDiagnostic = status.textContent;
-      var beatSelect = document.getElementById('nsBeats');
-      beatSelect.value = '6';
-      beatSelect.dispatchEvent(new Event('change', { bubbles: true }));
-      var beatRecovery = textarea.value === raw && veState.beats === 6 && veState.bars.length === 1 && veState.bars[0].notes.length === 6;
-      openConverterEditorModal({ title: 'invalid save', beats: 4, rawText: raw });
-      var before = customSongs.length;
-      document.getElementById('saveNewSongBtn').click();
-      var invalidSaveBlocked = customSongs.length === before && textarea.value === raw;
-      document.getElementById('closeNewSongBtn').click();
-      var originalSong = curSong;
-      var specialLyric = 'slash // pipe | quote " and /';
-      var source = buildStructuredSong({ id:'browser-lyric-roundtrip', title:'lyric', beats:4, lines:['[C] C4 - - -'] });
-      source.measures[0].lyric = specialLyric;
-      curSong = source;
-      document.getElementById('editStructuredBtn').click();
-      var lyricRoundTrip = decodeMeasureLine(document.getElementById('nsMeasuresTxt').value).lyric === specialLyric;
-      document.getElementById('closeNewSongBtn').click();
-      curSong = originalSong;
-      return { preserved:preserved, overflowDiagnostic:overflowDiagnostic, beatRecovery:beatRecovery, invalidSaveBlocked:invalidSaveBlocked, lyricRoundTrip:lyricRoundTrip };
+    const initialTick = await cdp.evaluate('window.__testPosition?.currentTime ?? null');
+    await cdp.evaluate('document.getElementById("playPauseBtn").click()', true);
+    await waitForCondition(cdp, 'document.getElementById("playPauseBtn").textContent==="일시정지"', 10000);
+    const cursorStart = await cdp.evaluate(`(() => {
+      const cursor = document.querySelector('.at-cursor-beat');
+      if (!cursor) return null;
+      const rect = cursor.getBoundingClientRect();
+      const style = getComputedStyle(cursor);
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, color: style.backgroundColor, opacity: style.opacity };
     })()`);
-    assert.equal(notationUi.preserved, true, 'overflow input remains intact and is not projected');
-    assert.match(notationUi.overflowDiagnostic, /5박/, 'overflow input reports its excess beat');
-    assert.equal(notationUi.beatRecovery, true, 'changing to a matching meter safely restores projection');
-    assert.equal(notationUi.invalidSaveBlocked, true, 'invalid score cannot be saved');
-    assert.equal(notationUi.lyricRoundTrip, true, 'structured edit opening preserves JSON lyric delimiters');
-    process.stdout.write('Browser checkpoint: notation UI passed\n');
-
-    const imageUi = await cdp.evaluate(`(async function(){
-      var savedSong = curSong;
-      var savedBpm = appState.bpm;
-      var savedScanner = window.scanImageBarlines;
-      var savedAlert = window.alert;
-      var alerts = [];
-      var target = { id:'browser-image-convert', title:'Image source', type:'image', badge:'Source badge', beats:4, bpm:77, imageDataUrl:'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=', systems:[{x:0.1,y:0.1,w:0.8,h:0.3,bars:[{chord:'C',note:'C4',memo:'keep',w:1,custom:'keep'}]}] };
-      try {
-        window.alert = function(message){ alerts.push(String(message)); };
-        appState.bpm = 91;
-        curSong = target;
-        document.getElementById('convertImgToScoreBtn').click();
-        var defaultText = document.getElementById('nsMeasuresTxt').value;
-        var defaultOk = defaultText === '[-] - - - -';
-        var metadataOk = document.getElementById('nsBpm').value === '91' && veState.sourceBadge === 'Source badge' && veState.refImageDataUrl === target.imageDataUrl;
-        document.getElementById('closeNewSongBtn').click();
-
-        var resolveScan;
-        window.scanImageBarlines = function(){ return new Promise(function(resolve){ resolveScan = resolve; }); };
-        document.getElementById('autoDetectBarsBtn').click();
-        await new Promise(function(resolve){ setTimeout(resolve, 0); });
-        var switched = Object.assign({}, target, { id:'browser-image-switched', systems:[{x:0.2,y:0.2,w:0.5,h:0.2,bars:[]}] });
-        curSong = switched;
-        resolveScan([0.1, 0.3, 0.5]);
-        await new Promise(function(resolve){ setTimeout(resolve, 20); });
-        var staleIgnored = target.systems[0].bars.length === 1 && switched.systems[0].bars.length === 0;
-
-        curSong = target;
-        window.scanImageBarlines = function(){ return Promise.resolve([0.1, 0.3]); };
-        document.getElementById('autoDetectBarsBtn').click();
-        await new Promise(function(resolve){ setTimeout(resolve, 20); });
-        var metadataPreserved = target.systems[0].bars.length === 1 && target.systems[0].bars[0].chord === 'C' && target.systems[0].bars[0].note === 'C4' && target.systems[0].bars[0].memo === 'keep' && target.systems[0].bars[0].custom === 'keep';
-        window.scanImageBarlines = function(){ return Promise.resolve([0.1, 0.2, 0.3]); };
-        document.getElementById('autoDetectBarsBtn').click();
-        await new Promise(function(resolve){ setTimeout(resolve, 20); });
-        var countMismatchProtected = target.systems[0].bars.length === 1 && target.systems[0].bars[0].chord === 'C' && target.systems[0].bars[0].note === 'C4' && target.systems[0].bars[0].memo === 'keep' && target.systems[0].bars[0].custom === 'keep';
-        return {defaultOk:defaultOk, metadataOk:metadataOk, staleIgnored:staleIgnored, metadataPreserved:metadataPreserved, countMismatchProtected:countMismatchProtected, sameCountAlert:alerts.some(function(message){ return message.indexOf('마디 영역만 추정') >= 0; }), mismatchAlert:alerts.some(function(message){ return message.indexOf('기존 음표·코드') >= 0; })};
-      } finally {
-        curSong = savedSong;
-        appState.bpm = savedBpm;
-        window.scanImageBarlines = savedScanner;
-        window.alert = savedAlert;
-        renderSong();
-      }
+    assert.ok(cursorStart, 'animated alphaTab beat cursor is present');
+    assert.ok(cursorStart.width >= 3 && cursorStart.height > 0, 'cursor has a visible three pixel bar');
+    assert.notEqual(cursorStart.color, 'rgba(0, 0, 0, 0)', 'cursor uses a visible color');
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    const cursorEnd = await cdp.evaluate(`(() => {
+      const cursor = document.querySelector('.at-cursor-beat');
+      const rect = cursor.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, position: document.getElementById('positionTxt').textContent };
     })()`);
-    assert.equal(imageUi.defaultOk, true, 'image conversion begins with the blank score template');
-    assert.equal(imageUi.metadataOk, true, 'image conversion carries selected BPM, source badge, and image');
-    assert.equal(imageUi.staleIgnored, true, 'late image analysis cannot mutate after song switch');
-    assert.equal(imageUi.metadataPreserved, true, 'auto-detection preserves existing bar metadata');
-    assert.equal(imageUi.countMismatchProtected, true, 'bar-count change refuses to overwrite manual bar metadata');
-    assert.equal(imageUi.sameCountAlert, true, 'same-count auto-detection reports successful boundary estimation');
-    assert.equal(imageUi.mismatchAlert, true, 'manual-data bar-count mismatch reports that it was preserved');
-    process.stdout.write('Browser checkpoint: image conversion safeguards passed\n');
+    assert.ok(Math.abs(cursorEnd.x - cursorStart.x) > 0.5 || Math.abs(cursorEnd.y - cursorStart.y) > 0.5,
+      'cursor coordinate changes while playback advances');
+    const advancedTick = await cdp.evaluate('window.__testPosition?.currentTime ?? null');
+    assert.notEqual(advancedTick, initialTick, 'real alphaTab playback time advances');
+    assert.deepEqual(cdp.consoleErrors, [], 'normal playback produces no worker errors');
 
-    await testPracticeSessionLifecycle(cdp);
-    process.stdout.write('Browser checkpoint: practice session passed\n');
-    await testSubdividedGuide(cdp);
-    await testStorageFailureRecovery(cdp);
+    await cdp.evaluate('document.getElementById("guideSoundBtn").click(); document.getElementById("metronomeBtn").click()');
+    assert.equal(await cdp.evaluate('document.getElementById("guideSoundBtn").getAttribute("aria-pressed")'), 'false');
+    assert.equal(await cdp.evaluate('document.getElementById("metronomeBtn").getAttribute("aria-pressed")'), 'true');
+    assert.equal(await cdp.evaluate('document.getElementById("playPauseBtn").textContent'), '일시정지',
+      'guide mute leaves playback running');
+    const mutedPosition = await cdp.evaluate('document.getElementById("positionTxt").textContent');
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    const mutedPositionAfter = await cdp.evaluate('document.getElementById("positionTxt").textContent');
+    assert.notEqual(mutedPositionAfter, mutedPosition, 'guide off and metronome on still advances score time');
+    await cdp.evaluate(`(() => {
+      const speed = document.getElementById('speedRange');
+      speed.value = '200';
+      speed.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    assert.equal(await cdp.evaluate('document.getElementById("speedTxt").textContent'), '200%');
+    assert.equal(await cdp.evaluate('window.__testController?.api.playbackSpeed'), 2,
+      'controller sets the real alphaTab playback speed');
+    assert.equal(await cdp.evaluate('window.__testController?.api.metronomeVolume'), 1,
+      'metronome remains enabled in the real alphaTab player');
+    await cdp.evaluate('document.getElementById("playPauseBtn").click()');
+    await waitForCondition(cdp, 'document.getElementById("playPauseBtn").textContent==="재생"');
+    await cdp.evaluate('document.getElementById("stopBtn").click()');
 
-    // Test editor modal interaction in browser
-    await cdp.evaluate('window.openConverterEditorModal({ title: "browser-test-song", beats: 4, rawText: "[C] C4 -/D4 - - | browser test" })');
-    const modalVisible = await cdp.evaluate('!document.getElementById("newSongModal").hidden');
-    assert.equal(modalVisible, true, 'editor modal opened');
+    await cdp.evaluate(`(() => {
+      const start = document.getElementById('loopStart');
+      const end = document.getElementById('loopEnd');
+      start.value = '1';
+      end.value = '1';
+      document.getElementById('loopEnable').checked = false;
+      document.getElementById('applyLoopBtn').click();
+    })()`);
+    assert.equal(await cdp.evaluate('document.getElementById("appStatus").classList.contains("error")'), false,
+      'valid loop range is accepted');
+    await cdp.evaluate(`(() => {
+      document.getElementById('loopEnable').checked = true;
+      document.getElementById('applyLoopBtn').click();
+      document.getElementById('playPauseBtn').click();
+    })()`);
+    await waitForCondition(cdp, 'document.getElementById("playPauseBtn").textContent==="일시정지"');
+    const cursorXs = [];
+    const loopDeadline = Date.now() + 6500;
+    while (Date.now() < loopDeadline) {
+      const x = await cdp.evaluate('document.querySelector(".at-cursor-beat")?.getBoundingClientRect().x ?? null');
+      if (Number.isFinite(x)) cursorXs.push(x);
+      await new Promise(resolve => setTimeout(resolve, 120));
+    }
+    const loopWrapped = cursorXs.some((value, index) => index > 1
+      && cursorXs.slice(0, index).some(previous => previous > value + 5));
+    assert.ok(loopWrapped, 'cursor position wraps inside the selected one-bar loop');
+    const loopRuntime = await cdp.evaluate(`(() => {
+      const api = window.__testController?.api;
+      return api && {
+        tickPosition: api.tickPosition,
+        startTick: api.playbackRange?.startTick,
+        endTick: api.playbackRange?.endTick,
+        isLooping: api.isLooping
+      };
+    })()`);
+    assert.ok(loopRuntime?.isLooping, 'real alphaTab API has looping enabled');
+    assert.ok(loopRuntime.tickPosition >= loopRuntime.startTick
+      && loopRuntime.tickPosition <= loopRuntime.endTick,
+    'real playback tick wraps within the selected bar range');
+    await cdp.evaluate('document.getElementById("playPauseBtn").click(); document.getElementById("stopBtn").click()');
+    await waitForCondition(cdp, 'document.getElementById("playPauseBtn").textContent==="재생"');
+    const beforeSeekX = await cdp.evaluate('document.querySelector(".at-cursor-beat")?.getBoundingClientRect().x ?? null');
+    assert.notEqual(beforeSeekX, null, 'cursor remains available before score seeking');
+    const seekPosition = await cdp.evaluate(`(() => {
+      const fret = Array.from(document.querySelectorAll('#score svg text'))
+        .filter(node => /^\\d+$/.test(node.textContent.trim())).at(-1);
+      const rect = fret.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: seekPosition.x, y: seekPosition.y, button: 'left', clickCount: 1 });
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: seekPosition.x, y: seekPosition.y, button: 'left', clickCount: 1 });
+    await waitForCondition(cdp, `(() => {
+      const cursor = document.querySelector('.at-cursor-beat');
+      return cursor && Math.abs(cursor.getBoundingClientRect().x - ${beforeSeekX}) > 0.5;
+    })()`);
+    const afterSeekX = await cdp.evaluate('document.querySelector(".at-cursor-beat").getBoundingClientRect().x');
+    assert.notEqual(afterSeekX, beforeSeekX, 'score click seeks the animated cursor');
+    const persisted = await cdp.evaluate('({settings:localStorage.getItem("gs.player.v3"),mic:window.__micRequests||0})');
+    assert.equal(persisted.mic, 0, 'the app never requests microphone access');
+    assert.ok(persisted.settings.includes('200'), 'speed setting is stored');
 
-    const editorBars = await cdp.evaluate('document.getElementById("veBarsGrid").children.length');
-    assert.ok(editorBars > 0, 'editor bars grid rendered in DOM');
+    const fixtureText = '\\title "GP fixture"\n\\ts (3 4)\n:4 3.5 (0.3 1.2) 0.1 |\n3.5 (0.3 1.2) 0.1';
+    await cdp.evaluate('document.getElementById("openNewSongBtn").click()');
+    await waitForCondition(cdp, 'document.getElementById("editorDialog").open');
+    await cdp.evaluate('document.getElementById("editorTitle").value="Invalid";document.getElementById("editorAlphaTex").value="!invalid alphaTex!";document.getElementById("saveSongBtn").click()');
+    await waitForCondition(cdp, 'document.getElementById("editorMessage").textContent.length > 0');
+    assert.equal(await cdp.evaluate('document.getElementById("editorDialog").open'), true,
+      'invalid alphaTex keeps the editor open');
+    await cdp.evaluate('document.getElementById("closeEditorBtn").click()');
 
-    // Close modal
-    await cdp.evaluate('document.getElementById("closeNewSongBtn").click()');
-    const modalHidden = await cdp.evaluate('document.getElementById("newSongModal").hidden');
-    assert.equal(modalHidden, true, 'editor modal closed cleanly');
+    const engine = require('../src/tab-engine');
+    const fixtureScore = engine.parseAlphaTex(fixtureText);
+    const originalBytes = Buffer.from(engine.exportGp(fixtureScore));
+    const originalBase64 = originalBytes.toString('base64');
+    await cdp.evaluate(`(async () => {
+      const binary = Uint8Array.from(atob('${originalBase64}'), char => char.charCodeAt(0));
+      const file = new File([binary], 'fixture.gp', { type: 'application/octet-stream' });
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      const input = document.getElementById('scoreFileInput');
+      input.files = transfer.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await waitForCondition(cdp, 'document.getElementById("editorDialog").open', 5000);
+    assert.match(await cdp.evaluate('document.getElementById("editorFileInfo").textContent'), /fixture\.gp/);
+    await cdp.evaluate(`(() => {
+      document.getElementById('editorTitle').value = 'GP preserved';
+      document.getElementById('saveSongBtn').click();
+    })()`);
+    await waitForCondition(cdp,
+      '!document.getElementById("editorDialog").open && document.getElementById("songTitle").textContent==="GP preserved"',
+      12000);
+    assert.deepEqual(cdp.consoleErrors, [], 'GP import and playback produce no worker errors');
 
-    await cdp.evaluate('window.__gsInjected = 0; window.openConverterEditorModal({ beats: 4, rawText: "[-] <img/src=x/onerror=window.__gsInjected=1>/C4 - - -" });');
-    const editorTokenSafety = await cdp.evaluate('({ images: document.querySelectorAll("#veBarsGrid img").length, raw: document.getElementById("nsMeasuresTxt").value, diagnostic: document.getElementById("scoreValidationStatus").textContent, injected: window.__gsInjected })');
-    assert.equal(editorTokenSafety.images, 0, 'invalid editor token does not create preview image elements');
-    assert.ok(editorTokenSafety.raw.includes('<img'), 'invalid editor source remains literal in the textarea');
-    assert.match(editorTokenSafety.diagnostic, /알 수 없는 음표 토큰/, 'invalid editor token receives a validation error');
-    assert.notEqual(editorTokenSafety.injected, 1, 'editor token cannot execute injected markup');
-    await cdp.evaluate('document.getElementById("closeNewSongBtn").click()');
+    const storedBinary = await cdp.evaluate(`(async () => {
+      const result = await GuitarLibrary.loadAll();
+      const song = result.songs.find(item => item.title === 'GP preserved');
+      return {
+        format: song && song.format,
+        fileName: song && song.fileName,
+        bytes: song && btoa(String.fromCharCode(...new Uint8Array(song.bytes)))
+      };
+    })()`);
+    assert.equal(storedBinary.format, 'binary', 'unmodified binary import remains binary after save');
+    assert.equal(storedBinary.fileName, 'fixture.gp', 'binary source filename is retained');
+    assert.equal(storedBinary.bytes, originalBase64, 'stored binary bytes match the imported file');
 
-    // 1. Verify TAB mode does not render Korean solfege and renders English pitch names (CDE)
-    const tabSolfegeCount = await cdp.evaluate('document.querySelectorAll(".tab-cell-solfege").length');
-    assert.equal(tabSolfegeCount, 0, "tab mode does not render Korean solfege elements");
-    const tabEnCount = await cdp.evaluate('document.querySelectorAll(".tab-cell-en").length');
-    assert.ok(tabEnCount > 0, "tab mode renders English pitch names (CDE)");
+    await cdp.evaluate('document.getElementById("editSongBtn").click()');
+    await waitForCondition(cdp, 'document.getElementById("editorDialog").open', 5000);
+    const textChanged = await cdp.evaluate(`(() => {
+      const editor = document.getElementById('editorAlphaTex');
+      const previous = editor.value;
+      editor.value = previous.replace('GP fixture', 'GP fixture edited');
+      document.getElementById('editorTitle').value = 'GP text edited';
+      return editor.value !== previous;
+    })()`);
+    assert.equal(textChanged, true, 'binary exporter text is available for editing');
+    await cdp.evaluate('document.getElementById("saveSongBtn").click()');
+    await waitForCondition(cdp,
+      '!document.getElementById("editorDialog").open && document.getElementById("songTitle").textContent==="GP text edited"',
+      12000);
+    const editedBinarySource = await cdp.evaluate(`(async () => {
+      const result = await GuitarLibrary.loadAll();
+      const song = result.songs.find(item => item.title === 'GP text edited');
+      const original = song && song.sourceOriginal;
+      return {
+        format: song && song.format,
+        sourceFormat: original && original.format,
+        fileName: original && original.fileName,
+        bytes: original && btoa(String.fromCharCode(...new Uint8Array(original.bytes)))
+      };
+    })()`);
+    assert.equal(editedBinarySource.format, 'alphatex', 'body edit converts saved record to alphaTex');
+    assert.equal(editedBinarySource.sourceFormat, 'binary', 'edited text retains its original binary source');
+    assert.equal(editedBinarySource.fileName, 'fixture.gp', 'edited text retains the source filename');
+    assert.equal(editedBinarySource.bytes, originalBase64, 'edited text retains the exact original bytes');
 
-    // 2. Verify compact practice mode toggle
-    const initialCompact = await cdp.evaluate('document.body.classList.contains("practice-compact")');
-    assert.equal(initialCompact, false, "compact practice mode is initially off after boot");
-    await cdp.evaluate('document.getElementById("toggleCompactBtn").click()');
-    const isCompact = await cdp.evaluate('document.body.classList.contains("practice-compact")');
-    assert.equal(isCompact, true, "compact practice mode activated immediately on first click");
-    await cdp.evaluate('document.getElementById("toggleCompactBtn").click()');
-    const isCompactRestored = await cdp.evaluate('document.body.classList.contains("practice-compact")');
-    assert.equal(isCompactRestored, false, "compact practice mode toggled off successfully on second click");
+    await cdp.evaluate(`(() => {
+      const originalCreate = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = blob => {
+        window.__downloadBlob = blob;
+        return originalCreate(blob);
+      };
+      document.getElementById('downloadSourceBtn').click();
+    })()`);
+    const downloadedBase64 = await cdp.evaluate(`(async () => {
+      const bytes = new Uint8Array(await window.__downloadBlob.arrayBuffer());
+      return btoa(String.fromCharCode(...bytes));
+    })()`);
+    assert.equal(downloadedBase64, originalBase64,
+      'original download bytes exactly match the imported GP file');
 
-    // 3. Verify youtube quick links query excludes [Lv..] tags
-    const ytLinkText = await cdp.evaluate('document.querySelector("#ytQuickLinks a") ? document.querySelector("#ytQuickLinks a").textContent : ""');
-    assert.ok(ytLinkText.length > 0, "youtube quick links rendered");
-    assert.equal(ytLinkText.includes("[Lv"), false, "youtube search query excludes [Lv..] tags");
+    await cdp.evaluate(`(async () => {
+      const response = await fetch('/test/fixtures/alphatab/simple.musicxml');
+      const blob = await response.blob();
+      const file = new File([blob], 'simple.musicxml', { type: 'application/vnd.recordare.musicxml+xml' });
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      const input = document.getElementById('scoreFileInput');
+      input.files = transfer.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await waitForCondition(cdp, 'document.getElementById("editorDialog").open', 5000);
+    assert.match(await cdp.evaluate('document.getElementById("editorFileInfo").textContent'), /simple\.musicxml/);
+    await cdp.evaluate('document.getElementById("editorTitle").focus()');
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyDown', key: 'Escape', code: 'Escape',
+      windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27
+    });
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'Escape', code: 'Escape',
+      windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27
+    });
+    await waitForCondition(cdp, '!document.getElementById("editorDialog").open');
+    assert.equal(await cdp.evaluate('document.getElementById("editorPreview")._api || null'), null,
+      'native dialog close destroys the editor preview API');
+    assert.deepEqual(cdp.consoleErrors, [], 'MusicXML import produces no browser errors');
 
-    // Verify no unhandled console errors occurred
-    assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');
+    const alphaTexLiteral = JSON.stringify(fixtureText);
+    await cdp.evaluate(`(() => {
+      document.getElementById('openNewSongBtn').click();
+      document.getElementById('editorTitle').value = 'Browser Saved';
+      document.getElementById('editorAlphaTex').value = ${alphaTexLiteral};
+      document.getElementById('saveSongBtn').click();
+    })()`);
+    await waitForCondition(cdp,
+      '!document.getElementById("editorDialog").open && document.getElementById("songTitle").textContent==="Browser Saved"',
+      12000);
+    const savedId = await cdp.evaluate('document.getElementById("songSelect").value');
+    await cdp.evaluate('document.getElementById("editSongBtn").click()');
+    await waitForCondition(cdp, 'document.getElementById("editorDialog").open');
+    assert.equal(await cdp.evaluate('document.getElementById("editorTitle").value'), 'Browser Saved',
+      'saved personal song reopens for editing');
+    await cdp.evaluate('document.getElementById("closeEditorBtn").click()');
 
-    process.stdout.write('Result: browser Headless Chrome smoke passed (clean boot, songs loaded, DOM rendered, modal interaction, 0 console errors)\n');
+    await cdp.send('Page.navigate', { url: appUrl });
+    await waitForCondition(cdp,
+      'document.readyState==="complete" && document.getElementById("songTitle").textContent==="Browser Saved"',
+      15000);
+    const restored = await cdp.evaluate('JSON.parse(localStorage.getItem("gs.player.v3"))');
+    assert.equal(restored.songId, savedId, 'selected personal song restores after reload');
+    assert.equal(restored.speed, 200, 'speed restores after reload');
+    assert.equal(restored.guide, false, 'guide setting restores after reload');
+    assert.equal(restored.loopEnabled, true, 'loop settings restore after reload');
+    assert.deepEqual(cdp.consoleErrors, [], 'reloaded selected score has no worker errors');
+    const restLoopTex = '\\ts (4 4) :4 0.1 r r r | :1 r | :4 0.1 r r r';
+    await cdp.evaluate('(async () => {\n'
+      + '  const controller = window.__testController;\n'
+      + '  const score = { format: "alphatex", alphaTex: ' + JSON.stringify(restLoopTex) + ' };\n'
+      + '  await controller.loadSong(score);\n'
+      + '})()');
+    assert.deepEqual(cdp.consoleErrors, [], 'rest-only measure score loads without worker errors');
+    const restBarRange = await cdp.evaluate(`(() => {
+      window.__testController.setLoop(2, 2, true);
+      const range = window.__testController.api.playbackRange;
+      return range.endTick - range.startTick;
+    })()`);
+    assert.equal(restBarRange, 3840, 'whole-rest bar loop spans the complete 4/4 measure');
+    const trailingRestRange = await cdp.evaluate(`(() => {
+      window.__testController.setLoop(1, 1, true);
+      const range = window.__testController.api.playbackRange;
+      return range.endTick - range.startTick;
+    })()`);
+    assert.equal(trailingRestRange, 3840, 'end-of-bar rests are included in the loop range');
+    const rapidScores = [
+      { format: 'alphatex', alphaTex: '\\ts (3 4) :4 0.1 r r | :4 0.2 r r' },
+      { format: 'alphatex', alphaTex: '\\ts (4 4) :4 0.3 r r r | :4 0.4 r r r | :4 0.5 r r r' },
+      { format: 'alphatex', alphaTex: '\\ts (2 4) :4 0.6 r | :4 0.2 r | :4 0.1 r' },
+    ];
+    const rapidScoresLiteral = JSON.stringify(rapidScores);
+    const rapidLoadResults = await cdp.evaluate(`(async () => {
+      const controller = window.__testController;
+      const scores = ${rapidScoresLiteral};
+      const previousScore = controller.getScore();
+      const firstLoad = controller.loadSong(scores[0]);
+      await Promise.resolve();
+      const activeScore = controller.api.score;
+      const firstScoreStarted = activeScore !== previousScore
+        && activeScore?.masterBars?.[0]?.timeSignatureNumerator === 3;
+      const secondLoad = controller.loadSong(scores[1]);
+      const thirdLoad = controller.loadSong(scores[2]);
+      const results = await Promise.all([firstLoad, secondLoad, thirdLoad]);
+      const currentScore = controller.getScore();
+      controller.setLoop(1, 3, true);
+      const range = controller.api.playbackRange;
+      const tickBars = controller.api.tickCache.masterBars;
+      return {
+        firstScoreStarted,
+        lastResultMatches: results[2] === currentScore && controller.api.score === currentScore,
+        scoreBars: currentScore.masterBars.length,
+        renderedTickBars: tickBars.length,
+        rangeStartMatches: range.startTick === tickBars[0].start,
+        rangeEndMatches: range.endTick === tickBars[tickBars.length - 1].end
+      };
+    })()`);
+    assert.equal(rapidLoadResults.firstScoreStarted, true,
+      'score A becomes the active alphaTab score before B and C are requested');
+    assert.equal(rapidLoadResults.lastResultMatches, true,
+      'rapid A/B/C load resolves to the final C score');
+    assert.equal(rapidLoadResults.scoreBars, 3, 'final score C has its expected three bars');
+    assert.equal(rapidLoadResults.renderedTickBars, 3,
+      'final render tick bounds belong to score C');
+    assert.equal(rapidLoadResults.rangeStartMatches, true,
+      'final render loop start matches score C bounds');
+    assert.equal(rapidLoadResults.rangeEndMatches, true,
+      'final render loop end matches score C bounds');
+    const initialSongId = await cdp.evaluate(`(() => {
+      const select = document.getElementById('songSelect');
+      return select.options[0]?.value || null;
+    })()`);
+    await cdp.evaluate(`(() => {
+      const select = document.getElementById('songSelect');
+      select.value = select.options[0].value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await waitForCondition(cdp,
+      'document.getElementById("appStatus").textContent==="재생 준비 완료" && !document.getElementById("playPauseBtn").disabled',
+      12000);
+    await cdp.evaluate('document.getElementById("playPauseBtn").click()', true);
+    await waitForCondition(cdp, 'document.getElementById("playPauseBtn").textContent==="일시정지"');
+    await new Promise(resolve => setTimeout(resolve, 400));
+    await cdp.evaluate('document.getElementById("playPauseBtn").click()');
+    await waitForCondition(cdp, 'document.getElementById("playPauseBtn").textContent==="재생"');
+    assert.ok(initialSongId, 'review screenshot uses the first sample score');
+    const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+    const screenshotDir = path.join(root, 'test-artifacts');
+    fs.mkdirSync(screenshotDir, { recursive: true });
+    fs.writeFileSync(path.join(screenshotDir, 'alphatab-player-review.png'), Buffer.from(screenshot.data, 'base64'));
+    process.stdout.write('Screenshot: ' + path.join(screenshotDir, 'alphatab-player-review.png') + '\n');
+    assert.deepEqual(cdp.consoleErrors, [], 'normal song selection and playback produce no worker errors');
+    assert.deepEqual(cdp.badResponses, [], 'all local assets load without HTTP errors');
+    assert.deepEqual(cdp.failedRequests, [], 'all local asset requests complete');
+    assert.deepEqual(cdp.consoleErrors, [], 'browser console has no errors');
+    process.stdout.write('Result: alphaTab browser smoke passed (cursor, playback and loop timing, score seek, storage/editing, GP byte preservation, MusicXML, local assets, 0 mic requests, 0 console errors)\n');
+    process.stdout.write('Screenshot: ' + path.join(screenshotDir, 'alphatab-player-review.png') + '\n');
   } finally {
     if (cdp) cdp.close();
-    chromeProc.kill();
+    browser.kill();
     server.close();
-    try {
-      fs.rmSync(tempProfileDir, { recursive: true, force: true });
-    } catch (_) {}
+    if (resolvedProfileDir.startsWith(resolvedTempDir + path.sep)
+      && path.basename(resolvedProfileDir).startsWith('gs-alpha-smoke-')) {
+      try { fs.rmSync(resolvedProfileDir, { recursive: true, force: true }); } catch (_) {}
+    }
   }
 }
 
-main().catch(err => {
-  console.error('Browser smoke test failed:', err);
+main().catch(error => {
+  console.error('Browser smoke test failed:', error);
   process.exitCode = 1;
 });

@@ -1,93 +1,96 @@
-# guitar-studio (클래식 기타 스튜디오)
+# Guitar Studio
 
-클래식 기타 입문자와 동요·교본 연습을 위한 올인원 정적 웹 연습 콘솔. `index.html`과 `src/*.js`, `songs.json`으로 동작하며 모든 개인 악보와 연습 기록은 브라우저 내부(`IndexedDB` / `localStorage`) 또는 개인 구글 스프레드시트에만 저장되어 저작권 문제가 발생하지 않는다.
+TAB 악보와 움직이는 재생 커서를 보며 기타를 연습하는 정적 웹 앱이다. alphaTab 1.8.4가 악보 해석, TAB 렌더링과 재생을 담당한다. 빌드 도구나 별도 백엔드는 필요 없다.
 
-## 파일 구조와 실행
+## 실행
 
-- `index.html`: 앱 화면과 스타일, AudioWorklet 원본 코드를 포함한다.
-- `src/parser.js`: DOM 의존성이 없는 음표·화음 파싱, 마디 구조화, 코드 추론, 에디터 투영, 카포 계산을 제공한다. 브라우저에서는 classic script 전역 API를 제공하고 Node.js에서는 CommonJS API를 내보낸다.
-- `src/notation.js`: 악보 마디 분할, 가사 JSON 인용, 정규 직렬화와 저장 전 검증을 제공한다.
-- `src/ai-prompt.js`: 선택한 박자·템포에 맞는 악보 변환 프롬프트를 만든다.
-- `src/image-analysis.js`: 악보 이미지에서 마디 경계 후보 좌표를 분석한다.
-- `src/storage.js`: DOM 의존성 없이 IndexedDB 악보 저장소와 읽기·쓰기 완료 처리를 제공한다.
-- `src/score.js`: 박자 길이와 점리듬 표시 정보를 계산한다.
-- `src/audio.js`: Web Audio 기타 신디사이저와 프리뷰 음원을 제공한다.
-- `src/guide.js`: 분할 박의 베이스·멜로디·화음 이벤트를 프리뷰, 재생, 예열에서 함께 계산한다.
-- `src/fretboard.js`: 지판, 코드 카드, 하이라이트 및 관련 이벤트를 초기화한다.
-- `src/editor.js`: 악보 입력기, 비주얼 에디터, 저장과 TSV 도우미를 초기화한다.
-- `src/sheets.js`: 구글 시트 JSONP 동기화와 복사 동작을 제공하며, 시트 UI 이벤트는 `initSheetSync()`에서 등록한다.
-- `src/app.js`: 앱 상태, 저장소·시트 연동, 연습 화면과 앱 부팅을 관리한다.
-- `test/test-audio.js`: Node 내장 `vm`으로 실제 `src/audio.js`를 실행해 카포 공명과 캐시 예열을 검증한다.
-- `test/test-guide.js`: 공통 분할음 이벤트의 화음 구성, 카포와 재생 시각을 검증한다.
-- `test/test-storage.js`: IndexedDB 모듈의 저장·삭제 완료와 오류 처리를 스텁으로 검증한다.
-- `test/test-sheets.js`: 시트 동기화의 JSONP 응답 처리를 모의 데이터로 검증한다.
-- `test/test-image-conversion.js`: 프롬프트 예시의 파싱과 이미지 마디선 좌표 분석을 검증한다.
-- `test/test-parser.js`: Node 내장 `assert`를 사용하는 의존성 없는 파서 테스트다.
-- `test/test-app-smoke.js`: Node 내장 `vm`과 DOM/IndexedDB 스텁으로 외부 스크립트 부팅, 악보 렌더, 에디터 저장 경로를 확인한다.
-- `test/test-browser-smoke.js`: Node.js 내장 http/WebSocket 및 CDP(Chrome DevTools Protocol)를 사용해 Headless Chrome/Edge 환경에서 실제 DOM 렌더링, 모달 인터랙션, 콘솔 에러 유무를 검증한다.
-
-페이지는 기존처럼 `index.html`을 직접 열거나 정적 웹 서버에서 실행할 수 있다. HTML은 `src/storage.js`, `src/notation.js`, `src/parser.js`, `src/score.js`, `src/audio.js`, `src/guide.js`, `src/ai-prompt.js`, `src/image-analysis.js`, `src/fretboard.js`, `src/editor.js`, `src/sheets.js`, `src/app.js` 순서로 classic script를 로드한다. 따라서 별도 빌드나 패키지 설치가 필요하지 않으며, 공유 함수는 `window` 전역 이름을 유지한다. 저장소 모듈은 DOM을 참조하지 않는다. 지판, 에디터, 시트 UI 이벤트는 앱 상태가 준비된 뒤 각각 `initFretboard()`, `initEditor()`, `initSheetSync()`에서 등록한다.
-
-자동 베이스 반주 추가 기능은 없다. 악보에 `+`로 입력한 음은 모두 표시하고 재생한다.
-겹음에 베이스 역할이나 오른손 운지를 자동 지정해 표시하지 않는다.
-
-## 악보 문법과 오류 처리
-
-마디는 줄바꿈 또는 `//`로 나누고, 박 안의 분할 음표는 공백 없이 붙여 쓴 `/`로 표기한다. 예를 들어 `2E3/0G3`는 한 박의 두 음이고, `//`는 다음 마디다. 가사는 `|` 뒤에 쓰며, 새 형식에서는 JSON 문자열로 직렬화해 `너 / 나`, 따옴표, URL과 `|`를 가사 그대로 보존한다. 오류가 있는 악보는 저장과 TSV 복사가 막히며, 짧은 마디 같은 경고는 표시한 뒤 저장할 수 있다. 구형 공백 슬래시 마디 구분과 구형 악보 변환은 지원하지 않는다.
-
-파서 회귀 테스트와 구문 검사는 프로젝트 루트에서 실행한다.
+프로젝트 폴더를 정적 HTTP 서버로 제공하고 브라우저에서 연다. file://로 직접 열면 worker, 음원과 저장소가 정상 동작하지 않을 수 있다.
 
 ```powershell
-node test/test-parser.js
-node test/test-notation.js
-node test/test-image-conversion.js
-node test/test-audio.js
-node test/test-guide.js
-node test/test-storage.js
-node test/test-sheets.js
-node test/test-app-smoke.js
-node test/test-browser-smoke.js
-Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName }
+python -m http.server 8000
 ```
 
-## 주요 기능
+브라우저에서 http://localhost:8000을 연다. 라이브러리, 폰트와 SoundFont는 vendor/alphatab/에 포함되어 있다. 구글 시트 동기화를 제외한 악보 렌더링과 재생은 런타임 CDN을 사용하지 않는다.
 
-1. **난이도별 내장 명곡 14선 (`songs.json`) & 구글 스프레드시트 실시간 연동**
-   - **Lv.1 입문 ~ Lv.6 원곡 완결판** 순서로 정렬된 저작권 무료 동요·민요·클래식 명곡 14곡(**나비야, 학교종, 작은 별, 런던 다리, 징글 벨즈, 환희의 송가, 클레멘타인, 브람스 자장가, 아리랑, 어메이징 그레이스, 푸른 옷소매, 파헬벨의 캐논, 사랑의 로망스 테마, 사랑의 로망스 완곡**) 기본 수록.
-   - 상단 `[구글 시트]`에 내 구글 스프레드시트 공유 링크(뷰어)만 등록하면 API 키나 로그인 없이 CORS-free JSONP 방식으로 어디서든 내 시트의 악보를 실시간 동기화한다.
+## 연습 기능
 
-2. **AI 채팅(제미니/안티그래비티) 악보 변환 & 듀얼 모드 계이름 입력 패드**
-   - `[제미니/안티그래비티 질문용 프롬프트 복사]` 버튼으로 교본 악보 사진을 마디별 텍스트 및 구글 시트 한 줄(TSV) 포맷으로 즉시 변환.
-   - 음 기호 앞 숫자(`0~4`)로 교본의 **왼손 운지**(예: `4D4`, `3A3`, `1G#3`, `4F#3`, `4G4`)를 그대로 반영.
-   - 왼손 운지는 원문에 숫자를 적었을 때만 표시하고, 생략하면 프렛만 표시한다. 오른손 운지 문법은 없어 p/i/m/a를 추정해 표시하지 않는다.
-   - **기타 줄별(1~6번줄)** 배열과 **계이름 순서(도레미파솔라시)** 배열을 탭 하나로 전환 가능한 원클릭 입력 패드 내장.
-   - **화성학 기반 코드 자동 추론(`inferChordsForMeasures`)**: 코드가 없는 단선율 악보도 곡 전체의 조성(Key)과 마디별 강박·유지음 가중치를 분석해 어울리는 반주 코드를 추론하고 `(자동)`으로 표시한다.
+- 음가, 쉼표, 박자표, 붙임줄, 여러 성부와 기타 주법을 포함한 TAB 표시.
+- 재생 커서, 현재 마디 표시, 자동 스크롤과 악보 클릭 이동.
+- 재생·일시정지·정지, 25~200% 상대 속도와 마디 구간 반복.
+- 독립적인 가이드음과 메트로놈, 음량 조절.
+- 현재 음의 현·프렛을 보여 주는 간단한 지판. 원본에 명시된 손가락만 표시한다.
+- alphaTex 편집·미리보기, Guitar Pro/MusicXML 가져오기, 원본 다운로드와 Guitar Pro 내보내기.
+- 브라우저 IndexedDB 개인 악보 저장과 구글 시트 동기화.
 
-3. **실시간 6현 지판(1~12프렛) & 선행(Look-Ahead) 자동 스크롤**
-   - 현재 박자의 목표 멜로디 음(초록색 캡슐 마커, 계이름+왼손 번호)과 마디 코드 구성음(파란색 마커, 켜기/숨김 토글 지원)이 6현 지판에 표시된다.
-   - 마디 중간의 원하는 박자(Beat) 칸을 직접 클릭해 운지와 소리를 확인하고 해당 박자부터 바로 메트로놈 연습을 시작할 수 있다.
-   - 연주 중인 마디 줄을 항상 악보 창 상단(`~15%`)에 배치하고 줄 마지막 마디 중반에 다음 줄로 부드럽게 선행 스크롤하여 시선이 끊기지 않는다.
+박자 카드, 마이크 채점, 튜너, 자동 베이스 반주, 손가락 추정은 제공하지 않는다. 사진 입력은 미리보기와 외부 AI 전사 프롬프트 복사를 제공한다. 사진을 앱 안에서 자동 인식하는 기능은 없다.
 
-4. **구간 반복(A-B Loop) & 자동 가속(Speed Trainer) & 정박·음정 채점**
-   - 원하는 마디 구간만 반복 연습하고, 2회 완주마다 자동으로 `+3 BPM`씩 템포를 올리는 속도 훈련 기능.
-   - `AudioWorklet` 기반 실시간 마이크 박자 오차(`ms`)·음정 판정 및 **클래식 기타 6현 튜너** 내장.
+## 악보 입력
 
-5. **6현 가로선 타브(TAB) 뷰어 & 박 내 서브토큰(8분·16분·점음표) 엔진**
-   - 단축키 `T` 또는 상단 세그먼트로 카드 뷰 / 타브 뷰 즉시 전환.
-   - 1박 단위 고정 그리드 안에서 슬래시(`/`) 서브토큰을 이용해 8분음표 2분할, 셋잇단 3분할, 16분음표 4분할, 점4분음표(1.5박) 및 엇박 리듬 완벽 렌더링 및 가이드 음 재생.
-   - 타브 셀 상단에 한글 계이름과 CDE 영문 음이름 병기, 프렛 알약 내 왼손 운지 번호 표기.
+텍스트 입력은 alphaTex를 사용한다. 음표는 프렛.현, 현 번호는 가장 높은 현이 1번이다. :4는 뒤따르는 음표의 기본 음가를 4분음표로 지정한다. |는 마디 구분이다.
 
----
+```text
+\title "카포 5 연습"
+\tempo 64
+\ts (3 4)
+\capo 5
+:4 3.5 (0.3 1.2) 0.1 |
+3.5 (0.3 1.2) 0.1
+```
 
-## 향후 개발 로드맵 (Roadmap)
+복잡한 악보는 Guitar Pro 또는 MusicXML 파일로 가져오는 편이 편하다. 가져온 파일은 원본 바이트로 저장한다. 제목·설명만 바꾸면 원본 형식을 유지하고, 편집기에 표시된 alphaTex 본문을 수정해 저장하면 alphaTex 악보가 되며 원본 파일은 sourceOriginal에 남는다. alphaTab이 지원하는 형식과 표현 범위 안에서 렌더링하며, 형식 간 변환 시 모든 프로그램 고유 정보가 보존되는 것은 아니다.
 
-- [ ] **변칙 조율 (Alternate Tuning) 지원**
-  - **목적:** 코타로 오시오의 '황혼(Twilight)' 등 핑거스타일 명곡 지원.
-  - **내용:** 곡 스펙에 `"tuning": "Open D"` (D-A-D-F#-A-D), `DADGAD`, `Drop D` 등 조율 프리셋 지정 기능 추가.
-  - **연동:** 6현 지판 마커 위치, TAB 악보 개방현 줄 이름, WebAudio 가이드 음 사운드 엔진의 기준 MIDI 피치 자동 재계산.
+새 문법은 기존 음이름·슬래시 문법을 해석하지 않는다. 이전 구조화 악보는 저장된 음·현·프렛으로 한 번 변환하고 legacyOriginal에 원본을 보관한다. 구형 빈 칸의 유지음/쉼 해석을 포함한 변환 안내를 확인해야 한다. 자동 변환할 수 없는 이미지 악보도 저장소에서 삭제하지 않는다.
 
-- [ ] **기타 특수 주법 토큰 확장**
-  - 해머링 온(`h`), 풀링 오프(`p`), 슬라이드(`s`), 내추럴/인공 하모닉스(`harm` / `*`) 텍스트 파싱 및 타브 악보 시각화.
+문법은 [alphaTab alphaTex 문서](https://alphatab.net/docs/alphatex/introduction/)를 참고할 수 있다. 앱에 고정된 버전은 1.8.4이므로 최신 문서에만 있는 문법은 지원하지 않을 수 있다.
 
-- [ ] **마디별 가변 박자 (Mixed Meter) 지원**
-  - 곡 단위의 단일 박자(`beats`) 외에 마디별 개별 박자 오버라이드 지원 (4/4 진행 중 2/4 마디 삽입 등 프로그레시브 핑거스타일 대응).
+## 구글 시트
+
+시트는 다음 세 열을 사용한다. 첫 행은 제목, 설명, alphaTex로 둔다.
+
+| A: 제목 | B: 설명 | C: alphaTex |
+| --- | --- | --- |
+| 카포 5 연습 | 두 마디 연습 | 위 예시 전체를 한 셀에 입력 |
+
+시트의 공유 권한을 링크로 읽을 수 있게 설정한 뒤 앱에 시트 URL을 넣고 동기화한다. 동기화는 읽기 전용이며 시트에 쓰지 않는다. 앱의 TSV 복사 결과를 A열의 빈 셀에 붙여 넣으면 세 열로 나뉘고 alphaTex 안의 줄바꿈·탭·따옴표를 보존한다. binary 악보는 alphaTex로 편집·저장한 후 TSV로 복사할 수 있다. 구형 5열 시트는 지원하지 않는다.
+
+## 파일 구조
+
+| 경로 | 역할 |
+| --- | --- |
+| index.html | 화면, 스타일과 스크립트 순서 |
+| src/tab-engine.js | 실제 alphaTab parser, renderer, player를 연결하는 공통 API |
+| src/library.js, src/storage.js | 내장곡과 IndexedDB 개인 악보 |
+| src/legacy-migration.js | 기존 구조화 데이터의 일회성 변환 |
+| src/sheets.js | 세 열 시트 읽기와 TSV 직렬화 |
+| src/editor.js | alphaTex 편집, 파일 가져오기와 다운로드 |
+| src/fretboard.js | 현재 음의 현·프렛·명시 운지 표시 |
+| src/ai-prompt.js | 외부 AI 사진 전사 지침 |
+| src/app.js | 곡 선택, 상태와 플레이어 UI 연결 |
+| songs.json | 변환된 내장곡과 연습 예제 |
+| vendor/alphatab/ | 고정 버전 라이브러리, worker, 폰트, 음원과 라이선스 |
+| Docs/alphatab-player.md | 전환 사양과 모듈 계약 |
+
+Temp/는 개인 원본 자료이며 배포와 커밋에서 제외한다. 구조화 JSON을 수동 변환하려면 아래 명령을 사용할 수 있다. 이 도구는 구형 텍스트 문법을 파싱하지 않는다.
+
+```powershell
+node tools/convert-builtin-songs.js 입력.json 출력.json
+```
+
+## 검증
+
+프로젝트 루트에서 실행한다. 패키지 설치나 빌드 단계는 없다. 브라우저 검증은 설치된 Chrome/Edge와 Node.js의 내장 WebSocket을 사용한다.
+
+```powershell
+Get-ChildItem src\*.js, test\*.js, tools\*.js | ForEach-Object { node --check $_.FullName }
+node test/test-parser.js
+node test/test-migration.js
+node test/test-storage.js
+node test/test-sheets.js
+node test/test-image-conversion.js
+node test/test-app-smoke.js
+node test/test-browser-smoke.js
+```
+
+단위 검증은 실제 alphaTab의 복합 리듬·성부·붙임줄·카포, GP 왕복과 MusicXML 가져오기, 데이터 변환과 저장 오류를 확인한다. 브라우저 검증은 실제 로컬 자산 로드, TAB 렌더링과 재생 시간, 편집·저장·파일 가져오기를 확인한다. Headless 테스트만으로 실제 스피커의 음질이나 연주와의 청각적 일치를 판단하지 않는다.
+
+alphaTab은 MPL-2.0, Bravura 폰트는 SIL OFL이며 SoundFont는 함께 제공된 라이선스를 따른다. 배포 파일과 출처는 vendor/alphatab/README.md에 기록한다.

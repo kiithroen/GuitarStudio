@@ -1,139 +1,63 @@
-const fs = require('fs');
-const path = require('path');
-const vm = require('vm');
+'use strict';
+
 const assert = require('node:assert/strict');
-const parserSource = fs.readFileSync(path.join(__dirname, '../src/parser.js'), 'utf8');
-const notationSource = fs.readFileSync(path.join(__dirname, '../src/notation.js'), 'utf8');
-const sheetsSource = fs.readFileSync(path.join(__dirname, '../src/sheets.js'), 'utf8');
-
+const Sheets = require('../src/sheets.js');
 let checks = 0;
-async function test(name, fn){ await fn(); checks++; process.stdout.write('ok ' + checks + ' - ' + name + '\n'); }
-function makeHarness(){
-  const elements = Object.create(null);
-  const timers = new Map();
+async function check(name, fn){ await fn(); checks++; process.stdout.write('ok ' + checks + ' - ' + name + '\n'); }
+
+(async function(){
+await check('extracts spreadsheet id and gid', function(){
+  assert.deepEqual(Sheets.extractSheetIdAndGid('https://docs.google.com/spreadsheets/d/Abc-123_x/edit#gid=42'), { sheetId: 'Abc-123_x', gid: '42' });
+  assert.equal(Sheets.extractSheetIdAndGid('invalid'), null);
+});
+await check('quotes tabs and preserves quotes, carriage returns, and newlines in TSV cells', function(){
+  const song = { title: 'Title\tinside', description: 'say "yes"\r\nnext', format: 'alphatex', alphaTex: '\\title "A"\n:4 0.1' };
+  const tsv = Sheets.toTsv(song);
+  assert.equal(tsv, '"Title\tinside"\t"say ""yes""\r\nnext"\t"\\title ""A""\n:4 0.1"');
+});
+await check('parses three columns and accepts a valid alphaTex validator', function(){
+  const rows = [['제목', '설명', 'alphaTex'], ['Piece', 'Short note', ':4 0.1 1.1 0.1 1.1']];
+  const list = Sheets.parseRows(rows, function(text){ assert.match(text, /:4/); });
+  assert.equal(list.length, 1);
+  assert.equal(list[0].title, 'Piece');
+  assert.equal(list[0].description, 'Short note');
+  assert.equal(list[0].alphaTex, rows[1][2]);
+  assert.equal(list[0].notationVersion, 3);
+  assert.equal(list[0].fromSheet, true);
+});
+await check('rejects legacy five-column rows and leaves parsing atomic', function(){
+  const rows = [['good', '', ':4 0.1'], ['legacy', '4', '64', 'badge', 'C4 - - -']];
+  let committed = ['previous'];
+  assert.throws(function(){ committed = Sheets.parseRows(rows, function(){}); }, /구형 5열/);
+  assert.deepEqual(committed, ['previous']);
+});
+await check('rejects any invalid row with its row number', function(){
+  assert.throws(function(){
+    Sheets.parseRows([['One', '', ':4 0.1'], ['Broken', '', 'bad']], function(text){ if (text === 'bad') throw new Error('bad alphaTex'); });
+  }, /시트 2행: bad alphaTex/);
+});
+await check('JSONP success and timeout both clean callback, script, and timer', async function(){
   const scripts = [];
-  const lsData = Object.create(null);
-  let timerId = 0;
-  function element(id){
-    if (!elements[id]) elements[id] = { id, value: '', textContent: '', hidden: true, listeners: [], addEventListener(type, fn){ this.listeners.push({ type, fn }); } };
-    return elements[id];
-  }
-  const document = {
-    head: { appendChild(script){ script.parentNode = this; scripts.push(script); }, removeChild(script){ script.parentNode = null; } },
-    createElement(tag){ return { tagName: tag.toUpperCase(), parentNode: null, src: '', onerror: null }; },
-    querySelector(selector){ return element(selector.slice(1)); }
-  };
-  const context = {
-    console, document, window: null,
-    fetch: async () => ({ ok: false }),
-    setTimeout(fn, delay){ const id = ++timerId; timers.set(id, { fn, delay }); return id; },
-    clearTimeout(id){ timers.delete(id); },
-    Date, Math, Promise, encodeURIComponent,
-    navigator: { clipboard: { writeText: async () => {} } },
-    alert(){}, prompt(){}, confirm(){ return true; },
-    ls: { get(key, fallback){ return Object.prototype.hasOwnProperty.call(lsData, key) ? lsData[key] : fallback; }, set(key, value){ lsData[key] = value; } },
-    appState: { lastSongId: 'builtin-last' }, BUILTIN_SONGS: [],
-    rebuildSongSelect(id){ context.rebuilt.push(id); }, rebuilt: [],
-    curSong: null
-  };
-  context.$ = function(selector){ return document.querySelector(selector); };
-  context.window = context;
-  vm.createContext(context);
-  vm.runInContext(notationSource, context, { filename: 'notation.js' });
-  vm.runInContext(parserSource, context, { filename: 'parser.js' });
-  vm.runInContext(sheetsSource, context, { filename: 'sheets.js' });
-  return { context, elements, timers, scripts, lsData };
-}
-function callbackName(script){ return /responseHandler:([^&]+)/.exec(script.src)[1]; }
-function respond(script, value){ script.parentNode; script.parentNode && script.parentNode.removeChild(script); }
-
-async function run(){
-const h = makeHarness();
-await test('extracts spreadsheet id and gid from URL and raw id', function(){
-  assert.deepEqual(JSON.parse(JSON.stringify(h.context.extractSheetIdAndGid('https://docs.google.com/spreadsheets/d/Abc-123_x/edit#gid=42'))), { sheetId: 'Abc-123_x', gid: '42' });
-  assert.equal(h.context.extractSheetIdAndGid('a'.repeat(20)).gid, '0');
-  assert.equal(h.context.extractSheetIdAndGid('invalid'), null);
-});
-await test('JSONP success cleans script, callback, and timeout', async function(){
-  const pending = h.context.loadSheetViaJsonp('sheetId', '7');
-  const script = h.scripts.at(-1); const cb = callbackName(script); const timer = [...h.timers.keys()][0];
-  assert.match(script.src, /\/gviz\/tq\?tqx=responseHandler:/);
-  h.context[cb]({ table: { rows: [{ c: [{ v: 'Song' }, null, { f: '64' }] }] } });
-  assert.deepEqual(JSON.parse(JSON.stringify(await pending)), [['Song', '', '64']]);
-  assert.equal(h.context[cb], undefined); assert.equal(script.parentNode, null); assert.equal(h.timers.has(timer), false);
-});
-await test('JSONP error and timeout clean all pending resources', async function(){
-  const failed = h.context.loadSheetViaJsonp('sheetId', '0');
-  const badScript = h.scripts.at(-1); const badCb = callbackName(badScript); const badTimer = [...h.timers.keys()][0];
-  h.context[badCb]({ status: 'error' });
-  await assert.rejects(failed, /시트 데이터를 읽지 못했어요/);
-  assert.equal(h.context[badCb], undefined); assert.equal(badScript.parentNode, null); assert.equal(h.timers.has(badTimer), false);
-  const timed = h.context.loadSheetViaJsonp('sheetId', '0');
-  const timedScript = h.scripts.at(-1); const timedCb = callbackName(timedScript); const timedTimer = [...h.timers.keys()][0];
-  h.timers.get(timedTimer).fn();
+  const timers = new Map();
+  const windowStub = {};
+  const documentStub = { head: { appendChild(script){ script.parentNode = this; scripts.push(script); }, removeChild(script){ script.parentNode = null; } }, createElement(){ return { parentNode: null }; } };
+  let id = 0;
+  const options = { document: documentStub, window: windowStub, setTimeout(fn, ms){ const timer = ++id; timers.set(timer, { fn, ms }); return timer; }, clearTimeout(timer){ timers.delete(timer); } };
+  const pending = Sheets.loadSheetViaJsonp('sheetid', '1', options);
+  const script = scripts[0]; const callbackName = /responseHandler:([^&]+)/.exec(script.src)[1]; const timer = [...timers.keys()][0];
+  windowStub[callbackName]({ table: { rows: [{ c: [{ v: 'A' }, { v: 'B' }, { v: 'C' }] }] } });
+  assert.deepEqual(await pending, [['A', 'B', 'C']]);
+  assert.equal(windowStub[callbackName], undefined);
+  assert.equal(script.parentNode, null);
+  assert.equal(timers.has(timer), false);
+  const timed = Sheets.loadSheetViaJsonp('sheetid', '1', options);
+  const timedScript = scripts[1]; const timedCallback = /responseHandler:([^&]+)/.exec(timedScript.src)[1]; const timedTimer = [...timers.keys()][0];
+  timers.get(timedTimer).fn();
   await assert.rejects(timed, /응답 시간 초과/);
-  assert.equal(h.context[timedCb], undefined); assert.equal(timedScript.parentNode, null); assert.equal(h.timers.has(timedTimer), false);
+  assert.equal(windowStub[timedCallback], undefined);
+  assert.equal(timedScript.parentNode, null);
+  assert.equal(timers.has(timedTimer), false);
 });
-await test('sync parses sheet rows and keeps spaced lyric slashes within one measure', async function(){
-  const ls = h.context.ls;
-  ls.set('gs.hiddenSheetSongs', ['Hidden']);
-  ls.set('gs.sheetTitleOverrides', { 'sheet-song-3': 'Override title' });
-  const promise = h.context.syncGoogleSheetSongs('https://docs.google.com/spreadsheets/d/sheet1234567890123456/edit?gid=5', false);
-  const cb = callbackName(h.scripts.at(-1));
-  h.context[cb]({ table: { rows: [
-    { c: [{ v: '곡 제목' }] },
-    { c: [{ v: 'Visible' }, { v: '4' }, { v: '90' }, { v: 'badge' }, { v: '[C] C4 - - - | one / lyric' }] },
-    { c: [{ v: 'Hidden' }, { v: '4' }, { v: '80' }, { v: 'badge' }, { v: '[G] G3 - - - | lyric/slash' }] },
-    { c: [{ v: 'Override me' }, { v: '[G] 2E3/0G3 - - - | lyric / slash' }] }
-  ] } });
-  assert.equal(await promise, true);
-  assert.equal(h.context.sheetSongs.length, 3);
-  assert.equal(h.context.sheetSongs[0].id, 'sheet-song-1');
-  assert.equal(h.context.sheetSongs[0].measures.length, 1);
-  assert.equal(h.context.sheetSongs[0].measures[0].lyric, 'one / lyric');
-  assert.equal(h.context.sheetSongs[1].title, 'Hidden');
-  assert.equal(h.context.sheetSongs[1].measures[0].lyric, 'lyric/slash');
-  assert.equal(h.context.sheetSongs[1].measures.length, 1);
-  assert.equal(h.context.sheetSongs[2].title, 'Override title');
-  assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.hiddenSheetSongs', null))), []);
-  assert.equal(h.context.rebuilt.at(-1), 'sheet-song-1');
 
-  ls.set('gs.hiddenSheetSongs', ['Hidden']);
-  const silent = h.context.syncGoogleSheetSongs('https://docs.google.com/spreadsheets/d/sheet1234567890123456/edit', true);
-  const silentCb = callbackName(h.scripts.at(-1));
-  h.context[silentCb]({ table: { rows: [
-    { c: [{ v: 'Visible' }, { v: '4' }, { v: '90' }, { v: 'badge' }, { v: '[C] C4 - - -' }] },
-    { c: [{ v: 'Hidden' }, { v: '4' }, { v: '80' }, { v: 'badge' }, { v: '[G] G3 - - -' }] }
-  ] } });
-  assert.equal(await silent, true);
-  assert.equal(h.context.sheetSongs.length, 1);
-  assert.equal(h.context.sheetSongs[0].title, 'Visible');
-  assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.hiddenSheetSongs', null))), ['Hidden']);
-  assert.equal(h.context.rebuilt.at(-1), 'builtin-last');
-});
-await test('invalid sheet row preserves previous songs and settings', async function(){
-  const ls = h.context.ls;
-  const previous = h.context.sheetSongs.slice();
-  const previousUrl = ls.get('gs.sheetUrl', '');
-  ls.set('gs.hiddenSheetSongs', ['Keep hidden']);
-  const promise = h.context.syncGoogleSheetSongs('https://docs.google.com/spreadsheets/d/sheet1234567890123456/edit', false);
-  const cb = callbackName(h.scripts.at(-1));
-  h.context[cb]({ table: { rows: [
-    { c: [{ v: 'Bad row' }, { v: '4' }, { v: '80' }, { v: 'badge' }, { v: '[C] C4 H4 - -' }] }
-  ] } });
-  assert.equal(await promise, false);
-  assert.deepEqual(JSON.parse(JSON.stringify(h.context.sheetSongs)), JSON.parse(JSON.stringify(previous)));
-  assert.equal(ls.get('gs.sheetUrl', ''), previousUrl);
-  assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.hiddenSheetSongs', []))), ['Keep hidden']);
-  assert.match(h.elements.sheetSyncStatus.textContent, /1행/);
-  assert.equal(h.context.rebuilt.at(-1), 'builtin-last');
-});
-await test('initSheetSync registers handlers once and keeps manual/silent behaviors distinct', function(){
-  h.context.initSheetSync(); h.context.initSheetSync();
-  assert.equal(h.elements.openSheetSyncBtn.listeners.length, 1);
-  assert.equal(h.elements.syncSheetNowBtn.listeners.length, 1);
-  assert.equal(h.elements.copySheetTemplateBtn.listeners.length, 1);
-});
 process.stdout.write('1..' + checks + '\n');
-}
-run().catch(function(error){ console.error(error); process.exitCode = 1; });
+})().catch(function(error){ console.error(error); process.exitCode = 1; });

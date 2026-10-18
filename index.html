@@ -1,1304 +1,155 @@
 <!doctype html>
 <html lang="ko">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#eceee9" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#121614" media="(prefers-color-scheme: dark)">
-<meta name="mobile-web-app-capable" content="yes">
-<title>기타 스튜디오 (Guitar Studio)</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&display=swap">
-<style>
-:root{
-  --bg:#eceee9;
-  --surface:#f7f8f5;
-  --surface-2:#eff2ec;
-  --line:#d4d9d1;
-  --grid:#dde2da;
-  --fg:#1c2320;
-  --muted:#5d6862;
-  --accent:#2d4c9b;
-  --accent-soft:rgba(45,76,155,.12);
-  --accent-ink:#ffffff;
-  --ok:#22804a;
-  --ok-soft:rgba(34,128,74,.14);
-  --near:#a8740a;
-  --near-soft:rgba(168,116,10,.15);
-  --off:#c03f2a;
-  --off-soft:rgba(192,63,42,.14);
-  --d-bg:#1b201e;
-  --d-surface:#232a27;
-  --d-line:#323a36;
-  --d-fg:#eef2ef;
-  --d-muted:#97a39c;
-  --d-ok:#62d491;
-  --d-near:#f1bc4f;
-  --d-off:#ff7c5f;
-  --wood:#4a3525;
-  --wood-line:#8c735b;
-  --string:#d6cfc7;
-  --font-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",system-ui,sans-serif;
-  --font-num:"Chivo Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
-  --font-term:"Newsreader","Noto Serif",Georgia,serif;
-  color-scheme:light;
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#121614; --surface:#1a1f1d; --surface-2:#222926; --line:#2c3431; --grid:#262e2a;
-    --fg:#e4e9e5; --muted:#98a49d;
-    --accent:#93abf5; --accent-soft:rgba(147,171,245,.16); --accent-ink:#0f1a3a;
-    --ok:#56c785; --ok-soft:rgba(86,199,133,.16);
-    --near:#e3ad3f; --near-soft:rgba(227,173,63,.16);
-    --off:#f0715a; --off-soft:rgba(240,113,90,.16);
-    --d-bg:#0b0e0d; --d-surface:#151a18; --d-line:#27302c;
-    color-scheme:dark;
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f8fc">
+  <title>Guitar Studio</title>
+  <link rel="icon" href="data:,">
+  <style>
+  :root {
+    color-scheme: light;
+    --ink: #18304a;
+    --muted: #65768a;
+    --line: #dce5ef;
+    --blue: #3478d4;
+    --blue-dark: #225fae;
+    --paper: #fff;
+    --wash: #f4f7fb;
+    --red: #a54242;
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-}
-*,*::before,*::after{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.5}
-button,input,select,textarea{font:inherit;color:inherit}
-button{cursor:pointer;touch-action:manipulation}
-button:disabled{cursor:default;opacity:.45}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-[hidden]{display:none!important}
 
-.wrap{max-width:1080px;margin:0 auto;padding:calc(14px + env(safe-area-inset-top,0px)) 16px calc(48px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
-.topbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.brand h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
-.brand .sub{font-size:13px;color:var(--muted)}
-.top-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-
-.btn{min-height:38px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font-weight:500;font-size:13.5px;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:6px}
-.btn.sm{min-height:32px;padding:0 10px;font-size:12.5px;border-radius:8px}
-.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
-.btn.ok{background:var(--ok);color:#fff;border-color:transparent;font-weight:600}
-.btn.danger{color:var(--off)}
-.btn.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
-.stage .btn{background:var(--d-bg);color:var(--d-fg);border-color:var(--d-line)}
-.stage .btn:hover{border-color:var(--d-muted)}
-
-.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
-.panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-h2{margin:0;font-size:16.5px;font-weight:700}
-h3{margin:0;font-size:14.5px;font-weight:600}
-.label{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--muted)}
-.hint{margin:0;font-size:12.5px;color:var(--muted);line-height:1.45}
-.num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
-.badge{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;display:inline-flex;align-items:center}
-.badge.accent{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
-
-/* 곡 선택 및 이어가기 바 */
-.song-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
-.song-select-row{display:flex;gap:8px;align-items:center;flex:1 1 360px;min-width:0}
-.song-select-row label{white-space:nowrap}
-.song-select{flex:1 1 0;min-width:0;width:100%;max-width:100%;min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.resume-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-radius:10px;background:var(--accent-soft);border:1px solid var(--accent);font-size:13px}
-
-/* 콘솔 (메트로놈 + 컨트롤) */
-.stage{background:var(--d-bg);color:var(--d-fg);border:1px solid var(--d-line);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
-.stage-grid{display:grid;grid-template-columns:1.15fr 1.15fr 1fr;gap:10px;align-items:stretch}
-@media (max-width:860px){.stage-grid{grid-template-columns:1fr}}
-.stage-box{background:var(--d-surface);border:1px solid var(--d-line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;gap:6px;min-height:130px;box-sizing:border-box}
-
-.st-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.phase{font-size:12px;color:var(--d-muted);font-variant-numeric:tabular-nums;font-weight:500}
-.leds{display:flex;gap:6px}
-.led{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--d-muted);opacity:.5;transition:transform .08s,background-color .08s}
-.led.on{background:var(--d-fg);border-color:var(--d-fg);opacity:1;transform:scale(1.1)}
-.led.on.accent{background:var(--d-near);border-color:var(--d-near)}
-
-.bpm-ctrl{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;align-items:center;gap:6px}
-.step-btn{height:30px;border-radius:7px;border:1px solid var(--d-line);background:transparent;color:var(--d-fg);font-size:15px;font-family:var(--font-num);cursor:pointer}
-.step-btn:hover{background:rgba(255,255,255,.06);border-color:var(--d-fg)}
-.bpm-read{display:flex;flex-direction:column;align-items:center;line-height:1.05}
-.bpm-num{font-family:var(--font-num);font-size:25px;font-weight:700}
-.bpm-unit{font-size:11px;color:var(--d-muted)}
-.tempo-it{font-family:var(--font-term);font-style:italic;color:var(--d-fg)}
-input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
-.stage input[type=range]{accent-color:var(--d-fg)}
-
-.ctrl-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:space-between}
-.ctrl-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--d-muted)}
-.ctrl-item select,.ctrl-item input[type=number]{background:var(--d-bg);color:var(--d-fg);border:1px solid var(--d-line);border-radius:6px;padding:3px 6px;font-family:var(--font-num);font-size:12px}
-.ctrl-item input[type=number]{width:48px;text-align:center}
-
-.play-row{display:flex;gap:6px;align-items:center}
-.go-btn{flex:1;height:36px;border-radius:9px;border:0;background:var(--d-ok);color:#091e12;font-size:14px;font-weight:700;letter-spacing:.02em;cursor:pointer}
-.go-btn.running{background:transparent;color:var(--d-off);box-shadow:inset 0 0 0 2px var(--d-off)}
-.sound-toggle{height:36px;padding:0 9px;border-radius:9px;border:1.5px solid var(--d-line);background:var(--d-surface);color:var(--d-muted);font-size:11px;font-weight:600;white-space:nowrap;cursor:pointer;transition:border-color .15s,color .15s,background-color .15s}
-.sound-toggle[aria-pressed="true"]{border-color:var(--d-ok);background:rgba(98,212,145,.10);color:var(--d-ok)}
-.sound-toggle[aria-pressed="false"]{border-color:var(--d-line);background:var(--d-bg);color:var(--d-muted)}
-.fx-toggle{height:22px;padding:0 7px;border-radius:6px;border:1px solid var(--d-line);background:var(--d-bg);color:var(--d-muted);font-size:11px;font-weight:600;white-space:nowrap;cursor:pointer;transition:border-color .15s,color .15s,background-color .15s}
-.fx-toggle[data-active="true"]{border-color:var(--d-ok);background:rgba(98,212,145,.12);color:var(--d-ok)}
-.fx-toggle[data-active="false"]{border-color:var(--d-line);background:var(--d-bg);color:var(--d-muted)}
-#bpmResetBtn{height:22px;background:var(--d-bg);border-color:var(--d-line);color:var(--d-muted);transition:border-color .15s,color .15s,background-color .15s}
-#bpmResetBtn:hover{border-color:var(--d-fg);color:var(--d-fg)}
-#bpmResetBtn.active{background:rgba(98,212,145,.14);border-color:var(--d-ok);color:var(--d-ok);font-weight:600}
-
-/* 실시간 마이크/음정 게이지 */
-.gauge-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.pitch-box{display:flex;align-items:baseline;gap:5px}
-.pitch-note{font-family:var(--font-num);font-size:20px;font-weight:700;color:var(--d-fg)}
-.pitch-ko{font-size:12px;color:var(--d-near);font-weight:600}
-.err-box{font-family:var(--font-num);font-size:16px;font-weight:600}
-.err-box[data-cls="ok"]{color:var(--d-ok)}
-.err-box[data-cls="near"]{color:var(--d-near)}
-.err-box[data-cls="off"]{color:var(--d-off)}
-.mini-scale{position:relative;height:12px;background:var(--d-bg);border-radius:5px;overflow:hidden;border:1px solid var(--d-line)}
-.mini-zone{position:absolute;left:37.5%;width:25%;top:0;bottom:0;background:rgba(98,212,145,.18)}
-.mini-needle{position:absolute;top:0;bottom:0;left:50%;width:3px;background:var(--d-fg);transform:translateX(-50%);transition:left .1s ease-out}
-.mini-needle[data-cls="ok"]{background:var(--d-ok)}
-.mini-needle[data-cls="near"]{background:var(--d-near)}
-.mini-needle[data-cls="off"]{background:var(--d-off)}
-.mic-row{display:flex;align-items:center;gap:8px}
-.mic-bar{flex:1;height:4px;border-radius:2px;background:var(--d-line);overflow:hidden}
-.mic-fill{height:100%;width:0;background:var(--d-ok);transition:width .06s}
-.tuner-meter{position:relative;width:100%;height:18px;margin:10px auto 6px;max-width:360px;background:var(--d-surface);border:1px solid var(--d-muted);border-radius:9px;overflow:hidden}
-.tuner-meter::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--d-muted)}
-.tuner-zone{position:absolute;top:0;bottom:0;left:47%;width:6%;background:rgba(98,212,145,.35)}
-.tuner-needle{position:absolute;top:0;bottom:0;left:50%;width:4px;margin-left:-2px;border-radius:2px;background:var(--d-muted);transition:left .08s linear}
-.tuner-needle[data-cls="ok"]{background:var(--d-ok)}
-.tuner-needle[data-cls="near"]{background:var(--d-near)}
-.tuner-needle[data-cls="off"]{background:var(--d-off)}
-
-/* 악보 영역 */
-.score-toolbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid var(--line)}
-.score-toolbar-left{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
-.score-toolbar-right{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex-shrink:0}
-.tab-seg{display:inline-flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
-.tab-seg button{border:0;background:transparent;padding:5px 11px;border-radius:7px;font-size:13px;color:var(--muted);font-weight:500}
-.tab-seg button[aria-selected="true"]{background:var(--surface);color:var(--fg);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
-
-/* 구조화 악보 (동요/타브/계이름) 그리드 */
-.tab-score-wrap{display:flex;flex-direction:column;gap:12px;max-height:520px;overflow-y:auto;overflow-x:auto;padding:4px 2px;scroll-behavior:smooth}
-.measures-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
-.measure-card{position:relative;border:1.5px solid var(--line);border-radius:12px;background:var(--bg);padding:10px 10px 8px;display:flex;flex-direction:column;gap:6px;cursor:pointer;transition:border-color .12s,box-shadow .12s}
-.measure-card.tab-mode{padding:8px 8px 8px}
-.measure-card:hover{border-color:var(--muted)}
-.measure-card.in-loop{background:var(--surface)}
-.measure-card.active-bar{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-.m-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
-.m-num{font-family:var(--font-num);font-size:12px;font-weight:700;color:var(--muted)}
-.m-chord{font-family:var(--font-num);font-size:13.5px;font-weight:700;padding:1px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent)}
-.m-chord.auto-chord{border:1px dashed var(--accent);font-size:12.5px}
-.m-lyric{font-size:12.5px;color:var(--muted);font-weight:500}
-
-.beats-row{display:grid;grid-template-columns:repeat(var(--bpb,4),minmax(0,1fr));gap:4px;margin-top:2px}
-.beat-cell{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:6px 3px;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;cursor:pointer;transition:background-color .08s,transform .08s,border-color .08s}
-.beat-cell:hover{border-color:var(--accent)}
-.beat-cell.active-beat{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);transform:translateY(-2px)}
-.beat-cell.active-beat .b-ko,.beat-cell.active-beat .b-tab,.beat-cell.active-beat .b-rh,.beat-cell.active-beat .b-lh{color:var(--accent-ink)}
-.beat-cell[data-judge="ok"]{border-color:var(--ok);background:var(--ok-soft)}
-.beat-cell[data-judge="near"]{border-color:var(--near);background:var(--near-soft)}
-.beat-cell[data-judge="off"]{border-color:var(--off);background:var(--off-soft)}
-.b-note{font-family:var(--font-num);font-size:13.5px;font-weight:700;line-height:1.1;white-space:nowrap}
-.b-ko{font-size:12px;font-weight:700;color:var(--accent);white-space:nowrap}
-.b-tab{font-family:var(--font-num);font-size:11px;color:var(--muted);white-space:nowrap;letter-spacing:-.02em}
-.b-fingers{display:flex;gap:3px;font-size:10.5px;font-family:var(--font-num);white-space:nowrap}
-.b-lh{color:var(--ok);font-weight:700}
-.b-rh{color:var(--near);font-weight:700}
-.beat-cell.arp-melody{border-color:rgba(45,76,155,.5);background:var(--accent-soft)}
-.beat-cell.arp-sub{opacity:.9}
-.beat-cell.arp-sub .b-note{font-size:12px;font-weight:600}
-.beat-cell.arp-group-start{margin-left:3px;box-shadow:-3px 0 0 -1px var(--line)}
-
-/* 박자·리듬 카드 친절한 오선지 뷰 스타일 (운지 정보 제외, 박자·리듬·계이름 전용) */
-.beat-cell:not(.tab-cell){padding:6px 2px 5px;min-height:72px;justify-content:space-between;min-width:0;overflow:hidden}
-.b-rhythm-head{display:flex;align-items:center;justify-content:space-between;width:100%;padding:0 2px;margin-bottom:2px;font-size:11px;line-height:1;white-space:nowrap;gap:2px;min-width:0;overflow:hidden}
-.b-idx-badge{font-family:var(--font-num);font-weight:700;color:var(--muted);background:rgba(128,128,128,.12);padding:1px 3px;border-radius:4px;white-space:nowrap;flex-shrink:0;font-size:10px}
-.b-dur-badge{color:var(--accent);display:inline-flex;align-items:center;flex-shrink:0}
-.b-dur-badge .dur-svg{width:11px;height:13px}
-.dur-svg{display:inline-block;vertical-align:middle;flex-shrink:0}
-.b-ko-main{font-size:19px;font-weight:800;color:var(--accent);line-height:1.15;margin:2px 0;white-space:nowrap}
-.b-ko-main.b-rest-sym{display:flex;align-items:center;justify-content:center;min-height:26px;margin:2px 0}
-.b-ko-main.b-rest-sym .dur-svg{width:14px;height:22px;color:var(--muted);transition:color .08s}
-.b-note-sub{font-size:10.5px;color:var(--muted);font-weight:600;line-height:1.1;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.beat-cell.active-beat .b-idx-badge{background:rgba(255,255,255,.25);color:var(--accent-ink)}
-.beat-cell.active-beat .b-dur-badge{color:var(--accent-ink)}
-.beat-cell.active-beat .dur-svg{color:var(--accent-ink)}
-.beat-cell.active-beat .b-ko-main{color:var(--accent-ink)}
-.beat-cell.active-beat .b-ko-main.b-rest-sym .dur-svg{color:var(--accent-ink)}
-.beat-cell.active-beat .b-note-sub{color:var(--accent-ink)}
-.beat-cell.is-rest{opacity:.75}
-.beat-cell.is-rest:hover,.beat-cell.is-rest.active-beat{opacity:1}
-
-/* 6현 타브 (TAB) 악보 렌더링 스타일 */
-.tab-stave-wrap{position:relative;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-top:2px}
-.tab-stave-side{width:36px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:4px 2px 8px;background:var(--surface-2);border-right:1px solid var(--line);user-select:none;position:relative}
-.tab-badge-title{height:20px;display:flex;align-items:center;justify-content:center;font-family:var(--font-num);font-weight:900;font-size:11px;letter-spacing:.06em;color:var(--accent);line-height:1}
-.tab-str-names{position:relative;width:100%;height:90px;margin-top:8px}
-.tab-str-names span{position:absolute;left:0;right:0;transform:translateY(-50%);text-align:center;font-family:var(--font-num);font-size:9.5px;font-weight:800;color:var(--muted);line-height:1}
-.tab-stave-body{position:relative;flex:1;min-width:0}
-.tab-lines-bg{position:absolute;left:0;right:0;top:32px;height:90px;pointer-events:none}
-.tab-line-h{position:absolute;left:0;right:0;height:0;border-top:1px solid var(--line);opacity:.75}
-.beats-row.tab-mode{display:grid;grid-template-columns:repeat(var(--bpb,4),minmax(0,1fr));gap:0;margin-top:0;height:130px;position:relative;z-index:1}
-.beat-cell.tab-cell{border:none;border-right:1px dashed rgba(128,128,128,.2);border-radius:0;background:transparent;padding:4px 1px 8px;display:flex;flex-direction:column;align-items:center;position:relative;cursor:pointer;transition:background-color .08s,box-shadow .08s}
-.beat-cell.tab-cell:last-child{border-right:none}
-.beat-cell.tab-cell:hover{background:rgba(45,76,155,.07)}
-.beat-cell.tab-cell.active-beat{background:rgba(45,76,155,.18);transform:none;box-shadow:inset 0 0 0 2px var(--accent);color:inherit}
-.beat-cell.tab-cell.arp-group-start{border-left:2px solid var(--line)}
-.beat-cell.tab-cell[data-judge="ok"]{background:rgba(98,212,145,.14);box-shadow:inset 0 0 0 1.5px var(--ok)}
-.beat-cell.tab-cell[data-judge="near"]{background:rgba(245,158,11,.14);box-shadow:inset 0 0 0 1.5px var(--near)}
-.tab-cell-top{height:20px;display:flex;align-items:center;justify-content:center;gap:3px;font-size:11px;line-height:1;white-space:nowrap;overflow:hidden}
-.tab-cell-solfege-wrap{display:inline-flex;align-items:baseline;gap:2px}
-.tab-cell-solfege{font-weight:700;color:var(--accent);font-size:11.5px}
-.tab-cell-en{font-family:var(--font-num);font-weight:800;color:var(--accent);font-size:11px;letter-spacing:-0.2px}
-.beat-cell.tab-cell.active-beat .tab-cell-solfege{color:var(--accent)}
-.beat-cell.tab-cell.active-beat .tab-cell-en{color:var(--accent);opacity:1}
-.tab-cell-rh{font-family:var(--font-num);font-weight:700;color:var(--near);font-size:9.5px}
-.tab-cell-grid{position:relative;width:100%;height:90px;margin-top:8px}
-.tab-fret-pill{position:absolute;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:16px;padding:0 2.5px;border-radius:4px;font-family:var(--font-num);font-size:11.5px;font-weight:800;line-height:1;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.08);z-index:2;white-space:nowrap}
-.tab-fret-pill.note-fret{color:var(--fg);border-color:rgba(45,76,155,.45)}
-.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret{background:var(--accent);color:#fff;border-color:var(--accent)}
-.tab-cell-lh{font-size:9px;font-weight:700;margin-left:1px;opacity:.85}
-.tab-rest-dash{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:var(--font-num);font-size:13px;color:var(--muted);font-weight:700}
-
-/* 이미지 / PDF 악보 뷰어 및 마디 그리드 매퍼 */
-.img-score-wrap{display:flex;flex-direction:column;gap:10px}
-.img-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;background:var(--surface-2);padding:8px 12px;border-radius:10px}
-.img-stage-scroll{max-height:560px;overflow-y:auto;border:1px solid var(--line);border-radius:12px;background:#222;position:relative;scroll-behavior:smooth}
-.img-canvas-container{position:relative;width:100%;user-select:none;touch-action:pan-y}
-.img-canvas-container.editing{touch-action:none;cursor:crosshair}
-.score-img{display:block;width:100%;height:auto;pointer-events:none}
-.overlay-svg{position:absolute;inset:0;width:100%;height:100%}
-
-/* 이미지 위 줄(System) 및 마디 박스 */
-.sys-box{position:absolute;border:2px dashed rgba(147,171,245,.9);background:rgba(45,76,155,.08);border-radius:6px;display:flex;align-items:stretch}
-.sys-box.playing-mode{border-style:solid;border-color:rgba(255,255,255,.25);background:transparent}
-.sys-label{position:absolute;top:-26px;left:0;background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;display:flex;align-items:center;gap:5px;white-space:nowrap;z-index:10;box-shadow:0 2px 6px rgba(0,0,0,.25)}
-.sys-drag-grip{cursor:move;display:inline-flex;align-items:center;gap:4px;padding:1px 4px;border-radius:3px;background:rgba(255,255,255,.16)}
-.sys-resize-handle{position:absolute;z-index:9;background:var(--accent);border:1.5px solid #fff;border-radius:4px}
-.sys-resize-w{left:-6px;top:25%;bottom:25%;width:10px;cursor:ew-resize}
-.sys-resize-e{right:-6px;top:25%;bottom:25%;width:10px;cursor:ew-resize}
-.sys-resize-s{bottom:-6px;left:35%;right:35%;height:10px;cursor:ns-resize}
-.sys-resize-se{right:-7px;bottom:-7px;width:14px;height:14px;border-radius:50%;cursor:nwse-resize;background:#f1bc4f}
-.img-bar-cell{position:relative;flex:1 1 0%;border-right:2px solid rgba(147,171,245,.85);display:flex;flex-direction:column;justify-content:space-between;padding:4px;cursor:pointer;transition:background-color .1s;min-width:16px}
-.img-bar-cell:last-child{border-right:0}
-.img-bar-cell:hover{background:rgba(45,76,155,.15)}
-.img-bar-cell.active-bar{background:rgba(45,76,155,.28);box-shadow:inset 0 0 0 2px var(--accent)}
-.img-bar-cell.in-loop{box-shadow:inset 0 3px 0 0 var(--ok)}
-.bar-divider-grip{position:absolute;top:0;bottom:0;right:-7px;width:14px;cursor:col-resize;z-index:8;display:flex;align-items:center;justify-content:center}
-.bar-divider-grip::after{content:"||";font-family:var(--font-num);font-size:9px;font-weight:700;background:var(--accent);color:#fff;padding:4px 2px;border-radius:4px;border:1px solid rgba(255,255,255,.8);line-height:1;box-shadow:0 1px 4px rgba(0,0,0,.3)}
-.bar-divider-grip:hover::after{background:#f1bc4f;color:#111;transform:scale(1.12)}
-.img-bar-top{display:flex;justify-content:space-between;align-items:flex-start;gap:4px;pointer-events:none}
-.img-bar-no{font-family:var(--font-num);font-size:11px;font-weight:700;background:rgba(0,0,0,.65);color:#fff;padding:1px 5px;border-radius:4px}
-.img-bar-chord{font-family:var(--font-num);font-size:12px;font-weight:700;background:var(--accent);color:var(--accent-ink);padding:1px 6px;border-radius:4px}
-.img-bar-memo{font-size:11px;background:rgba(0,0,0,.72);color:#f1bc4f;padding:1px 5px;border-radius:4px;align-self:flex-start;pointer-events:none}
-.img-playhead{position:absolute;top:0;bottom:0;width:3px;background:#ff5252;box-shadow:0 0 8px #ff5252;pointer-events:none;z-index:4}
-
-/* 하단 2단 레이아웃: 지판/코드 운지 + 유튜브 레퍼런스 */
-.two-col{display:grid;grid-template-columns:1.15fr 0.85fr;gap:14px}
-@media (max-width:860px){.two-col{grid-template-columns:1fr}}
-
-/* 콤팩트 집중 연습 모드 (악보 2줄 + 실시간 지판) */
-body.practice-compact .topbar,
-body.practice-compact section[aria-label="연습곡 선택 및 이어가기"],
-body.practice-compact .stage,
-body.practice-compact .two-col,
-body.practice-compact #scoreTitle,
-body.practice-compact #scoreTypeBadge,
-body.practice-compact #renameScoreTitleBtn,
-body.practice-compact #scoreClickHint,
-body.practice-compact #editStructuredBtn,
-body.practice-compact #editBarMetaBtn,
-body.practice-compact #convertImgToScoreBtn,
-body.practice-compact .ref-img-details,
-body.practice-compact .tbl-wrap,
-body.practice-compact footer {
-  display: none !important;
-}
-
-body.practice-compact .wrap{
-  max-width: 100% !important;
-  padding: 4px 6px 8px !important;
-  gap: 4px !important;
-}
-
-body.practice-compact section[aria-label="악보 및 메트로놈 커서"]{
-  padding: 6px 8px !important;
-  gap: 4px !important;
-  box-shadow: 0 4px 24px rgba(0,0,0,.12) !important;
-}
-
-/* 콤팩트 툴바: 갤럭시 폴드 등 모바일에서도 정확히 1줄 고정 */
-body.practice-compact .score-toolbar{
-  display: flex !important;
-  flex-wrap: nowrap !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 4px !important;
-  height: 36px !important;
-  padding: 0 2px 4px !important;
-  margin-bottom: 2px !important;
-  border-bottom: 1px solid var(--line) !important;
-  overflow: hidden !important;
-}
-
-body.practice-compact .score-toolbar-left{
-  display: flex !important;
-  flex-wrap: nowrap !important;
-  align-items: center !important;
-  gap: 4px !important;
-  min-width: 0 !important;
-  flex: 1 1 auto !important;
-  overflow: hidden !important;
-}
-
-body.practice-compact .score-toolbar-right{
-  display: flex !important;
-  flex-wrap: nowrap !important;
-  align-items: center !important;
-  gap: 4px !important;
-  flex-shrink: 0 !important;
-}
-
-body.practice-compact #compactPlayBtn{
-  display: inline-flex !important;
-  padding: 4px 8px !important;
-  font-size: 11.5px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-}
-
-body.practice-compact #compactSongSelect{
-  display: inline-block !important;
-  flex: 1 1 auto !important;
-  min-width: 60px !important;
-  max-width: 170px !important;
-  height: 28px !important;
-  font-size: 11px !important;
-  padding: 2px 4px !important;
-  border-radius: 6px !important;
-  background: var(--surface-2) !important;
-  border: 1px solid var(--line) !important;
-  color: var(--fg) !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-}
-
-body.practice-compact .tab-seg{
-  margin: 0 !important;
-  flex-shrink: 0 !important;
-}
-body.practice-compact .tab-seg button{
-  padding: 3px 6px !important;
-  font-size: 11px !important;
-}
-
-body.practice-compact #compactStatusBadge{
-  display: inline-flex !important;
-  font-size: 10px !important;
-  padding: 2px 5px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-}
-
-@media (max-width: 520px){
-  body.practice-compact #compactStatusBadge{
-    display: none !important;
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--wash); color: var(--ink); }
+  button, input, textarea, select { font: inherit; }
+  button {
+    cursor: pointer;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: white;
+    color: var(--ink);
+    padding: .62rem .9rem;
   }
-}
+  button:hover { border-color: #9bbbe0; }
+  button.primary { background: var(--blue); border-color: var(--blue); color: white; }
+  button:disabled { opacity: .48; cursor: not-allowed; }
+  .shell { max-width: 1180px; margin: auto; padding: 22px 20px 48px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+  .brand { font-size: 1.25rem; font-weight: 750; letter-spacing: -.03em; }
+  .brand span { color: var(--blue); }
+  .top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 16px; align-items: start; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 4px 18px #244b7010; }
+  .main-card { overflow: hidden; }
+  .song-head { padding: 20px 22px 14px; display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; }
+  .song-select { display: flex; gap: 10px; align-items: center; flex: 1; min-width: 0; }
+  .song-select select { max-width: 370px; width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: white; color: var(--ink); }
+  h1 { font-size: 1.45rem; line-height: 1.25; margin: 8px 0 3px; }
+  #songDescription { margin: 0; color: var(--muted); min-height: 1.4em; }
+  .song-actions { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
+  .status-row { padding: 0 22px 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; color: var(--muted); font-size: .88rem; }
+  .status-row .error { color: var(--red); }
+  .score-wrap { position: relative; min-height: 300px; max-height: 62vh; overflow: auto; background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 18px 16px; }
+  .score-placeholder { padding: 72px 18px; text-align: center; color: var(--muted); }
+  #score { min-width: 620px; }
 
-body.practice-compact #toggleCompactBtn{
-  padding: 4px 8px !important;
-  font-size: 11px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-}
+  /* alphaTab cursor and selection overlays */
+  .at-cursor-beat {
+    position: absolute;
+    z-index: 5;
+    width: 3px;
+    min-height: 18px;
+    background: #3478d4;
+    opacity: 1;
+    pointer-events: none;
+  }
+  .at-cursor-bar { background: #3478d41c !important; }
+  .at-highlight { fill: #3478d4 !important; opacity: .28; }
+  .at-highlight * { fill: #3478d4 !important; }
 
-/* 악보 2줄(2단) 고정 높이 - 2단이 온전히 보이도록 충분한 높이 확보 */
-body.practice-compact #structuredScoreWrap{
-  max-height: 415px !important;
-  overflow-y: auto !important;
-  scrollbar-width: thin !important;
-  padding: 2px 2px 6px !important;
-  scroll-behavior: smooth !important;
-}
-
-body.practice-compact .measures-grid{
-  gap: 8px !important;
-}
-
-body.practice-compact .measure-card{
-  padding: 8px 8px 6px !important;
-}
-
-body.practice-compact .beat-cell:not(.tab-cell){
-  padding: 5px 2px 4px !important;
-  min-height: 66px !important;
-}
-
-/* 실시간 지판 운지법: 악보 바로 아래 부착 */
-body.practice-compact .fretboard-wrap{
-  margin-top: 2px !important;
-  padding-top: 4px !important;
-  border-top: 1px solid var(--line) !important;
-  padding-bottom: 2px !important;
-}
-
-body.practice-compact .fretboard{
-  padding: 8px 10px 6px !important;
-}
-
-/* 클래식 기타 지판 (Fretboard) */
-.fretboard-wrap{overflow-x:auto;padding-bottom:4px;margin-top:6px;border-top:1px solid var(--line);padding-top:8px}
-.fretboard{min-width:520px;background:var(--wood);border:2px solid #2e1f14;border-radius:10px;padding:10px 12px 8px;color:#fff;position:relative}
-.fb-frets-header{display:grid;grid-template-columns:56px repeat(12,minmax(0,1fr));text-align:center;font-family:var(--font-num);font-size:11px;color:#d7c6b6;margin-bottom:4px}
-.fb-row{display:grid;grid-template-columns:56px repeat(12,minmax(0,1fr));align-items:center;height:28px;position:relative}
-.fb-row::after{content:"";position:absolute;left:56px;right:0;top:50%;height:var(--str-h,1.5px);background:var(--string);transform:translateY(-50%);z-index:1;opacity:.85}
-.fb-open{font-family:var(--font-num);font-size:11.5px;font-weight:600;color:#f3ece4;display:flex;align-items:center;gap:3px;z-index:2;padding-right:4px;white-space:nowrap}
-.fb-cell{height:100%;border-right:2px solid var(--wood-line);display:flex;align-items:center;justify-content:center;position:relative;z-index:2;cursor:pointer}
-.fb-cell:first-of-type{border-left:5px solid #e5dacb}
-.fb-marker{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-num);font-size:11px;font-weight:700;background:rgba(255,255,255,.18);color:#fff;white-space:nowrap;line-height:1;transition:transform .1s,background-color .1s;pointer-events:none;z-index:3}
-.fb-marker.chord-tone{background:var(--accent);color:#fff}
-.fb-marker.target-note{width:auto;min-width:34px;height:22px;padding:0 6px;border-radius:999px;background:#56e38f;color:#041b0c;font-size:11.5px;font-weight:800;border:1.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);z-index:5}
-
-.finger-guide{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
-.fg-card{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:3px}
-.fg-val{font-size:14px;font-weight:700}
-
-/* 코드 다이어그램 목록 */
-.chord-cards{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px}
-.chord-card{flex:0 0 118px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);padding:8px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
-.chord-card.active{border-color:var(--accent);background:var(--accent-soft)}
-.chord-card-title{font-family:var(--font-num);font-size:15px;font-weight:700}
-.chord-card-sub{font-size:11px;color:var(--muted)}
-
-/* 유튜브 레퍼런스 */
-.yt-links{display:flex;flex-wrap:wrap;gap:6px}
-.yt-input-row{display:flex;gap:6px}
-.yt-input-row input{flex:1;min-height:36px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);font-size:13px}
-.yt-player-wrap{position:relative;width:100%;aspect-ratio:16/9;background:#111;border-radius:10px;overflow:hidden;border:1px solid var(--line);display:grid;place-items:center;color:#aaa;font-size:13px;text-align:center;padding:12px}
-.yt-player-wrap iframe{width:100%;height:100%;border:0}
-.yt-controls{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:space-between}
-
-/* 모달 */
-.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.58);display:grid;place-items:center;padding:14px;z-index:50}
-.modal{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
-.modal.wide{max-width:920px}
-.form-row{display:flex;flex-direction:column;gap:5px}
-.form-row input,.form-row textarea,.form-row select{padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg)}
-.form-row textarea{min-height:96px;font-family:var(--font-num);font-size:13px}
-
-/* 악보 사진 -> 내 악보 변환 스튜디오 & 원클릭 계이름 패드 */
-.ocr-img-box{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#1a1a1a;text-align:center}
-.ocr-img-box img{max-width:100%;height:auto;display:block;margin:0 auto}
-.ocr-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line)}
-.note-pad-wrap{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:7px}
-.note-pad-rows{display:flex;flex-direction:column;gap:6px}
-.note-pad-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
-.np-row-tag{min-width:86px;font-size:11.5px;font-weight:700;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent);border-radius:6px;padding:4px 7px;text-align:center;white-space:nowrap}
-.np-btn{min-height:34px;padding:2px 9px;border-radius:8px;border:1px solid var(--line);background:var(--surface);display:inline-flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;cursor:pointer;transition:transform .06s,background-color .1s}
-.np-btn:hover{border-color:var(--accent);background:var(--accent-soft)}
-.np-btn:active{transform:scale(.95)}
-.np-btn b{font-size:13px;color:var(--fg)}
-.np-btn small{font-family:var(--font-num);font-size:10px;color:var(--muted)}
-.ve-bars{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;max-height:260px;overflow-y:auto;padding:4px 2px}
-.ve-bar{border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:8px;display:flex;flex-direction:column;gap:6px}
-.ve-bar-head{display:flex;align-items:center;justify-content:space-between;gap:4px}
-.ve-chord-sel{font-family:var(--font-num);font-size:12.5px;font-weight:700;padding:2px 6px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--accent)}
-.ve-beats{display:grid;grid-template-columns:repeat(var(--ve-bpb,4),1fr);gap:4px}
-.ve-cell{border:1.5px solid var(--line);border-radius:7px;background:var(--surface);padding:6px 2px;text-align:center;cursor:pointer;display:flex;flex-direction:column;gap:1px}
-.ve-cell.selected{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent-soft)}
-.ve-cell b{font-size:13px}
-.ve-cell small{font-family:var(--font-num);font-size:10px;color:var(--muted)}
-.ref-img-details{border:1px solid var(--line);border-radius:10px;background:var(--surface-2);padding:8px 12px}
-.ref-img-details summary{cursor:pointer;font-weight:600;font-size:13.5px;color:var(--accent)}
-.ref-img-details img{max-width:100%;max-height:280px;display:block;margin:8px auto 0;border-radius:8px;border:1px solid var(--line)}
-
-/* 기록 테이블 */
-.tbl-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
-th{font-weight:600;color:var(--muted);text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap}
-td{text-align:right;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
-th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
-td[data-cls="ok"]{color:var(--ok);font-weight:600}
-td[data-cls="near"]{color:var(--near);font-weight:600}
-td[data-cls="off"]{color:var(--off);font-weight:600}
+  .transport { padding: 16px 20px 19px; display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }
+  .transport-buttons { display: flex; gap: 8px; }
+  .transport-settings { display: flex; gap: 14px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+  .toggle[aria-pressed="true"] { border-color: #9dc4f2; color: var(--blue-dark); background: #edf5ff; }
+  .slider { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: .88rem; }
+  .slider input { width: 112px; accent-color: var(--blue); }
+  .speed { min-width: 3.5em; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .position { font-size: .9rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .loop-row { padding: 0 20px 17px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .loop-row input[type="number"] { width: 76px; padding: 7px; border: 1px solid var(--line); border-radius: 8px; }
+  .loop-row label { font-size: .9rem; color: var(--muted); }
+  .side { display: grid; gap: 14px; }
+  .side .card { padding: 16px; }
+  .side h2 { font-size: 1rem; margin: 0 0 9px; }
+  .side p { font-size: .9rem; color: var(--muted); margin: 0 0 12px; }
+  .side button { width: 100%; }
+  .fretboard { display: grid; gap: 5px; }
+  .fret-string { display: grid; grid-template-columns: 26px repeat(6, 1fr); gap: 3px; align-items: center; font-size: .78rem; }
+  .fret-string .string-name { color: var(--muted); }
+  .fret-cell { min-height: 26px; border: 1px solid #e6edf4; border-radius: 5px; text-align: center; padding: 2px; }
+  .fret-cell.active { background: #e9f2ff; border-color: #9ec2ef; color: #174f93; font-weight: 700; }
+  .sheet-form { display: grid; gap: 8px; }
+  .sheet-form input { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+  .notice { font-size: .85rem; color: var(--muted); margin-top: 9px; }
+  .notice.error { color: var(--red); }
+  dialog { width: min(860px, calc(100vw - 24px)); max-height: 92vh; border: 1px solid var(--line); border-radius: 16px; padding: 0; box-shadow: 0 20px 70px #132c4666; color: var(--ink); }
+  dialog::backdrop { background: #19304b77; }
+  .modal-head { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+  .modal-head h2 { font-size: 1.1rem; margin: 0; }
+  .modal-body { padding: 18px 20px; }
+  .modal-body label { display: block; font-size: .9rem; color: var(--muted); margin: 10px 0 5px; }
+  .modal-body input, .modal-body textarea { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; }
+  .modal-body textarea { min-height: 240px; font: 14px/1.5 ui-monospace, Consolas, monospace; resize: vertical; }
+  .modal-footer { padding: 12px 20px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .modal-footer .right { display: flex; gap: 8px; }
+  .help { font-size: .86rem; color: var(--muted); white-space: pre-wrap; }
+  .preview { max-height: 210px; overflow: auto; border: 1px solid var(--line); border-radius: 9px; padding: 10px; margin-top: 10px; }
+  .hidden { display: none !important; }
+  @media (max-width: 850px) {
+    .layout { grid-template-columns: 1fr; }
+    .side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .transport { grid-template-columns: 1fr; }
+    .transport-settings { justify-content: flex-start; }
+    .song-head { flex-direction: column; }
+    .song-actions { justify-content: flex-start; }
+  }
+  @media (max-width: 550px) {
+    .shell { padding: 12px; }
+    .side { grid-template-columns: 1fr; }
+    .topbar { align-items: flex-start; }
+    .transport-settings { gap: 9px; }
+    .score-wrap { min-height: 220px; padding: 12px 8px; }
+  }
 </style>
 </head>
 <body>
-<main class="wrap">
-  <!-- 상단 헤더 -->
-  <header class="topbar">
-    <div class="brand">
-      <h1>기타 스튜디오</h1>
-      <span class="sub">클래식 기타 · 동요 · 교본 악보 메트로놈 &amp; 운지 가이드</span>
-    </div>
-    <div class="top-actions">
-      <button type="button" class="btn sm" id="tunerBtn">6현 튜너</button>
-      <button type="button" class="btn sm" id="calibOpenBtn">지연 보정 (<span id="calibBadge">기본 45ms</span>)</button>
-      <button type="button" class="btn sm" id="toneOpenBtn">음색 설정</button>
-      <button type="button" class="btn sm" id="backupBtn">백업·복원</button>
-    </div>
-  </header>
-
-  <!-- 곡 선택 & 저장/이어가기 바 -->
-  <section class="panel" aria-label="연습곡 선택 및 이어가기">
-    <div class="song-bar">
-      <div class="song-select-row">
-        <label for="songSelect" class="label">연습곡</label>
-        <select id="songSelect" class="song-select" aria-label="연습곡 선택"></select>
-      </div>
-      <div class="top-actions">
-        <button type="button" class="btn primary" id="uploadImgBtn">+ 교본 사진/PDF 악보 올리기</button>
-        <button type="button" class="btn" id="newTextSongBtn">+ 직접 악보 입력</button>
-        <button type="button" class="btn" id="openSheetSyncBtn">구글 시트 연동</button>
-        <button type="button" class="btn sm" id="renameSongBtn" hidden title="이 악보의 이름을 변경합니다">이름 변경</button>
-        <button type="button" class="btn danger sm" id="deleteSongBtn" hidden>삭제</button>
-      </div>
-    </div>
-    <p id="storageStatus" class="hint" role="status" aria-live="polite" hidden></p>
-    <div class="resume-banner" id="resumeBanner" hidden>
-      <span id="resumeText">마지막 연습 상태가 복원되었어요.</span>
-      <button type="button" class="btn sm" id="resetLoopBtn">전구간 초기화</button>
-    </div>
-  </section>
-
-  <!-- 연습 콘솔: 메트로놈, 구간 반복, 속도 훈련기, 실시간 음정/정박 게이지 -->
-  <section class="stage" aria-label="메트로놈 및 실시간 감지 콘솔">
-    <div class="st-top">
-      <span class="phase" id="phaseTxt">대기 중 · 악보 마디를 누르면 그곳부터 시작하거나 구간을 지정해요</span>
-      <div class="leds" id="leds"></div>
-    </div>
-
-    <div class="stage-grid">
-      <!-- 1. BPM 및 박자 -->
-      <div class="stage-box">
-        <div class="ctrl-row">
-          <span class="label" style="color:var(--d-muted)">템포 (BPM)</span>
-          <div style="display:flex;gap:4px;align-items:center">
-            <button type="button" class="btn sm" id="bpmResetBtn" style="height:22px;padding:0 7px;font-size:11px" title="이 악보의 기본 권장 BPM으로 초기화합니다">기본 BPM (<span id="defaultBpmTxt">64</span>)</button>
-            <button type="button" class="fx-toggle" id="engineBtn" data-active="true">물리음원</button>
-            <button type="button" class="fx-toggle" id="toggleFxBtn" data-active="true" title="리버브·바디공명·긴 서스테인 특수효과 토글 (단축키: F)">콘서트홀</button>
-          </div>
-        </div>
-        <div class="bpm-ctrl">
-          <button type="button" class="step-btn" id="bpmDown" aria-label="BPM 2 내리기">-2</button>
-          <div class="bpm-read">
-            <span class="bpm-num" id="bpmNum">64</span>
-            <span class="bpm-unit">BPM · <span class="tempo-it" id="tempoName">Larghetto</span></span>
-          </div>
-          <button type="button" class="step-btn" id="bpmUp" aria-label="BPM 2 올리기">+2</button>
-        </div>
-        <input type="range" id="bpmRange" min="30" max="240" step="1" value="64" aria-label="템포 슬라이더">
-        <div class="ctrl-row">
-          <label class="ctrl-item">박자
-            <select id="beatsSelect">
-              <option value="2">2/4</option>
-              <option value="3">3/4</option>
-              <option value="4" selected>4/4</option>
-              <option value="6">6/8</option>
-              <option value="8">4/4 (8박 핑거스타일)</option>
-              <option value="9">9/8 (3박 셋잇단)</option>
-            </select>
-          </label>
-          <label class="ctrl-item" title="메트로놈 클릭 볼륨 (0으로 내리면 메트로놈 소리만 끄고 기타 소리만 감상할 수 있습니다)">클릭음
-            <input type="range" id="volRange" min="0" max="100" step="5" value="55" style="width:68px">
-          </label>
-        </div>
-      </div>
-
-      <!-- 2. 구간 반복 (A-B) & 자동 가속 (Speed Trainer) -->
-      <div class="stage-box">
-        <div class="ctrl-row">
-          <span class="label" style="color:var(--d-muted)">구간 반복 (마디)</span>
-          <button type="button" class="btn sm" id="loopAllBtn" style="height:22px;padding:0 7px;font-size:11px">전체 마디</button>
-        </div>
-        <div class="ctrl-row" style="margin:auto 0">
-          <label class="ctrl-item">시작 <input type="number" id="loopStart" min="1" value="1"> 마디</label>
-          <span style="color:var(--d-muted)">~</span>
-          <label class="ctrl-item">끝 <input type="number" id="loopEnd" min="1" value="8"> 마디</label>
-          <label class="ctrl-item"><input type="checkbox" id="loopEnable" checked> 반복</label>
-        </div>
-        <div class="ctrl-row" style="border-top:1px solid var(--d-line);padding-top:4px">
-          <label class="ctrl-item" title="구간을 완주할 때마다 템포를 자동으로 올립니다">
-            <input type="checkbox" id="speedTrainerChk">
-            <span>자동 가속: 2회 완주마다 <b>+3 BPM</b></span>
-          </label>
-          <span class="badge" id="loopCountBadge" style="background:var(--d-bg);color:var(--d-fg);border-color:var(--d-line);font-size:11px;padding:2px 7px">0회 완주</span>
-        </div>
-      </div>
-
-      <!-- 3. 시작/정지 + 마이크 음정·정박 판정 -->
-      <div class="stage-box">
-        <div class="play-row">
-          <button type="button" class="go-btn" id="playBtn">연습 시작</button>
-          <button type="button" class="sound-toggle" id="guideSoundBtn" aria-pressed="true" title="앱의 기타 연주 소리를 끄고 메트로놈만 들으며 내 실제 기타로 연습합니다 (단축키: G)">기타 시뮬레이션: 켜짐</button>
-        </div>
-        <div class="gauge-row">
-          <div class="pitch-box">
-            <span class="pitch-note" id="liveNote">--</span>
-            <span class="pitch-ko" id="liveNoteKo">마이크 대기</span>
-          </div>
-          <div class="err-box" id="liveErr">-- ms</div>
-        </div>
-        <div class="mini-scale">
-          <div class="mini-zone"></div>
-          <div class="mini-needle" id="liveNeedle" hidden></div>
-        </div>
-        <div class="mic-row">
-          <button type="button" class="fx-toggle" id="micScoreBtn" data-active="true">마이크 채점</button>
-          <div class="mic-bar" title="마이크 입력 레벨"><div class="mic-fill" id="micFill"></div></div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 악보 뷰어 섹션 -->
-  <section class="panel" aria-label="악보 및 메트로놈 커서">
-    <div class="score-toolbar" id="scoreToolbar">
-      <div class="score-toolbar-left">
-        <button type="button" class="btn primary sm" id="compactPlayBtn" style="font-weight:800;padding:3px 8px;font-size:11.5px;white-space:nowrap;flex-shrink:0" title="연습 시작 또는 일시 정지 (단축키: Space)" hidden>▶ 시작</button>
-        <select id="compactSongSelect" class="compact-song-select" aria-label="연습곡 선택" title="연습곡 변경" hidden></select>
-        <h2 id="scoreTitle">작은 별 (Twinkle Twinkle Little Star)</h2>
-        <button type="button" class="btn sm" id="renameScoreTitleBtn" hidden style="min-height:28px;padding:0 8px;font-size:12px" title="곡 이름 변경">✏️ 이름 변경</button>
-        <span class="badge accent" id="scoreTypeBadge">내장 동요 · 다장조(C)</span>
-        <div class="tab-seg" id="scoreModeSeg" role="tablist" aria-label="악보 보기 모드" style="margin-left:2px;flex-shrink:0">
-          <button type="button" id="scoreModeTabBtn" role="tab" aria-selected="true" title="6현 가로선 타브(TAB) 악보로 보기 (단축키: T)">타브</button>
-          <button type="button" id="scoreModeCardBtn" role="tab" aria-selected="false" title="박자·음표 길이 및 계이름(친절한 오선지) 카드 뷰 (단축키: T)">카드</button>
-        </div>
-        <span class="badge" id="compactStatusBadge" style="font-family:var(--font-num);font-weight:700" hidden>64 BPM · 1마디</span>
-      </div>
-      <div class="score-toolbar-right">
-        <span class="hint" id="scoreClickHint">마디 클릭: 시작 위치 / Shift+클릭: 끝 마디</span>
-        <button type="button" class="btn sm primary" id="convertImgToScoreBtn" hidden>이 사진을 내 악보(계이름·운지)로 변환</button>
-        <button type="button" class="btn sm" id="editStructuredBtn">악보 빠른 수정</button>
-        <button type="button" class="btn sm" id="editBarMetaBtn" hidden>선택 마디 코드·메모 수정</button>
-        <button type="button" class="btn sm" id="toggleCompactBtn" title="악보 2줄과 실시간 지판만 보는 콤팩트 집중 모드 전환 (단축키: P / Esc)">콤팩트 뷰</button>
-      </div>
-    </div>
-
-    <!-- A. 내장/텍스트 구조화 악보 뷰어 (계이름 + 타브 + 왼손/오른손 운지) -->
-    <div id="structuredScoreWrap" class="tab-score-wrap">
-      <details class="ref-img-details" id="refImgDetails" hidden open>
-        <summary>원본 교본 사진 함께 보기 (클릭하여 접기/펼치기)</summary>
-        <img id="refScoreImg" alt="원본 교본 참고 이미지">
-      </details>
-      <div class="measures-grid" id="measuresGrid"></div>
-    </div>
-
-    <!-- B. 교본 이미지 / PDF 악보 뷰어 + 마디 그리드 매퍼 -->
-    <div id="imageScoreWrap" class="img-score-wrap" hidden>
-      <div class="img-toolbar">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <button type="button" class="btn sm active" id="toggleEditGridBtn">마디 영역 편집 켜짐</button>
-          <button type="button" class="btn sm" id="autoDetectBarsBtn">검은 세로 마디선 자동 감지</button>
-          <button type="button" class="btn sm" id="addSystemRowBtn">+ 악보 한 줄(단) 추가</button>
-          <span class="hint" id="imgEditHint">상단 파란 바 드래그: 줄 이동 · 테두리 손잡이: 좌우/상하 크기 조절 · 마디 사이 <b>||</b> 드래그: 마디선 이동</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px" id="pdfPageCtrl" hidden>
-          <button type="button" class="btn sm" id="pdfPrevBtn">이전 페이지</button>
-          <span class="num" id="pdfPageTxt" style="font-size:12.5px">1 / 1</span>
-          <button type="button" class="btn sm" id="pdfNextBtn">다음 페이지</button>
-        </div>
-      </div>
-
-      <div class="img-stage-scroll" id="imgStageScroll">
-        <div class="img-canvas-container editing" id="imgContainer">
-          <img id="scoreImg" class="score-img" alt="업로드한 악보 이미지">
-          <div id="systemsOverlay"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- C. 실시간 지판 운지법 (악보 바로 아래 부착) -->
-    <div class="fretboard-wrap" id="fretboardWrap">
-      <div class="fretboard" id="fretboard" aria-label="기타 지판 1~12프렛"></div>
-    </div>
-  </section>
-
-  <!-- 하단 2열: 1) 실시간 지판 & 클래식 기타 운지법 / 2) 유튜브 레퍼런스 플레이어 -->
-  <div class="two-col">
-    <!-- 좌측: 클래식 기타 지판 & 코드 운지 -->
-    <section class="panel" aria-label="클래식 기타 지판 및 코드 운지법">
-      <div class="panel-head">
-        <h2>클래식 기타 운지 가이드 &amp; 코드표</h2>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <button type="button" class="btn sm active" id="toggleChordDotsBtn" title="지판 위의 파란색 반주 코드 운지 점을 켜거나 숨깁니다">파란 코드 점: 켜짐</button>
-          <span class="badge" id="currentChordBadge">현재 코드: C</span>
-        </div>
-      </div>
-
-      <div class="finger-guide">
-        <div class="fg-card">
-          <span class="label">현재 박자 음 · 계이름</span>
-          <span class="fg-val" id="guideNoteTxt">C4 (도) · 5번줄 3프렛</span>
-        </div>
-        <div class="fg-card">
-          <span class="label">왼손 운지 (원문 지정만)</span>
-          <span class="fg-val" id="guideLhTxt" style="color:var(--ok)">미지정</span>
-        </div>
-        <div class="fg-card">
-          <span class="label">오른손 운지</span>
-          <span class="fg-val" id="guideRhTxt" style="color:var(--near)">-</span>
-        </div>
-      </div>
-
-      <p class="hint">지판의 칸을 직접 누르면 해당 프렛의 기타 음이 재생돼요. 초록색 원은 악보 음, 파란색 원은 현재 마디 코드의 구성음이에요.</p>
-
-      <!-- 곡에 등장하는 코드 운지 카드 -->
-      <div>
-        <div class="panel-head" style="margin-bottom:6px">
-          <h3>이 곡의 코드 운지표 (누르면 화음 미리 듣기)</h3>
-        </div>
-        <div class="chord-cards" id="chordCards"></div>
-      </div>
-    </section>
-
-    <!-- 우측: 유튜브 레퍼런스 및 배속 연습 플레이어 -->
-    <section class="panel" aria-label="유튜브 레퍼런스">
-      <div class="panel-head">
-        <h2>유튜브 레퍼런스 &amp; 느린 손모양 보기</h2>
-        <span class="hint">곡마다 링크 자동 저장</span>
-      </div>
-
-      <div>
-        <span class="label">원클릭 유튜브 검색</span>
-        <div class="yt-links" id="ytQuickLinks" style="margin-top:5px"></div>
-      </div>
-
-      <div class="yt-input-row">
-        <input type="url" id="ytUrlInput" placeholder="참고할 유튜브 영상 주소(URL) 붙여넣기">
-        <button type="button" class="btn primary sm" id="ytLoadBtn">영상 연결</button>
-      </div>
-
-      <div class="yt-player-wrap" id="ytPlayerWrap">
-        <div id="ytPlaceholder">
-          위의 원클릭 검색으로 참고할 연주·강좌 영상을 찾은 뒤,<br>주소를 복사해 붙여넣으면 악보와 한 화면에서 느린 배속으로 볼 수 있어요.
-        </div>
-        <div id="ytIframeHost" hidden style="width:100%;height:100%"></div>
-      </div>
-
-      <div class="yt-controls">
-        <div style="display:flex;gap:4px;align-items:center">
-          <span class="label">영상 배속:</span>
-          <button type="button" class="btn sm yt-rate" data-rate="0.5">0.5x</button>
-          <button type="button" class="btn sm yt-rate" data-rate="0.75">0.75x</button>
-          <button type="button" class="btn sm yt-rate active" data-rate="1">1.0x</button>
-        </div>
-        <button type="button" class="btn sm" id="ytClearBtn" hidden>영상 연결 해제</button>
-      </div>
-    </section>
-  </div>
-
-  <!-- 연습 기록 및 성장 로그 -->
-  <section class="panel" aria-label="연습 기록">
-    <div class="panel-head">
-      <h2>연습 기록 (곡별 달성 BPM &amp; 정박률)</h2>
-      <button type="button" class="btn sm danger" id="clearHistBtn">기록 비우기</button>
-    </div>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>일시</th>
-            <th>연습곡 (구간)</th>
-            <th>템포</th>
-            <th>인식 음</th>
-            <th>평균 오차</th>
-            <th>정박률 (±30ms)</th>
-          </tr>
-        </thead>
-        <tbody id="histBody"></tbody>
-      </table>
-    </div>
-  </section>
-</main>
-
-<!-- 숨김 파일 입력 (이미지 / PDF 업로드용) -->
-<input type="file" id="fileInput" accept="image/*,.pdf,application/pdf" hidden>
-<input type="file" id="ocrModalFileInput" accept="image/*" hidden>
-
-<!-- 모달 1: 6현 클래식 기타 튜너 -->
-<div class="modal-backdrop" id="tunerModal" hidden>
-  <div class="modal" role="dialog" aria-labelledby="tunerTitle">
-    <div class="panel-head">
-      <h2 id="tunerTitle">클래식 기타 6현 튜너</h2>
-      <button type="button" class="btn sm" id="closeTunerBtn">닫기</button>
-    </div>
-    <p class="hint">마이크로 기타 줄 소리를 들어 센트 단위로 음정을 보여줘요. 줄 번호를 누르면 기준음이 울리고 그 줄 기준으로 고정되며, 자동이면 가장 가까운 줄에 맞춰요.</p>
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px" id="tunerStrings"></div>
-    <button type="button" class="btn sm active" id="tunerAutoBtn" style="align-self:flex-start">자동 (가장 가까운 줄)</button>
-    <div class="stage" style="text-align:center;padding:16px">
-      <div style="font-size:13px;color:var(--d-muted)">감지된 음</div>
-      <div style="font-family:var(--font-num);font-size:38px;font-weight:700" id="tunerReadout">--</div>
-      <div class="tuner-meter" aria-hidden="true"><div class="tuner-zone"></div><div class="tuner-needle" id="tunerNeedle"></div></div>
-      <div class="num" style="font-size:13px;color:var(--d-muted)" id="tunerCents">-- 센트 · -- Hz</div>
-      <div style="font-size:14px;color:var(--d-near);margin-top:4px" id="tunerGuide">마이크 켜기 버튼을 누르고 한 줄씩 튕기세요</div>
-    </div>
-    <button type="button" class="btn primary" id="tunerStartMicBtn">마이크로 튜닝 시작</button>
+<div class="shell">
+  <header class="topbar"><div class="brand">Guitar <span>Studio</span></div><div class="top-actions"><button id="openNewSongBtn" class="primary">새 악보</button><button id="importFileBtn">파일 가져오기</button><input id="scoreFileInput" class="hidden" type="file" accept=".gp3,.gp4,.gp5,.gpx,.gp,.xml,.musicxml,.mxl,.atex,.txt"></div></header>
+  <div class="layout">
+    <main class="card main-card">
+      <section class="song-head"><div class="song-select"><label for="songSelect">곡</label><select id="songSelect"><option>불러오는 중…</option></select></div><div class="song-actions"><button id="editSongBtn">수정</button><button id="downloadSourceBtn">원본 다운로드</button><button id="exportGpBtn">GP 내보내기</button><button id="deleteSongBtn">삭제</button></div></section>
+      <div class="song-head" style="padding-top:0;padding-bottom:8px;display:block"><h1 id="songTitle">곡을 불러오는 중</h1><p id="songDescription"></p></div>
+      <div class="status-row"><span id="appStatus" role="status">준비 중…</span><span id="storageStatus"></span></div>
+      <section class="score-wrap" id="scoreWrap"><div id="score"></div><div id="scorePlaceholder" class="score-placeholder">악보를 불러오는 중…</div></section>
+      <div class="transport"><div class="transport-buttons"><button id="playPauseBtn" class="primary" disabled>재생</button><button id="stopBtn" disabled>정지</button><span id="positionTxt" class="position">—</span></div><div class="transport-settings"><button id="guideSoundBtn" class="toggle" aria-pressed="true">가이드음 켬</button><button id="metronomeBtn" class="toggle" aria-pressed="false">메트로놈 끔</button><label class="slider">음량 <input id="volumeRange" type="range" min="0" max="100" value="75"></label><label class="slider">속도 <input id="speedRange" type="range" min="25" max="200" value="100"><span id="speedTxt" class="speed">100%</span></label></div></div>
+      <div class="loop-row"><label><input id="loopEnable" type="checkbox"> 구간 반복</label><label>시작 마디 <input id="loopStart" type="number" min="1" value="1"></label><label>끝 마디 <input id="loopEnd" type="number" min="1" value="1"></label><button id="applyLoopBtn">구간 적용</button></div>
+    </main>
+    <aside class="side">
+      <section class="card"><h2>현재 탄현</h2><p>악보에 명시된 현·프렛·운지만 보여줘.</p><div id="fretboard" class="fretboard"><div class="notice">재생을 시작하면 현재 음을 표시해.</div></div></section>
+      <section class="card"><h2>Google Sheets</h2><p>제목, 설명, alphaTex 세 열을 사용해.</p><div class="sheet-form"><input id="sheetUrl" type="url" placeholder="공유 링크 또는 시트 ID"><button id="syncSheetBtn">곡 동기화</button><button id="copySheetTsvBtn">현재 곡 TSV 복사</button></div><div id="sheetStatus" class="notice">시트 URL을 입력해 동기화할 수 있어.</div></section>
+    </aside>
   </div>
 </div>
-
-<!-- 모달: 음색 설정 (울림통 공명 · 공명현) -->
-<div class="modal-backdrop" id="toneModal" hidden>
-  <div class="modal" role="dialog" aria-labelledby="toneTitle">
-    <div class="panel-head">
-      <h2 id="toneTitle">음색 설정</h2>
-      <button type="button" class="btn sm" id="closeToneBtn">닫기</button>
-    </div>
-    <div id="toneFxNote" hidden style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span class="hint">지금은 드라이 모드라 울림통·공명현이 꺼져 있어요.</span>
-      <button type="button" class="btn sm primary" id="toneFxOnBtn">콘서트홀 켜기</button>
-    </div>
-    <div class="form-row">
-      <div style="display:flex;align-items:center;gap:10px">
-        <label for="bodyAmountRange" style="font-weight:600;white-space:nowrap">울림통 공명</label>
-        <input type="range" id="bodyAmountRange" min="0" max="200" step="10" value="100" style="flex:1">
-        <span class="num" id="bodyAmountVal" style="font-weight:700;min-width:48px;text-align:right">100%</span>
-      </div>
-      <p class="hint">기타 몸통이 함께 울리는 정도예요. 높이면 저음이 두툼한 나무 울림이 커지고, 낮추면 가볍고 또렷해져요.</p>
-    </div>
-    <div class="form-row">
-      <div style="display:flex;align-items:center;gap:10px">
-        <label for="sympAmountRange" style="font-weight:600;white-space:nowrap">공명현</label>
-        <input type="range" id="sympAmountRange" min="0" max="200" step="10" value="100" style="flex:1">
-        <span class="num" id="sympAmountVal" style="font-weight:700;min-width:48px;text-align:right">100%</span>
-      </div>
-      <p class="hint">다른 음을 칠 때 쉬고 있는 개방현이 함께 살짝 울리는 효과예요 (예: 4번줄 미를 치면 6번줄·1번줄 미가 따라 울림). 0%면 꺼져요.</p>
-    </div>
-    <button type="button" class="btn primary" id="tonePreviewBtn">미리 듣기</button>
-  </div>
-</div>
-
-<!-- 모달 2: 지연 보정 (마이크 입력 + 블루투스 출력) -->
-<div class="modal-backdrop" id="calibModal" hidden>
-  <div class="modal" role="dialog" aria-labelledby="calibTitle">
-    <div class="panel-head">
-      <h2 id="calibTitle">지연 보정 (블루투스 &amp; 마이크)</h2>
-      <button type="button" class="btn sm" id="closeCalibBtn">닫기</button>
-    </div>
-
-    <!-- 1. 오디오 출력 장치 (블루투스 지연 보정) -->
-    <div style="margin:12px 0 16px;padding:12px;background:var(--card-sub);border-radius:8px;border:1px solid var(--border)">
-      <div style="font-weight:600;margin-bottom:6px">1. 오디오 출력 장치 (블루투스 지연 보정)</div>
-      <p class="hint" style="margin-bottom:10px">블루투스 무선 이어폰/스피커는 무선 전송 특성상 150~250ms 지연이 발생합니다. 화면 커서 점등과 정박 채점 판정을 이에 맞게 보정하여 소리와 완벽히 일치시킵니다.</p>
-      <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
-        <button type="button" class="btn sm" id="btPresetWired">유선/내장 스피커 (0ms)</button>
-        <button type="button" class="btn sm" id="btPresetNormal">블루투스 이어폰 (+180ms)</button>
-        <button type="button" class="btn sm" id="btPresetHeavy">블루투스 헤드셋 (+240ms)</button>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <label for="audioOffsetRange" style="font-size:12px;color:var(--text-dim);white-space:nowrap">출력 지연 오프셋:</label>
-        <input type="range" id="audioOffsetRange" min="0" max="400" step="5" value="0" style="flex:1">
-        <span class="num" id="audioOffsetVal" style="font-weight:700;min-width:60px;text-align:right">+0 ms</span>
-      </div>
-    </div>
-
-    <!-- 2. 마이크 루프백 자동 보정 -->
-    <div style="padding:12px;background:var(--card-sub);border-radius:8px;border:1px solid var(--border)">
-      <div style="font-weight:600;margin-bottom:6px">2. 마이크 입력 장치 &amp; 자동 보정</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <label for="micDeviceSelect" style="font-size:12px;color:var(--muted);white-space:nowrap">입력 장치:</label>
-        <select id="micDeviceSelect" style="flex:1;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg)"></select>
-        <button type="button" class="btn sm" id="micDeviceRefreshBtn">목록 불러오기</button>
-      </div>
-      <p class="hint" style="margin-bottom:8px">블루투스 이어폰의 마이크를 쓰면 이어폰이 통화 모드로 바뀌어 재생 음질이 크게 떨어져요. 노트북 내장 마이크나 USB 마이크를 고르세요. 장치를 바꾸면 아래 자동 보정을 다시 해 주세요.</p>
-      <p class="hint">스피커 소리가 마이크로 다시 들어오는 왕복 시간(ms)을 측정해 정박 채점 오차를 없앱니다 (유선/내장 스피커 권장).</p>
-      <div class="fg-card" style="margin:8px 0">
-        <span class="label">현재 마이크 측정 지연</span>
-        <span class="fg-val num" id="calibModalStatus">아직 보정 안 됨 (기본값 45ms 사용 중)</span>
-      </div>
-      <button type="button" class="btn primary" id="runCalibBtn">6초 자동 보정 시작</button>
-    </div>
-  </div>
-</div>
-
-<!-- 모달 3: AI 채팅(안티그래비티/제미니) 연동 & 원클릭 계이름 비주얼 에디터 -->
-<div class="modal-backdrop" id="newSongModal" hidden>
-  <div class="modal wide" role="dialog" aria-labelledby="newSongTitle">
-    <div class="panel-head">
-      <h2 id="newSongTitle">악보 입력 · AI 채팅 변환 &amp; 원클릭 계이름 편집기</h2>
-      <button type="button" class="btn sm" id="closeNewSongBtn">닫기</button>
-    </div>
-
-    <!-- 1. 기본 곡 정보 -->
-    <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">
-      <div class="form-row">
-        <label class="label" for="nsTitle">곡 제목</label>
-        <input type="text" id="nsTitle" placeholder="예: 나비야 (교본 12쪽)">
-      </div>
-      <div class="form-row">
-        <label class="label" for="nsBeats">박자</label>
-        <select id="nsBeats">
-          <option value="2">2/4 (2박자)</option>
-          <option value="3">3/4 (3박자)</option>
-          <option value="4" selected>4/4 (4박자)</option>
-          <option value="6">6/8 (6박자)</option>
-          <option value="8">4/4 (8분음표 8박 · 핑거스타일)</option>
-          <option value="9">9/8 (3박 셋잇단 아르페지오)</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label class="label" for="nsBpm">기본 BPM</label>
-        <input type="number" id="nsBpm" value="64" min="30" max="180">
-      </div>
-    </div>
-
-    <!-- 2. AI 채팅 프롬프트 복사 & 참고 사진 미리보기 바 -->
-    <div class="ocr-bar">
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <button type="button" class="btn sm primary" id="copyAiPromptBtn">제미니/안티그래비티 질문용 프롬프트 복사</button>
-        <button type="button" class="btn sm" id="ocrPickImgBtn">교본 참고 사진 띄우기</button>
-      </div>
-      <span class="hint" id="ocrStatusTxt">프롬프트를 복사해 제미니/안티그래비티 채팅에 악보 사진과 함께 붙여넣거나, 아래 운지 숫자 버튼(0솔·2라·0시·1도·3레)을 눌러 입력해 보세요.</span>
-    </div>
-
-    <div class="ocr-img-box" id="ocrImgBox" hidden>
-      <img id="ocrPreviewImg" alt="변환할 원본 악보 이미지">
-    </div>
-
-    <!-- 3. 원클릭 클래식 기타 1포지션 계이름 입력 패드 -->
-    <div class="note-pad-wrap">
-      <div class="panel-head">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <div class="tab-seg" role="tablist" aria-label="입력 패드 배열 모드">
-            <button type="button" id="padModeStringBtn" role="tab" aria-selected="true">기타 줄별 (1~6번줄)</button>
-            <button type="button" id="padModeSolfegeBtn" role="tab" aria-selected="false">계이름 순서 (도레미파솔라시)</button>
-          </div>
-          <span class="label" id="veSelectedLabel">선택된 위치: 1마디 1박</span>
-        </div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button type="button" class="btn sm" id="veApoyandoBtn" title="선택된 박자 음에 ! (아포얀도 주선율 강조) 또는 ~ (티란도 여린 반주) 표기를 전환합니다">! 아포얀도(강조) 전환</button>
-          <button type="button" class="btn sm" id="veBassCombineBtn" title="켜 두거나 Shift+클릭하면 현재 칸의 음과 방금 누른 음을 + 기호(예: 0E2+4B4)로 한 박자에 묶어 줍니다">+ 겹음 묶기: 꺼짐</button>
-          <button type="button" class="btn sm" id="veAutoChordBtn" title="멜로디 구성음과 곡의 조성을 분석해 마디별 어울리는 반주 코드를 자동으로 추측해 채웁니다">코드 자동 추론 (자동)</button>
-          <button type="button" class="btn sm" id="veAddBarBtn">+ 마디 추가</button>
-          <button type="button" class="btn sm danger" id="veDelBarBtn">- 마지막 마디 삭제</button>
-        </div>
-      </div>
-      <div class="note-pad-rows" id="notePadRows"></div>
-    </div>
-
-    <!-- 4. 비주얼 마디·박자 타일 그리드 (클릭해서 즉시 수정) -->
-    <div class="ve-bars" id="veBarsGrid"></div>
-
-    <!-- 5. 텍스트 원본 (실시간 양방향 동기화) -->
-    <details open>
-      <summary class="label" style="cursor:pointer">제미니/안티그래비티 변환 텍스트 붙여넣기 &amp; 직접 편집 (표기법: <code>0E2+4B4</code> 동시탄현 · <code>!4B4</code> 아포얀도 강조 · <code>~0B3</code> 티란도 반주 · <code>1C4@3</code> 줄지정)</summary>
-      <div class="form-row" style="margin-top:6px">
-        <textarea id="nsMeasuresTxt">[C] G4 E4 E4 - | 솔 미 미 -
-[G7] F4 D4 D4 - | 파 레 레 -
-[C] C4 D4 E4 F4 | 도 레 미 파
-[C] G4 G4 G4 - | 솔 솔 솔 -</textarea>
-      </div>
-    </details>
-    <div id="scoreValidationStatus" role="status" aria-live="polite" style="white-space:pre-line"></div>
-
-    <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
-      <button type="button" class="btn" id="copyVeRowTsvBtn" title="구글 스프레드시트 A열에 Ctrl+V로 바로 붙여넣을 수 있게 한 줄(TSV)로 복사합니다">구글 시트 한 줄(TSV)로 복사</button>
-      <button type="button" class="btn primary" id="saveNewSongBtn">이 내용으로 내 악보 저장 및 열기</button>
-    </div>
-  </div>
-</div>
-
-<!-- 모달 4: 마디 코드/메모 수정 (이미지 악보 마디 클릭 시) -->
-<div class="modal-backdrop" id="barEditModal" hidden>
-  <div class="modal" role="dialog" aria-labelledby="barEditTitle">
-    <div class="panel-head">
-      <h2 id="barEditTitle">마디 정보 설정</h2>
-      <button type="button" class="btn sm" id="closeBarEditBtn">닫기</button>
-    </div>
-    <div class="form-row">
-      <label class="label" for="beChord">코드 이름 (예: C, G7, Am, Dm, Em, F, E7)</label>
-      <input type="text" id="beChord" placeholder="C">
-    </div>
-    <div class="form-row">
-      <label class="label" for="beNote">대표 목표 음 또는 계이름 (예: 도, 솔, E4, C4)</label>
-      <input type="text" id="beNote" placeholder="C4">
-    </div>
-    <div class="form-row">
-      <label class="label" for="beMemo">운지 메모 (예: 약지 3프렛 유지, i-m 교대)</label>
-      <input type="text" id="beMemo" placeholder="약지 3프렛 유지">
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button type="button" class="btn primary" id="saveBarEditBtn">적용</button>
-    </div>
-  </div>
-</div>
-
-<!-- 모달 5: 백업 및 복원 -->
-<div class="modal-backdrop" id="backupModal" hidden>
-  <div class="modal" role="dialog" aria-labelledby="backupTitle">
-    <div class="panel-head">
-      <h2 id="backupTitle">연습 데이터 백업 · 복원</h2>
-      <button type="button" class="btn sm" id="closeBackupBtn">닫기</button>
-    </div>
-    <p class="hint">이 앱은 저작권 보호를 위해 서버에 악보를 업로드하지 않고 현재 기기 브라우저(IndexedDB)에만 저장합니다. 다른 폰이나 태블릿, PC로 옮기려면 백업 파일을 내보내세요.</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button type="button" class="btn primary" id="exportJsonBtn">전체 데이터 파일로 내보내기 (.json)</button>
-      <button type="button" class="btn" id="importJsonBtn">백업 파일 불러오기</button>
-      <input type="file" id="importFileInput" accept=".json,application/json" hidden>
-    </div>
-  </div>
-</div>
-
-<!-- 모달 6: 내 구글 드라이브 스프레드시트 연동 -->
-<div class="modal-backdrop" id="sheetSyncModal" hidden>
-  <div class="modal wide" role="dialog" aria-labelledby="sheetSyncTitle">
-    <div class="panel-head">
-      <h2 id="sheetSyncTitle">구글 드라이브 스프레드시트 악보 연동</h2>
-      <button type="button" class="btn sm" id="closeSheetSyncBtn">닫기</button>
-    </div>
-    <div class="fg-card" style="gap:6px">
-      <span class="label">1분 초기 설정 방법 (API 키 · 로그인 불필요)</span>
-      <span class="hint" style="color:var(--fg)">
-        1. 내 구글 드라이브에서 <b>새 Google 스프레드시트</b>를 하나 만듭니다.<br>
-        2. 아래 <b>[시트 기본 양식(표 헤더+예시) 복사]</b> 버튼을 누르고 시트의 <b>A1 칸</b>에 <code>Ctrl+V</code>로 붙여넣습니다.<br>
-        3. 시트 우측 상단 <b>[공유] → 일반 액세스를 [링크가 있는 모든 사용자 (뷰어)]</b>로 바꾼 뒤 링크를 아래에 붙여넣으세요.<br>
-        4. 한 번만 연동해 두면 <b>PC·태블릿·폰 어디서든 앱을 켤 때마다 내 구글 시트의 악보를 자동으로 불러옵니다.</b>
-      </span>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
-        <button type="button" class="btn sm" id="copySheetTemplateBtn">시트 기본 양식(A1 붙여넣기용) 복사</button>
-        <button type="button" class="btn sm" id="copyCurSongTsvBtn">현재 선택된 악보를 시트 한 줄(TSV)로 복사</button>
-      </div>
-    </div>
-
-    <div class="form-row">
-      <label class="label" for="sheetUrlInput">내 구글 스프레드시트 공유 링크 (URL 또는 시트 ID)</label>
-      <input type="text" id="sheetUrlInput" placeholder="https://docs.google.com/spreadsheets/d/1abc123.../edit?usp=sharing">
-    </div>
-
-    <div class="fg-card">
-      <span class="label">동기화 상태</span>
-      <span class="fg-val" id="sheetSyncStatus" style="font-size:13px">아직 연결된 구글 시트가 없어요.</span>
-    </div>
-
-    <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
-      <button type="button" class="btn danger sm" id="clearSheetSyncBtn">연동 해제</button>
-      <button type="button" class="btn primary" id="syncSheetNowBtn">연동 저장 및 지금 악보 불러오기</button>
-    </div>
-  </div>
-</div>
-
-<!-- AudioWorklet 스크립트 (on-the-beat의 정박/음정 감지 엔진 계승) -->
-<script id="worklet" type="text/plain">
-function makeFFT(N){
-  const lg = Math.log2(N), rev = new Uint16Array(N), cs = new Float32Array(N / 2), sn = new Float32Array(N / 2);
-  for (let i = 0; i < N; i++){ let r = 0, x = i; for (let b = 0; b < lg; b++){ r = (r << 1) | (x & 1); x >>= 1; } rev[i] = r; }
-  for (let i = 0; i < N / 2; i++){ cs[i] = Math.cos(-2 * Math.PI * i / N); sn[i] = Math.sin(-2 * Math.PI * i / N); }
-  return function(re, im){
-    for (let i = 0; i < N; i++){ const j = rev[i]; if (j > i){ let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
-    for (let size = 2; size <= N; size <<= 1){
-      const half = size >> 1, step = N / size;
-      for (let i = 0; i < N; i += size){
-        for (let j = 0; j < half; j++){
-          const k = j * step, wr = cs[k], wi = sn[k], a = i + j, b = a + half;
-          const tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
-          re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
-        }
-      }
-    }
-  };
-}
-function hann(N){ const w = new Float32Array(N); let s = 0; for (let i = 0; i < N; i++){ w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N); s += w[i]; } return { w: w, sum: s }; }
-// 튜너용 연속 음정 추정 (YIN): 차이 함수를 FFT 상관으로 계산하고 누적 평균 정규화 최솟값을 포물선 보간해 센트 단위 정밀도
-// W=2048 창이면 60Hz(6번줄 E2 82Hz 아래)까지 감지, 낮은 기음이 약한 노트북 마이크 입력에서도 옥타브 오류 없음
-function makeYin(sr, W){
-  const half = W / 2, fft = makeFFT(W);
-  const aRe = new Float32Array(W), aIm = new Float32Array(W), bRe = new Float32Array(W), bIm = new Float32Array(W);
-  const cm = new Float32Array(half);
-  const tauMin = Math.floor(sr / 1100), tauMax = Math.min(half - 2, Math.ceil(sr / 60));
-  return function(x){
-    let e = 0;
-    for (let i = 0; i < W; i++) e += x[i] * x[i];
-    const rms = Math.sqrt(e / W);
-    if (rms < 0.003) return { hz: null, rms: rms };
-    for (let i = 0; i < W; i++){ aRe[i] = i < half ? x[i] : 0; aIm[i] = 0; bRe[i] = x[i]; bIm[i] = 0; }
-    fft(aRe, aIm); fft(bRe, bIm);
-    for (let k = 0; k < W; k++){
-      const re = aRe[k] * bRe[k] + aIm[k] * bIm[k], im = aRe[k] * bIm[k] - aIm[k] * bRe[k];
-      aRe[k] = re; aIm[k] = -im;
-    }
-    fft(aRe, aIm); // aRe[t] / W = Σ x[j]·x[j+t]
-    let e0 = 0;
-    for (let j = 0; j < half; j++) e0 += x[j] * x[j];
-    let eT = e0, run = 0;
-    cm[0] = 1;
-    for (let t = 1; t < half; t++){
-      eT += x[t + half - 1] * x[t + half - 1] - x[t - 1] * x[t - 1];
-      const d = e0 + eT - 2 * aRe[t] / W;
-      run += d;
-      cm[t] = run > 0 ? d * t / run : 1;
-    }
-    let tau = -1;
-    for (let t = tauMin; t <= tauMax; t++){
-      if (cm[t] < 0.15){ while (t + 1 <= tauMax && cm[t + 1] < cm[t]) t++; tau = t; break; }
-    }
-    if (tau < 0) return { hz: null, rms: rms };
-    const a = cm[tau - 1], b = cm[tau], c = cm[tau + 1], den = a - 2 * b + c;
-    return { hz: sr / (tau + (den !== 0 ? 0.5 * (a - c) / den : 0)), conf: 1 - b, rms: rms };
-  };
-}
-const NOTE_LO = 40, NOTE_HI = 84;
-const HARM = [1, 0.9, 0.8, 0.7, 0.6, 0.5];
-
-class OnsetProc extends AudioWorkletProcessor {
-  constructor(){
-    super();
-    const N = 1024;
-    this.N = N; this.sr = sampleRate;
-    this.buf = new Float32Array(N); this.re = new Float32Array(N); this.im = new Float32Array(N);
-    const hw = hann(N); this.win = hw.w; this.norm = 2 / hw.sum;
-    this.fft = makeFFT(N);
-    this.C = 1000; this.mu = 3; this.kAvg = 0.03;
-    this.bands = [
-      this.mkBand(70, 1500, { delta: 0.045, lambda: 1.0, confirm: 2.0, refr: 0.05 }),
-      this.mkBand(3000, 6500, { delta: 0.06, lambda: 1.0, confirm: 1.3, refr: 0.2 })
-    ];
-    const PN = 4096;
-    this.PN = PN; this.pfft = makeFFT(PN); this.pwin = hann(PN).w;
-    this.pa = new Float32Array(PN); this.pai = new Float32Array(PN);
-    this.pb = new Float32Array(PN); this.pbi = new Float32Array(PN);
-    const bw = this.sr / PN;
-    this.kLo = Math.ceil(70 / bw);
-    this.kMax = Math.min(PN / 2 - 1, Math.ceil(7000 / bw));
-    this.D = new Float32Array(this.kMax + 1);
-    this.cands = [];
-    for (let m = NOTE_LO; m <= NOTE_HI; m++){
-      const f0 = 440 * Math.pow(2, (m - 69) / 12), hs = [];
-      for (let h = 1; h <= HARM.length; h++){
-        const f = f0 * h;
-        const k0 = Math.max(1, Math.floor(f * 0.9856 / bw)), k1 = Math.min(this.kMax, Math.ceil(f * 1.0146 / bw));
-        hs.push(k0, k1);
-      }
-      this.cands.push({ m: m, f0: f0, hs: hs });
-    }
-    this.RN = 16384; this.ring = new Float32Array(this.RN); this.jobs = [];
-    this.PRE_GAP = 600; this.POST_SKIP = 200;
-    this.hops = 0; this.peak = 0; this.blocks = 0;
-    // 튜너 모드: 튜너 화면이 열려 있을 때만 1024샘플마다 연속 음정 추정 (약 21ms 간격)
-    this.TW = 2048; this.yin = makeYin(this.sr, this.TW); this.tbuf = new Float32Array(this.TW);
-    this.tunerOn = false; this.tunerAcc = 0;
-    this.port.onmessage = (e) => { if (e.data && e.data.t === 'tuner') this.tunerOn = !!e.data.on; };
-  }
-  mkBand(lo, hi, c){
-    const k0 = Math.max(1, Math.ceil(lo * this.N / this.sr));
-    const k1 = Math.min(this.N / 2 - 1, Math.floor(hi * this.N / this.sr));
-    const len = k1 - k0 + 1, hist = [];
-    for (let i = 0; i <= this.mu; i++) hist.push(new Float32Array(len));
-    return { k0, k1, len, hist, head: 0, avg: 0, armed: true, last: -1e9, cand: null, c };
-  }
-  analyze(tEnd, detect){
-    const N = this.N, re = this.re, im = this.im, buf = this.buf, w = this.win;
-    for (let i = 0; i < N; i++){ re[i] = buf[i] * w[i]; im[i] = 0; }
-    this.fft(re, im);
-    for (let k = 0; k < 2; k++){
-      const b = this.bands[k], c = b.c;
-      const cur = b.hist[b.head], old = b.hist[(b.head + 1) % (this.mu + 1)];
-      let flux = 0;
-      for (let j = 0; j < b.len; j++){
-        const kk = b.k0 + j;
-        const m = Math.sqrt(re[kk] * re[kk] + im[kk] * im[kk]) * this.norm;
-        const L = Math.log(1 + this.C * m);
-        cur[j] = L;
-        let p = old[j];
-        if (j > 0 && old[j - 1] > p) p = old[j - 1];
-        if (j < b.len - 1 && old[j + 1] > p) p = old[j + 1];
-        const d = L - p;
-        if (d > 0) flux += d;
-      }
-      flux /= b.len;
-      b.head = (b.head + 1) % (this.mu + 1);
-      const thr = c.delta + c.lambda * b.avg;
-      b.avg += (flux - b.avg) * this.kAvg;
-      if (!detect) continue;
-      if (b.cand){
-        if (flux > b.cand.max) b.cand.max = flux;
-        if (++b.cand.n >= 3){
-          if (b.cand.max > b.cand.thr * c.confirm){
-            this.port.postMessage({ t: 'on', k: k, time: b.cand.t, str: b.cand.max });
-            b.last = b.cand.t;
-            if (k === 0) this.jobs.push({ s: Math.round(b.cand.t * this.sr), time: b.cand.t });
-          }
-          b.cand = null; b.armed = false;
-        }
-      } else if (!b.armed){
-        if (tEnd - b.last > c.refr && flux < thr) b.armed = true;
-      } else if (flux > thr){
-        b.cand = { t: tEnd, max: flux, n: 0, thr: thr };
-      }
-    }
-  }
-  pitch(job){
-    const PN = this.PN, mask = this.RN - 1, ring = this.ring, w = this.pwin;
-    const a = this.pa, ai = this.pai, b = this.pb, bi = this.pbi, D = this.D;
-    const s0 = job.s - this.PRE_GAP - PN, s1 = job.s + this.POST_SKIP;
-    for (let i = 0; i < PN; i++){
-      a[i] = ring[(s0 + i) & mask] * w[i]; ai[i] = 0;
-      b[i] = ring[(s1 + i) & mask] * w[i]; bi[i] = 0;
-    }
-    this.pfft(a, ai); this.pfft(b, bi);
-    let tot = 0, fresh = 0;
-    for (let k = 1; k <= this.kMax; k++){
-      const ma = Math.sqrt(a[k] * a[k] + ai[k] * ai[k]), mb = Math.sqrt(b[k] * b[k] + bi[k] * bi[k]);
-      const d = mb - ma;
-      D[k] = d > 0 ? d : 0;
-      if (k >= this.kLo){ tot += mb; fresh += D[k]; }
-    }
-    let best = null, bs = 0;
-    for (let c = 0; c < this.cands.length; c++){
-      const hs = this.cands[c].hs;
-      let s = 0;
-      for (let h = 0; h < HARM.length; h++){
-        let mx = 0;
-        for (let k = hs[2 * h]; k <= hs[2 * h + 1]; k++) if (D[k] > mx) mx = D[k];
-        s += HARM[h] * mx;
-      }
-      if (s > bs){ bs = s; best = this.cands[c].m; }
-    }
-    const ratio = tot > 0 ? fresh / tot : 0;
-    const ok = best !== null && ratio > 0.10 && bs > 0.4;
-    this.port.postMessage({ t: 'pitch', time: job.time, midi: ok ? best : null });
-  }
-  process(inputs){
-    const ch = inputs[0] && inputs[0][0];
-    if (ch && ch.length){
-      const n = ch.length, fr = currentFrame, mask = this.RN - 1;
-      for (let i = 0; i < n; i++){
-        const x = ch[i], a = x < 0 ? -x : x;
-        if (a > this.peak) this.peak = a;
-        this.ring[(fr + i) & mask] = x;
-      }
-      this.buf.copyWithin(0, n);
-      this.buf.set(ch, this.N - n);
-      this.hops++;
-      this.analyze((fr + n) / this.sr, this.hops > 16);
-      const end = fr + n;
-      while (this.jobs.length && end >= this.jobs[0].s + this.POST_SKIP + this.PN) this.pitch(this.jobs.shift());
-      if (this.tunerOn && (this.tunerAcc += n) >= 1024){
-        this.tunerAcc = 0;
-        for (let i = 0; i < this.TW; i++) this.tbuf[i] = this.ring[(end - this.TW + i) & mask];
-        const r = this.yin(this.tbuf);
-        this.port.postMessage({ t: 'tune', hz: r.hz, conf: r.conf, rms: r.rms });
-      }
-    }
-    if (++this.blocks >= 10){
-      this.port.postMessage({ t: 'lv', l: this.peak });
-      this.peak = 0; this.blocks = 0;
-    }
-    return true;
-  }
-}
-registerProcessor('onset', OnsetProc);
-</script>
-
-<script src="src/storage.js"></script>
-<script src="src/notation.js"></script>
-<script src="src/parser.js"></script>
-<script src="src/score.js"></script>
-<script src="src/audio.js"></script>
-<script src="src/guide.js"></script>
-<script src="src/ai-prompt.js"></script>
-<script src="src/image-analysis.js"></script>
-<script src="src/fretboard.js"></script>
-<script src="src/editor.js"></script>
-<script src="src/sheets.js"></script>
-<script src="src/app.js"></script>
-</body>
-</html>
+<dialog id="editorDialog"><div class="modal-head"><h2 id="editorHeading">악보 편집</h2><button id="closeEditorBtn" aria-label="닫기">닫기</button></div><form id="editorForm"><div class="modal-body"><label for="editorTitle">제목</label><input id="editorTitle" required maxlength="160"><label for="editorDescription">설명</label><input id="editorDescription" maxlength="500"><label for="editorAlphaTex">alphaTex</label><textarea id="editorAlphaTex" spellcheck="false"></textarea><div class="help">음은 프렛.현 순서야(예: 3.5는 5번 현 3프렛). 길이는 :4 3.5처럼 음 앞에 둘 수 있어. 동시음은 (0.3 1.2), 쉼은 r, 붙임줄은 {t}를 써. \voice는 독립 성부, \ts (3 4)는 박자표, \capo 5는 카포, \tempo 64는 악보 템포야.</div><div id="editorFileInfo" class="notice"></div><div id="editorMessage" class="notice" role="status"></div><div id="editorPreview" class="preview hidden"></div><div class="top-actions" style="margin-top:12px"><button id="previewAlphaTexBtn" type="button">미리보기 검증</button><button id="copyImagePromptBtn" type="button">사진 변환 프롬프트 복사</button><label style="display:inline-flex;align-items:center;gap:8px;margin:0"><input id="imageInput" type="file" accept="image/*" style="width:auto">사진 미리보기</label></div><img id="imagePreview" class="hidden" alt="악보 사진 미리보기" style="display:block;max-width:100%;max-height:220px;margin-top:10px;border-radius:8px"></div><div class="modal-footer"><div><button id="downloadAlphaTexBtn" type="button">alphaTex 다운로드</button></div><div class="right"><button id="saveSongBtn" type="submit" class="primary">저장</button></div></div></form></dialog>
+<script src="vendor/alphatab/dist/alphaTab.min.js" defer></script>
+<script src="src/storage.js" defer></script>
+<script src="src/tab-engine.js" defer></script>
+<script src="src/legacy-migration.js" defer></script>
+<script src="src/library.js" defer></script>
+<script src="src/sheets.js" defer></script>
+<script src="src/ai-prompt.js" defer></script>
+<script src="src/fretboard.js" defer></script>
+<script src="src/editor.js" defer></script>
+<script src="src/app.js" defer></script>
+</body></html>
