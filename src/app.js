@@ -1927,7 +1927,12 @@ function editorCapo(){
   function renderYoutubePanel(){
     var qBox = $('#ytQuickLinks');
     qBox.textContent = '';
-    var cleanTitle = (curSong ? curSong.title.replace(/\([^)]*\)/g, '').trim() : '클래식 기타 동요');
+    var cleanTitle = curSong
+      ? curSong.title.replace(/\[[^\]]*\]/g, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim()
+      : '클래식 기타 동요';
+    if (!cleanTitle && curSong && curSong.title) {
+      cleanTitle = curSong.title.trim();
+    }
     var queries = [
       { label: cleanTitle + ' 클래식 기타', q: cleanTitle + ' 클래식 기타' },
       { label: cleanTitle + ' 기타 타브 운지법', q: cleanTitle + ' 기타 타브 강좌' },
