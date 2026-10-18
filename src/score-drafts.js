@@ -171,13 +171,14 @@
 
     function apply(id, index, text, insert){
       var state = requireState(id, index);
-      var measureLines = parser.splitScoreMeasures(text == null ? '' : String(text));
+      var measureText = text == null ? '' : String(text).trim();
+      var measureLines = parser.splitScoreMeasures(measureText);
       if (measureLines.length !== 1){
         throw draftError([{code:'ONE_MEASURE_REQUIRED',measure:index + 1,beat:null,message:'한 마디 텍스트만 적용할 수 있어.'}]);
       }
       var lines = currentLines(state.song);
-      if (insert) lines.splice(index + 1, 0, measureLines[0]);
-      else lines[index] = measureLines[0];
+      if (insert) lines.splice(index + 1, 0, measureText);
+      else lines[index] = measureText;
       return commitCandidate(state, lines);
     }
 

@@ -211,19 +211,31 @@
     });
 
     $('#copyCurSongTsvBtn').addEventListener('click', async function(){
+      if (scoreEditorHooks && !scoreEditorHooks.beforeAction('악보 복사')) return;
       if (!curSong || curSong.type !== 'structured'){
         alert('구조화된(계이름) 악보가 선택되어 있을 때만 시트 행으로 복사할 수 있어요.');
         return;
       }
-      var lines = curSong.measures.map(function(m){
-        return { chord: m.chord || '-', autoChord: !!m.autoChord, notes: m.beats.map(function(b){ return (b.tok && b.tok !== '-') ? b.tok : (b.en || '-'); }), lyric: m.lyric || '' };
-      });
-      var tsv = formatSongToSheetTsv(curSong.title, curSong.beats, curSong.bpm, curSong.badge, lines);
+      var copyStatus = $('#scoreCopyStatus');
+      if (copyStatus) copyStatus.hidden = false;
       try {
-        await navigator.clipboard.writeText(tsv);
-        $('#sheetSyncStatus').textContent = '"' + curSong.title + '" 곡이 한 줄(TSV)로 복사되었어요! 구글 시트 빈 행의 A열에 Ctrl+V로 붙여넣으세요.';
-      } catch (e){
-        prompt('구글 시트 A열에 붙여넣을 내용:', tsv);
+        var lines = curSong.measures.map(function(m){
+          return { chord: m.chord || '-', autoChord: !!m.autoChord, notes: m.beats.map(function(b){ return (b.tok && b.tok !== '-') ? b.tok : (b.en || '-'); }), lyric: m.lyric || '' };
+        });
+        var badge = curSong.badge || '';
+        var songCapo = getSongCapo(curSong);
+        if (songCapo > 0 && !/(?:capo|카포)\s*[:.]?\s*(?:fret\s*)?\d/i.test(badge)) badge = (badge ? badge + ' · ' : '') + 'Capo ' + songCapo;
+        var tsv = formatSongToSheetTsv(curSong.title, curSong.beats, Number(curSong.bpm) || 64, badge, lines);
+        try {
+          if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('clipboard unavailable');
+          await navigator.clipboard.writeText(tsv);
+          if (copyStatus) copyStatus.textContent = '악보를 복사했어. Google Sheets의 빈 행 A열에 붙여넣어.';
+        } catch (clipboardError){
+          prompt('Google Sheets A열에 붙여넣을 내용:', tsv);
+          if (copyStatus) copyStatus.textContent = '복사 권한이 없어 TSV를 입력창에 표시했어. 내용을 복사해 A열에 붙여넣어.';
+        }
+      } catch (error){
+        if (copyStatus) copyStatus.textContent = error.message || '악보를 TSV로 만들지 못했어.';
       }
     });
   }

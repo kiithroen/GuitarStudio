@@ -117,9 +117,29 @@ test('measure-only and whole-score validation failures are atomic and report loc
     assert.strictEqual(store.get(id),baseline,'failed operation preserves the current returned object');
     assert.deepEqual(store.status(id),baselineStatus,'failed operation preserves dirty and undo state');
   });
+  [
+    '[C] D4 - - - //',
+    '// [C] D4 - - -'
+  ].forEach(function(raw){
+    const error = captureFailure(()=>store.apply(id,0,raw,false));
+    assert.ok(error.errors.some(item=>item.code === 'EMPTY_MEASURE'), 'boundary double slash is validated as part of the full score');
+    assert.strictEqual(store.get(id),baseline,'boundary failure leaves the score object unchanged');
+    assert.deepEqual(store.status(id),baselineStatus,'boundary failure leaves dirty and undo state unchanged');
+  });
   assert.throws(()=>store.remove(id,0), error=>error.errors.some(item=>/HOLD/.test(item.code)), 'removing an attack that feeds a later bar hold is rejected');
   assert.strictEqual(store.get(id),baseline);
   assert.deepEqual(store.status(id),baselineStatus);
+});
+
+test('quoted slash memo and a hold continuing from the previous measure remain valid edits', function(){
+  const store = createScoreDraftStore();
+  store.list([song('joined','마디 연결',['[C] C4 - - -','[C] - - - -'],4)]);
+  const edited = store.apply('joined',0,'[C] E4 - - - | "memo // / |"',false);
+  assert.equal(edited.measures[0].lyric,'memo // / |');
+  assert.equal(edited.measures[1].beats[0].tieFrom.measureIndex,0);
+  const held = store.apply('joined',1,'[C] - - - -',false);
+  assert.equal(held.measures[1].beats[0].kind,'hold');
+  assert.equal(held.measures[1].beats[0].tieFrom.measureIndex,0);
 });
 
 test('last-bar deletion is blocked and remains atomic', function(){

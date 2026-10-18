@@ -11,6 +11,7 @@ class MockElement {
     this.listeners = Object.create(null);
     this.dataset = {};
     this.attributes = {};
+    this._className = '';
     this.style = { setProperty(){}, removeProperty(){}, getPropertyValue(){ return ''; } };
     this.classList = {
       values: new Set(),
@@ -39,6 +40,8 @@ class MockElement {
   }
   set textContent(value){ this._textContent = String(value == null ? '' : value); this.children = []; }
   get textContent(){ return this._textContent; }
+  set className(value){ this._className = String(value || ''); this.classList.values = new Set(this._className.split(/\s+/).filter(Boolean)); }
+  get className(){ return this._className; }
   set innerHTML(value){ this._innerHTML = String(value == null ? '' : value); this.children = []; }
   get innerHTML(){ return this._innerHTML; }
   get options(){ return this.children; }
@@ -50,7 +53,11 @@ class MockElement {
   async dispatch(type, event = {}){
     event.target ||= this;
     event.currentTarget = this;
-    return Promise.all((this.listeners[type] || []).map(fn => fn(event)));
+    event.stopPropagation ||= function(){ event.cancelBubble = true; };
+    event.preventDefault ||= function(){ event.defaultPrevented = true; };
+    const results = await Promise.all((this.listeners[type] || []).map(fn => fn(event)));
+    if (!event.cancelBubble && this.parentNode) await this.parentNode.dispatch(type, event);
+    return results;
   }
   appendChild(child){ if (child){ child.parentNode = this; child.parentElement = this; this.children.push(child); } return child; }
   append(...children){ children.forEach(child => this.appendChild(child)); }
@@ -58,12 +65,13 @@ class MockElement {
   setAttribute(name, value){ this.attributes[name] = String(value); }
   getAttribute(name){ return this.attributes[name] == null ? null : this.attributes[name]; }
   removeAttribute(name){ delete this.attributes[name]; }
-  querySelector(){ return null; }
-  querySelectorAll(){ return []; }
+  querySelector(selector){ return queryTree(this, selector)[0] || null; }
+  querySelectorAll(selector){ return queryTree(this, selector); }
   closest(){ return null; }
   matches(){ return false; }
   focus(){}
   blur(){}
+  setSelectionRange(){}
   click(){ return this.dispatch('click'); }
   remove(){ if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this); }
   scrollIntoView(){}
@@ -73,6 +81,15 @@ class MockElement {
 const root = process.cwd();
 const elements = new Map();
 const makeElement = (tag, id) => new MockElement(tag, id);
+function queryTree(node, selector){
+  if (!node || !selector) return [];
+  const match = selector[0] === '.' ? node.classList.contains(selector.slice(1))
+    : selector[0] === '#' ? node.id === selector.slice(1)
+    : false;
+  const found = match ? [node] : [];
+  for (const child of node.children || []) found.push(...queryTree(child, selector));
+  return found;
+}
 const document = {
   readyState: 'complete',
   body: makeElement('body'),
@@ -89,7 +106,13 @@ const document = {
     if (!elements.has(id)) elements.set(id, makeElement('div', id));
     return elements.get(id);
   },
-  querySelectorAll(){ return []; },
+  querySelectorAll(selector){
+    if (selector && selector[0] === '.'){
+      const roots = [this.body, this.head, this.documentElement, ...elements.values()];
+      return [...new Set(roots.flatMap(node => queryTree(node, selector)))];
+    }
+    return [];
+  },
   addEventListener(){},
   removeEventListener(){},
   contains(){ return true; }
@@ -238,8 +261,11 @@ async function main(){
   document.querySelector('#storageStatus');
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
-  assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=clean-score-ui-1')), 'every app script uses the clean score UI revision');
+  assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-editor.js', 'src/app.js']);
+  assert.ok(scriptTags.every(src => src.endsWith('?v=temp-score-editor-1')), 'every app script uses the temporary score editor revision');
+  for (const id of ['addBlankScoreBtn', 'blankScoreModal', 'undoScoreEditBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
+    assert.match(html, new RegExp('id="' + id + '"'), 'temporary score UI includes #' + id);
+  }
   assert.doesNotMatch(html, /newTextSongBtn|editStructuredBtn|convertImgToScoreBtn|ocrModalFileInput|refImgDetails|refScoreImg|newSongModal|veBarsGrid/);
   for (const script of scripts){
     const source = fs.readFileSync(path.join(root, script), 'utf8');
@@ -252,6 +278,7 @@ async function main(){
   assert.equal(elements.get('fretboard').children.length, 7, 'fretboard renders six strings and one header');
   assert.ok(elements.get('measuresGrid').children.length > 0, 'selected score renders measures');
   assert.equal(typeof context.parseScore, 'function', 'parser API remains available to built-in and sheet scores');
+  assert.equal(typeof context.scoreEditorHooks, 'object', 'temporary score editor integration hooks are available');
   assert.equal(typeof context.initEditor, 'undefined', 'removed editor bootstrap is absent');
   assert.equal(typeof context.openConverterEditorModal, 'undefined', 'removed text editor API is absent');
   assert.equal(typeof context.buildAiPromptText, 'undefined', 'removed AI prompt API is absent');
@@ -423,12 +450,32 @@ async function main(){
   await elements.get('openSheetSyncBtn').click();
   assert.equal(elements.get('sheetSyncModal').hidden, false, 'Google Sheets modal opens');
   await elements.get('copyCurSongTsvBtn').click();
-  assert.match(copiedText, /\t4\t/, 'selected built-in score copies through the read-only TSV path');
+  assert.match(copiedText, /\t4\t/, 'selected score copies through the five-column TSV path');
   await elements.get('closeSheetSyncBtn').click();
 
   const hasImageUi = html.includes('id="uploadImgBtn"') && html.includes('id="fileInput"') && html.includes('id="barEditModal"') && html.includes('id="renameSongBtn"') && html.includes('id="deleteSongBtn"');
   assert.equal(hasImageUi, true, 'image/PDF upload, bar metadata, rename, and delete controls remain');
-  process.stdout.write('Result: app VM smoke passed (versioned script loading, read-only score flows, image-only persistence, fallback boot)\n');
+  const originalSongCount = context.allSongs.length;
+  await elements.get('addBlankScoreBtn').click();
+  assert.equal(elements.get('blankScoreModal').hidden, false, 'blank-score button opens the creation modal');
+  assert.deepEqual([elements.get('blankScoreTitle').value, elements.get('blankScoreBeats').value, elements.get('blankScoreBpm').value],
+    ['빈 악보 1', '4', '64'], 'blank-score modal starts with the specified defaults');
+  await elements.get('cancelBlankScoreBtn').click();
+  assert.equal(context.allSongs.length, originalSongCount, 'canceling blank-score creation does not add a draft');
+  await elements.get('addBlankScoreBtn').click();
+  elements.get('blankScoreTitle').value = 'VM temporary score';
+  elements.get('blankScoreBeats').value = '3';
+  elements.get('blankScoreBpm').value = '88';
+  await elements.get('createBlankScoreBtn').click();
+  assert.equal(context.curSong.id, 'temp-score-1', 'blank-score creation selects the in-memory temporary score');
+  assert.deepEqual([context.curSong.title, context.curSong.beats, context.curSong.bpm], ['VM temporary score', 3, 88],
+    'blank-score creation applies the chosen title, cell count, and BPM');
+  assert.deepEqual(Array.from(context.curSong.measures[0].beats, beat => beat.tok), ['r', 'r', 'r'], 'blank score starts with a full rest measure');
+  assert.equal(context.scoreDrafts.status(context.curSong.id).temporary, true, 'blank score is marked as temporary');
+  assert.equal(songStore.has(context.curSong.id), false, 'temporary text score is never written to IndexedDB');
+  assert.equal([...localValues.values()].some(value => String(value).includes('VM temporary score')), false,
+    'temporary score text is not written to localStorage');
+  process.stdout.write('Result: app VM smoke passed (versioned scripts, temporary score editing, image-only persistence, fallback boot)\n');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

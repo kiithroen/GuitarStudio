@@ -35,6 +35,7 @@
   var curSong = null;
   var curMeasureIdx = 0;
   var curBeatIdx = 0;
+  var songSessionStates = Object.create(null);
 
   function stripRemovedAudioSettings(state){
     var clean = Object.assign({}, state || {});
@@ -100,14 +101,80 @@ function curCapo(){
     return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
   }
 
+  function safeAppStateForPersistence(){
+    var stored = Object.assign({}, appState);
+    var draftStatus = curSong && curSong.type === 'structured' && scoreDrafts
+      ? scoreDrafts.status(curSong.id)
+      : {dirty:false,temporary:false};
+    var isUnpersistedSong = !!(curSong && curSong.type === 'structured' && (draftStatus.dirty || draftStatus.temporary));
+    if (isUnpersistedSong){
+      var persisted = ls.get('gs.state', {});
+      var sources = BUILTIN_SONGS.concat(sheetSongs).concat(imageSongs);
+      var persistedSong = sources.find(function(song){ return song.id === (persisted && persisted.lastSongId); });
+      if (persistedSong){
+        stored.lastSongId = persistedSong.id;
+        stored.beats = persisted.beats || persistedSong.beats || 4;
+        stored.bpm = persisted.bpm || persistedSong.bpm || 64;
+        stored.loopStart = persisted.loopStart || 1;
+        stored.loopEnd = persisted.loopEnd || getMeasureCount(persistedSong);
+      } else {
+        var fallback = BUILTIN_SONGS[0] || sheetSongs[0] || imageSongs[0] || null;
+        stored.lastSongId = fallback ? fallback.id : '';
+        if (fallback){
+          stored.beats = fallback.beats || 4;
+          stored.bpm = Number(fallback.bpm) || 64;
+          stored.loopStart = 1;
+          stored.loopEnd = getMeasureCount(fallback);
+        } else {
+          stored.beats = 4;
+          stored.bpm = 64;
+          stored.loopStart = 1;
+          stored.loopEnd = 1;
+        }
+      }
+    }
+    return stored;
+  }
+
+  function rememberCurrentSession(){
+    if (!curSong) return;
+    songSessionStates[curSong.id] = {
+      bpm:appState.bpm,
+      loopStart:appState.loopStart,
+      loopEnd:appState.loopEnd,
+      measure:curMeasureIdx,
+      beat:curBeatIdx
+    };
+  }
+
+  function restoreSongSession(song){
+    var snapshot = song && songSessionStates[song.id];
+    if (!snapshot || !song) return false;
+    var count = Math.max(1, getMeasureCount(song));
+    appState.bpm = Math.max(30, Math.min(240, Math.round(Number(snapshot.bpm) || Number(song.bpm) || 64)));
+    appState.loopStart = Math.max(1, Math.min(count, Number(snapshot.loopStart) || 1));
+    appState.loopEnd = Math.max(appState.loopStart, Math.min(count, Number(snapshot.loopEnd) || count));
+    curMeasureIdx = Math.max(0, Math.min(count - 1, Number(snapshot.measure) || 0));
+    curBeatIdx = Math.max(0, Math.min((song.beats || 1) - 1, Number(snapshot.beat) || 0));
+    $('#loopStart').max = count;
+    $('#loopEnd').max = count;
+    $('#loopStart').value = appState.loopStart;
+    $('#loopEnd').value = appState.loopEnd;
+    syncConsoleUI();
+    updateLoopClasses();
+    updateActiveCursor(curMeasureIdx, curBeatIdx, false);
+    return true;
+  }
+
   function saveAppState(){
     if (curSong){
+      rememberCurrentSession();
       curSong.lastBpm = appState.bpm;
       curSong.lastLoopStart = appState.loopStart;
       curSong.lastLoopEnd = appState.loopEnd;
       curSong.lastPracticedAt = Date.now();
       if (curSong.type === 'image') persistImageSong(curSong);
-      else ls.set('gs.builtinMeta.' + curSong.id, {
+      else if (!(scoreDrafts && scoreDrafts.status(curSong.id).dirty) && !(scoreDrafts && scoreDrafts.status(curSong.id).temporary)) ls.set('gs.builtinMeta.' + curSong.id, {
         bpm: curSong.lastBpm,
         loopStart: curSong.lastLoopStart,
         loopEnd: curSong.lastLoopEnd,
@@ -115,7 +182,7 @@ function curCapo(){
         at: curSong.lastPracticedAt
       });
     }
-    ls.set('gs.state', appState);
+    ls.set('gs.state', safeAppStateForPersistence());
   }
 
   // ---------- 악보 렌더링: 1) 내장/텍스트 구조화 악보
@@ -194,12 +261,14 @@ function curCapo(){
       $('#editBarMetaBtn').hidden = true;
       syncScoreModeUI();
       renderStructuredMeasures();
+      if (scoreEditorHooks) scoreEditorHooks.refreshStatus();
     } else {
       $('#structuredScoreWrap').hidden = true;
       $('#imageScoreWrap').hidden = false;
       $('#editBarMetaBtn').hidden = false;
       syncScoreModeUI();
       renderImageScore();
+      if (scoreEditorHooks) scoreEditorHooks.refreshStatus();
     }
 
     curMeasureIdx = appState.loopStart - 1;
@@ -272,7 +341,16 @@ function curCapo(){
         if (m.autoChord) chord.title = '멜로디 구성음과 곡의 조성을 분석해 자동 추론된 반주 코드입니다';
         head.appendChild(chord);
       }
+      if (scoreEditorHooks) scoreEditorHooks.appendMeasureMenu(head, mIdx);
       card.appendChild(head);
+
+      if (scoreEditorHooks && scoreEditorHooks.isEditingMeasure(mIdx)){
+        scoreEditorHooks.renderInlineEditor(card, mIdx);
+        card.addEventListener('click', function(event){ event.stopPropagation(); });
+        grid.appendChild(card);
+        scoreEditorHooks.appendInsertDraftCard(grid, mIdx);
+        return;
+      }
 
       if (isTab){
         var staveWrap = document.createElement('div');
@@ -699,10 +777,11 @@ function curCapo(){
         $('#loopEnd').value = appState.loopEnd;
         saveAppState();
         updateLoopClasses();
-        updateActiveCursor(curMeasureIdx, curBeatIdx, true);
+        updateActiveCursor(curMeasureIdx, curBeatIdx, false);
       });
 
       grid.appendChild(card);
+      if (scoreEditorHooks) scoreEditorHooks.appendInsertDraftCard(grid, mIdx);
     });
 
     renderChordCards(chordsSet);
@@ -1190,6 +1269,7 @@ function curCapo(){
 
   // ---------- 메트로놈 재생 루프 (카운트인 + 마디 진행 + 구간 반복 + 자동 가속)
   function startPractice(){
+    if (scoreEditorHooks && !scoreEditorHooks.beforeAction('연습 시작')) return;
     if (isPlaying) return;
     if (curSong && curSong.type === 'structured'){
       var validation = validateScore(serializeScoreMeasures(curSong.measures, '\n'), curSong.beats || appState.beats);
@@ -1607,7 +1687,7 @@ function curCapo(){
   window.addEventListener('keydown', function(e){
     var tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    if (!$('#audioOffsetModal').hidden || !$('#sheetSyncModal').hidden || !$('#backupModal').hidden || !$('#toneModal').hidden) return;
+    if (!$('#audioOffsetModal').hidden || !$('#sheetSyncModal').hidden || !$('#backupModal').hidden || !$('#toneModal').hidden || !$('#blankScoreModal').hidden) return;
 
     if (e.code === 'Space'){
       e.preventDefault();
@@ -2110,7 +2190,7 @@ function curCapo(){
     var payload = {
       version: 1,
       exportedAt: new Date().toISOString(),
-      appState: appState,
+      appState: safeAppStateForPersistence(),
       customSongs: songs
     };
     var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
@@ -2152,6 +2232,11 @@ function curCapo(){
   });
 
   // ---------- 초기화 및 곡 목록 구성
+  function currentDraftOnlySongs(){
+    var sourceIds = new Set(BUILTIN_SONGS.concat(sheetSongs).concat(imageSongs).map(function(song){ return song.id; }));
+    return allSongs.filter(function(song){ return song && song.type === 'structured' && !sourceIds.has(song.id); });
+  }
+
   function syncCompactSongSelectOptions(){
     var cSel = $('#compactSongSelect');
     if (!cSel) return;
@@ -2159,7 +2244,8 @@ function curCapo(){
 
     var grp1 = document.createElement('optgroup');
     grp1.label = '내장 악보';
-    BUILTIN_SONGS.forEach(function(s){
+    BUILTIN_SONGS.forEach(function(source){
+      var s = allSongs.find(function(song){ return song.id === source.id; }) || source;
       var opt = document.createElement('option');
       opt.value = s.id;
       opt.textContent = s.title;
@@ -2170,7 +2256,8 @@ function curCapo(){
     if (sheetSongs.length){
       var grpSheet = document.createElement('optgroup');
       grpSheet.label = '구글 시트 연동';
-      sheetSongs.forEach(function(s){
+      sheetSongs.forEach(function(source){
+        var s = allSongs.find(function(song){ return song.id === source.id; }) || source;
         var opt = document.createElement('option');
         opt.value = s.id;
         opt.textContent = '☁️ ' + s.title;
@@ -2191,18 +2278,40 @@ function curCapo(){
       cSel.appendChild(grp2);
     }
 
+    var drafts = currentDraftOnlySongs();
+    if (drafts.length){
+      var draftGroup = document.createElement('optgroup');
+      draftGroup.label = '임시 악보';
+      drafts.forEach(function(song){
+        var opt = document.createElement('option');
+        opt.value = song.id;
+        opt.textContent = song.title;
+        draftGroup.appendChild(opt);
+      });
+      cSel.appendChild(draftGroup);
+    }
+
     if (curSong) cSel.value = curSong.id;
   }
 
   function rebuildSongSelect(selectId){
+    if (scoreEditorHooks && scoreEditorHooks.deferRebuild()){
+      if (curSong){
+        if ($('#songSelect')) $('#songSelect').value = curSong.id;
+        if ($('#compactSongSelect')) $('#compactSongSelect').value = curSong.id;
+      }
+      return false;
+    }
+    if (curSong) rememberCurrentSession();
     stopPractice();
-    allSongs = BUILTIN_SONGS.concat(sheetSongs).concat(imageSongs);
+    allSongs = scoreDrafts.list(BUILTIN_SONGS.concat(sheetSongs).concat(imageSongs));
     var sel = $('#songSelect');
     sel.textContent = '';
 
     var grp1 = document.createElement('optgroup');
     grp1.label = '내장 악보 (songs.json · 저작권 무료 동요/교본)';
-    BUILTIN_SONGS.forEach(function(s){
+    BUILTIN_SONGS.forEach(function(source){
+      var s = allSongs.find(function(song){ return song.id === source.id; }) || source;
       var opt = document.createElement('option');
       opt.value = s.id;
       opt.textContent = s.title;
@@ -2213,7 +2322,8 @@ function curCapo(){
     if (sheetSongs.length){
       var grpSheet = document.createElement('optgroup');
       grpSheet.label = '내 구글 드라이브 스프레드시트 연동 악보';
-      sheetSongs.forEach(function(s){
+      sheetSongs.forEach(function(source){
+        var s = allSongs.find(function(song){ return song.id === source.id; }) || source;
         var opt = document.createElement('option');
         opt.value = s.id;
         opt.textContent = '☁️ ' + s.title;
@@ -2234,6 +2344,19 @@ function curCapo(){
       sel.appendChild(grp2);
     }
 
+    var draftSongs = currentDraftOnlySongs();
+    if (draftSongs.length){
+      var draftGroup = document.createElement('optgroup');
+      draftGroup.label = '임시 악보';
+      draftSongs.forEach(function(song){
+        var opt = document.createElement('option');
+        opt.value = song.id;
+        opt.textContent = song.title;
+        draftGroup.appendChild(opt);
+      });
+      sel.appendChild(draftGroup);
+    }
+
     syncCompactSongSelectOptions();
 
     var target = allSongs.find(function(s){ return s.id === selectId; }) || allSongs[0];
@@ -2243,10 +2366,17 @@ function curCapo(){
     appState.lastSongId = target.id;
     appState.bpm = Number(target.bpm) || 64;
     renderSong();
+    restoreSongSession(target);
     saveAppState();
   }
 
   function changeSongById(songId){
+    if (scoreEditorHooks && !scoreEditorHooks.beforeAction('곡 변경')){
+      if ($('#songSelect') && curSong) $('#songSelect').value = curSong.id;
+      if ($('#compactSongSelect') && curSong) $('#compactSongSelect').value = curSong.id;
+      return false;
+    }
+    if (curSong) rememberCurrentSession();
     stopPractice();
     curMeasureIdx = 0;
     curBeatIdx = 0;
@@ -2258,6 +2388,7 @@ function curCapo(){
       if ($('#songSelect')) $('#songSelect').value = found.id;
       if ($('#compactSongSelect')) $('#compactSongSelect').value = found.id;
       renderSong();
+      restoreSongSession(found);
       saveAppState();
       if (appState.isCompactPractice && curSong.type === 'structured'){
         var card = $('#measuresGrid .measure-card[data-m="0"]');
@@ -2281,6 +2412,7 @@ function curCapo(){
   initFretboard();
   initScoreUi();
   initSheetSync();
+  scoreEditorHooks.init();
   buildFretboard();
   setCompactPractice(false);
   Promise.all([

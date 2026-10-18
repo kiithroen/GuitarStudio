@@ -142,7 +142,7 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 /* 악보 영역 */
 .score-toolbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid var(--line)}
 .score-toolbar-left{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
-.score-toolbar-right{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex-shrink:0}
+.score-toolbar-right{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:100%;min-width:0;flex-shrink:1}
 .tab-seg{display:inline-flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
 .tab-seg button{border:0;background:transparent;padding:5px 11px;border-radius:7px;font-size:13px;color:var(--muted);font-weight:500}
 .tab-seg button[aria-selected="true"]{background:var(--surface);color:var(--fg);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
@@ -160,6 +160,20 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .m-chord{font-family:var(--font-num);font-size:13.5px;font-weight:700;padding:1px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent)}
 .m-chord.auto-chord{border:1px dashed var(--accent);font-size:12.5px}
 .m-lyric{font-size:12.5px;color:var(--muted);font-weight:500}
+.score-measure-actions{position:relative;margin-left:auto;flex-shrink:0}
+.score-measure-menu-button{min-width:30px;padding:0 7px;font-size:18px;line-height:1}
+.score-measure-menu{position:absolute;top:calc(100% + 4px);right:0;z-index:8;min-width:148px;padding:5px;display:flex;flex-direction:column;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 5px 18px rgba(0,0,0,.18)}
+.score-measure-menu[hidden]{display:none}
+.score-measure-menu .btn{justify-content:flex-start;white-space:normal;text-align:left}
+.score-inline-editor{display:flex;flex-direction:column;gap:7px;min-width:0;width:100%}
+.score-inline-editor textarea{width:100%;min-width:0;min-height:112px;resize:vertical;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-family:var(--font-num);font-size:13px;line-height:1.5;overflow:auto}
+.score-inline-actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.score-edit-error{min-height:1.4em;color:var(--off)}
+.score-insert-draft{border-style:dashed;border-color:var(--accent);cursor:default}
+.score-draft-toolbar{font-size:11px;white-space:normal;max-width:220px}
+.score-draft-controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)}
+.score-draft-controls[hidden]{display:none}
+.score-draft-controls .hint{min-width:0}
 
 .beats-row{display:grid;grid-template-columns:repeat(var(--bpb,4),minmax(0,1fr));gap:4px;margin-top:2px}
 .beat-cell{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:6px 3px;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;cursor:pointer;transition:background-color .08s,transform .08s,border-color .08s}
@@ -301,7 +315,8 @@ body.practice-compact .score-toolbar{
   padding: 0 2px 4px !important;
   margin-bottom: 2px !important;
   border-bottom: 1px solid var(--line) !important;
-  overflow: hidden !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
 }
 
 body.practice-compact .score-toolbar-left{
@@ -320,7 +335,13 @@ body.practice-compact .score-toolbar-right{
   align-items: center !important;
   gap: 4px !important;
   flex-shrink: 0 !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
 }
+body.practice-compact .score-toolbar-right > button,
+body.practice-compact .score-toolbar-right > span{flex-shrink:0 !important}
+body.practice-compact .score-draft-controls{padding:3px 2px;gap:4px;font-size:10.5px}
+body.practice-compact .score-draft-toolbar{max-width:190px;white-space:normal}
 
 body.practice-compact #compactPlayBtn{
   display: inline-flex !important;
@@ -481,6 +502,7 @@ body.practice-compact .fretboard{
         <button type="button" class="btn" id="openSheetSyncBtn">구글 시트 연동</button>
         <button type="button" class="btn sm" id="renameSongBtn" hidden title="이 악보의 이름을 변경합니다">이름 변경</button>
         <button type="button" class="btn danger sm" id="deleteSongBtn" hidden>삭제</button>
+        <button type="button" class="btn" id="addBlankScoreBtn">빈 악보 추가</button>
       </div>
     </div>
     <p id="storageStatus" class="hint" role="status" aria-live="polite" hidden></p>
@@ -583,8 +605,15 @@ body.practice-compact .fretboard{
       <div class="score-toolbar-right">
         <span class="hint" id="scoreClickHint">마디 클릭: 시작 위치 / Shift+클릭: 끝 마디</span>
         <button type="button" class="btn sm" id="editBarMetaBtn" hidden>선택 마디 코드·메모 수정</button>
+        <button type="button" class="btn sm" id="copyCurSongTsvBtn" hidden>악보 복사</button>
         <button type="button" class="btn sm" id="toggleCompactBtn" title="악보 2줄과 실시간 지판만 보는 콤팩트 집중 모드 전환 (단축키: P / Esc)">콤팩트 뷰</button>
       </div>
+    </div>
+    <div class="score-draft-controls" id="scoreDraftControls" hidden>
+      <span class="hint" id="scoreDraftStatus" role="status" aria-live="polite" hidden></span>
+      <span class="hint" id="scoreCopyStatus" role="status" aria-live="polite" hidden></span>
+      <button type="button" class="btn sm" id="undoScoreEditBtn" hidden>되돌리기</button>
+      <button type="button" class="btn sm" id="resetScoreDraftBtn" hidden>원본으로 되돌리기</button>
     </div>
 
     <!-- A. 내장/텍스트 구조화 악보 뷰어 (계이름 + 타브 + 왼손/오른손 운지) -->
@@ -701,6 +730,30 @@ body.practice-compact .fretboard{
 <!-- 숨김 파일 입력 (이미지 / PDF 업로드용) -->
 <input type="file" id="fileInput" accept="image/*,.pdf,application/pdf" hidden>
 
+<!-- 모달: 빈 구조화 악보 생성 -->
+<div class="modal-backdrop" id="blankScoreModal" hidden>
+  <div class="modal" role="dialog" aria-labelledby="blankScoreTitleHeading">
+    <div class="panel-head">
+      <h2 id="blankScoreTitleHeading">빈 악보 추가</h2>
+      <button type="button" class="btn sm" id="cancelBlankScoreBtn">취소</button>
+    </div>
+    <div class="form-row">
+      <label class="label" for="blankScoreTitle">곡 이름</label>
+      <input type="text" id="blankScoreTitle" value="빈 악보 1" maxlength="120">
+    </div>
+    <div class="form-row">
+      <label class="label" for="blankScoreBeats">마디 칸수</label>
+      <input type="number" id="blankScoreBeats" min="1" max="12" step="1" value="4">
+    </div>
+    <div class="form-row">
+      <label class="label" for="blankScoreBpm">기본 BPM</label>
+      <input type="number" id="blankScoreBpm" min="30" max="240" step="1" value="64">
+    </div>
+    <div id="blankScoreError" class="hint score-edit-error" role="status" aria-live="polite"></div>
+    <button type="button" class="btn primary" id="createBlankScoreBtn">생성</button>
+  </div>
+</div>
+
 <!-- 모달: 음색 설정 (울림통 공명 · 공명현) -->
 <div class="modal-backdrop" id="toneModal" hidden>
   <div class="modal" role="dialog" aria-labelledby="toneTitle">
@@ -813,7 +866,6 @@ body.practice-compact .fretboard{
       </span>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
         <button type="button" class="btn sm" id="copySheetTemplateBtn">시트 기본 양식(A1 붙여넣기용) 복사</button>
-        <button type="button" class="btn sm" id="copyCurSongTsvBtn">현재 선택된 악보를 시트 한 줄(TSV)로 복사</button>
       </div>
     </div>
 
@@ -834,17 +886,19 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=clean-score-ui-1"></script>
-<script src="src/notation.js?v=clean-score-ui-1"></script>
-<script src="src/rhythm.js?v=clean-score-ui-1"></script>
-<script src="src/parser.js?v=clean-score-ui-1"></script>
-<script src="src/score.js?v=clean-score-ui-1"></script>
-<script src="src/audio.js?v=clean-score-ui-1"></script>
-<script src="src/guide.js?v=clean-score-ui-1"></script>
-<script src="src/image-analysis.js?v=clean-score-ui-1"></script>
-<script src="src/fretboard.js?v=clean-score-ui-1"></script>
-<script src="src/score-ui.js?v=clean-score-ui-1"></script>
-<script src="src/sheets.js?v=clean-score-ui-1"></script>
-<script src="src/app.js?v=clean-score-ui-1"></script>
+<script src="src/storage.js?v=temp-score-editor-1"></script>
+<script src="src/notation.js?v=temp-score-editor-1"></script>
+<script src="src/rhythm.js?v=temp-score-editor-1"></script>
+<script src="src/parser.js?v=temp-score-editor-1"></script>
+<script src="src/score-drafts.js?v=temp-score-editor-1"></script>
+<script src="src/score.js?v=temp-score-editor-1"></script>
+<script src="src/audio.js?v=temp-score-editor-1"></script>
+<script src="src/guide.js?v=temp-score-editor-1"></script>
+<script src="src/image-analysis.js?v=temp-score-editor-1"></script>
+<script src="src/fretboard.js?v=temp-score-editor-1"></script>
+<script src="src/score-ui.js?v=temp-score-editor-1"></script>
+<script src="src/sheets.js?v=temp-score-editor-1"></script>
+<script src="src/score-editor.js?v=temp-score-editor-1"></script>
+<script src="src/app.js?v=temp-score-editor-1"></script>
 </body>
 </html>

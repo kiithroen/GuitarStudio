@@ -90,6 +90,7 @@ class CdpClient {
     this.pending = new Map();
     this.events = [];
     this.consoleErrors = [];
+    this.dialogHandler = null;
   }
 
   async connect() {
@@ -108,6 +109,9 @@ class CdpClient {
         else resolve(msg.result);
       } else if (msg.method) {
         this.events.push(msg);
+        if (msg.method === 'Page.javascriptDialogOpening' && this.dialogHandler){
+          Promise.resolve(this.dialogHandler(msg.params)).catch(error => this.consoleErrors.push('dialog handler: ' + error.message));
+        }
         if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
           this.consoleErrors.push(msg.params.args.map(a => a.value || a.description || '').join(' '));
         }
@@ -126,11 +130,12 @@ class CdpClient {
     });
   }
 
-  async evaluate(expression) {
+  async evaluate(expression, options = {}) {
     const res = await this.send('Runtime.evaluate', {
       expression,
       returnByValue: true,
-      awaitPromise: true
+      awaitPromise: true,
+      userGesture: options.userGesture === true
     });
     if (res.exceptionDetails) {
       throw new Error('Evaluation error: ' + (res.exceptionDetails.exception?.description || res.exceptionDetails.text));
@@ -155,6 +160,291 @@ async function waitForCondition(client, expression, timeoutMs = 5000) {
     await new Promise(r => setTimeout(r, 50));
   }
   throw new Error('Timed out waiting for condition: ' + expression);
+}
+
+async function waitForPageLoadAfter(client, previousLoadCount, timeoutMs = 10000){
+  const deadline=Date.now()+timeoutMs;
+  while(Date.now()<deadline){
+    const count=client.events.filter(event=>event.method==='Page.loadEventFired').length;
+    if(count>previousLoadCount)return;
+    await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  throw new Error('Timed out waiting for a new Page.loadEventFired event');
+}
+
+async function testTemporaryScoreEditor(client){
+  const setup = await client.evaluate(`(function(){
+    var groups = Array.from(document.querySelectorAll('.top-actions'));
+    var blank = document.getElementById('addBlankScoreBtn');
+    return { blankIsLastTopAction:!!blank && blank.parentElement === groups[1] && groups[1].lastElementChild === blank,
+      controlsRow:!!document.getElementById('scoreDraftControls') && document.getElementById('scoreDraftControls').contains(document.getElementById('scoreDraftStatus')) && document.getElementById('scoreDraftControls').contains(document.getElementById('undoScoreEditBtn')),
+      copyNextToCompact:!!document.getElementById('copyCurSongTsvBtn') && document.getElementById('copyCurSongTsvBtn').parentElement === document.getElementById('toggleCompactBtn').parentElement && document.getElementById('copyCurSongTsvBtn').nextElementSibling === document.getElementById('toggleCompactBtn') };
+  })()`);
+  assert.deepEqual(setup, { blankIsLastTopAction:true, controlsRow:true, copyNextToCompact:true }, 'temporary score controls occupy their specified toolbar positions');
+
+  const initial = await client.evaluate(`(function(){
+    var button=document.getElementById('addBlankScoreBtn'); button.click();
+    var defaults=[document.getElementById('blankScoreTitle').value,document.getElementById('blankScoreBeats').value,document.getElementById('blankScoreBpm').value];
+    document.getElementById('cancelBlankScoreBtn').click();
+    return {defaults:defaults,hidden:document.getElementById('blankScoreModal').hidden,count:allSongs.length};
+  })()`);
+  assert.deepEqual(initial, { defaults:['빈 악보 1','4','64'], hidden:true, count:13 }, 'blank modal cancel preserves the song list and shows configured defaults');
+
+  const editFlow = await client.evaluate(`(async function(){
+    function selectSong(id){var select=document.getElementById('songSelect');select.value=id;select.dispatchEvent(new Event('change',{bubbles:true}));}
+    function measureCard(index){return document.querySelector('#measuresGrid .measure-card[data-m="'+index+'"]');}
+    function choose(index,action){var card=measureCard(index);if(!card)throw new Error('measure card missing: '+index);var menuButton=card.querySelector('.score-measure-menu-button');if(!menuButton)throw new Error('measure menu button missing');menuButton.click();var actionButton=card.querySelector('.score-measure-menu [data-score-action="'+action+'"]');if(!actionButton)throw new Error('measure action missing: '+action);if(actionButton.disabled)throw new Error('measure action is unexpectedly disabled: '+action);actionButton.click();}
+    function measureText(song,label){return '[-] '+new Array(song.beats).fill('r').join(' ')+' | '+JSON.stringify(label);}
+    function typeAndApply(text){var textarea=document.getElementById('scoreMeasureText');textarea.value=text;textarea.dispatchEvent(new Event('input',{bubbles:true}));var apply=document.querySelector('#scoreMeasureEditor [data-score-action="apply"]');if(!apply)throw new Error('inline apply button missing');apply.click();}
+    function score(song){return serializeScoreMeasures(song.measures,'\\n');}
+    function openEdit(index){choose(index,'edit');if(!document.getElementById('scoreMeasureText'))throw new Error('actual measure menu click did not open inline editor');}
+    var sourceA=BUILTIN_SONGS.find(function(song){return song.id==='builtin-lv1-butterfly';});
+    var sourceB=BUILTIN_SONGS.find(function(song){return song.id!=='builtin-lv1-butterfly';});
+    if(!sourceA||!sourceB)throw new Error('expected builtin sources missing');
+    var originalA=score(sourceA),originalB=score(sourceB);
+    selectSong(sourceA.id);
+    var countA=curSong.measures.length;
+    curMeasureIdx=Math.min(2,countA-1);curBeatIdx=Math.min(1,curSong.beats-1);
+    appState.bpm=Math.max(30,Math.min(240,Number(curSong.bpm)||64));
+    var sourceBpm=Number(curSong.bpm)||64;
+    var savedBpm=Math.max(30,Math.min(240,sourceBpm+7)),savedMeasure=curMeasureIdx,savedBeat=curBeatIdx;
+    appState.bpm=savedBpm;appState.loopStart=countA>2?2:1;appState.loopEnd=countA>2?countA-1:countA;
+    var savedLoop=[appState.loopStart,appState.loopEnd];
+    openEdit(0);
+    var pendingCount=curSong.measures.length;
+    var pendingText=measureText(curSong,'browser-edit-a');
+    var textarea=document.getElementById('scoreMeasureText');textarea.value=pendingText;textarea.dispatchEvent(new Event('input',{bubbles:true}));
+    var pendingSongId=curSong.id;
+    selectSong(sourceB.id);
+    var songGuard=curSong.id===pendingSongId;
+    var status=document.getElementById('scoreDraftStatus').textContent;
+    var copied=0;var oldClipboard=Object.getOwnPropertyDescriptor(navigator,'clipboard');
+    try { Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:function(){copied++;return Promise.resolve();}}}); } catch(_){}
+    document.getElementById('copyCurSongTsvBtn').click();
+    document.getElementById('playBtn').click();
+    var actionGuards={song:songGuard,copy:copied===0,play:!isPlaying,status:document.getElementById('scoreDraftStatus').textContent};
+    if(oldClipboard)Object.defineProperty(navigator,'clipboard',oldClipboard);else try{delete navigator.clipboard;}catch(_){}
+    typeAndApply('[-] r');
+    var invalid={stillPending:!!document.getElementById('scoreMeasureText'),sameCount:curSong.measures.length===pendingCount,error:!!document.getElementById('scoreEditError').textContent};
+    var sessionBefore={bpm:savedBpm,measure:savedMeasure,beat:savedBeat,loopStart:savedLoop[0],loopEnd:savedLoop[1]};
+    var screenshotDir='test-artifacts/temp-score-editor/';
+    return { sourceA:sourceA.id,sourceB:sourceB.id,originalA:originalA,originalB:originalB,countA:countA,sourceBpm:sourceBpm,savedBpm:savedBpm,savedMeasure:savedMeasure,savedBeat:savedBeat,savedLoop:savedLoop,
+      actionGuards:actionGuards,invalid:invalid,pendingText:pendingText,sessionBefore:sessionBefore,screenshotDir:screenshotDir };
+  })()`);
+  assert.equal(editFlow.actionGuards.song, true, 'pending inline edit blocks song selection through the actual select control');
+  assert.equal(editFlow.actionGuards.copy, true, 'pending inline edit blocks TSV copy through its actual toolbar button');
+  assert.equal(editFlow.actionGuards.play, true, 'pending inline edit blocks practice through its actual play button');
+  assert.match(editFlow.actionGuards.status, /먼저 적용하거나 취소/, 'pending guards explain how to continue');
+  assert.deepEqual(editFlow.invalid, { stillPending:true, sameCount:true, error:true }, 'invalid full-score edit preserves original draft and pending text');
+
+  const screenshotDir = path.join(root,'test-artifacts','temp-score-editor');
+  fs.mkdirSync(screenshotDir,{recursive:true});
+  const screenshotRun = Date.now();
+  async function saveScreenshot(name,width,height,mobile,showEditor){
+    await client.send('Emulation.setDeviceMetricsOverride',{width:width,height:height,deviceScaleFactor:1,mobile:mobile});
+    if(showEditor){
+      await client.evaluate(`(function(){document.getElementById('scoreMeasureEditor').scrollIntoView({block:'center'});var r=document.getElementById('scoreMeasureEditor').getBoundingClientRect();return r.top<innerHeight&&r.bottom>0;})()`);
+      assert.equal(await client.evaluate(`(function(){var r=document.getElementById('scoreMeasureEditor').getBoundingClientRect();return r.top<innerHeight&&r.bottom>0;})()`),true,'editor screenshot includes inline edit controls');
+    } else await client.evaluate('window.scrollTo(0,0)');
+    const shot=await client.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
+    const target=path.join(screenshotDir,name.replace('.png','-'+screenshotRun+'.png'));
+    fs.writeFileSync(target,Buffer.from(shot.data,'base64'));
+    const header=fs.readFileSync(target).subarray(0,24);
+    assert.equal(header.readUInt32BE(16),width,'score editor screenshot width');
+    assert.equal(header.readUInt32BE(20),height,'score editor screenshot height');
+    process.stdout.write('Artifact: '+target+'\n');
+    return target;
+  }
+  await saveScreenshot('toolbar-desktop.png',1280,900,false,false);
+  await saveScreenshot('editor-desktop.png',1280,900,false,true);
+  await saveScreenshot('toolbar-mobile.png',390,844,true,false);
+  await saveScreenshot('editor-mobile.png',390,844,true,true);
+  await client.send('Emulation.clearDeviceMetricsOverride');
+
+  await client.evaluate(`document.querySelector('#scoreMeasureEditor [data-score-action="cancel"]').click()`);
+  const mutations = await client.evaluate(`(function(){
+    function selectSong(id){var select=document.getElementById('songSelect');select.value=id;select.dispatchEvent(new Event('change',{bubbles:true}));}
+    function card(index){return document.querySelector('#measuresGrid .measure-card[data-m="'+index+'"]');}
+    function action(index,name){var c=card(index);c.querySelector('.score-measure-menu-button').click();c.querySelector('.score-measure-menu [data-score-action="'+name+'"]').click();}
+    function text(song,label){return '[-] '+new Array(song.beats).fill('r').join(' ')+' | '+JSON.stringify(label);}
+    function apply(label){var t=document.getElementById('scoreMeasureText');t.value=text(curSong,label);t.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#scoreMeasureEditor [data-score-action="apply"]').click();}
+    function score(song){return serializeScoreMeasures(song.measures,'\\n');}
+    var a=editFlowSourceA(),b=editFlowSourceB();
+    selectSong(a.id);action(0,'edit');apply('browser-edit-a');
+    var appliedA=score(curSong)!==editFlowOriginalA();var sourceUnchangedA=score(a)===editFlowOriginalA();
+    var session={bpm:appState.bpm,measure:curMeasureIdx,beat:curBeatIdx,loopStart:appState.loopStart,loopEnd:appState.loopEnd};
+    selectSong(b.id);
+    var countB=curSong.measures.length;
+    appState.bpm=Math.max(30,Math.min(240,(Number(curSong.bpm)||64)+9));
+    appState.loopStart=countB>2?2:1;appState.loopEnd=countB>2?countB-1:countB;
+    curMeasureIdx=Math.min(2,countB-1);curBeatIdx=Math.min(1,curSong.beats-1);
+    var expectedB={bpm:appState.bpm,measure:curMeasureIdx,beat:curBeatIdx,loopStart:appState.loopStart,loopEnd:appState.loopEnd};
+    action(0,'edit');apply('browser-edit-b');
+    var appliedB=score(curSong)!==editFlowOriginalB();
+    var sessionB={bpm:appState.bpm,measure:curMeasureIdx,beat:curBeatIdx,loopStart:appState.loopStart,loopEnd:appState.loopEnd};
+    selectSong(a.id);document.getElementById('undoScoreEditBtn').click();
+    var undoA=score(curSong)===editFlowOriginalA();
+    selectSong(b.id);var bStillDirty=score(curSong)!==editFlowOriginalB()&&scoreDrafts.status(b.id).canUndo;
+    document.getElementById('undoScoreEditBtn').click();
+    var undoB=score(curSong)===editFlowOriginalB();
+    var undoSessionB={bpm:appState.bpm,measure:curMeasureIdx,beat:curBeatIdx,loopStart:appState.loopStart,loopEnd:appState.loopEnd};
+    selectSong(a.id);
+    var beforeInsert=curSong.measures.length;curMeasureIdx=Math.min(1,beforeInsert-1);curBeatIdx=0;var oldCursor=curMeasureIdx;
+    action(0,'insert');var previewUnapplied=curSong.measures.length===beforeInsert&&!!document.querySelector('.score-insert-draft');
+    apply('insert-rest');var inserted=curSong.measures.length===beforeInsert+1;var cursorMapped=curMeasureIdx===(oldCursor>=1?oldCursor+1:oldCursor);
+    document.getElementById('undoScoreEditBtn').click();var insertUndo=curSong.measures.length===beforeInsert;
+    action(0,'delete');var deleted=curSong.measures.length===beforeInsert-1;document.getElementById('undoScoreEditBtn').click();var deleteUndo=curSong.measures.length===beforeInsert;
+    var priorSheets=sheetSongs.slice();
+    var sheetSource=buildStructuredSong({id:'browser-sheet-draft-source',title:'Sheet draft source',badge:'Capo 2',bpm:77,beats:4,lines:['[C] C4 - - - | "sheet source memo"']});
+    sheetSource.fromSheet=true;sheetSongs=priorSheets.concat([sheetSource]);rebuildSongSelect(sheetSource.id);
+    var originalSheet=score(sheetSource);action(0,'edit');apply('browser-sheet-draft');
+    var sheetDraftIsolated=score(curSong)!==originalSheet&&score(sheetSource)===originalSheet;
+    scoreDrafts.reset(sheetSource.id);sheetSongs=priorSheets;rebuildSongSelect(a.id);
+    var sourceImmutable=score(a)===editFlowOriginalA()&&score(b)===editFlowOriginalB();
+    return {appliedA:appliedA,sourceUnchangedA:sourceUnchangedA,appliedB:appliedB,undoA:undoA,bStillDirty:bStillDirty,undoB:undoB,session:session,sessionB:sessionB,expectedB:expectedB,undoSessionB:undoSessionB,
+      previewUnapplied:previewUnapplied,inserted:inserted,cursorMapped:cursorMapped,insertUndo:insertUndo,deleted:deleted,deleteUndo:deleteUndo,sheetDraftIsolated:sheetDraftIsolated,sourceImmutable:sourceImmutable};
+    function editFlowSourceA(){return BUILTIN_SONGS.find(function(song){return song.id==='builtin-lv1-butterfly';});}
+    function editFlowSourceB(){return BUILTIN_SONGS.find(function(song){return song.id!== 'builtin-lv1-butterfly';});}
+    function editFlowOriginalA(){return ${JSON.stringify(editFlow.originalA)};}
+    function editFlowOriginalB(){return ${JSON.stringify(editFlow.originalB)};}
+  })()`);
+  for (const key of ['appliedA','sourceUnchangedA','appliedB','undoA','bStillDirty','undoB','previewUnapplied','inserted','cursorMapped','insertUndo','deleted','deleteUndo','sheetDraftIsolated','sourceImmutable']){
+    assert.equal(mutations[key],true,'temporary score editor flow: '+key);
+  }
+  assert.notEqual(editFlow.savedBpm,editFlow.sourceBpm,'edit fixture uses a BPM different from the built-in default');
+  assert.deepEqual(editFlow.sessionBefore,{bpm:editFlow.savedBpm,measure:editFlow.savedMeasure,beat:editFlow.savedBeat,loopStart:editFlow.savedLoop[0],loopEnd:editFlow.savedLoop[1]},'edit fixture uses non-default session values');
+  assert.deepEqual(mutations.session,editFlow.sessionBefore,'the non-default BPM, cursor, and loop survive the edit apply');
+  assert.deepEqual(mutations.sessionB,mutations.expectedB,'a second song keeps its own non-default BPM, cursor, and loop through editing');
+  assert.deepEqual(mutations.undoSessionB,mutations.expectedB,'undo restores the edited song session instead of another song snapshot');
+
+  await client.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  const ordinaryMobile=await client.evaluate(`(function(){
+    var toolbar=document.getElementById('scoreToolbar'),right=document.querySelector('.score-toolbar-right'),panel=document.querySelector('section[aria-label="악보 및 메트로놈 커서"]');
+    toolbar.scrollIntoView({block:'start'});
+    var r=right.getBoundingClientRect(),p=panel.getBoundingClientRect();
+    return {rightWithinPanel:r.right<=p.right+1,rightWithinViewport:r.right<=innerWidth+1,documentWithinViewport:document.documentElement.scrollWidth<=innerWidth+1,
+      copyVisible:document.getElementById('copyCurSongTsvBtn').getClientRects().length>0,compactVisible:document.getElementById('toggleCompactBtn').getClientRects().length>0};
+  })()`);
+  assert.equal(ordinaryMobile.rightWithinPanel,true,'ordinary mobile score toolbar buttons stay inside the score panel');
+  assert.equal(ordinaryMobile.rightWithinViewport,true,'ordinary mobile score toolbar stays within viewport');
+  assert.equal(ordinaryMobile.documentWithinViewport,true,'ordinary mobile page has no document-wide horizontal overflow');
+  assert.equal(ordinaryMobile.copyVisible,true,'ordinary mobile TSV copy control remains visible');
+  assert.equal(ordinaryMobile.compactVisible,true,'ordinary mobile compact toggle remains visible');
+  async function captureMobileToolbar(name){
+    await client.evaluate(`document.getElementById('scoreToolbar').scrollIntoView({block:'start',inline:'nearest'})`);
+    const shot=await client.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
+    const target=path.join(screenshotDir,name+'-'+screenshotRun+'.png');
+    fs.writeFileSync(target,Buffer.from(shot.data,'base64'));
+    const header=fs.readFileSync(target).subarray(0,24);
+    assert.equal(header.readUInt32BE(16),390,'mobile toolbar screenshot width');
+    assert.equal(header.readUInt32BE(20),844,'mobile toolbar screenshot height');
+    process.stdout.write('Artifact: '+target+'\n');
+  }
+  await captureMobileToolbar('ordinary-toolbar-mobile');
+  const badStyleControl=await client.evaluate(`(function(){
+    var style=document.createElement('style');style.textContent='.score-toolbar-right{min-width:420px !important;max-width:none !important;flex-shrink:0 !important}';document.head.appendChild(style);
+    try {
+      var right=document.querySelector('.score-toolbar-right').getBoundingClientRect();
+      var panel=document.querySelector('section[aria-label="악보 및 메트로놈 커서"]').getBoundingClientRect();
+      return {detected:right.right>panel.right+1||right.right>innerWidth+1||document.documentElement.scrollWidth>innerWidth+1};
+    } finally {style.remove();}
+  })()`);
+  assert.equal(badStyleControl.detected,true,'mobile toolbar geometry checker detects an intentionally oversized CSS copy');
+  const compactMobile=await client.evaluate(`(function(){
+    var toolbar=document.getElementById('scoreToolbar');
+    document.getElementById('toggleCompactBtn').click();
+    toolbar.scrollLeft=0;
+    var left={play:document.getElementById('compactPlayBtn').getClientRects().length>0&&getComputedStyle(document.getElementById('compactPlayBtn')).display!=='none',
+      song:document.getElementById('compactSongSelect').getClientRects().length>0&&getComputedStyle(document.getElementById('compactSongSelect')).display!=='none',
+      tab:document.getElementById('scoreModeTabBtn').getClientRects().length>0,
+      noDocumentOverflow:document.documentElement.scrollWidth<=innerWidth+1};
+    return left;
+  })()`);
+  assert.deepEqual(compactMobile,{play:true,song:true,tab:true,noDocumentOverflow:true},'390px compact toolbar exposes play, song selection, TAB control, and no page overflow');
+  await captureMobileToolbar('compact-toolbar-mobile-left');
+  const compactRight=await client.evaluate(`(function(){
+    var toolbar=document.getElementById('scoreToolbar');toolbar.scrollLeft=toolbar.scrollWidth;
+    var copy=document.getElementById('copyCurSongTsvBtn'),compact=document.getElementById('toggleCompactBtn');
+    var c=copy.getBoundingClientRect(),t=compact.getBoundingClientRect(),r=toolbar.getBoundingClientRect();
+    return {copyAccessible:copy.getClientRects().length>0&&!copy.hidden&&c.right<=innerWidth+1&&c.right<=r.right+1,
+      compactAccessible:compact.getClientRects().length>0&&t.right<=innerWidth+1&&t.right<=r.right+1,
+      noDocumentOverflow:document.documentElement.scrollWidth<=innerWidth+1};
+  })()`);
+  assert.deepEqual(compactRight,{copyAccessible:true,compactAccessible:true,noDocumentOverflow:true},'390px compact horizontal toolbar keeps copy and compact controls reachable without page overflow');
+  await captureMobileToolbar('compact-toolbar-mobile-right');
+  await client.evaluate(`document.getElementById('toggleCompactBtn').click()`);
+  await client.send('Emulation.clearDeviceMetricsOverride');
+
+  const persistence = await client.evaluate(`(async function(){
+    function card(index){return document.querySelector('#measuresGrid .measure-card[data-m="'+index+'"]');}
+    function menu(index,action){var c=card(index);c.querySelector('.score-measure-menu-button').click();c.querySelector('.score-measure-menu [data-score-action="'+action+'"]').click();}
+    function apply(label){var t=document.getElementById('scoreMeasureText');t.value='[-] '+new Array(curSong.beats).fill('r').join(' ')+' | '+JSON.stringify(label);t.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#scoreMeasureEditor [data-score-action="apply"]').click();}
+    var originalA=BUILTIN_SONGS.find(function(song){return song.id==='builtin-lv1-butterfly';});
+    var sourceText=serializeScoreMeasures(originalA.measures,'\\n');
+    document.getElementById('addBlankScoreBtn').click();
+    document.getElementById('blankScoreTitle').value='Browser temporary draft marker';
+    document.getElementById('blankScoreBeats').value='3';
+    document.getElementById('blankScoreBpm').value='88';
+    document.getElementById('createBlankScoreBtn').click();
+    var temporaryId=curSong.id;
+    var created={id:temporaryId,title:curSong.title,beats:curSong.beats,bpm:curSong.bpm,rests:curSong.measures[0].beats.every(function(beat){return beat.tok==='r';}),sourceUnchanged:serializeScoreMeasures(originalA.measures,'\\n')===sourceText};
+    var initialBlankLoop={count:curSong.measures.length,start:appState.loopStart,end:appState.loopEnd};
+    if(curSong.measures.length!==1)throw new Error('new blank score did not start with one measure');
+    menu(0,'insert');apply('blank-second-measure');
+    var blankInsert={count:curSong.measures.length,start:appState.loopStart,end:appState.loopEnd};
+    document.getElementById('undoScoreEditBtn').click();
+    var blankInsertUndo={count:curSong.measures.length,start:appState.loopStart,end:appState.loopEnd};
+    menu(0,'edit');apply('temporary dirty marker');
+    var db=await openDB();
+    var rows=await new Promise(function(resolve,reject){var tx=db.transaction('songs','readonly');var req=tx.objectStore('songs').getAll();req.onsuccess=function(){resolve(req.result);};req.onerror=function(){reject(req.error);};});
+    var localText=Object.keys(localStorage).map(function(key){return localStorage.getItem(key)||'';}).join('\\n');
+    var storage={rowsHaveNoTemp:rows.every(function(row){return !String(row.id).startsWith('temp-score-')&&row.type!=='structured';}),
+      noDraftTitle:!localText.includes(created.title)&&!rows.some(function(row){return JSON.stringify(row).includes(created.title);}),
+      imageRowsRemain:rows.every(function(row){return row.type==='image';})};
+    return {created:created,initialBlankLoop:initialBlankLoop,blankInsert:blankInsert,blankInsertUndo:blankInsertUndo,storage:storage,temporaryCount:allSongs.filter(function(song){return String(song.id).startsWith('temp-score-');}).length,
+      dirty:scoreDrafts.status(temporaryId).dirty,sourceText:sourceText};
+  })()`);
+  assert.deepEqual(persistence.created, { id:'temp-score-1',title:'Browser temporary draft marker',beats:3,bpm:88,rests:true,sourceUnchanged:true }, 'blank-score UI creates a rest-only temporary score without mutating built-ins');
+  assert.deepEqual(persistence.initialBlankLoop,{count:1,start:1,end:1},'new one-measure blank score starts with its full-measure loop');
+  assert.deepEqual(persistence.blankInsert,{count:2,start:1,end:2},'inserting into a one-measure blank score expands its full-song loop');
+  assert.deepEqual(persistence.blankInsertUndo,{count:1,start:1,end:1},'undo restores the one-measure blank score loop');
+  assert.deepEqual(persistence.storage,{rowsHaveNoTemp:true,noDraftTitle:true,imageRowsRemain:true},'temporary score text is absent from localStorage and IndexedDB while image rows remain');
+  assert.equal(persistence.temporaryCount,1,'created temporary score is listed in the current app session');
+  assert.equal(persistence.dirty,true,'applied temporary score edit remains an in-memory draft');
+
+  const copiedDraft=await client.evaluate(`(async function(){
+    var previous=curSong,oldClipboard=Object.getOwnPropertyDescriptor(navigator,'clipboard'),copied='';
+    var parsed=parseScore('[C] !1C4@2:i ~E4@1:p r r | "copy memo"',4);
+    if(parsed.errors.length)throw new Error('TSV metadata fixture rejected: '+JSON.stringify(parsed.errors));
+    try {
+      curSong={id:'copy-metadata-fixture',title:'Copy metadata fixture',badge:'Capo 2',type:'structured',beats:4,bpm:77,capo:0,measures:parsed.measures};
+      scoreEditorHooks.refreshStatus();
+      Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:function(value){copied=value;return Promise.resolve();}}});
+      document.getElementById('copyCurSongTsvBtn').click();
+      await new Promise(function(resolve){setTimeout(resolve,0);});
+      return {columns:copied.split('\t').length,hasChord:copied.includes('[C]'),hasApoyando:copied.includes('!1C4@2:i'),hasTirando:copied.includes('~E4@1:p'),hasMemo:copied.includes('copy memo'),hasCapo:copied.includes('Capo 2'),statusVisible:!document.getElementById('scoreCopyStatus').hidden};
+    } finally {curSong=previous;if(oldClipboard)Object.defineProperty(navigator,'clipboard',oldClipboard);else try{delete navigator.clipboard;}catch(_){};renderSong();}
+  })()`);
+  assert.deepEqual(copiedDraft,{columns:5,hasChord:true,hasApoyando:true,hasTirando:true,hasMemo:true,hasCapo:true,statusVisible:true},'actual TSV copy preserves score metadata and reveals its result status');
+
+  let beforeUnloadDialogs=0;
+  client.dialogHandler = async params => {
+    if(params.type==='beforeunload') beforeUnloadDialogs++;
+    await client.send('Page.handleJavaScriptDialog',{accept:true});
+  };
+  await client.evaluate(`(function(){document.getElementById('addBlankScoreBtn').click();document.getElementById('cancelBlankScoreBtn').click();return true;})()`,{userGesture:true});
+  const previousLoadCount=client.events.filter(event=>event.method==='Page.loadEventFired').length;
+  await client.send('Page.reload',{ignoreCache:true});
+  await waitForPageLoadAfter(client,previousLoadCount);
+  await waitForCondition(client,'document.readyState === "complete" && window.allSongs && window.allSongs.length === 13 && window.curSong',8000);
+  client.dialogHandler=null;
+  assert.equal(beforeUnloadDialogs,1,'dirty temporary draft raises the native beforeunload confirmation');
+  const reloadState=await client.evaluate(`({tempCount:allSongs.filter(function(song){return String(song.id).startsWith('temp-score-');}).length,
+    dirty:scoreDrafts.status('builtin-lv1-butterfly').dirty,sourceScore:serializeScoreMeasures(BUILTIN_SONGS.find(function(song){return song.id==='builtin-lv1-butterfly';}).measures,'\\n')})`);
+  assert.equal(reloadState.tempCount,0,'temporary scores disappear on reload');
+  assert.equal(reloadState.dirty,false,'edited builtin draft disappears on reload');
+  assert.equal(reloadState.sourceScore,persistence.sourceText,'builtin source remains unchanged after reload');
+  process.stdout.write('Browser checkpoint: temporary score create/edit, guard, undo, session mapping, storage isolation, and reload loss passed\n');
 }
 
 async function testConcertHallRouting(client){
@@ -1573,8 +1863,10 @@ async function testInvalidStructuredPersistence(client) {
 async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
-  assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=clean-score-ui-1')), 'all app scripts use the shared clean-score-ui revision');
+  assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=temp-score-editor-1')), 'all app scripts use the shared temporary score editor revision');
+  const htmlIds = ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn'];
+  htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'temporary score UI includes #'+id);});
   assert.doesNotMatch(fs.readFileSync(path.join(root,'index.html'),'utf8'),/\.beat-cell\.arp-(?:melody|sub)\b/,'obsolete articulation color rules are removed from the score stylesheet');
   const browserBin = findBrowserBinary();
   if (!browserBin) {
@@ -1713,18 +2005,27 @@ async function main() {
       curSong = originalSong; appState.scoreView = originalView; renderSong();
       return { tab:tab, card:card };
     })()`);
-    assert.deepEqual(literalTextSafety, { tab:{ literal:true, images:0, injected:0 }, card:{ literal:true, images:0, injected:0 } }, 'read-only TAB and card score rendering keeps markup literal without DOM injection');
+    assert.deepEqual(literalTextSafety, { tab:{ literal:true, images:0, injected:0 }, card:{ literal:true, images:0, injected:0 } }, 'TAB and card score rendering keeps markup literal without DOM injection');
 
-    const removedTextUi = await cdp.evaluate(`({
+    const scoreEditorUi = await cdp.evaluate(`({
       editorApi:typeof window.openConverterEditorModal,
       editorInit:typeof window.initEditor,
       promptApi:typeof window.buildAiPromptText,
-      textEditor:!!document.getElementById('newSongModal'),
+      scoreEditorHooks:typeof window.scoreEditorHooks,
+      blankScoreButton:!!document.getElementById('addBlankScoreBtn'),
+      blankScoreModal:!!document.getElementById('blankScoreModal'),
+      undoScoreButton:!!document.getElementById('undoScoreEditBtn'),
+      resetScoreButton:!!document.getElementById('resetScoreDraftBtn'),
+      draftStatus:!!document.getElementById('scoreDraftStatus'),
+      copyButtonInToolbar:!!(document.getElementById('copyCurSongTsvBtn')&&document.getElementById('copyCurSongTsvBtn').closest('.score-toolbar')),
       imageConversion:!!document.getElementById('convertImgToScoreBtn'),
       imageUpload:!!document.getElementById('uploadImgBtn'),
       barEditor:!!document.getElementById('barEditModal')
     })`);
-    assert.deepEqual(removedTextUi, { editorApi:'undefined', editorInit:'undefined', promptApi:'undefined', textEditor:false, imageConversion:false, imageUpload:true, barEditor:true }, 'text editor and AI prompt are absent while image bar editing remains');
+    assert.deepEqual(scoreEditorUi, { editorApi:'undefined', editorInit:'undefined', promptApi:'undefined', scoreEditorHooks:'object', blankScoreButton:true,
+      blankScoreModal:true, undoScoreButton:true, resetScoreButton:true, draftStatus:true, copyButtonInToolbar:true, imageConversion:false, imageUpload:true, barEditor:true },
+      'temporary score editor is present without restoring the removed converter or AI prompt');
+    await testTemporaryScoreEditor(cdp);
 
     const imageScanSafety = await cdp.evaluate(`(async function(){
       var savedSong = curSong;
@@ -1807,7 +2108,7 @@ async function main() {
       return { uploaded:!!song, barSaved:barSaved, renamed:renamed, pageRaceSafe:pageRaceSafe };
     })()`);
     assert.deepEqual(imageLifecycle, { uploaded:true, barSaved:true, renamed:true, pageRaceSafe:true }, 'image upload, bar metadata, rename, and PDF page race pass');
-    process.stdout.write('Browser checkpoint: read-only text scores and image library lifecycle passed\n');
+    process.stdout.write('Browser checkpoint: temporary score editor and image library lifecycle passed\n');
     await testPracticeSessionLifecycle(cdp);
     process.stdout.write('Browser checkpoint: practice session passed\n');
     await testCaptureRemovalAndAudioOffset(cdp);
@@ -1868,7 +2169,9 @@ async function main() {
     assert.ok(ytLinkText.length > 0, "youtube quick links rendered");
     assert.equal(ytLinkText.includes("[Lv"), false, "youtube search query excludes [Lv..] tags");
 
+    const previousLoadCount=cdp.events.filter(event=>event.method==='Page.loadEventFired').length;
     await cdp.send('Page.reload', { ignoreCache: true });
+    await waitForPageLoadAfter(cdp,previousLoadCount);
     await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.BUILTIN_SONGS.length === 13 && window.imageSongs.some(function(song){ return song.id === "browser-backup-image"; })', 8000);
     const screenshotDir = path.join(__dirname, '..', 'test-artifacts', 'clean-score-ui');
     let screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review.png');
@@ -1897,7 +2200,7 @@ async function main() {
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');
 
-    process.stdout.write('Result: browser Headless Chrome smoke passed (clean boot, songs loaded, read-only rendering, image library, Web Audio, 0 console errors)\n');
+    process.stdout.write('Result: browser smoke passed (clean boot, songs loaded, temporary score editing, image library, Web Audio, 0 console errors)\n');
   } finally {
     if (cdp) cdp.close();
     chromeProc.kill();

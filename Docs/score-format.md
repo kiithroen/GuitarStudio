@@ -1,6 +1,6 @@
 # 악보 입력 형식
 
-이 문서는 외부에서 작성해 Google Sheets로 불러오는 텍스트 악보의 문법이야. 앱 안에서 텍스트 악보를 입력하거나 편집하는 UI는 제공하지 않아. 사용 흐름은 [사용 안내](usage.md), 리듬 및 재생 내부 계약은 [개발 안내](development.md)와 [리듬·오디오 계약](beginner-rhythm.md)을 봐.
+이 문서는 Google Sheets에서 불러오거나 앱의 임시 악보 초안에서 편집하는 텍스트 악보의 문법이야. 앱 안에서 바꾼 내용은 현재 탭에만 남고 원본이나 Google Sheets에 기록되지 않아. 사용 흐름은 [사용 안내](usage.md), 리듬 및 재생 내부 계약은 [개발 안내](development.md)와 [리듬·오디오 계약](beginner-rhythm.md)을 봐.
 
 ## 마디와 칸
 
