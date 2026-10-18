@@ -239,7 +239,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=note-strokes-1')), 'every app script uses the note-strokes revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=note-duration-1')), 'every app script uses the note-duration revision');
   assert.doesNotMatch(html, /newTextSongBtn|editStructuredBtn|convertImgToScoreBtn|ocrModalFileInput|refImgDetails|refScoreImg|newSongModal|veBarsGrid/);
   for (const script of scripts){
     const source = fs.readFileSync(path.join(root, script), 'utf8');
@@ -255,6 +255,69 @@ async function main(){
   assert.equal(typeof context.initEditor, 'undefined', 'removed editor bootstrap is absent');
   assert.equal(typeof context.openConverterEditorModal, 'undefined', 'removed text editor API is absent');
   assert.equal(typeof context.buildAiPromptText, 'undefined', 'removed AI prompt API is absent');
+
+  const savedPractice = {
+    song: context.curSong,
+    measure: context.curMeasureIdx,
+    beat: context.curBeatIdx,
+    actx: context.actx,
+    ensureAudioCtx: context.ensureAudioCtx,
+    playGuitarNote: context.playGuitarNote,
+    stopGuitarNotes: context.stopGuitarNotes,
+    appState: { bpm: context.appState.bpm, beats: context.appState.beats, loopStart: context.appState.loopStart,
+      loopEnd: context.appState.loopEnd, loopEnable: context.appState.loopEnable, guideSound: context.appState.guideSound }
+  };
+  try {
+    context.changeSongById('builtin-lv6-romance-full');
+    const romance = context.curSong;
+    const romanceText = context.serializeScoreMeasures(romance.measures, '\n');
+    const reparsedRomance = context.parseScore(romanceText, romance.beats);
+    assert.equal(reparsedRomance.errors.length, 0, 'note-duration source round-trips through the common parser');
+    const firstBeat = romance.measures[0].beats[0];
+    const bass = firstBeat.subNotes[0].chordNotes.find(note => note.midi === 40);
+    const melody = firstBeat.subNotes[0].chordNotes.find(note => note.midi === 71);
+    assert.equal(bass.explicitDurationSlots, romance.beats, 'Romance first bass keeps its written full-measure duration');
+    assert.equal(melody.explicitDurationSlots, 1, 'Romance first melody keeps its written one-slot duration');
+    const roundTripBass = reparsedRomance.measures[0].beats[0].subNotes[0].chordNotes.find(note => note.midi === 40);
+    assert.equal(roundTripBass.explicitDurationSlots, bass.explicitDurationSlots, 'serialized score restores the explicit bass duration');
+    assert.equal(roundTripBass.durationUnits, bass.durationUnits, 'serialized score recomputes the actual bass duration');
+
+    const slotDuration = 60 / Number(romance.bpm);
+    const previewCalls = [];
+    context.actx = { currentTime: 30 };
+    context.ensureAudioCtx = function(){};
+    context.stopGuitarNotes = function(){};
+    context.playGuitarNote = function(midi, duration, when, gain, articulation, str){
+      previewCalls.push({ midi, duration, when, gain, articulation, str });
+    };
+    context.appState.guideSound = true;
+    context.appState.bpm = romance.bpm;
+    context.appState.beats = romance.beats;
+    context.appState.loopStart = 1;
+    context.appState.loopEnd = romance.measures.length;
+    context.updateActiveCursor(0, 0, true);
+    const previewBass = previewCalls.find(event => event.midi === 40);
+    const previewMelody = previewCalls.find(event => event.midi === 71);
+    assert.equal(previewBass.duration, bass.explicitDurationSlots * slotDuration, 'app preview schedules the explicit bass for its parsed slot count');
+    assert.equal(previewMelody.duration, melody.explicitDurationSlots * slotDuration, 'app preview keeps the simultaneous melody at its parsed slot count');
+    assert.equal(previewBass.when, previewMelody.when, 'independent chord durations preserve the shared attack');
+
+    const clipped = context.getBeatGuideEvents(firstBeat, {
+      startTime: 0, slotDuration, measures: romance.measures, maxDurationSlots: 1
+    });
+    assert.equal(clipped.find(event => event.note.midi === 40).duration, slotDuration,
+      'guide event respects a one-slot loop boundary for the longer bass');
+  } finally {
+    context.curSong = savedPractice.song;
+    context.curMeasureIdx = savedPractice.measure;
+    context.curBeatIdx = savedPractice.beat;
+    context.actx = savedPractice.actx;
+    context.ensureAudioCtx = savedPractice.ensureAudioCtx;
+    context.playGuitarNote = savedPractice.playGuitarNote;
+    context.stopGuitarNotes = savedPractice.stopGuitarNotes;
+    Object.assign(context.appState, savedPractice.appState);
+    context.renderSong();
+  }
 
   const scoreMode = elements.get('scoreModeSeg');
   assert.equal(scoreMode.hidden, false, 'score view controls are available for structured songs');

@@ -22,6 +22,18 @@ test('labels keep per-component articulation on mixed chord subdivisions', funct
   assert.equal(score.formatBeatPitchLabel(beat, {compact:false}), 'E2~+B4! · B3~ · G3~', 'noncompact labels preserve each component articulation');
 });
 
+test('duration details use component lengths for mixed and equally extended chords', function(){
+  const mixed = firstBeat('~0E2@6:p*3+!4B4@1:a*1 D4@2 - -');
+  const mixedInfo = score.getBeatDurationInfo([mixed], 0, 4);
+  assert.equal(mixedInfo.label, '음별 길이');
+  assert.equal(mixedInfo.durName, 'E2 3칸 + B4 1칸');
+  assert.equal(score.formatBeatPitchLabel(mixed, {compact:false}), 'E2~+B4!', 'duration suffixes do not leak into the existing pitch and articulation label');
+
+  const equal = firstBeat('C3*3+E4*3 D4 - -');
+  assert.equal(score.getBeatDurationInfo([equal], 0, 4).durName, '점2분음표', 'same-duration chord uses the actual component length instead of the parent part duration');
+
+});
+
 test('marks on either chord component do not leak to the other component', function(){
   assert.equal(score.formatBeatPitchLabel(firstBeat('!C3+E4 D4 r G4'), {compact:false}), 'C3!+E4');
   assert.equal(score.formatBeatPitchLabel(firstBeat('C3+!E4 D4 r G4'), {compact:false}), 'C3+E4!');

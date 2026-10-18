@@ -42,6 +42,7 @@
         var slotUnits = supported ? UNITS_PER_SLOT / count : UNITS_PER_SLOT;
         if (!Number.isInteger(slotUnits)) slotUnits = 1;
         var groupStart = (mi * slots + bi) * UNITS_PER_SLOT;
+        beat.startUnits = groupStart;
         if (count > 1) beat.kind = 'group';
         parts.forEach(function(part, si){
           if (!part) return;
@@ -87,7 +88,59 @@
       } else finalizeChain(entry.startUnits);
     });
     if (activeChain) finalizeChain(activeChain.endUnits);
+
+    var totalUnits = measures.length * slots * UNITS_PER_SLOT;
+    var sounding = [], rests = [];
+    locationMap.forEach(function(entry){
+      var part = entry.part;
+      if (part.kind === 'rest') { rests.push(entry.startUnits); return; }
+      if (part.kind !== 'note') return;
+      var components = Array.isArray(part.chordNotes) && part.chordNotes.length ? part.chordNotes : [part];
+      components.forEach(function(note){
+        if (!note) return;
+        var explicit = note.explicitDurationSlots;
+        var requested = explicit == null ? part.durationUnits : Math.round(explicit * UNITS_PER_SLOT);
+        note.startUnits = entry.startUnits;
+        note.durationUnits = requested;
+        sounding.push({note:note,part:part,startUnits:entry.startUnits,endUnits:entry.startUnits+requested,stringNo:Number(note.str)});
+      });
+    });
+    sounding.forEach(function(item){
+      var end = Math.min(item.endUnits,totalUnits);
+      rests.forEach(function(restStart){ if (restStart > item.startUnits && restStart < end) end = restStart; });
+      sounding.forEach(function(other){
+        if (Number.isInteger(item.stringNo) && item.stringNo > 0 && other.startUnits > item.startUnits &&
+            other.stringNo === item.stringNo && other.startUnits < end) end = other.startUnits;
+      });
+      item.note.durationUnits = Math.max(0,end-item.startUnits);
+      if (!(Array.isArray(item.part.chordNotes) && item.part.chordNotes.length)){
+        item.part.durationUnits = item.note.durationUnits;
+        var event = events.find(function(candidate){ return candidate.part === item.part; });
+        if (event) event.durationUnits = item.note.durationUnits;
+      }
+    });
     return {events:events,totalUnits:measures.length * slots * UNITS_PER_SLOT,errors:errors};
+  }
+
+  function getSoundingNotes(measures, positionUnits){
+    if (!Array.isArray(measures) || !Number.isFinite(Number(positionUnits))) return [];
+    var position = Number(positionUnits), result = [];
+    measures.forEach(function(measure){
+      (measure && measure.beats || []).forEach(function(beat){
+        var parts = partsFor(beat);
+        parts.forEach(function(part){
+          if (!part || part.kind !== 'note') return;
+          var notes = Array.isArray(part.chordNotes) && part.chordNotes.length ? part.chordNotes : [part];
+          notes.forEach(function(note){
+            var start = Number(note.startUnits), duration = Number(note.durationUnits);
+            if (!Number.isFinite(start) || !Number.isFinite(duration)) return;
+            var end = start + duration;
+            if (start < position && end > position) result.push({note:note,remainingUnits:end-position});
+          });
+        });
+      });
+    });
+    return result;
   }
 
   function resolveHold(measures, part){
@@ -100,5 +153,5 @@
     return sub && sub.kind === 'note' ? sub : null;
   }
 
-  return {UNITS_PER_SLOT:UNITS_PER_SLOT,getGridInfo:getGridInfo,annotate:annotate,resolveHold:resolveHold};
+  return {UNITS_PER_SLOT:UNITS_PER_SLOT,getGridInfo:getGridInfo,annotate:annotate,resolveHold:resolveHold,getSoundingNotes:getSoundingNotes};
 });

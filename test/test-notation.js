@@ -49,6 +49,31 @@ test('right-hand suffix validation preserves octave and string diagnostics', fun
     assert.ok(result.errors.length,token+' must remain invalid');
   }
 });
+test('duration validation and structural rhythm diagnostics match parser output', function(){
+  const valid='[C] E2@6*3+B4@1*1 B3@2*1 G3@3*1 r';
+  assert.deepEqual(parser.parseScore(valid,4).errors,[]);
+  assert.deepEqual(parser.validateScore(valid,4).errors,[]);
+  for(const raw of ['E4*0 r r r','E4*0.1 r r r','E4*2*3 r r r','r*3 r r r','- C4 D4 E4']){
+    const parsed=parser.parseScore(raw,4).errors.map(error=>[error.code,error.measure,error.beat]);
+    const validated=parser.validateScore(raw,4).errors.map(error=>[error.code,error.measure,error.beat]);
+    assert.deepEqual(validated,parsed,raw+' parser and validator agree');
+    assert.ok(parsed.length,raw+' is rejected');
+  }
+  const saved=parser.buildStructuredSong({id:'duration-roundtrip',lines:[valid],beats:4});
+  const restored=parser.buildStructuredSong({id:'duration-restored',lines:[parser.serializeScoreMeasures(saved.measures)],beats:4});
+  assert.deepEqual(restored.measures[0].beats.map(beat=>beat.tok),saved.measures[0].beats.map(beat=>beat.tok));
+  assert.deepEqual(restored.measures[0].beats[0].chordNotes.map(note=>note.explicitDurationSlots),[3,1]);
+  let annotated = null;
+  global.GuitarRhythm = {annotate:measures=>{ annotated=measures; return {errors:[]}; }};
+  try {
+    notation.validateScore(valid,4,parser.parseNoteToken);
+  } finally {
+    delete global.GuitarRhythm;
+  }
+  assert.deepEqual([annotated[0].beats[0].explicitDurationSlots,annotated[0].beats[0].str], [null,1]);
+  assert.deepEqual(annotated[0].beats[0].chordNotes.map(note=>note.explicitDurationSlots),[3,1]);
+  assert.equal(annotated[0].beats[1].explicitDurationSlots,1,'single-note duration metadata reaches rhythm validation');
+});
 test('parser and validator share grouped subdivision splitting', function(){
   const result=parser.parseScore('[C] (C4 D4) - - -',4);
   assert.equal(result.errors.length,0);

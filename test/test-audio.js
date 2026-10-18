@@ -13,6 +13,7 @@ function makeContext(capo, acousticFx){
   const oscillators = [];
   const filters = [];
   const compressors = [];
+  const gains = [];
   function param(initial){
     return { value:initial || 0, events:[], setValueAtTime(value, time){ this.value = value; this.last = ['set', value, time]; this.events.push(this.last); },
       linearRampToValueAtTime(value, time){ this.last = ['linear', value, time]; this.events.push(this.last); },
@@ -56,7 +57,9 @@ function makeContext(capo, acousticFx){
       createBufferSource: source,
       createBiquadFilter(){ const filter = { frequency:param(0), Q:param(0), type:'', connect(){} }; filters.push(filter); return filter; },
       createGain(){
-        return { gain:param(0), connect(){} };
+        const node = { gain:param(0), connect(){} };
+        gains.push(node);
+        return node;
       },
       createDynamicsCompressor(){ const compressor = { threshold:param(0), knee:param(0), ratio:param(0), attack:param(0), release:param(0), connect(){} }; compressors.push(compressor); return compressor; },
       createConvolver(){ return { buffer:null, connect(){} }; },
@@ -78,7 +81,7 @@ function makeContext(capo, acousticFx){
   };
   vm.createContext(context);
   vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, legacyToneDuration, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
-  return { context, oscillators, filters, compressors };
+  return { context, oscillators, filters, compressors, gains };
 }
 
 let checks = 0;
@@ -186,6 +189,36 @@ test('exact KS note-off starts the natural release and source ends within the re
   assert.ok(voice.out.gain.events.some(event => event[0] === 'target' && event[2] === 2.125 && event[3] === 0.06), 'hall release starts at written note-off with the established tau');
   const dryVoice = context.__audioHooks.buildKsVoice(60, 3, 0.125, 1, false, false, false, 2, true);
   assert.ok(dryVoice.out.gain.events.some(event => event[0] === 'target' && event[2] === 3.125 && event[3] === 0.035), 'dry release starts at written note-off with the established tau');
+});
+
+test('per-note guide durations schedule independent KS and classic note-offs for one chord', function(){
+  const parsed = parser.parseScore('[Em] ~0E2@6:p*3+!4B4@1:a*1 B3@2:m G3@3:i', 3);
+  assert.deepEqual(parsed.errors, []);
+  const beat = parsed.measures[0].beats[0];
+  const expectedNoteOffs = [
+    2 + Number(beat.chordNotes.find(note => note.midi === 71).explicitDurationSlots) * 0.4,
+    2 + Number(beat.chordNotes.find(note => note.midi === 40).explicitDurationSlots) * 0.4
+  ].sort((a, b) => a - b);
+
+  ['ks', 'classic'].forEach(engine => {
+    const { context, gains } = makeContext(0, false);
+    context.appState.synthEngine = engine;
+    context.appState.sympAmount = 0;
+    context.__audioHooks.replaceGetKsBuffer(() => ({ duration:4 }));
+    const events = context.scheduleBeatGuide(beat, {
+      startTime:2, slotDuration:0.4, measures:parsed.measures, maxDurationSlots:3
+    });
+    assert.deepEqual(Array.from(events, event => event.note.midi), [40, 71], engine + ' keeps bass and melody events');
+    const expectedDuration = new Map(beat.chordNotes.map(note => [note.midi, Number(note.explicitDurationSlots) * 0.4]));
+    assert.ok(events.every(event => Math.abs(event.duration - expectedDuration.get(event.note.midi)) < 1e-9 && event.when === 2),
+      engine + ' keeps the written independent durations and simultaneous attack');
+    const noteOffs = gains.flatMap(node => node.gain.events)
+      .filter(event => event[0] === 'target' && event[1] === 0)
+      .map(event => event[2])
+      .filter(time => expectedNoteOffs.some(expected => Math.abs(time - expected) < 1e-9))
+      .sort((a, b) => a - b);
+    assert.deepEqual(noteOffs, expectedNoteOffs, engine + ' schedules separate production note-off times from each guide event');
+  });
 });
 
 test('exact classic tone decay is preserved independently from the natural note-off release', function(){

@@ -242,6 +242,42 @@ async function testConcertHallOfflineRender(client){
       }
       return {engine:engine,fx:hall?'hall':'dry',peak:peak,rms:Math.sqrt(sum/count),eventCount:guideEvents.length};
     }
+    async function renderIsolatedBass(engine, event, duration, startTime, windowStart, windowEnd){
+      appState.acousticFx=false; appState.bodyAmount=0; appState.sympAmount=0; appState.synthEngine=engine;
+      var rate=48000, ctx=new OfflineAudioContext(2,rate*4.5,rate), sourceStops=[];
+      ctx.resume=function(){ return Promise.resolve(); };
+      var originalCreateBufferSource=ctx.createBufferSource.bind(ctx);
+      ctx.createBufferSource=function(){var source=originalCreateBufferSource(),stop=source.stop.bind(source);
+        source.stop=function(time){sourceStops.push(time);return stop(time);};return source;};
+      var originalCreateOscillator=ctx.createOscillator.bind(ctx);
+      ctx.createOscillator=function(){var source=originalCreateOscillator(),stop=source.stop.bind(source);
+        source.stop=function(time){sourceStops.push(time);return stop(time);};return source;};
+      window.actx=ctx; window.outGain=null; window.clickBus=null; window.guitarBus=null;
+      window.dryGainNode=null; window.wetGainNode=null; window.reverbNode=null; window.bodyModes=[];
+      window.trackedGuideVoices=[]; window.stringVoices={}; ensureAudioCtx();
+      dryGainNode.gain.value=0.88; wetGainNode.gain.value=0;
+      playGuitarNote(event.note.midi,duration,startTime,event.gain,event.articulation,event.str,{exactDuration:true});
+      if(windowStart==null) windowStart=Math.max.apply(null,sourceStops)+0.02;
+      var buffer=await ctx.startRendering(), left=buffer.getChannelData(0), right=buffer.getChannelData(1), sum=0, count=0, peak=0;
+      for(var i=Math.floor(windowStart*rate);i<Math.floor(windowEnd*rate);i++){
+        var sample=(left[i]+right[i])*0.5;sum+=sample*sample;count++;
+      }
+      for(var j=0;j<buffer.length;j++) peak=Math.max(peak,Math.abs(left[j]),Math.abs(right[j]));
+      var bytes=new Uint8Array(44+buffer.length*4), view=new DataView(bytes.buffer);
+      function putAscii(offset,value){for(var k=0;k<value.length;k++)view.setUint8(offset+k,value.charCodeAt(k));}
+      putAscii(0,'RIFF');view.setUint32(4,bytes.length-8,true);putAscii(8,'WAVE');putAscii(12,'fmt ');
+      view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,2,true);view.setUint32(24,rate,true);
+      view.setUint32(28,rate*4,true);view.setUint16(32,4,true);view.setUint16(34,16,true);putAscii(36,'data');view.setUint32(40,bytes.length-44,true);
+      for(var sampleIndex=0;sampleIndex<buffer.length;sampleIndex++){
+        var leftSample=Math.max(-1,Math.min(1,left[sampleIndex])),rightSample=Math.max(-1,Math.min(1,right[sampleIndex]));
+        view.setInt16(44+sampleIndex*4,leftSample<0?leftSample*32768:leftSample*32767,true);
+        view.setInt16(46+sampleIndex*4,rightSample<0?rightSample*32768:rightSample*32767,true);
+      }
+      var binary='',chunkSize=0x8000;
+      for(var byteIndex=0;byteIndex<bytes.length;byteIndex+=chunkSize){binary+=String.fromCharCode.apply(null,bytes.subarray(byteIndex,Math.min(bytes.length,byteIndex+chunkSize)));}
+      return {engine:engine,duration:duration,startTime:startTime,windowStart:windowStart,windowEnd:windowEnd,
+        windowRms:count?Math.sqrt(sum/count):0,peak:peak,sourceStops:sourceStops,wavBase64:btoa(binary)};
+    }
     async function renderChord(engine, chord, wet, amount){
       amount = amount == null ? 1 : amount;
       appState.acousticFx=wet; appState.bodyAmount=amount; appState.sympAmount=amount; appState.synthEngine=engine;
@@ -291,9 +327,40 @@ async function testConcertHallOfflineRender(client){
       for(var engine of ['ks','classic']) for(var hallMode of [false,true]){
         lv6Renders.push(await renderRomance(engine,hallMode,lv6Events));
       }
+      var lv6BassEvent=lv6Events.find(function(event){return event.note.midi===40;});
+      var lv6BassPart=lv6.measures[0].beats[0].subNotes[0].chordNotes.find(function(note){return note.midi===40;});
+      if(!lv6BassPart || !Number.isFinite(Number(lv6BassPart.explicitDurationSlots))) throw new Error('Lv.6 first bass has no parsed explicit duration for the offline comparison');
+      var lv6OpeningChord=lv6.measures[0].beats[0].subNotes[0].chordNotes;
+      var lv6MelodyPart=lv6OpeningChord.find(function(note){return note.midi===71;});
+      var lv6InnerParts=[lv6.measures[0].beats[0].subNotes[1],lv6.measures[0].beats[0].subNotes[2]];
+      var lv6DefaultBassDuration=lv6SlotDuration/lv6.measures[0].beats[0].subNotes.length;
+      var lv6LongBassDuration=lv6BassEvent.duration;
+      var lv6BassStart=lv6BassEvent.when;
+      if(Math.abs(lv6LongBassDuration-Number(lv6BassPart.explicitDurationSlots)*lv6SlotDuration)>1e-9) throw new Error('Lv.6 bass guide event duration does not match its parsed explicit source duration');
+      var lv6BassWindowEnd=lv6BassStart+lv6LongBassDuration-0.05;
+      var lv6BassComparison=[];
+      for(var bassEngine of ['ks','classic']){
+        var shortBass=await renderIsolatedBass(bassEngine,lv6BassEvent,lv6DefaultBassDuration,lv6BassStart,null,lv6BassWindowEnd);
+        var longBass=await renderIsolatedBass(bassEngine,lv6BassEvent,lv6LongBassDuration,lv6BassStart,shortBass.windowStart,lv6BassWindowEnd);
+        lv6BassComparison.push({engine:bassEngine,explicitDurationSlots:Number(lv6BassPart.explicitDurationSlots),
+          defaultDuration:lv6DefaultBassDuration,longDuration:lv6LongBassDuration,windowStart:shortBass.windowStart,windowEnd:lv6BassWindowEnd,
+          shortWindowRms:shortBass.windowRms,longWindowRms:longBass.windowRms,shortSourceStops:shortBass.sourceStops,longSourceStops:longBass.sourceStops,
+          shortPeak:shortBass.peak,longPeak:longBass.peak,shortWavBase64:shortBass.wavBase64,longWavBase64:longBass.wavBase64});
+      }
       result.lv6FirstMeasure={id:lv6.id,bpm:lv6.bpm,events:lv6Events.map(function(event){return {
         midi:event.note.midi,when:event.when,duration:event.duration,gain:event.gain,articulation:event.articulation,str:event.str
-      };}),renders:lv6Renders};
+      };}),beats:Number(lv6.beats),unitsPerSlot:Number(GuitarRhythm.UNITS_PER_SLOT),
+        melodyExplicitDurationSlots:Number(lv6MelodyPart.explicitDurationSlots),
+        bassExplicitDurationSlots:Number(lv6BassPart.explicitDurationSlots),bassDefaultDuration:lv6DefaultBassDuration,
+        bassDurationUnits:Number(lv6BassPart.durationUnits),melodyDurationUnits:Number(lv6MelodyPart.durationUnits),
+        durationUnits:{bass:lv6BassPart.durationUnits,melody:lv6MelodyPart.durationUnits,
+          inners:lv6InnerParts.map(function(part){return part.durationUnits;}),slotUnits:lv6.measures[0].beats[0].subNotes[0].slotUnits},
+        bassLongDuration:lv6LongBassDuration,bassWindowEnd:lv6BassWindowEnd,
+        bassComparison:lv6BassComparison.map(function(item){return {engine:item.engine,explicitDurationSlots:item.explicitDurationSlots,
+          defaultDuration:item.defaultDuration,longDuration:item.longDuration,windowStart:item.windowStart,windowEnd:item.windowEnd,
+          shortWindowRms:item.shortWindowRms,longWindowRms:item.longWindowRms,shortSourceStops:item.shortSourceStops,
+          longSourceStops:item.longSourceStops,shortPeak:item.shortPeak,longPeak:item.longPeak,
+          shortWavBase64:item.shortWavBase64,longWavBase64:item.longWavBase64};}),renders:lv6Renders};
     } finally {
       window.actx=saved.actx; window.outGain=saved.outGain; window.clickBus=saved.clickBus;
       window.guitarBus=saved.guitarBus; window.dryGainNode=saved.dryGainNode; window.wetGainNode=saved.wetGainNode;
@@ -323,18 +390,49 @@ async function testConcertHallOfflineRender(client){
   assert.equal(render.lv6FirstMeasure.events.length, 10, 'Lv.6 first measure guide emits bass, melody, and inner voice notes');
   assert.deepEqual(render.lv6FirstMeasure.events.slice(0, 2).map(function(event){return [event.midi,event.gain,event.articulation,event.str];}),
     [[40,0.62,'tirando',6],[71,1.16,'apoyando',1]], 'Lv.6 opening bass and melody retain their written articulation and strings');
+  assert.equal(render.lv6FirstMeasure.bassExplicitDurationSlots, render.lv6FirstMeasure.beats,
+    'Lv.6 opening bass duration comes from its parsed full-measure source suffix');
+  assert.equal(render.lv6FirstMeasure.melodyExplicitDurationSlots, 1, 'Lv.6 opening melody retains its parsed one-slot suffix');
+  assert.equal(render.lv6FirstMeasure.durationUnits.bass,
+    render.lv6FirstMeasure.bassExplicitDurationSlots * render.lv6FirstMeasure.unitsPerSlot,
+    'Lv.6 bass keeps its parsed independent duration in rhythm units');
+  assert.equal(render.lv6FirstMeasure.durationUnits.melody,
+    render.lv6FirstMeasure.melodyExplicitDurationSlots * render.lv6FirstMeasure.unitsPerSlot,
+    'Lv.6 melody keeps its parsed independent duration in rhythm units');
+  assert.ok(render.lv6FirstMeasure.durationUnits.inners.every(function(units){return units === render.lv6FirstMeasure.durationUnits.slotUnits;}),
+    'Lv.6 inner notes retain their default one-subdivision duration');
+  const lv6BassEvent = render.lv6FirstMeasure.events.find(function(event){return event.midi === 40;});
+  const lv6MelodyEvent = render.lv6FirstMeasure.events.find(function(event){return event.midi === 71;});
+  assert.ok(Math.abs(lv6BassEvent.duration - render.lv6FirstMeasure.bassDurationUnits / 12 * 60 / render.lv6FirstMeasure.bpm) < 1e-9 &&
+    Math.abs(lv6MelodyEvent.duration - render.lv6FirstMeasure.melodyDurationUnits / 12 * 60 / render.lv6FirstMeasure.bpm) < 1e-9,
+    'Lv.6 event durations convert parsed note units through the song tempo');
+  assert.equal(render.lv6FirstMeasure.bassComparison.length, 2, 'isolated Romance bass comparison covers both existing synth engines');
+  assert.ok(render.lv6FirstMeasure.bassComparison.every(function(item){return item.explicitDurationSlots === render.lv6FirstMeasure.beats &&
+    item.windowStart > Math.max.apply(null,item.shortSourceStops) && item.windowEnd < 0.1 + item.longDuration &&
+    item.windowEnd > item.windowStart && item.shortWindowRms < 1e-8 && item.longWindowRms > 1e-8 && item.longPeak < 1;}),
+    'KS and classic keep audible E2 energy after the old short note has ended and before the explicit note-off');
   assert.ok(render.lv6FirstMeasure.renders.length === 4 && render.lv6FirstMeasure.renders.every(function(item){return item.peak < 1 && item.rms > 0 && item.eventCount === 10;}),
     'actual Lv.6 first measure renders audible, unclipped KS/classic dry/hall audio');
   const artifact = path.join(root, 'test-artifacts', 'audio-release-check-' + Date.now() + '.json');
   fs.mkdirSync(path.dirname(artifact), { recursive:true });
+  const bassWavPaths = [];
+  render.lv6FirstMeasure.bassComparison.forEach(function(item){
+    const shortPath = path.join(path.dirname(artifact), 'romance-e2-short-' + item.engine + '-' + Date.now() + '.wav');
+    const longPath = path.join(path.dirname(artifact), 'romance-e2-long-' + item.engine + '-' + Date.now() + '.wav');
+    fs.writeFileSync(shortPath, Buffer.from(item.shortWavBase64, 'base64'));
+    fs.writeFileSync(longPath, Buffer.from(item.longWavBase64, 'base64'));
+    bassWavPaths.push(shortPath, longPath);
+  });
+  render.lv6FirstMeasure.bassComparison.forEach(function(item){ delete item.shortWavBase64; delete item.longWavBase64; });
   fs.writeFileSync(artifact, JSON.stringify({ sampleRateHz:48000, peakDefinition:'max absolute sample across stereo channels',
     rmsDefinition:'RMS of stereo channel average; natural tail window 1.01-1.8s after a note starting at 0.1s with 0.5s duration',
     gain:render.gain, wetTailRatio:render.tailRatio, chords:render.chords, matrix:render.matrix,
     dryTailRms:render.dry.tailRms, hallTailRms:render.hall.tailRms, forcedCutoffStopAt:render.forced.sourceStops[0],
     forcedClassicStops:render.forcedClassic.sourceStops, forcedClassicLateRms:render.forcedClassic.lateRms,
-    forcedPostCutoffRms:render.forced.lateRms, lv6FirstMeasure:render.lv6FirstMeasure }, null, 2) + '\n');
+    forcedPostCutoffRms:render.forced.lateRms, lv6FirstMeasure:render.lv6FirstMeasure, bassWavPaths:bassWavPaths }, null, 2) + '\n');
   process.stdout.write('Artifact: ' + artifact + '\n');
-  process.stdout.write('Browser checkpoint: OfflineAudioContext natural releases, KS/classic hard cutoff, 12 KS/classic duration/FX cases, isolated hall tail, 12 valid six-string Em/F chord renders, and four actual Lv.6 first-measure renders passed (wet tail ratio ' + render.tailRatio.toFixed(4) + ', max chord peak ' + Math.max.apply(null,render.chords.map(function(chord){return chord.peak;})).toFixed(4) + ')\n');
+  process.stdout.write('Romance E2 WAV evidence: ' + bassWavPaths.join(' ; ') + '\n');
+  process.stdout.write('Browser checkpoint: OfflineAudioContext natural releases, KS/classic hard cutoff, 12 KS/classic duration/FX cases, isolated hall tail, 12 valid six-string Em/F chords, four actual Lv.6 first-measure renders, and independent E2 note-off windows passed (wet tail ratio ' + render.tailRatio.toFixed(4) + ', max chord peak ' + Math.max.apply(null,render.chords.map(function(chord){return chord.peak;})).toFixed(4) + ')\n');
 }
 
 async function testPracticeSessionLifecycle(client) {
@@ -635,7 +733,7 @@ async function testSubdividedGuide(client) {
       appState.scoreView = 'card';
       renderSong();
       var rhythmCell = document.querySelector('#measuresGrid .beat-cell[data-b="0"]');
-      check(rhythmCell.querySelector('.b-dur-badge').textContent.trim().length > 0 && /분할별 길이/.test(rhythmCell.title), 'duration badge and tooltip show subdivision duration details');
+      check(rhythmCell.querySelector('.b-dur-badge').textContent.trim() === '3분할' && /분할별 길이/.test(rhythmCell.title), 'duration badge retains the three-way group label and tooltip shows subdivision duration details');
       appState.scoreView = 'tab';
       renderSong();
 
@@ -702,6 +800,70 @@ async function testSubdividedGuide(client) {
       renderSong();
       var sameFretPills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill')).filter(function(p){ return Math.abs(parseFloat(p.style.left) - 25) < 0.001; });
       check(sameFretPills.length === 1 && sameFretPills[0].classList.contains('note-fret'), 'same-string same-fret pair draws one neutral note pill');
+
+      var durationScore = parseScore('[C] ~0E2@6:p*3+!4B4@1:a*1 - -', 3);
+      check(durationScore.errors.length === 0, 'independent bass duration fixture parses as a valid three-beat score');
+      window.curSong = { id:'browser-independent-duration', title:'Independent duration', type:'structured', beats:3, bpm:100, measures:durationScore.measures };
+      appState.beats = 3;
+      appState.bpm = 100;
+      appState.loopStart = 1;
+      appState.loopEnd = 1;
+      appState.loopEnable = false;
+      appState.guideSound = true;
+      renderSong();
+      emitted = [];
+      stopped = [];
+      window.actx.currentTime = 99.99;
+      window.playSession = { inCountIn:false, nextBeatTime:100, spb:0.6, bpb:3, bIdx:0, mIdx:0, loopCompleted:0, resumeNextHold:false, endScheduled:false };
+      window.isPlaying = true;
+      schedulerTick();
+      check(emitted.length === 2 && emitted.map(function(event){return event.midi;}).join(',') === '40,71', 'normal scheduler emits the independent bass and melody once');
+      check(emitted.every(function(event){return event.when === 100;}) && Math.abs(emitted.find(function(event){return event.midi === 40;}).duration - 1.8) < 1e-9 && Math.abs(emitted.find(function(event){return event.midi === 71;}).duration - 0.6) < 1e-9,
+        'normal scheduler preserves simultaneous onset and independent three-slot/one-slot durations');
+      var guideButton = document.getElementById('guideSoundBtn');
+      guideButton.click();
+      check(appState.guideSound === false && stopped.length > 0, 'turning guide sound off cuts scheduled guide voices');
+      guideButton.click();
+      check(appState.guideSound === true && window.playSession.resumeNextHold === true, 'turning guide sound on arms one resume at the next scheduled beat');
+      window.actx.currentTime = 100.59;
+      schedulerTick();
+      check(emitted.length === 3 && emitted[2].midi === 40 && emitted[2].when === 100.6 && Math.abs(emitted[2].duration - 1.2) < 1e-9,
+        'guide re-enable restores only the still-sounding bass with its remaining duration');
+
+      var previewResumeScore = parseScore('[C] ~0E2@6:p*3+!4B4@1:a*1 B3@2:m G3@3:i', 3);
+      check(previewResumeScore.errors.length === 0, 'new-attack preview fixture parses as a valid three-beat score');
+      window.curSong = { id:'browser-duration-preview-resume', title:'Duration preview resume', type:'structured', beats:3, bpm:100, measures:previewResumeScore.measures };
+      appState.loopStart = 1;
+      appState.loopEnd = 1;
+      renderSong();
+      emitted = [];
+      window.actx.currentTime = 105;
+      updateActiveCursor(0, 1, true);
+      check(emitted.length === 2 && emitted.some(function(event){return event.midi === 59;}) && emitted.some(function(event){return event.midi === 40;}) &&
+        emitted.every(function(event){return event.when === 105;}) && !emitted.some(function(event){return event.midi === 71;}) &&
+        Math.abs(emitted.find(function(event){return event.midi === 40;}).duration - 1.2) < 1e-9 &&
+        Math.abs(emitted.find(function(event){return event.midi === 59;}).duration - 0.6) < 1e-9,
+        'preview on a new-attack beat restores only the surviving bass and plays the new note once');
+
+      var sameStringDurationScore = parseScore('[C] ~0E2@6:p*3 2E2@6:p*1 -', 3);
+      window.curSong = { id:'browser-duration-same-string', title:'Duration same string', type:'structured', beats:3, bpm:100, measures:sameStringDurationScore.measures };
+      renderSong();
+      emitted = [];
+      window.actx.currentTime = 110;
+      updateActiveCursor(0, 2, true);
+      check(emitted.length === 0, 'preview does not restore a bass already clipped by a same-string reattack');
+
+      var loopClipScore = parseScore('[C] E4@1 B3@2 ~0E2@6:p*3\\n[G] B3@2 G3@3 D4@4', 3);
+      check(loopClipScore.errors.length === 0 && loopClipScore.measures.length === 2, 'loop-boundary fixture has two valid measures so its cutoff is before song end');
+      window.curSong = { id:'browser-duration-loop-clip', title:'Duration loop clip', type:'structured', beats:3, bpm:100, measures:loopClipScore.measures };
+      appState.loopStart = 1;
+      renderSong();
+      appState.loopEnd = 1;
+      emitted = [];
+      window.actx.currentTime = 120;
+      updateActiveCursor(0, 2, true);
+      check(emitted.length === 1 && emitted[0].midi === 40 && Math.abs(emitted[0].duration - 0.6) < 1e-9,
+        'last-slot preview clips an explicit longer bass to the loop boundary (' + JSON.stringify(emitted.map(function(event){return {midi:event.midi,duration:event.duration,when:event.when};})) + ')');
 
       var clockScore = parseScore('[C] 0E2 r 0G2 G2@6+B2@5\\n[G] - - - -\\n[D] - - E3 r', 4);
       check(clockScore.errors.length === 0 && clockScore.measures.length === 3 && clockScore.measures.every(function(measure){ return measure.beats.length === 4; }), 'fake-clock runtime fixture is a complete three-measure source score');
@@ -1059,6 +1221,7 @@ async function testBuiltinScores(client, browserBin){
       var cardCells=[0,1,2].map(function(index){return document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="'+index+'"]');});
       var cardLabels=cardCells.map(function(cell){return cell&&cell.querySelector('.b-note-sub')?cell.querySelector('.b-note-sub').textContent:null;});
       var cardTitles=cardCells.map(function(cell){return cell?cell.title:'';});
+      var cardDurationBadges=cardCells.map(function(cell){var badge=cell&&cell.querySelector('.b-dur-badge');return badge?badge.textContent.trim():'';});
       var cardArticulationClasses=cardCells.map(function(cell){return !!(cell&&(cell.classList.contains('arp-melody')||cell.classList.contains('arp-sub')));});
       if(serializeScoreMeasures(romance.measures,'\\n')!==sourceScore||JSON.stringify(guideSignature())!==JSON.stringify(sourceGuide)) throw new Error('Lv.6 card rendering changed serialized score or guide event semantics');
       appState.scoreView='tab';
@@ -1086,7 +1249,7 @@ async function testBuiltinScores(client, browserBin){
       return {catalogCount:window.BUILTIN_SONGS.length,rendered:results,romance:{id:romance.id,bpm:romance.bpm,beats:romance.beats,
         firstMeasureBeats:first.beats.length,subdivisionCounts:first.beats.map(function(beat){return beat.subNotes.length;}),
         fingers:fingers.slice(0,4),tabLabels:tabLabels,tabTitles:tabTitles,tabRhBadges:tabRhBadges,
-        cardLabels:cardLabels,cardTitles:cardTitles,cardArticulationClasses:cardArticulationClasses,
+         cardLabels:cardLabels,cardTitles:cardTitles,cardDurationBadges:cardDurationBadges,cardArticulationClasses:cardArticulationClasses,
         cardTitleHasPartArticulation:cardTitleHasPartArticulation,cardTitleHasUniformArticulation:cardTitleHasUniformArticulation,
         serializationPreserved:serializeScoreMeasures(romance.measures,'\\n')===sourceScore,
         guidePreserved:JSON.stringify(guideSignature())===JSON.stringify(sourceGuide),
@@ -1104,6 +1267,9 @@ async function testBuiltinScores(client, browserBin){
     assert.ok(review.romance.tabTitles[0].includes('E2~+B4! · B3~ · G3~'), 'first TAB title shows the bass, melody, and inner-note techniques');
     assert.deepEqual(review.romance.tabRhBadges, [false,false,false], 'TAB articulation marks are included in pitch labels without old end badges');
     assert.deepEqual(review.romance.cardLabels, ['E2~+B4! · B3~ · G3~','B4! · B3~ · G3~','B4! · B3~ · G3~'], 'card labels show each Lv.6 note articulation independently');
+    assert.ok(review.romance.tabTitles[0].includes('E2 3칸 + B4 1칸'), 'TAB tooltip names the independent bass and melody durations');
+    assert.ok(review.romance.cardTitles[0].includes('E2 3칸 + B4 1칸'), 'card tooltip names the independent bass and melody durations');
+    assert.deepEqual(review.romance.cardDurationBadges, ['3분할','3분할','3분할'], 'mixed note lengths leave the existing group badges unchanged');
     assert.ok(review.romance.cardTitleHasPartArticulation, 'card tooltip shows each pitch articulation');
     assert.equal(review.romance.cardTitleHasUniformArticulation, false, 'mixed articulation tooltip does not assign one technique to the whole beat');
     assert.deepEqual(review.romance.cardArticulationClasses, [false,false,false], 'mixed articulation card beats have no uniform apo/tir class');
@@ -1205,7 +1371,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=note-strokes-1')), 'all app scripts use the shared note-strokes revision');
+    assert.ok(scriptTags.every(src => src.endsWith('?v=note-duration-1')), 'all app scripts use the shared note-duration revision');
   const browserBin = findBrowserBinary();
   if (!browserBin) {
     process.stdout.write('SKIP: No Chrome or Edge binary found for browser test\n');

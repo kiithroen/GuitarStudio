@@ -39,6 +39,31 @@ test('single notes retain English, Korean, octave, fingering, and string overrid
   assert.equal(overridden.customTok, '1E4@2');
 });
 
+test('duration postfix validates units and stays attached to each chord component', function(){
+  for (const [token,slots,units] of [['E4*3',3,36],['E4*1',1,12],['E4*1.5',1.5,18],['E4*0.25',0.25,3],['E4*0.0833333333',0.0833333333,1]]){
+    const note=parser.parseNoteToken(token,0);
+    assert.equal(note.explicitDurationSlots,slots,token);
+    assert.equal(note.customTok,token,token+' canonical token');
+    assert.equal(Math.round(note.explicitDurationSlots*rhythm.UNITS_PER_SLOT),units,token+' normalized integer units');
+  }
+  for (const token of ['E4*0','E4*0.000000000001','E4*-1','E4*1e2','E4*Infinity','E4*NaN','E4*0.1','E4**3','E4*3*1','E4*','r*3','-*3','.*3','E4*3:p','E4:p*3!']){
+    assert.equal(parser.parseNoteToken(token,0),null,token+' is rejected');
+    assert.ok(parser.parseScore(token+' r r r',4).errors.length,token+' fails score validation');
+  }
+  const chord=parser.parseNoteToken('~0E2@6:p*3+!4B4@1:a*1',0);
+  assert.deepEqual(chord.chordNotes.map(note=>[note.explicitDurationSlots,note.tok]),[
+    [3,'~0E2@6:p*3'],[1,'!4B4@1:a*1']
+  ]);
+  assert.equal(chord.explicitDurationSlots,null,'chord representative does not leak final component duration');
+  const scoreData=parse('[C] ~0E2@6:p*3+!4B4@1:a*1 B3@2:m*1 G3@3:i*1 r',4);
+  assert.deepEqual(scoreData.errors,[]);
+  assert.equal(scoreData.measures[0].beats[0].chordNotes[0].explicitDurationSlots,3);
+  assert.equal(scoreData.measures[0].beats[0].chordNotes[1].explicitDurationSlots,1);
+  const serialized=parser.serializeScoreMeasures(scoreData.measures);
+  assert.match(serialized,/~0E2@6:p\*3\+!4B4@1:a\*1/);
+  assert.deepEqual(parse(serialized,4).measures[0].beats.map(beat=>beat.tok),scoreData.measures[0].beats.map(beat=>beat.tok));
+});
+
 test('explicit right-hand suffixes stay attached to their written note only', function(){
   for (const finger of ['p','i','m','a']){
     const note=parser.parseNoteToken('C4:'+finger,0);

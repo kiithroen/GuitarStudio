@@ -330,7 +330,10 @@ function curCapo(){
           var articDesc = uniformArticulation === 'apoyando'
             ? ' [악보 지정 아포얀도(!)]'
             : (uniformArticulation === 'tirando' ? ' [악보 지정 티란도(~)]' : '');
-          cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + (pitchLabel ? ': ' + pitchLabel : '') + articDesc + ' (클릭: 운지 보기 및 음 듣기)';
+          var tabDurationInfo = getBeatDurationInfo(m.beats, bIdx, curSong.beats);
+          cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + (pitchLabel ? ': ' + pitchLabel : '') +
+            (pitchLabel && tabDurationInfo.durName && tabDurationInfo.kind !== 'rest' && tabDurationInfo.kind !== 'hold' ? ' · 길이: ' + tabDurationInfo.durName : '') +
+            articDesc + ' (클릭: 운지 보기 및 음 듣기)';
 
           var topRow = document.createElement('div');
           topRow.className = 'tab-cell-top';
@@ -359,16 +362,16 @@ function curCapo(){
             marker.title = b.kind === 'hold' ? '앞 음을 다시 치지 않고 유지' : '쉼';
             gridEl.appendChild(marker);
             if (b.kind === 'hold' && typeof GuitarRhythm !== 'undefined'){
-              var heldSource = GuitarRhythm.resolveHold(curSong.measures, b);
-              var heldNotes = heldSource && heldSource.chordNotes && heldSource.chordNotes.length ? heldSource.chordNotes : (heldSource && heldSource.midi ? [heldSource] : []);
-              heldNotes.forEach(function(heldNote, heldIndex){
+              var heldRecords = GuitarRhythm.getSoundingNotes(curSong.measures, b.startUnits);
+              heldRecords.forEach(function(record){
+                var heldNote = record.note;
                 if (!heldNote.str) return;
                 var heldPill = document.createElement('span');
                 heldPill.className = 'tab-fret-pill note-fret tab-held-fret';
                 heldPill.style.top = ((heldNote.str - 1) * 20) + '%';
                 heldPill.textContent = String(heldNote.fret != null ? heldNote.fret : 0);
-                var heldToken = heldSource.tok || heldSource.customTok || heldSource.en;
-                var heldFinger = getExplicitLeftHand(heldToken, heldNotes.length > 1 ? heldIndex : undefined);
+                var heldToken = heldNote.tok || heldNote.customTok || heldNote.en;
+                var heldFinger = getExplicitLeftHand(heldToken);
                 if (heldFinger != null){
                   var heldLh = document.createElement('span');
                   heldLh.className = 'tab-cell-lh';
@@ -432,9 +435,9 @@ function curCapo(){
                 dash.style.opacity = '0.4';
                 gridEl.appendChild(dash);
                 if ((sn.kind === 'hold' || sn.tok === '-') && typeof GuitarRhythm !== 'undefined'){
-                  var subHeldSource = GuitarRhythm.resolveHold(curSong.measures, sn);
-                  var subHeldNotes = subHeldSource && subHeldSource.chordNotes && subHeldSource.chordNotes.length ? subHeldSource.chordNotes : (subHeldSource && subHeldSource.midi ? [subHeldSource] : []);
-                  subHeldNotes.forEach(function(heldNote, heldIndex){
+                  var subHeldRecords = GuitarRhythm.getSoundingNotes(curSong.measures, sn.startUnits);
+                  subHeldRecords.forEach(function(record){
+                    var heldNote = record.note;
                     if (!heldNote.str) return;
                     var heldPill = document.createElement('span');
                     heldPill.className = 'tab-fret-pill note-fret tab-held-fret';
@@ -443,8 +446,8 @@ function curCapo(){
                     heldPill.style.left = leftPct;
                     heldPill.style.transform = 'translate(-50%, -50%)';
                     heldPill.textContent = String(heldNote.fret != null ? heldNote.fret : 0);
-                    var heldToken = subHeldSource.tok || subHeldSource.customTok || subHeldSource.en;
-                    var heldFinger = getExplicitLeftHand(heldToken, subHeldNotes.length > 1 ? heldIndex : undefined);
+                    var heldToken = heldNote.tok || heldNote.customTok || heldNote.en;
+                    var heldFinger = getExplicitLeftHand(heldToken);
                     if (heldFinger != null){
                       var heldLh = document.createElement('span');
                       heldLh.className = 'tab-cell-lh';
@@ -1557,6 +1560,7 @@ function curCapo(){
   $('#guideSoundBtn').addEventListener('click', function(){
     appState.guideSound = !appState.guideSound;
     if (!appState.guideSound && typeof stopGuitarNotes === 'function') stopGuitarNotes();
+    else if (appState.guideSound && isPlaying && playSession) playSession.resumeNextHold = true;
     syncConsoleUI();
     saveAppState();
   });

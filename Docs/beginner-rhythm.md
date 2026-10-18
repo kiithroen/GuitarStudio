@@ -7,9 +7,11 @@
 
 `GuitarRhythm.getGridInfo(slotsPerBar)`는 `{slotsPerBar,numerator,denominator,slotQuarterLength,bpmUnitLabel}`을 반환해. 6·9·12칸은 각각 6/8·9/8·12/8이고 한 칸은 4분음표 길이 기준 0.5야. 8칸은 4/4의 8분음표 칸(0.5), 나머지 유효한 1~12칸은 n/4 박자에 4분음표 칸(1)이야. UI에서 선택 가능한 칸 수는 2, 3, 4, 6, 8, 9야.
 
-`GuitarRhythm.annotate(measures, slotsPerBar)`는 입력 `beats`와 `subNotes`를 시간순으로 분석하고 `{events,totalUnits,errors}`를 반환해. `UNITS_PER_SLOT`은 12야. 단일 part의 `kind`는 `note`, `rest`, `hold`, `invalid` 중 하나고, 분할 beat는 `group`이야. 각 part에는 `startUnits`, `slotUnits`, `durationUnits`, `tieFrom`이 붙어. `startUnits`는 곡 시작부터의 절대 정수 위치고 마디 시작은 `measureIndex * slotsPerBar * 12`야. `slotUnits`는 part 자체 길이(12 또는 12/분할수)야. 이벤트와 `tieFrom`의 위치 참조에서 일반 beat의 `subIndex`는 null이고 분할 part는 0부터 시작하는 분할 인덱스를 써.
+`GuitarRhythm.annotate(measures, slotsPerBar)`는 입력 `beats`와 `subNotes`를 시간순으로 분석하고 `{events,totalUnits,errors}`를 반환해. `UNITS_PER_SLOT`은 12야. 단일 part의 `kind`는 `note`, `rest`, `hold`, `invalid` 중 하나고, 분할 beat는 `group`이야. 각 part에는 `startUnits`, `slotUnits`, `durationUnits`, `tieFrom`이 붙어. 실제 음표와 화음 구성음에는 `explicitDurationSlots`와 음별 `startUnits`, `durationUnits`도 보존해. `startUnits`는 곡 시작부터의 절대 정수 위치고 마디 시작은 `measureIndex * slotsPerBar * 12`야. `slotUnits`는 part 자체 길이(12 또는 12/분할수)야. 이벤트와 `tieFrom`의 위치 참조에서 일반 beat의 `subIndex`는 null이고 분할 part는 0부터 시작하는 분할 인덱스를 써.
 
-음의 `durationUnits`는 뒤이은 연속 유지까지 포함한 길이야. hold의 값은 그 위치부터 유지 체인 끝까지 남은 길이고, rest는 자체 길이야. `tieFrom`은 hold만 갖는 `{measureIndex,beatIndex,subIndex}` 원음 위치야. `resolveHold(measures,part)`는 해당 실제 음 시작 part 또는 `null`을 반환해. 쉼은 체인을 끝내.
+길이 접미사 `*N`은 토큰 맨끝에 적어 해당 음의 길이를 칸 단위로 지정해. 오른손 운지가 있으면 그 뒤에 붙여. N은 양수 정수·소수고 현재 해상도에서는 `N × 12`가 정수여야 해. `*` 중복·부호·지수·길이용 `/` 문법은 지원하지 않아. 접미사가 없으면 기존 칸·분할·연속 유지 계산을 사용하고, 명시 길이는 `-`로 늘어나지 않아. 명시 음 길이와 화음 구성음 각각의 `durationUnits`는 12분의 1칸 단위야. 같은 현 재탄현, rest, 곡 종료와 loop 종료를 경계로 더 일찍 잘릴 수 있어. rest는 전체 소리를 정리해. 독립 성부 레인·성부별 쉼·화음 일부의 붙임줄은 지원하지 않아.
+
+hold part의 `durationUnits`는 그 위치부터 이어지는 유지 체인의 끝까지 남은 길이야. `tieFrom`은 hold만 갖는 `{measureIndex,beatIndex,subIndex}` 원음 위치야. `resolveHold(measures,part)`는 이어지는 원음 part 또는 `null`을 반환하고, `getSoundingNotes(measures,positionUnits)`는 그 시점에 실제로 살아 있는 개별 음과 남은 길이를 반환해.
 
 원문 `tok`와 음·현·프렛·명시 왼손 운지·명시 오른손 운지(`:p`, `:i`, `:m`, `:a`)를 보존하고 리듬 파생 필드는 원문을 파싱해 다시 계산해. 오른손 운지는 표시용 metadata이며 음색, gain, 타이밍, 피치와 재생 동작에 영향을 주지 않아. `notationVersion`은 기존 2를 유지해. 분석 이벤트의 `part`는 실제 음 시작 part를 참조하며, 이벤트 배열을 곡에 저장해 순환 참조를 만들지 마. 잘못된 기존 악보를 자동으로 DB에 덮어쓰지 말고 원문을 보존해.
 
@@ -17,13 +19,15 @@
 
 ## 재생 이벤트
 
-`getBeatGuideEvents(beat, options)`와 `scheduleBeatGuide(beat, options)`는 `startTime`, `slotDuration`, `measures`, `resumeHold`, `maxDurationSlots`, `capo`를 사용해. `slotDuration` 단위는 초/한 칸이야. 이벤트 `when`은 `startTime + subIndex / 분할수 * slotDuration`, `duration`은 `durationUnits / 12 * slotDuration`이야.
+`getBeatGuideEvents(beat, options)`와 `scheduleBeatGuide(beat, options)`는 `startTime`, `slotDuration`, `measures`, `resumeHold`, `maxDurationSlots`, `capo`를 사용해. `slotDuration` 단위는 초/한 칸이야. 이벤트 `when`은 `startTime + subIndex / 분할수 * slotDuration`, 각 음 이벤트의 `duration`은 그 음의 `durationUnits / 12 * slotDuration`이야. 화음 구성음은 시작 시각이 같아도 길이는 다를 수 있어.
 
-note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}` 형태고 화음 구성음은 같은 시각과 길이로 나가. 명시 아포얀도 gain은 `1.16`, 티란도는 `0.62`, 그 외는 `1`이야. 원문에 명시한 주법 설정만 전달하고 부모 분할 그룹의 주법을 자식에 전파하지 않아. rest 이벤트 `{kind:'rest',when,duration}`는 해당 시각의 직접음을 정리해.
+note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}` 형태고 화음 구성음은 같은 시각에 시작하지만 길이는 음별로 달라질 수 있어. 명시 아포얀도 gain은 `1.16`, 티란도는 `0.62`, 그 외는 `1`이야. 원문에 명시한 주법 설정만 전달하고 부모 분할 그룹의 주법을 자식에 전파하지 않아. rest 이벤트 `{kind:'rest',when,duration}`는 해당 시각의 직접음을 정리해.
 
-일반 진행에서 hold는 새 note-on을 만들지 않아. `resumeHold:true`는 현재 beat 첫 part가 hold일 때만 `resolveHold`가 찾은 원음을 한 번 재생해. 이 동작은 정지 상태 칸 미리듣기, 중간 시작, 루프 시작에 사용돼. 그 뒤 내부 hold는 다시 치지 않아.
+일반 진행에서 hold는 새 note-on을 만들지 않아. `resumeHold:true`는 예약 시점의 실제 유지 음들을 남은 길이로 복원해. 이 동작은 정지 상태 칸 미리듣기, 중간 시작, 루프 시작과 재생 도중 기타 시뮬레이션을 다시 켠 뒤의 다음 박에서 사용돼. 복원된 길이도 곡·loop 끝에서 잘리고, 그 뒤 내부 hold는 다시 치지 않아. 기존 스케줄러를 사용하며 중간 시각에 새 이벤트를 추가 예약하지 않아.
 
 `maxDurationSlots`는 현재 칸 시작부터 재생·루프 끝까지 남은 칸 수야. 분할 위치를 고려해 이벤트를 루프 경계에서 잘라. `getSubdividedGuideEvents`와 `scheduleSubdividedGuide`는 `subStep`을 `slotDuration = subStep * subNotes.length`로 바꿔 공통 경로를 사용해. `getSubdividedGuideEvents` 반환값은 기존대로 note 이벤트만 포함해.
+
+2026-10-19 결정: 기존에는 첫 분할 길이를 화음 전체에 적용하고 독립 음가 생략으로 남겨 저음 3박이 유지되지 않았어. 이번에는 기존 음별 이벤트 길이만 확장했어. 새 엔진·별도 성부 스케줄러는 만들지 않았어. 명시 길이는 유지 `-`를 무시하며 더 이른 재탄현·쉼·곡·loop 경계가 우선해.
 
 `scheduleBeatGuide`는 실음 MIDI에 카포를 한 번 적용해. 구조화 악보 이벤트는 `playGuitarNote(..., {exactDuration:true})`를 사용해. 명시 음표 길이는 note-off 시작 시각이고, 자연 release는 콘서트홀에서 0.06초, 드라이에서 0.035초의 시간 상수로 감쇠하며 직접음은 note-off 뒤 0.4초 안에 끝나. classic 음원의 tone decay는 명시 note-off와 분리돼 기존 합성 음형을 유지해. 쉼, 사용자 정지, 곡 교체, 루프 끝 같은 강제 경계는 직접음을 최대 15ms 안에 정리해. KS 합성·공명·기존 사용자 설정은 유지해.
 

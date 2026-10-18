@@ -146,4 +146,41 @@ test('underspecified preview preserves entered slots and source tokens', functio
   assert.equal(parser.serializeScoreMeasures(parsed.measures),'[C] 4D4@2 r | "line"');
 });
 
+test('explicit per-note durations preserve accompaniment, cutoffs, cross-bar holds, and sounding lookup', function(){
+  const raw='[C] ~0E2@6:p*3+!4B4@1:a*1 B3@2:m*1 G3@3:i*1 r';
+  const parsed=parse(raw,4);
+  assert.deepEqual(parsed.errors,[]);
+  const beats=parsed.measures[0].beats;
+  const bass=beats[0].chordNotes[0], melody=beats[0].chordNotes[1];
+  assert.deepEqual([bass.startUnits,bass.durationUnits,melody.startUnits,melody.durationUnits],[0,36,0,12]);
+  assert.deepEqual([beats[1].durationUnits,beats[2].durationUnits],[12,12]);
+  assert.deepEqual(rhythm.getSoundingNotes(parsed.measures,12).map(item=>[item.note.midi,item.remainingUnits]),[[40,24]]);
+  assert.deepEqual(rhythm.getSoundingNotes(parsed.measures,0),[],'an onset at the requested position is not already sounding');
+  assert.deepEqual(rhythm.getSoundingNotes(parsed.measures,36),[],'a note ending exactly at the position is not sounding');
+  const before=JSON.stringify(beats.map(beat=>[beat.durationUnits,beat.chordNotes&&beat.chordNotes.map(note=>note.durationUnits)]));
+  rhythm.annotate(parsed.measures,4);
+  assert.equal(JSON.stringify(beats.map(beat=>[beat.durationUnits,beat.chordNotes&&beat.chordNotes.map(note=>note.durationUnits)])),before,'annotation is idempotent');
+
+  const differentStrings=parse('E2@6*3 B3@2*1 A3@3*1 r',4).measures[0].beats;
+  assert.equal(differentStrings[0].durationUnits,36,'different-string onsets do not cut the bass');
+  const sameString=parse('E2@6*3 A2@6*1 r r',4).measures[0].beats;
+  assert.equal(sameString[0].durationUnits,12,'the next pluck on the same string cuts the prior note');
+  const restCut=parse('E2@6*3 B3@2*1 r r',4).measures[0].beats;
+  assert.equal(restCut[0].durationUnits,24,'the next overall rest cuts every sustained voice');
+
+  const across=parse('E2@6*6 - - - // - - - r',4);
+  assert.deepEqual(across.errors,[]);
+  const crossNote=across.measures[0].beats[0];
+  assert.deepEqual([crossNote.startUnits,crossNote.durationUnits],[0,72]);
+  assert.deepEqual(rhythm.getSoundingNotes(across.measures,48).map(item=>[item.note.midi,item.remainingUnits]),[[40,24]]);
+  const songEnd=parse('E2@6*6 - - -',4);
+  assert.equal(songEnd.measures[0].beats[0].durationUnits,48,'song end clips a duration beyond the score');
+  const nearUnit=parse('E4*0.0833333333 r r r',4).measures;
+  assert.equal(nearUnit[0].beats[0].durationUnits,1,'accepted floating approximation rounds to integer units');
+  assert.equal(rhythm.getSoundingNotes(nearUnit,0.5)[0].remainingUnits,0.5,'rounded end keeps fractional-position resume aligned');
+  assert.deepEqual(rhythm.getSoundingNotes(nearUnit,1),[],'rounded endpoint is exclusive');
+  const loopClip=parse('E2@6*3 r r r',4).measures;
+  assert.equal(rhythm.getSoundingNotes(loopClip,6)[0].remainingUnits,6,'sounding lookup reads the duration clipped by the next rest');
+});
+
 process.stdout.write('1..' + checks + '\n');

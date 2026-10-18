@@ -67,6 +67,8 @@ assert.equal(resumed.length, 1, 'resume plays the source note once');
 assert.equal(resumed[0].note, source, 'resume uses the actual tie source');
 assert.equal(resumed[0].when, 8, 'resume starts at the hold position');
 assert.equal(resumed[0].duration, 0.75, 'resume duration clips at loop boundary');
+const resumedWithoutClip = context.getBeatGuideEvents(held, { startTime:8, slotDuration:0.5, measures, resumeHold:true });
+assert.equal(resumedWithoutClip[0].duration,1,'synthetic fallback uses the current hold part remaining length');
 
 calls.length = 0;
 context.scheduleBeatGuide(restBeat, { startTime:5, slotDuration:0.9, capo:2, maxDurationSlots:0.8333333333333333 });
@@ -97,6 +99,29 @@ const parsedMixedChordEvents = context.getBeatGuideEvents(parsedMixedChord, { st
 assert.deepEqual(Array.from(parsedMixedChordEvents, event => [event.note.midi, event.articulation, event.gain, event.when, event.duration, event.str]), [
   [40, 'tirando', 0.62, 7, 0.4, 6], [71, 'apoyando', 1.16, 7, 0.4, 1]
 ], 'parsed mixed chord uses component articulations and keeps simultaneous timing and strings');
+
+const durationScore = parser.parseScore('[C] ~0E2@6:p*3+!4B4@1:a*1 B3@2:m*1 G3@3:i*1 r', 4);
+const durationBeat = durationScore.measures[0].beats[0];
+const durationEvents = context.getBeatGuideEvents(durationBeat, { startTime:0, slotDuration:0.5 });
+assert.deepEqual(Array.from(durationEvents, event => [event.note.midi,event.duration,event.articulation]), [
+  [40,1.5,'tirando'], [71,0.5,'apoyando']
+], 'annotated chord components use independent explicit note-off times');
+const resumedBeat = durationScore.measures[0].beats[1];
+const resumedMiddle = context.getBeatGuideEvents(resumedBeat, {
+  startTime:0.5, slotDuration:0.5, measures:durationScore.measures, resumeHold:true
+});
+assert.deepEqual(Array.from(resumedMiddle, event => [event.note.midi,event.when,event.duration]), [
+  [59,0.5,0.5], [40,0.5,1.0]
+], 'middle resume restores only earlier notes still sounding at the selected beat position');
+assert.equal(resumedMiddle.some(event => event.note.midi === 71),false,'an expired chord member is not resumed');
+const clippedResume = context.getBeatGuideEvents(resumedBeat, {
+  startTime:0.5, slotDuration:0.5, measures:durationScore.measures, resumeHold:true, maxDurationSlots:0.5
+});
+assert.equal(clippedResume.find(event => event.note.midi === 40).duration,0.25,'resume duration respects loop clipping');
+const restResume = context.getBeatGuideEvents(durationScore.measures[0].beats[3], {
+  startTime:1.5, slotDuration:0.5, measures:durationScore.measures, resumeHold:true
+});
+assert.deepEqual(Array.from(restResume, event => event.kind),['rest'],'a rest start does not duplicate previously sounding notes');
 
 const parsedMelodyArtChord = parser.parseScore('[C] C3+!E4 r r r', 4).measures[0].beats[0];
 assert.deepEqual(Array.from(context.getBeatGuideEvents(parsedMelodyArtChord, { startTime:2, slotDuration:0.5 }), event => [event.articulation, event.gain]), [

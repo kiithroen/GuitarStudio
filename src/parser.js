@@ -245,6 +245,8 @@
   function parseNoteToken(tok, altIdx){
     if (!tok || tok === '-' || tok === '.') return null;
     tok = tok.trim();
+    var explicitDurationSlots = null;
+    var durationMatch = null;
     // 화음 끝의 주법 postfix가 마지막 구성음의 오른손 suffix에 붙는 조합은 금지한다.
     if (/:([pima])[!~]$/.test(tok)) return null;
 
@@ -271,7 +273,8 @@
         lh: bassPos.lh,
         rh: bassPos.rh == null ? null : bassPos.rh,
         articulation: bassInf.articulation || null,
-        explicitArticulation: !!bassInf.explicitArticulation
+        explicitArticulation: !!bassInf.explicitArticulation,
+        explicitDurationSlots: bassInf.explicitDurationSlots == null ? null : bassInf.explicitDurationSlots
       };
 
       // 3음 이상 화음(코드 롤/아르페지오) 지원
@@ -287,12 +290,26 @@
           lh: pos.lh,
           rh: pos.rh == null ? null : pos.rh,
           articulation: ps.articulation || null,
-          explicitArticulation: !!ps.explicitArticulation
+          explicitArticulation: !!ps.explicitArticulation,
+          explicitDurationSlots: ps.explicitDurationSlots == null ? null : ps.explicitDurationSlots
         };
       });
       melInf.chordNotes = chordNotes;
       melInf.customTok = chordNotes.map(function(cn){ return cn.tok; }).join('+');
+      melInf.explicitDurationSlots = null;
       return melInf;
+    }
+
+    durationMatch = tok.match(/\*([0-9]+(?:\.[0-9]+)?)$/);
+    if (tok.indexOf('*') >= 0){
+      if (!durationMatch) return null;
+      explicitDurationSlots = Number(durationMatch[1]);
+      var durationUnits = explicitDurationSlots * GuitarRhythm.UNITS_PER_SLOT;
+      var roundedDurationUnits = Math.round(durationUnits);
+      if (!Number.isFinite(explicitDurationSlots) || !(explicitDurationSlots > 0) ||
+          !Number.isSafeInteger(roundedDurationUnits) || !(roundedDurationUnits > 0) ||
+          Math.abs(durationUnits - roundedDurationUnits) > 1e-9) return null;
+      tok = tok.slice(0, -durationMatch[0].length);
     }
 
     // 오른손 운지는 음표별로만 적고 잘못된 콜론 표기는 음표로 복구하지 않는다.
@@ -303,6 +320,7 @@
       explicitRh = rhMatch[1];
       tok = tok.slice(0, -rhMatch[0].length);
     }
+    if (tok.indexOf('*') >= 0) return null;
     if (explicitRh && /[!~]$/.test(tok)) return null;
     // >와 ^는 더 이상 아포얀도 별칭이 아니다.
     if (/[>^]/.test(tok)) return null;
@@ -363,6 +381,11 @@
         info.articulation = explicitArtic;
         info.explicitArticulation = true;
       }
+      info.explicitDurationSlots = explicitDurationSlots;
+      if (explicitDurationSlots != null){
+        var normalizedKoTok = info.customTok || (articPfx + (customLh != null ? customLh : '') + info.en + (explicitRh ? ':' + explicitRh : ''));
+        info.customTok = normalizedKoTok + '*' + durationMatch[1];
+      }
       return info;
     }
 
@@ -405,6 +428,11 @@
         if (explicitArtic){
           inf.articulation = explicitArtic;
           inf.explicitArticulation = true;
+        }
+        inf.explicitDurationSlots = explicitDurationSlots;
+        if (explicitDurationSlots != null){
+          var normalizedTok = inf.customTok || (articPfx + coreTok + (explicitRh ? ':' + explicitRh : ''));
+          inf.customTok = normalizedTok + '*' + durationMatch[1];
         }
         return inf;
       }
@@ -542,6 +570,7 @@
               chordNotes: note && note.chordNotes ? note.chordNotes : null,
               articulation: note && note.articulation ? note.articulation : null,
               explicitArticulation: !!(note && note.explicitArticulation),
+              explicitDurationSlots: note ? note.explicitDurationSlots : null,
               durFrac: 1 / rawSubToks.length,
               kind: /^[rR]$/.test(stk) ? 'rest' : (stk === '-' ? 'hold' : (stk === '.' ? 'invalid' : (note ? 'note' : 'invalid')))
             };
@@ -556,7 +585,8 @@
             lh: first ? first.lh : null, rh: first ? first.rh : null,
             bass: first ? first.bass : null, chordNotes: first ? first.chordNotes : null,
             articulation: first ? first.articulation : null,
-            explicitArticulation: !!(first && first.explicitArticulation)
+            explicitArticulation: !!(first && first.explicitArticulation),
+            explicitDurationSlots: null
           });
         } else {
           var noteInfo = parseNoteToken(rawSubToks[0] || tok, mIdx * bpb + b);
@@ -571,7 +601,8 @@
             bass: noteInfo && noteInfo.bass ? noteInfo.bass : null,
             chordNotes: noteInfo && noteInfo.chordNotes ? noteInfo.chordNotes : null,
             articulation: noteInfo && noteInfo.articulation ? noteInfo.articulation : null,
-            explicitArticulation: !!(noteInfo && noteInfo.explicitArticulation)
+            explicitArticulation: !!(noteInfo && noteInfo.explicitArticulation),
+            explicitDurationSlots: noteInfo ? noteInfo.explicitDurationSlots : null
           });
         }
       }

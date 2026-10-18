@@ -260,8 +260,17 @@
         var decoded = decodeMeasureLine(line), tokens = tokenizeMeasureBeats(decoded.notation);
         return {beats:tokens.map(function(token){
           var parts = splitBeatSubtokens(token);
-          var parsedParts = parts.map(function(part){ return {tok:part,midi:parseNoteToken ? (parseNoteToken(part,0)||{}).midi : null}; });
-          return {tok:token,isSubdivided:parts.length > 1,subNotes:parts.length > 1 ? parsedParts : undefined,midi:parsedParts[0] && parsedParts[0].midi};
+          var parsedParts = parts.map(function(part){
+            var parsed = parseNoteToken ? parseNoteToken(part,0) : null;
+            return {tok:part,midi:parsed ? parsed.midi : null,
+              explicitDurationSlots:parsed ? parsed.explicitDurationSlots : null,
+              str:parsed && parsed.pos ? parsed.pos.str : null,
+              chordNotes:parsed && parsed.chordNotes ? parsed.chordNotes : null};
+          });
+          var first = parsedParts[0];
+          return {tok:token,isSubdivided:parts.length > 1,subNotes:parts.length > 1 ? parsedParts : undefined,
+            midi:first && first.midi,explicitDurationSlots:first && first.explicitDurationSlots,
+            str:first && first.str,chordNotes:first && first.chordNotes};
         })};
       });
       rhythmApi.annotate(rhythmMeasures,bpb).errors.forEach(function(error){

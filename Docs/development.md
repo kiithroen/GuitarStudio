@@ -23,13 +23,15 @@ Guitar Studio는 번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱
 
 ## 데이터 흐름과 유지보수 계약
 
-`parseScore`와 `GuitarNotation.validateScore`가 텍스트 악보의 파싱·검증 기준이야. `GuitarRhythm.annotate`는 파싱된 마디에 칸 길이, 시작 위치와 유지 체인을 계산하고 `resolveHold`는 유지의 원음 참조를 돌려줘. `guide.js`는 이 결과로 재생 이벤트를 만들고 `audio.js`에 예약해. 사용 문법은 [악보 입력 형식](score-format.md), 세부 오디오 계약은 [리듬·오디오 계약](beginner-rhythm.md)을 따라.
+`parseScore`와 `GuitarNotation.validateScore`가 텍스트 악보의 파싱·검증 기준이야. `GuitarRhythm.annotate`는 파싱된 마디에 칸 길이, 시작 위치, 음별 길이와 유지 체인을 계산하고 `resolveHold`/`getSoundingNotes`는 연결된 원음이나 시점에 살아 있는 음을 돌려줘. `guide.js`는 이 결과로 재생 이벤트를 만들고 `audio.js`에 예약해. 사용 문법은 [악보 입력 형식](score-format.md), 세부 오디오 계약은 [리듬·오디오 계약](beginner-rhythm.md)을 따라.
 
 `tok`와 원본 입력을 기준으로 파생 필드를 다시 계산해. IndexedDB에는 이미지·PDF 악보가, localStorage에는 앱 설정과 곡별 최근 연습 BPM·구간 이어가기 상태가 저장돼. 이전 구조화 악보 데이터베이스 레코드는 자동 삭제하지 않고 앱에서 노출하지 않아. 백업 포맷은 버전 1의 `customSongs` 키를 유지하며, 이 키는 이미지 전용 데이터를 담아. Google Sheets 연동은 읽기 전용이야. `soundingMidi`는 `src/parser.js`의 공통 카포 실음 변환 함수야.
 
 마디 메모와 가사는 같은 `lyric` 필드로 파싱하고 JSON 문자열로 직렬화해.
 
 완료된 작업은 모듈 분리와 공통 파서·카포 경로, 단위·스모크 테스트 추가, 초보 리듬 입력과 재생 계약 정리야. alphaTab 재생은 `codex/alphatab-player` 실험 브랜치에 남아 있고 main 앱은 기존 엔진을 사용해.
+
+2026-10-19 결정: `*N` 음별 유지 길이는 기존 리듬 분석·가이드 예약 경로에 음 단위 지속시간을 전달해 구현해. 독립 성부 scheduler나 새 오디오 엔진은 추가하지 않아. resume 시점에는 기존 다음 박 예약에서 `getSoundingNotes` 결과를 복원해.
 
 ## 검증
 

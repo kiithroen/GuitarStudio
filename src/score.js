@@ -20,6 +20,11 @@ var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./
       var divisor = gcd(units,12) || 1;
       return (units/divisor) + (12/divisor === 1 ? '' : '/' + (12/divisor)) + '칸';
     }
+    function noteLengthName(note, fallbackUnits){
+      var units = Number.isFinite(note && note.durationUnits) ? note.durationUnits : fallbackUnits;
+      var noteName = note && (note.en || note.name) || '';
+      return (noteName ? noteName + ' ' : '') + exactSlots(units);
+    }
     function infoForPart(part){
       var kind = part && part.kind;
       if (kind === 'rest'){
@@ -32,6 +37,21 @@ var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./
       if (kind === 'invalid' || !part || part.kind !== 'note') return {isRest:false,kind:'invalid',svg:'',label:'오류',durName:'오류'};
       var units = part.durationUnits;
       if (!Number.isFinite(units)) units = part.slotUnits || 12;
+      if (Array.isArray(part.chordNotes) && part.chordNotes.length > 1){
+        var componentUnits = part.chordNotes.map(function(note){
+          return Number.isFinite(note.durationUnits) ? note.durationUnits : units;
+        });
+        if (componentUnits.some(function(value){ return value !== componentUnits[0]; })){
+          return {
+            isRest:false,
+            kind:'note',
+            svg:'',
+            label:'음별 길이',
+            durName:part.chordNotes.map(function(note){ return noteLengthName(note, units); }).join(' + ')
+          };
+        }
+        units = componentUnits[0];
+      }
       var quarterLength = grid.slotQuarterLength * units / 12;
       var entries = [
         [0.125,'32분','32분음표',''],
