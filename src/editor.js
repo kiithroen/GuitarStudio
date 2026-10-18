@@ -553,22 +553,6 @@ function initEditor(){
     });
   });
 
-  $('#convertLegacyScoreBtn').addEventListener('click', function(){
-    var converted = GuitarNotationMigration.convertLegacyScoreText($('#nsMeasuresTxt').value, veState.beats);
-    if (converted.errors.length){
-      $('#scoreValidationStatus').textContent = scoreValidationText(converted) + '\n변환 오류를 고친 뒤 다시 시도해줘.';
-      return;
-    }
-    $('#nsMeasuresTxt').value = converted.text;
-    if (converted.title) $('#nsTitle').value = converted.title;
-    if (converted.beats) { veState.beats = converted.beats; $('#nsBeats').value = String(converted.beats); }
-    if (converted.bpm) $('#nsBpm').value = String(converted.bpm);
-    if (converted.badge) veState.sourceBadge = converted.badge;
-    refreshScoreValidation();
-    veState.bars = parseTextToVeBars(converted.text, veState.beats);
-    renderVeBarsGrid();
-  });
-
   // 2) 업로드한 사진 악보에서 [이 사진을 내 악보로 변환] 클릭 시
   $('#convertImgToScoreBtn').addEventListener('click', function(){
     if (!curSong || curSong.type !== 'image') return;

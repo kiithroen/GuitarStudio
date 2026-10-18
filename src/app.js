@@ -2870,11 +2870,6 @@ function editorCapo(){
       if (s && (s.fromSheet || String(s.id).indexOf('sheet-song-') === 0)){
         if (!await removePersistedSong(s.id)) continue;
       } else if (s){
-        if (s.type === 'structured' && s.notationVersion !== 2 && Array.isArray(s.measures)){
-          var migratedSong = Object.assign({}, s, { notationVersion: 2 });
-          try { await dbSaveSong(migratedSong); s = migratedSong; }
-          catch (migrationError){ reportStorageError(migrationError); }
-        }
         cleanCustom.push(s);
       }
     }

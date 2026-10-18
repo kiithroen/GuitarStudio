@@ -100,9 +100,6 @@ const songStore = new Map();
 let copiedText = '';
 let promptResponse = '';
 let failNextTransaction = false;
-let failNextWriteTransaction = false;
-let committedWriteCount = 0;
-const committedWritesById = new Map();
 const idb = {
   open(){
     const request = {};
@@ -139,9 +136,8 @@ const idb = {
           }
         };
         setTimeout(() => {
-          if (failNextTransaction || (failNextWriteTransaction && staged.size > 0)){
+          if (failNextTransaction){
             failNextTransaction = false;
-            failNextWriteTransaction = false;
             tx.error = new Error('Injected transaction abort');
             if (tx.onabort) tx.onabort({ target: tx });
             return;
@@ -149,8 +145,6 @@ const idb = {
           for (const id of deletes) songStore.delete(id);
           for (const [id, song] of staged){
             songStore.set(id, song);
-            committedWriteCount++;
-            committedWritesById.set(id, (committedWritesById.get(id) || 0) + 1);
           }
           if (tx.oncomplete) tx.oncomplete({ target: tx });
         }, 10);
@@ -243,7 +237,7 @@ async function main(){
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   document.querySelector('#storageStatus');
   const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
-  assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/ai-prompt.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/editor.js', 'src/notation-migration.js', 'src/sheets.js', 'src/app.js']);
+  assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/ai-prompt.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/editor.js', 'src/sheets.js', 'src/app.js']);
   for (const script of scripts){
     const source = fs.readFileSync(path.join(root, script), 'utf8');
     vm.runInContext(source, context, { filename: script });
@@ -289,15 +283,6 @@ async function main(){
   assert.match(elements.get('scoreValidationStatus').textContent, /1마디 5박/, 'overflow score reports the extra beat');
   await elements.get('saveNewSongBtn').dispatch('click');
   assert.equal(context.customSongs.some(song => song.title === 'oversized'), false, 'invalid score cannot be saved');
-
-  context.openConverterEditorModal({ title: 'legacy conversion', beats: 4, rawText: '[C] C4 - - - / [G] G3 - - -' });
-  assert.equal(elements.get('veBarsGrid').children.length, 0, 'legacy slash score awaits explicit conversion');
-  await elements.get('convertLegacyScoreBtn').dispatch('click');
-  assert.equal(context.veState.bars.length, 2, 'explicit converter creates two measure projections');
-  assert.match(elements.get('nsMeasuresTxt').value, /\[C\].*\/\/|\[G\]/, 'explicit converter writes the canonical score');
-  elements.get('nsTitle').value = 'legacy converted';
-  await elements.get('saveNewSongBtn').dispatch('click');
-  assert.ok(context.customSongs.some(song => song.title === 'legacy converted' && song.measures.length === 2), 'converted legacy score saves normally');
 
   const beforeFailedSave = context.customSongs.slice();
   const selectedBeforeFailedSave = context.curSong.id;
@@ -446,42 +431,6 @@ async function main(){
   assert.equal(elements.get('veBarsGrid').children.length, 0, 'invalid input is not projected into a misleading visual preview');
   assert.match(elements.get('scoreValidationStatus').textContent, /알 수 없는 음표 토큰/, 'invalid source text receives a validation diagnostic');
 
-  const appSource = fs.readFileSync(path.join(root, 'src/app.js'), 'utf8');
-  const bootStart = appSource.indexOf('Promise.all([', appSource.indexOf('// 앱 부팅'));
-  assert.notEqual(bootStart, -1, 'app boot migration block is present');
-  const bootBlock = appSource.slice(bootStart);
-  const legacyBootSong = context.buildStructuredSong({ id: 'notation-migration-boot', title: 'Old structured song', badge: 'Legacy', capo: 3, ytUrl: 'https://youtu.be/migrate-me', bpm: 73, beats: 4, lines: ['[G] G3 - - - | "lyrics // | \\\"quoted\\\""'] });
-  delete legacyBootSong.notationVersion;
-  legacyBootSong.extraField = { preserved: true };
-  const legacyMeasures = JSON.stringify(legacyBootSong.measures);
-  songStore.set(legacyBootSong.id, legacyBootSong);
-  const writesBeforeMigration = committedWritesById.get(legacyBootSong.id) || 0;
-  vm.runInContext(bootBlock, context, { filename: 'src/app.js boot migration regression' });
-  await waitFor(() => context.customSongs.some(song => song.id === legacyBootSong.id && song.notationVersion === 2));
-  const migratedBootSong = songStore.get(legacyBootSong.id);
-  assert.equal(committedWritesById.get(legacyBootSong.id), writesBeforeMigration + 1, 'boot persists the structured-song notation version once');
-  assert.equal(JSON.stringify(migratedBootSong.measures), legacyMeasures, 'boot migration preserves measures and lyric data');
-  assert.equal(migratedBootSong.capo, 3, 'boot migration preserves capo');
-  assert.equal(migratedBootSong.ytUrl, 'https://youtu.be/migrate-me', 'boot migration preserves YouTube URL');
-  assert.deepEqual(migratedBootSong.extraField, { preserved: true }, 'boot migration preserves additional fields');
-  const writesAfterFirstBoot = committedWritesById.get(legacyBootSong.id);
-  vm.runInContext(bootBlock, context, { filename: 'src/app.js second boot migration regression' });
-  await waitFor(() => context.customSongs.some(song => song.id === legacyBootSong.id && song.notationVersion === 2));
-  await new Promise(resolve => setTimeout(resolve, 40));
-  assert.equal(committedWritesById.get(legacyBootSong.id), writesAfterFirstBoot, 'a later boot does not persist an already migrated song again');
-
-  const failedBootSong = context.buildStructuredSong({ id: 'notation-migration-failure', title: 'Failed migration', badge: 'Legacy', capo: 2, ytUrl: 'https://youtu.be/failure', bpm: 68, beats: 4, lines: ['[C] C4 - - -'] });
-  delete failedBootSong.notationVersion;
-  songStore.set(failedBootSong.id, failedBootSong);
-  const selectedBeforeBootFailure = context.curSong.id;
-  const originalFailedSong = JSON.stringify(failedBootSong);
-  failNextWriteTransaction = true;
-  vm.runInContext(bootBlock, context, { filename: 'src/app.js failed boot migration regression' });
-  await waitFor(() => elements.get('storageStatus').hidden === false && context.customSongs.some(song => song.id === failedBootSong.id));
-  assert.equal(JSON.stringify(songStore.get(failedBootSong.id)), originalFailedSong, 'failed boot migration preserves the original IndexedDB record');
-  assert.equal(JSON.stringify(context.customSongs.find(song => song.id === failedBootSong.id)), originalFailedSong, 'failed boot migration keeps the original in-memory record');
-  assert.equal(context.curSong.id, selectedBeforeBootFailure, 'failed boot migration preserves the selected song');
-  assert.equal(elements.get('storageStatus').hidden, false, 'failed boot migration reports storage status');
   process.stdout.write('Result: app VM smoke passed (script loading, songs.json, fretboard, score render, editor projection/grid, save handler)\n');
 }
 

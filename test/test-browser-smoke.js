@@ -581,22 +581,14 @@ async function main() {
       var lyricRoundTrip = decodeMeasureLine(document.getElementById('nsMeasuresTxt').value).lyric === specialLyric;
       document.getElementById('closeNewSongBtn').click();
       curSong = originalSong;
-      openConverterEditorModal({ title: 'legacy', beats: 4, rawText: '[C] C4 - - - / [G] G3 - - -' });
-      var legacyInitiallyUnprojected = document.getElementById('veBarsGrid').children.length === 0;
-      document.getElementById('convertLegacyScoreBtn').click();
-      var convertedText = textarea.value;
-      var legacyConverted = veState.bars.length === 2 && convertedText.includes('[C]') && convertedText.includes('[G]');
-      document.getElementById('closeNewSongBtn').click();
-      return { preserved:preserved, overflowDiagnostic:overflowDiagnostic, beatRecovery:beatRecovery, invalidSaveBlocked:invalidSaveBlocked, lyricRoundTrip:lyricRoundTrip, legacyInitiallyUnprojected:legacyInitiallyUnprojected, legacyConverted:legacyConverted };
+      return { preserved:preserved, overflowDiagnostic:overflowDiagnostic, beatRecovery:beatRecovery, invalidSaveBlocked:invalidSaveBlocked, lyricRoundTrip:lyricRoundTrip };
     })()`);
     assert.equal(notationUi.preserved, true, 'overflow input remains intact and is not projected');
     assert.match(notationUi.overflowDiagnostic, /5박/, 'overflow input reports its excess beat');
     assert.equal(notationUi.beatRecovery, true, 'changing to a matching meter safely restores projection');
     assert.equal(notationUi.invalidSaveBlocked, true, 'invalid score cannot be saved');
     assert.equal(notationUi.lyricRoundTrip, true, 'structured edit opening preserves JSON lyric delimiters');
-    assert.equal(notationUi.legacyInitiallyUnprojected, true, 'legacy slash text waits for explicit conversion');
-    assert.equal(notationUi.legacyConverted, true, 'explicit converter creates the two new-format measures');
-    process.stdout.write('Browser checkpoint: notation and migration UI passed\n');
+    process.stdout.write('Browser checkpoint: notation UI passed\n');
 
     const imageUi = await cdp.evaluate(`(async function(){
       var savedSong = curSong;
