@@ -1526,7 +1526,20 @@ async function testSubdividedGuide(client) {
       window.curSong=sourceSong;
       highlightFretboard('C',sourceSong.measures[0].beats[0],false,false,0);
       var restoredOpenThree=document.querySelector('#fretboard .fb-open[data-str="3"]');
-      check(restoredOpenThree.textContent===restoredOpenThree.dataset.baseLabel && !restoredOpenThree.querySelector('.fb-marker.target-note'), 'moving the target restores the inactive open-string base label');
+      check((restoredOpenThree.textContent===restoredOpenThree.dataset.baseLabel || (restoredOpenThree.querySelector('.fb-marker.chord-tone') && restoredOpenThree.querySelector('.fb-marker.chord-tone').textContent==='0')) && !restoredOpenThree.querySelector('.fb-marker.target-note'), 'moving the target restores the open-string base label or chord-tone zero');
+      highlightFretboard('C', null, false, false, 0);
+      var open3Chord = document.querySelector('#fretboard .fb-open[data-str="3"] .fb-marker.chord-tone');
+      var open1Chord = document.querySelector('#fretboard .fb-open[data-str="1"] .fb-marker.chord-tone');
+      check(open3Chord && open3Chord.textContent === '0' && open1Chord && open1Chord.textContent === '0', 'C chord displays zero markers on open strings 3 and 1');
+      var open3Target = parseScore('0G3@3 - - -', 4).measures[0].beats[0];
+      highlightFretboard('C', open3Target, false, false, 0);
+      var open3Cell = document.querySelector('#fretboard .fb-open[data-str="3"]');
+      var open3GreenMarker = open3Cell && open3Cell.querySelector('.fb-marker.target-note');
+      var open3BlueMarker = open3Cell && open3Cell.querySelector('.fb-marker.chord-tone');
+      check(open3GreenMarker && !open3BlueMarker, 'target note on open string 3 overwrites the blue chord-tone zero marker with green target marker');
+      var open1StillBlue = document.querySelector('#fretboard .fb-open[data-str="1"] .fb-marker.chord-tone');
+      check(open1StillBlue && open1StillBlue.textContent === '0', 'other open-string chord tone remains zero marker');
+      highlightFretboard('C', sourceSong.measures[0].beats[0], false, false, 0);
       check(guideText.indexOf('겹음:') === 0 && guideText.indexOf('저음') < 0 && guideHand.indexOf('저음') < 0 && guideText.indexOf('엄지') < 0 && guideHand.indexOf('엄지') < 0 && guideText.indexOf('p(') < 0 && guideHand === '-', 'pair guide lists the notes without inferred hand roles');
       emitted = [];
       window.playSession = { inCountIn: false, nextBeatTime: 13, spb: 0.5, bpb: 3, bIdx: 1, mIdx: 0, loopCompleted: 0, endScheduled: false };
@@ -1728,7 +1741,7 @@ async function testBuiltinScores(client, browserBin){
       highlightFretboard('Em',nextB3,false,false,0);
       var restoredOpen6=document.querySelector('#fretboard .fb-open[data-str="6"]');
       var movedOpen2=document.querySelector('#fretboard .fb-open[data-str="2"]');
-      var fretboardTargets={first:firstOpenTarget,nextB3:nextB3.midi,open6Restored:restoredOpen6&&restoredOpen6.textContent===restoredOpen6.dataset.baseLabel,
+      var fretboardTargets={first:firstOpenTarget,nextB3:nextB3.midi,open6Restored:restoredOpen6&&(restoredOpen6.textContent===restoredOpen6.dataset.baseLabel || (restoredOpen6.querySelector('.fb-marker.chord-tone') && restoredOpen6.querySelector('.fb-marker.chord-tone').textContent==='0')),
         open2Marker:movedOpen2&&movedOpen2.querySelector('.fb-marker.target-note')&&movedOpen2.querySelector('.fb-marker.target-note').textContent};
       updateActiveCursor(0,0,false);
       var slotDuration=1;
@@ -1855,6 +1868,14 @@ async function testBuiltinScores(client, browserBin){
     const cardSolfegeScreenshot = await client.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
     fs.writeFileSync(path.join(cardScreenshotDir, 'romance-card-m3-solfege.png'), Buffer.from(cardSolfegeScreenshot.data, 'base64'));
     process.stdout.write('Romance card m3 screenshots captured (CDE & solfege)\n');
+    await client.evaluate(`(function(){
+      highlightFretboard('Am', null, true, false, 0);
+      var fb = document.getElementById('fretboard');
+      if (fb) fb.scrollIntoView();
+    })()`);
+    const amScreenshot = await client.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+    fs.writeFileSync(path.join(cardScreenshotDir, 'fretboard-am-open-zeros.png'), Buffer.from(amScreenshot.data, 'base64'));
+    process.stdout.write('Am chord open zeros screenshot captured\n');
   } finally {
     await client.evaluate(`(function(){
       var key=${JSON.stringify(restoreKey)},saved=window[key];

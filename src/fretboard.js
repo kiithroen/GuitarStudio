@@ -125,7 +125,13 @@ function initFretboard(){
           }
         } else if (fret === 0){
           var op = $('#fretboard .fb-open[data-str="' + strNo + '"]');
-          if (op) op.style.color = '#93abf5';
+          if (op){
+            op.textContent = '';
+            var mk = document.createElement('span');
+            mk.className = 'fb-marker chord-tone';
+            mk.textContent = '0';
+            op.appendChild(mk);
+          }
         }
       }
     }
