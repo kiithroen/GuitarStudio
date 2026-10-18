@@ -475,6 +475,17 @@ async function testTemporaryScoreEditor(client){
   })()`);
   assert.deepEqual(copiedDraft,{columns:5,hasChord:true,hasApoyando:true,hasTirando:true,hasMemo:true,hasCapo:true,statusVisible:true},'actual TSV copy preserves score metadata and reveals its result status');
 
+  const copiedPrompt=await client.evaluate(`(async function(){
+    var oldClipboard=Object.getOwnPropertyDescriptor(navigator,'clipboard'),copied='';
+    try {
+      Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:function(value){copied=value;return Promise.resolve();}}});
+      document.getElementById('copyScorePromptBtn').click();
+      await new Promise(function(resolve){setTimeout(resolve,0);});
+      return {same:copied===GuitarScorePrompt.buildScoreImagePrompt(),statusVisible:!document.getElementById('scorePromptStatus').hidden,buttonInSongBar:!!document.getElementById('copyScorePromptBtn').closest('.song-bar')};
+    } finally {if(oldClipboard)Object.defineProperty(navigator,'clipboard',oldClipboard);else try{delete navigator.clipboard;}catch(_){}}
+  })()`);
+  assert.deepEqual(copiedPrompt,{same:true,statusVisible:true,buttonInSongBar:true},'photo conversion prompt button copies the generic prompt and reveals its status');
+
   let beforeUnloadDialogs=0;
   client.dialogHandler = async params => {
     if(params.type==='beforeunload') beforeUnloadDialogs++;
@@ -1996,9 +2007,9 @@ async function testInvalidStructuredPersistence(client) {
 async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
-  assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=click-mode-1')), 'all app scripts use the shared click mode revision');
-  const htmlIds = ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn'];
+  assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=score-prompt-1')), 'all app scripts use the shared revision');
+  const htmlIds = ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','scorePromptStatus'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'temporary score UI includes #'+id);});
   assert.doesNotMatch(fs.readFileSync(path.join(root,'index.html'),'utf8'),/\.beat-cell\.arp-(?:melody|sub)\b/,'obsolete articulation color rules are removed from the score stylesheet');
   const browserBin = findBrowserBinary();
@@ -2157,7 +2168,7 @@ async function main() {
     })`);
     assert.deepEqual(scoreEditorUi, { editorApi:'undefined', editorInit:'undefined', promptApi:'undefined', scoreEditorHooks:'object', blankScoreButton:true,
       blankScoreModal:true, undoScoreButton:true, resetScoreButton:true, draftStatus:true, copyButtonInToolbar:true, imageConversion:false, imageUpload:true, barEditor:true },
-      'temporary score editor is present without restoring the removed converter or AI prompt');
+      'temporary score editor is present without restoring the removed converter');
     await testTemporaryScoreEditor(cdp);
 
     const imageScanSafety = await cdp.evaluate(`(async function(){

@@ -20,10 +20,11 @@
 | `src/fretboard.js` | 지판 미리듣기와 코드 카드 표시 |
 | `src/score-ui.js` | 악보 보기 전환과 `formatSongToSheetTsv` 공통 함수 |
 | `src/sheets.js` | Google Sheets 읽기 연동 |
+| `src/score-prompt.js` | 악보 이미지 변환용 범용 AI 프롬프트 문자열과 복사 버튼 |
 | `src/score-editor.js` | 임시 악보 생성·편집 UI, 마디 작업과 초안 작업 흐름 |
 | `src/app.js` | 앱 상태, UI 부팅과 기능 연결 |
 
-`app.js` 부팅 때 앱 모듈과 상태가 준비된 뒤 `initFretboard()`, `initScoreUi()`, `initSheetSync()`와 편집 UI가 이벤트를 등록해. 로컬 스크립트는 모두 같은 `v` 쿼리 버전을 써. DOM 구조나 스크립트 구성이 바뀌면 버전을 같이 올려 캐시된 이전 코드와 섞이지 않게 해.
+`app.js` 부팅 때 앱 모듈과 상태가 준비된 뒤 `initFretboard()`, `initScoreUi()`, `initSheetSync()`, `GuitarScorePrompt.initScorePromptButton()`과 편집 UI가 이벤트를 등록해. 로컬 스크립트는 모두 같은 `v` 쿼리 버전을 써. DOM 구조나 스크립트 구성이 바뀌면 버전을 같이 올려 캐시된 이전 코드와 섞이지 않게 해.
 
 화면·단축키 결정은 [화면과 조작](ui.md)에 있어.
 
@@ -41,6 +42,15 @@
 - 백업 포맷은 버전 1의 `customSongs` 키를 유지해. 이름과 달리 이미지 전용 데이터를 담아.
 - Google Sheets 연동은 읽기 전용이야. TSV 복사는 초안의 현재 악보를 5열 형식으로 내보내고 시트에 직접 쓰지 않아.
 
+## 사진 변환 프롬프트
+
+- 2026-10-19 결정: 곡 선택 바의 `#copyScorePromptBtn`이 `src/score-prompt.js`의 `buildScoreImagePrompt()` 결과를 클립보드에 복사해. a4dcdd5에서 이미지 변환 편집기를 걷어낼 때 `src/ai-prompt.js`의 프롬프트 복사까지 같이 지워졌는데, 이미지 악보를 텍스트 악보로 옮길 보조 수단이 이것뿐이라 되살렸어.
+- 옛 프롬프트는 버튼에 특정 AI 이름을 달고, 앱에서 고른 칸 수·BPM을 인자로 받고, 여러 성부가 나오면 변환을 멈추게 했어. 새 프롬프트는 AI 이름을 쓰지 않고 인자가 없어. 칸 수와 BPM은 AI가 이미지의 박자표·템포를 보고 고르고 환산하며, 템포가 없으면 앱 기본값 64를 쓰고 그 사실을 밝히게 해.
+- 여러 성부는 내장 로망스와 같은 방식으로 근사하게 해. 각 음의 시작 칸에 `+`로 합치고 길이는 자연 감쇠에 맡기며, 한 성부만 쉬는 자리는 `r` 대신 `-`로 적어. 근사한 위치는 목록으로 받아.
+- 출력은 한 줄에 한 마디인 악보와 Google Sheets용 TSV 한 행이야. 읽지 못한 음은 `?`로 남겨 앱 검증이 불러오기를 막게 해.
+- `test/test-score-prompt.js`는 프롬프트 속 문법 예시(`EXAMPLE_MEASURES`, `EXAMPLE_TSV_ROW`)가 현재 파서로 오류 없이 읽히는지만 확인해. 규칙 문장은 검사하지 않으니 문법을 바꾸면 프롬프트 규칙도 같이 고쳐.
+- 클립보드 API가 없거나 거부되면 화면 밖 textarea와 `execCommand('copy')`로 복사해. `window.prompt`는 여러 줄을 한 줄로 뭉개서 쓰지 않아.
+
 ## 이력
 
 모듈 분리, 공통 파서·카포 경로, 단위·스모크 테스트, 초보 리듬 입력과 재생 계약 정리를 마쳤어. alphaTab 재생은 `codex/alphatab-player` 실험 브랜치에만 있고 main 앱은 기존 엔진을 써.
@@ -57,6 +67,7 @@ node test/test-builtins.js
 node test/test-notation.js
 node test/test-rhythm.js
 node test/test-image-conversion.js
+node test/test-score-prompt.js
 node test/test-audio.js
 node test/test-guide.js
 node test/test-storage.js

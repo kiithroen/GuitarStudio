@@ -2530,6 +2530,7 @@ function curCapo(){
   initFretboard();
   initScoreUi();
   initSheetSync();
+  GuitarScorePrompt.initScorePromptButton();
   scoreEditorHooks.init();
   buildFretboard();
   setCompactPractice(false);

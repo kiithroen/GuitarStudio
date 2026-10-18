@@ -524,12 +524,14 @@ body.practice-compact .fretboard{
       <div class="top-actions" style="margin-left:0">
         <button type="button" class="btn primary" id="uploadImgBtn">+ 교본 사진/PDF 악보 올리기</button>
         <button type="button" class="btn" id="openSheetSyncBtn">구글 시트 연동</button>
+        <button type="button" class="btn" id="copyScorePromptBtn" title="악보 사진을 이 앱의 텍스트 악보로 바꾸는 AI용 프롬프트를 복사합니다">사진 변환 프롬프트 복사</button>
         <button type="button" class="btn sm" id="renameSongBtn" hidden title="이 악보의 이름을 변경합니다">이름 변경</button>
         <button type="button" class="btn danger sm" id="deleteSongBtn" hidden>삭제</button>
         <button type="button" class="btn" id="addBlankScoreBtn">빈 악보 추가</button>
       </div>
     </div>
     <p id="storageStatus" class="hint" role="status" aria-live="polite" hidden></p>
+    <p id="scorePromptStatus" class="hint" role="status" aria-live="polite" hidden></p>
     <div class="resume-banner" id="resumeBanner" hidden>
       <span id="resumeText">마지막 연습 상태가 복원되었어요.</span>
       <button type="button" class="btn sm" id="resetLoopBtn">전구간 초기화</button>
@@ -973,19 +975,20 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=click-mode-1"></script>
-<script src="src/notation.js?v=click-mode-1"></script>
-<script src="src/rhythm.js?v=click-mode-1"></script>
-<script src="src/parser.js?v=click-mode-1"></script>
-<script src="src/score-drafts.js?v=click-mode-1"></script>
-<script src="src/score.js?v=click-mode-1"></script>
-<script src="src/audio.js?v=click-mode-1"></script>
-<script src="src/guide.js?v=click-mode-1"></script>
-<script src="src/image-analysis.js?v=click-mode-1"></script>
-<script src="src/fretboard.js?v=click-mode-1"></script>
-<script src="src/score-ui.js?v=click-mode-1"></script>
-<script src="src/sheets.js?v=click-mode-1"></script>
-<script src="src/score-editor.js?v=click-mode-1"></script>
-<script src="src/app.js?v=click-mode-1"></script>
+<script src="src/storage.js?v=score-prompt-1"></script>
+<script src="src/notation.js?v=score-prompt-1"></script>
+<script src="src/rhythm.js?v=score-prompt-1"></script>
+<script src="src/parser.js?v=score-prompt-1"></script>
+<script src="src/score-drafts.js?v=score-prompt-1"></script>
+<script src="src/score.js?v=score-prompt-1"></script>
+<script src="src/audio.js?v=score-prompt-1"></script>
+<script src="src/guide.js?v=score-prompt-1"></script>
+<script src="src/image-analysis.js?v=score-prompt-1"></script>
+<script src="src/fretboard.js?v=score-prompt-1"></script>
+<script src="src/score-ui.js?v=score-prompt-1"></script>
+<script src="src/sheets.js?v=score-prompt-1"></script>
+<script src="src/score-prompt.js?v=score-prompt-1"></script>
+<script src="src/score-editor.js?v=score-prompt-1"></script>
+<script src="src/app.js?v=score-prompt-1"></script>
 </body>
 </html>
