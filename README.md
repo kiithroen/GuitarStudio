@@ -1,6 +1,28 @@
 # guitar-studio (클래식 기타 스튜디오)
 
-클래식 기타 입문자와 동요·교본 연습을 위한 올인원 웹 연습 콘솔. `index.html` 단일 파일과 `songs.json`으로 동작하며 모든 개인 악보와 연습 기록은 브라우저 내부(`IndexedDB` / `localStorage`) 또는 개인 구글 스프레드시트에만 저장되어 저작권 문제가 발생하지 않는다.
+클래식 기타 입문자와 동요·교본 연습을 위한 올인원 정적 웹 연습 콘솔. `index.html`과 `src/*.js`, `songs.json`으로 동작하며 모든 개인 악보와 연습 기록은 브라우저 내부(`IndexedDB` / `localStorage`) 또는 개인 구글 스프레드시트에만 저장되어 저작권 문제가 발생하지 않는다.
+
+## 파일 구조와 실행
+
+- `index.html`: 앱 화면과 스타일, AudioWorklet 원본 코드를 포함한다.
+- `src/parser.js`: DOM 의존성이 없는 음표·화음 파싱, 마디 구조화, 코드 추론, 에디터 투영, 카포 계산을 제공한다. 브라우저에서는 classic script 전역 API를 제공하고 Node.js에서는 CommonJS API를 내보낸다.
+- `src/score.js`: 박자 길이와 점리듬 표시 정보를 계산한다.
+- `src/audio.js`: Web Audio 기타 신디사이저와 프리뷰 음원을 제공한다.
+- `src/fretboard.js`: 지판, 코드 카드, 하이라이트 및 관련 이벤트를 초기화한다.
+- `src/editor.js`: 악보 입력기, 비주얼 에디터, 저장과 TSV 도우미를 초기화한다.
+- `src/app.js`: 앱 상태, IndexedDB, 시트 동기화, 연습 화면과 앱 부팅을 관리한다.
+- `test/test-parser.js`: Node 내장 `assert`를 사용하는 의존성 없는 파서 테스트다.
+- `test/test-app-smoke.js`: Node 내장 `vm`과 DOM/IndexedDB 스텁으로 외부 스크립트 부팅, 악보 렌더, 에디터 저장 경로를 확인한다.
+
+페이지는 기존처럼 `index.html`을 직접 열거나 정적 웹 서버에서 실행할 수 있다. HTML은 `src/parser.js`, `src/score.js`, `src/audio.js`, `src/fretboard.js`, `src/editor.js`, `src/app.js` 순서로 classic script를 로드한다. 따라서 별도 빌드나 패키지 설치가 필요하지 않으며, 공유 함수는 `window` 전역 이름을 유지한다. 지판과 에디터 이벤트는 앱 상태가 준비된 뒤 각각 `initFretboard()`와 `initEditor()`에서 등록한다.
+
+파서 회귀 테스트와 구문 검사는 프로젝트 루트에서 실행한다.
+
+```powershell
+node test/test-parser.js
+node test/test-app-smoke.js
+Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName }
+```
 
 ## 주요 기능
 
