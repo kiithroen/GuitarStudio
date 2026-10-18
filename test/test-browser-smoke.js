@@ -241,6 +241,11 @@ async function main() {
     const isCompactRestored = await cdp.evaluate('document.body.classList.contains("practice-compact")');
     assert.equal(isCompactRestored, false, "compact practice mode toggled off successfully");
 
+    // 3. Verify youtube quick links query excludes [Lv..] tags
+    const ytLinkText = await cdp.evaluate('document.querySelector("#ytQuickLinks a") ? document.querySelector("#ytQuickLinks a").textContent : ""');
+    assert.ok(ytLinkText.length > 0, "youtube quick links rendered");
+    assert.equal(ytLinkText.includes("[Lv"), false, "youtube search query excludes [Lv..] tags");
+
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');
 
