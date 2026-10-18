@@ -246,10 +246,12 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .beat-cell.tab-cell.arp-group-start{border-left:2px solid var(--line)}
 .beat-cell.tab-cell[data-judge="ok"]{background:rgba(98,212,145,.14);box-shadow:inset 0 0 0 1.5px var(--ok)}
 .beat-cell.tab-cell[data-judge="near"]{background:rgba(245,158,11,.14);box-shadow:inset 0 0 0 1.5px var(--near)}
-.beat-cell.tab-cell[data-judge="off"]{background:rgba(244,63,94,.14);box-shadow:inset 0 0 0 1.5px var(--off)}
-.tab-cell-top{height:20px;display:flex;align-items:center;justify-content:center;gap:3px;font-size:11px;line-height:1;white-space:nowrap}
+.tab-cell-top{height:20px;display:flex;align-items:center;justify-content:center;gap:3px;font-size:11px;line-height:1;white-space:nowrap;overflow:hidden}
+.tab-cell-solfege-wrap{display:inline-flex;align-items:baseline;gap:2px}
 .tab-cell-solfege{font-weight:700;color:var(--accent);font-size:11.5px}
+.tab-cell-en{font-family:var(--font-num);font-weight:700;color:var(--muted);font-size:9.5px;letter-spacing:-0.2px}
 .beat-cell.tab-cell.active-beat .tab-cell-solfege{color:var(--accent)}
+.beat-cell.tab-cell.active-beat .tab-cell-en{color:var(--accent);opacity:.9}
 .tab-cell-rh{font-family:var(--font-num);font-weight:700;color:var(--near);font-size:9.5px}
 .tab-cell-grid{position:relative;width:100%;height:90px;margin-top:2px}
 .tab-fret-pill{position:absolute;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:16px;padding:0 3px;border-radius:4px;font-family:var(--font-num);font-size:12px;font-weight:800;line-height:1;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.08);z-index:2;white-space:nowrap}
@@ -3462,16 +3464,30 @@ registerProcessor('onset', OnsetProc);
           var topRow = document.createElement('div');
           topRow.className = 'tab-cell-top';
           if (b.midi || (b.isSubdivided && b.subNotes)){
+            var solfegeWrap = document.createElement('span');
+            solfegeWrap.className = 'tab-cell-solfege-wrap';
+
             var solfege = document.createElement('span');
             solfege.className = 'tab-cell-solfege';
+
+            var enEl = document.createElement('span');
+            enEl.className = 'tab-cell-en';
+
             if (b.chordNotes && b.chordNotes.length > 2){
               solfege.textContent = '화음';
+              if (m.chord) enEl.textContent = cleanChordToken(m.chord);
             } else if (b.isSubdivided && b.subNotes){
               solfege.textContent = b.subNotes.map(function(s){ return (s.tok === '-' || s.ko === '유지') ? '-' : s.ko; }).join('·');
+              enEl.textContent = b.subNotes.map(function(s){ return (s.tok === '-' || !s.en || s.en === '-') ? '-' : s.en.replace(/\d+$/, ''); }).join('·');
             } else {
               solfege.textContent = b.ko;
+              enEl.textContent = b.en;
             }
-            topRow.appendChild(solfege);
+            solfegeWrap.appendChild(solfege);
+            if (enEl.textContent){
+              solfegeWrap.appendChild(enEl);
+            }
+            topRow.appendChild(solfegeWrap);
           }
           if (b.rh || effBass){
             var rhEl = document.createElement('span');
