@@ -321,7 +321,7 @@ async function testPracticeSessionLifecycle(client) {
 }
 
 async function testSubdividedGuide(client) {
-  const result = await client.evaluate(`(function(){
+  const result = await client.evaluate(`(async function(){
     var original = {
       song: window.curSong,
       actx: window.actx,
@@ -436,6 +436,63 @@ async function testSubdividedGuide(client) {
       });
       check(tabPairs.every(function(pair){ return pair.label === 'G3+C4' && !pair.hasHandHint && pair.low && pair.high && pair.styles.length === 2 && pair.styles[0] === pair.styles[1]; }), 'both measures show G3+C4 with same-style neutral pills and no p+m hint');
       check(tabPairs[0].styles[0] === tabPairs[1].styles[0], 'pair pills have matching computed foreground, background, and border styles at rest');
+      sourceSong.measures.forEach(function(measure){
+        measure.beats.forEach(function(beat){
+          if (beat.tok.indexOf('G3@3+C4@2') < 0) return;
+          beat.lh = 3;
+          beat.rh = 'p';
+          if (beat.bass) { beat.bass.lh = 4; beat.bass.rh = 'p'; }
+          (beat.chordNotes || []).forEach(function(component, index){ component.lh = index + 1; component.rh = index ? 'i' : 'p'; });
+        });
+      });
+      renderSong();
+      updateActiveCursor(0, 1, false);
+      var oldMetadataPair = document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="1"]');
+      check(oldMetadataPair.querySelectorAll('.tab-cell-lh').length === 0 && !oldMetadataPair.querySelector('.tab-cell-rh'), 'old inferred lh/rh metadata is ignored when original pair token has no LH digits');
+      check(document.getElementById('guideLhTxt').textContent.indexOf('3줄 미지정 + 2줄 미지정') >= 0 && document.getElementById('guideRhTxt').textContent === '-', 'fretboard guide ignores old inferred hand metadata');
+
+      var explicitHandText = '[C] 1C4 4D4@2 0E4 0G3@3+1C4@2';
+      var explicitHandScore = parseScore(explicitHandText, 4);
+      window.curSong = { id:'browser-explicit-left-hand', title:'Explicit LH', type:'structured', beats:4, measures:explicitHandScore.measures };
+      renderSong();
+      function pillLabels(beatIndex){
+        return Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="' + beatIndex + '"] .tab-fret-pill')).map(function(p){ return p.textContent.trim(); });
+      }
+      check(pillLabels(0).join(',') === '1(1)' && pillLabels(1).join(',') === '3(4)' && pillLabels(2).join(',') === '0(0)' && pillLabels(3).join(',') === '0(0),1(1)', 'TAB displays only directly written LH digits, including zero, for single notes and pairs');
+      updateActiveCursor(0, 0, false);
+      check(document.getElementById('guideLhTxt').textContent.indexOf('1번') >= 0 && document.getElementById('guideRhTxt').textContent === '-', 'single-note fretboard guide shows explicit LH and no RH estimate');
+      updateActiveCursor(0, 3, false);
+      check(document.getElementById('guideLhTxt').textContent.indexOf('3줄 0 + 2줄 1번') >= 0 && document.getElementById('guideRhTxt').textContent === '-', 'pair fretboard guide shows each explicit LH component and no RH estimate');
+
+      openConverterEditorModal({ title:'explicit LH editor', beats:4, rawText:explicitHandText });
+      var explicitEditorCells = Array.prototype.slice.call(document.querySelectorAll('#veBarsGrid .ve-cell')).slice(0, 4).map(function(cell){ return cell.querySelector('b').textContent; });
+      check(explicitEditorCells.join(',') === '1도,4레,0미,0솔+1도', 'visual editor displays source LH digits only for explicit notes');
+      document.getElementById('padModeStringBtn').click();
+      var padButtonText = document.querySelector('#notePadRows .np-btn b').textContent;
+      check(padButtonText === '미4', 'note pad labels show pitch and octave without inferred LH digits');
+      document.getElementById('nsTitle').value = 'Explicit LH round trip';
+      document.getElementById('saveNewSongBtn').click();
+      for (var waitIndex = 0; waitIndex < 50 && !window.curSong.title.includes('Explicit LH round trip'); waitIndex++){
+        await new Promise(function(resolve){ original.setTimeout.call(window, resolve, 20); });
+      }
+      check(window.curSong.title === 'Explicit LH round trip', 'explicit LH score saves through the editor flow');
+      document.getElementById('editStructuredBtn').click();
+      var firstEditorCell = document.querySelector('#veBarsGrid .ve-cell');
+      firstEditorCell.click();
+      document.getElementById('veApoyandoBtn').click();
+      document.getElementById('saveNewSongBtn').click();
+      var secondSaveButton = document.getElementById('saveNewSongBtn');
+      for (var saveWaitIndex = 0; saveWaitIndex < 50 && secondSaveButton.disabled; saveWaitIndex++){
+        await new Promise(function(resolve){ original.setTimeout.call(window, resolve, 20); });
+      }
+      check(!secondSaveButton.disabled, 'edited explicit LH score completes its second save');
+      document.getElementById('editStructuredBtn').click();
+      var reopenedText = document.getElementById('nsMeasuresTxt').value;
+      check(reopenedText.indexOf('!1C4') >= 0 && reopenedText.indexOf('4D4@2') >= 0 && reopenedText.indexOf('0E4') >= 0 && reopenedText.indexOf('0G3@3+1C4@2') >= 0, 'edited score reopens with explicit LH prefixes, including default-position fingers, intact');
+      document.getElementById('closeNewSongBtn').click();
+
+      window.curSong = sourceSong;
+      renderSong();
       updateActiveCursor(0, 1, false);
       var activePair = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-m="0"][data-b="1"] .tab-fret-pill')).map(function(p){ var style = getComputedStyle(p); return [style.color, style.backgroundColor, style.borderColor].join('|'); });
       check(activePair.length === 2 && activePair[0] === activePair[1] && activePair[0] !== tabPairs[0].styles[0], 'active pair pills share the same active foreground, background, and border styles');
@@ -461,7 +518,7 @@ async function testSubdividedGuide(client) {
       var guideText = document.getElementById('guideNoteTxt').textContent;
       var guideHand = document.getElementById('guideRhTxt').textContent;
       check(fretboardLow && fretboardLow.textContent.indexOf('솔') >= 0 && fretboardLow.textContent.indexOf('p') < 0 && getComputedStyle(fretboardLow).color === 'rgb(98, 212, 145)' && fretboardHigh && fretboardHigh.textContent.indexOf('도') >= 0, 'fretboard shows both written notes in the same green target style without a p label');
-      check(guideText.indexOf('겹음:') === 0 && guideText.indexOf('저음') < 0 && guideHand.indexOf('저음') < 0 && guideText.indexOf('엄지') < 0 && guideHand.indexOf('엄지') < 0 && guideText.indexOf('p(') < 0 && guideHand.indexOf('p(') < 0 && guideHand.indexOf('동시 탄현') >= 0, 'pair guide lists the notes without bass or thumb roles');
+      check(guideText.indexOf('겹음:') === 0 && guideText.indexOf('저음') < 0 && guideHand.indexOf('저음') < 0 && guideText.indexOf('엄지') < 0 && guideHand.indexOf('엄지') < 0 && guideText.indexOf('p(') < 0 && guideHand === '-', 'pair guide lists the notes without inferred hand roles');
       emitted = [];
       window.playSession = { inCountIn: false, nextBeatTime: 13, spb: 0.5, bpb: 3, bIdx: 1, mIdx: 0, loopCompleted: 0, hits: [], endScheduled: false };
       window.isPlaying = true;

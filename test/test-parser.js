@@ -20,6 +20,17 @@ test('single notes retain English, Korean, octave, fingering, and string overrid
   assert.equal(english.en, 'E4');
   assert.equal(parser.parseNoteToken('3솔', 0).midi, 67);
   assert.equal(parser.parseNoteToken('4D4', 0).pos.lh, 4);
+  assert.equal(parser.parseNoteToken('C4', 0).pos.lh, null);
+  assert.equal(parser.parseNoteToken('C4', 0).pos.rh, null);
+  assert.equal(parser.parseNoteToken('E4@2', 0).pos.lh, null);
+  assert.equal(parser.parseNoteToken('E4@2', 0).pos.rh, null);
+  assert.equal(parser.midiInfo(61).pos.lh, null);
+  assert.equal(parser.midiInfo(61).pos.rh, null);
+  assert.equal(parser.parseNoteToken('1C4', 0).customTok, '1C4');
+  assert.equal(parser.parseNoteToken('0E4', 0).customTok, '0E4');
+  assert.equal(parser.parseNoteToken('3솔', 0).pos.lh, 3);
+  assert.equal(parser.parseNoteToken('3솔', 0).customTok, '3G4');
+  assert.equal(parser.parseNoteToken('도4', 0).pos.lh, null);
   assert.equal(parser.parseNoteToken('C3', 0).midi, 48);
   const overridden = parser.parseNoteToken('1E4@2', 0);
   assert.equal(overridden.pos.str, 2);
@@ -30,11 +41,16 @@ test('single notes retain English, Korean, octave, fingering, and string overrid
 test('bass plus melody and multi-note chords preserve roles and ascending arpeggio order', function(){
   const pair = parser.parseNoteToken('0E2+4B4', 0);
   assert.equal(pair.bass.midi, 40);
+  assert.equal(pair.bass.lh, 0);
+  assert.equal(pair.bass.rh, null);
   assert.equal(pair.midi, 71);
+  assert.equal(pair.pos.lh, 4);
+  assert.equal(pair.pos.rh, null);
   assert.equal(pair.chordNotes.length, 2);
+  assert.ok(pair.chordNotes.every(note => note.rh === null));
   const chord = parser.parseNoteToken('0E2+!0E4+!3G4+!4B4', 0);
   assert.deepEqual(chord.chordNotes.map(n => n.midi), [40, 64, 67, 71]);
-  assert.equal(chord.chordNotes[0].rh, 'p');
+  assert.equal(chord.chordNotes.every(note => note.rh === null), true);
   assert.equal(chord.chordNotes[3].midi, 71);
 });
 

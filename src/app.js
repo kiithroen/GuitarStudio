@@ -499,8 +499,8 @@ function editorCapo(){
           cell.className = 'beat-cell' + extraCls;
           cell.dataset.m = mIdx;
           cell.dataset.b = bIdx;
+          var beatToken = b.tok || b.customTok || b.en;
           var effBass = getExplicitBass(b);
-          var hasChordNotes = !!((b.chordNotes && b.chordNotes.length >= 2) || (b.isSubdivided && b.subNotes && b.subNotes.some(function(sub){ return sub.chordNotes && sub.chordNotes.length >= 2; })));
           var isRolledChord = !b.isSubdivided && b.chordNotes && b.chordNotes.length > 2;
 
           var articDesc = b.articulation === 'apoyando'
@@ -543,13 +543,11 @@ function editorCapo(){
               topRow.appendChild(solfegeWrap);
             }
           }
-          if (isRolledChord || (!hasChordNotes && b.rh)){
+          var hasArticulationMark = b.articulation === 'apoyando' || b.articulation === 'tirando';
+          if (isRolledChord || hasArticulationMark){
             var rhEl = document.createElement('span');
             rhEl.className = 'tab-cell-rh';
-            var rhText = isRolledChord ? '↑' : (b.rh || '');
-            if (!isRolledChord && b.articulation === 'apoyando'){
-              rhText += '!';
-            }
+            var rhText = isRolledChord ? '↑' : (b.articulation === 'apoyando' ? '!' : '~');
             rhEl.textContent = rhText;
             topRow.appendChild(rhEl);
           }
@@ -585,10 +583,11 @@ function editorCapo(){
                 cPill.className = 'tab-fret-pill note-fret';
                 cPill.style.top = ((cn.str - 1) * 20) + '%';
                 cPill.textContent = String(cn.fret != null ? cn.fret : 0);
-                if (cn.lh != null && cn.lh > 0){
+                var explicitLH = getExplicitLeftHand(beatToken, cnIdx);
+                if (explicitLH != null){
                   var clh = document.createElement('span');
                   clh.className = 'tab-cell-lh';
-                  clh.textContent = '(' + cn.lh + ')';
+                  clh.textContent = '(' + explicitLH + ')';
                   cPill.appendChild(clh);
                 }
                 gridEl.appendChild(cPill);
@@ -598,7 +597,8 @@ function editorCapo(){
             var numSubs = b.subNotes.length;
             b.subNotes.forEach(function(sn, sIdx){
               var leftPct = (((sIdx + 0.5) / numSubs) * 100) + '%';
-              function addSubPill(note, transform){
+              var subToken = sn.tok || sn.customTok || sn.en;
+              function addSubPill(note, transform, componentIndex){
                 if (!note || !note.str) return;
                 var pill = document.createElement('span');
                 pill.className = 'tab-fret-pill note-fret';
@@ -607,10 +607,11 @@ function editorCapo(){
                 pill.style.left = leftPct;
                 pill.style.transform = transform || 'translate(-50%, -50%)';
                 pill.textContent = String(note.fret != null ? note.fret : 0);
-                if (note.lh != null && note.lh > 0){
+                var explicitLH = getExplicitLeftHand(subToken, componentIndex);
+                if (explicitLH != null){
                   var lh = document.createElement('span');
                   lh.className = 'tab-cell-lh';
-                  lh.textContent = '(' + note.lh + ')';
+                  lh.textContent = '(' + explicitLH + ')';
                   pill.appendChild(lh);
                 }
                 gridEl.appendChild(pill);
@@ -626,15 +627,15 @@ function editorCapo(){
                 dash.style.opacity = '0.4';
                 gridEl.appendChild(dash);
               } else if (sn.chordNotes && sn.chordNotes.length > 2){
-                sn.chordNotes.forEach(function(cn){ addSubPill(cn); });
+                sn.chordNotes.forEach(function(cn, componentIndex){ addSubPill(cn, null, componentIndex); });
               } else if (sn.chordNotes && sn.chordNotes.length === 2){
                 var subBass = getExplicitBass(sn);
                 var pairSameStr = !!(subBass && subBass.str && sn.str && subBass.str === sn.str);
                 var pairSameFret = pairSameStr && subBass.fret === sn.fret;
                 var pairBassTransform = pairSameStr && !pairSameFret ? 'translate(-85%, -50%)' : null;
                 var pairMelTransform = pairSameStr && !pairSameFret ? 'translate(-15%, -50%)' : null;
-                if (subBass && subBass.midi) addSubPill(subBass, pairBassTransform);
-                if (sn.midi && !pairSameFret) addSubPill(sn, pairMelTransform);
+                if (subBass && subBass.midi) addSubPill(subBass, pairBassTransform, 0);
+                if (sn.midi && !pairSameFret) addSubPill(sn, pairMelTransform, 1);
               } else if (sn.midi && sn.str){
                 var mPill = document.createElement('span');
                 mPill.className = 'tab-fret-pill note-fret';
@@ -643,10 +644,11 @@ function editorCapo(){
                 mPill.style.left = leftPct;
                 mPill.style.transform = 'translate(-50%, -50%)';
                 mPill.textContent = String(sn.fret != null ? sn.fret : 0);
-                if (sn.lh != null && sn.lh > 0){
+                var explicitLH = getExplicitLeftHand(subToken, 0);
+                if (explicitLH != null){
                   var mlh = document.createElement('span');
                   mlh.className = 'tab-cell-lh';
-                  mlh.textContent = '(' + sn.lh + ')';
+                  mlh.textContent = '(' + explicitLH + ')';
                   mPill.appendChild(mlh);
                 }
                 gridEl.appendChild(mPill);
@@ -668,10 +670,11 @@ function editorCapo(){
                 bPill.style.left = '38%';
               }
               bPill.textContent = String(effBass.fret != null ? effBass.fret : 0);
-              if (effBass.lh){
+              var bassLH = getExplicitLeftHand(beatToken, 0);
+              if (bassLH != null){
                 var blh = document.createElement('span');
                 blh.className = 'tab-cell-lh';
-                blh.textContent = '(' + effBass.lh + ')';
+                blh.textContent = '(' + bassLH + ')';
                 bPill.appendChild(blh);
               }
               gridEl.appendChild(bPill);
@@ -687,10 +690,11 @@ function editorCapo(){
                   mPill.style.left = '62%';
                 }
                 mPill.textContent = String(b.fret != null ? b.fret : 0);
-                if (b.lh != null){
+                var melodyLH = getExplicitLeftHand(beatToken, b.chordNotes && b.chordNotes.length >= 2 ? 1 : undefined);
+                if (melodyLH != null){
                   var mlh = document.createElement('span');
                   mlh.className = 'tab-cell-lh';
-                  mlh.textContent = '(' + b.lh + ')';
+                  mlh.textContent = '(' + melodyLH + ')';
                   mPill.appendChild(mlh);
                 }
                 gridEl.appendChild(mPill);
