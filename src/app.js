@@ -6,64 +6,32 @@
   // ---------- 기본 내장 클래식 기타 동요 / 교본 명곡 (songs.json 단일 소스에서 로드)
   var BUILTIN_SONGS = [];
 
-  // ---------- IndexedDB 및 상태 저장소
-  var DB_NAME = 'guitar_studio_db';
-  var DB_VER = 1;
-  var dbInstance = null;
-
-  function openDB(){
-    if (dbInstance) return Promise.resolve(dbInstance);
-    return new Promise(function(resolve, reject){
-      var req = indexedDB.open(DB_NAME, DB_VER);
-      req.onupgradeneeded = function(e){
-        var db = e.target.result;
-        if (!db.objectStoreNames.contains('songs')){
-          db.createObjectStore('songs', { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains('kv')){
-          db.createObjectStore('kv', { keyPath: 'k' });
-        }
-      };
-      req.onsuccess = function(e){ dbInstance = e.target.result; resolve(dbInstance); };
-      req.onerror = function(e){ reject(e.target.error); };
-    });
+  // ---------- 저장 오류 안내
+  var STORAGE_ERROR_MESSAGE = '이 기기에 저장하지 못했어요. 저장 공간과 브라우저 설정을 확인한 뒤 다시 시도해 주세요.';
+  function reportStorageError(){
+    var status = $('#storageStatus');
+    if (status){
+      status.textContent = STORAGE_ERROR_MESSAGE;
+      status.hidden = false;
+    }
+    var newSongModal = $('#newSongModal');
+    var ocrStatus = $('#ocrStatusTxt');
+    if (newSongModal && !newSongModal.hidden && ocrStatus) ocrStatus.textContent = STORAGE_ERROR_MESSAGE;
   }
-
-  function dbGetAllSongs(){
-    return openDB().then(function(db){
-      return new Promise(function(resolve){
-        var tx = db.transaction('songs', 'readonly');
-        var req = tx.objectStore('songs').getAll();
-        req.onsuccess = function(){ resolve(req.result || []); };
-        req.onerror = function(){ resolve([]); };
-      });
-    });
+  function clearStorageError(){
+    var status = $('#storageStatus');
+    if (status) status.hidden = true;
+    var ocrStatus = $('#ocrStatusTxt');
+    if (ocrStatus && ocrStatus.textContent === STORAGE_ERROR_MESSAGE) ocrStatus.textContent = '';
   }
-
-  function dbSaveSong(song){
-    return openDB().then(function(db){
-      return new Promise(function(resolve){
-        var tx = db.transaction('songs', 'readwrite');
-        tx.objectStore('songs').put(song);
-        tx.oncomplete = function(){ resolve(); };
-      });
-    });
+  async function persistSong(song){
+    try { await dbSaveSong(song); return true; }
+    catch (error){ reportStorageError(error); return false; }
   }
-
-  function dbDeleteSong(id){
-    return openDB().then(function(db){
-      return new Promise(function(resolve){
-        var tx = db.transaction('songs', 'readwrite');
-        tx.objectStore('songs').delete(id);
-        tx.oncomplete = function(){ resolve(); };
-      });
-    });
+  async function removePersistedSong(id){
+    try { await dbDeleteSong(id); return true; }
+    catch (error){ reportStorageError(error); return false; }
   }
-
-  var ls = {
-    get: function(k, d){ try { var v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e){ return d; } },
-    set: function(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e){} }
-  };
 
   // ---------- 앱 전역 상태
   var customSongs = [];
@@ -154,7 +122,7 @@ function editorCapo(){
       curSong.lastLoopStart = appState.loopStart;
       curSong.lastLoopEnd = appState.loopEnd;
       curSong.lastPracticedAt = Date.now();
-      if (!curSong.builtin && !curSong.fromSheet) dbSaveSong(curSong);
+      if (!curSong.builtin && !curSong.fromSheet) persistSong(curSong);
       else ls.set('gs.builtinMeta.' + curSong.id, {
         bpm: curSong.lastBpm,
         loopStart: curSong.lastLoopStart,
@@ -1118,7 +1086,7 @@ function editorCapo(){
     $('#loopEnd').max = total;
     $('#loopStart').value = 1;
     $('#loopEnd').value = total;
-    dbSaveSong(curSong);
+    persistSong(curSong);
     renderImageSystemsOverlay();
   }
 
@@ -1261,7 +1229,7 @@ function editorCapo(){
     window.addEventListener('pointerup', function(){
       if (activeOp){
         activeOp = null;
-        dbSaveSong(curSong);
+        persistSong(curSong);
         renderImageSystemsOverlay();
         return;
       }
@@ -2172,8 +2140,9 @@ function editorCapo(){
       systems: defaultSystems,
       ytUrl: ''
     };
-    await dbSaveSong(song);
+    if (!await persistSong(song)) return;
     customSongs.push(song);
+    clearStorageError();
     rebuildSongSelect(song.id);
   }
 
@@ -2205,7 +2174,7 @@ function editorCapo(){
     if (!curSong || !curSong.pdfPages || curSong.curPageIdx <= 0) return;
     curSong.curPageIdx--;
     curSong.imageDataUrl = curSong.pdfPages[curSong.curPageIdx];
-    dbSaveSong(curSong);
+    persistSong(curSong);
     renderImageScore();
   });
 
@@ -2213,7 +2182,7 @@ function editorCapo(){
     if (!curSong || !curSong.pdfPages || curSong.curPageIdx >= curSong.pdfPages.length - 1) return;
     curSong.curPageIdx++;
     curSong.imageDataUrl = curSong.pdfPages[curSong.curPageIdx];
-    dbSaveSong(curSong);
+    persistSong(curSong);
     renderImageScore();
   });
 
@@ -2235,16 +2204,26 @@ function editorCapo(){
 
   $('#editBarMetaBtn').addEventListener('click', openBarEditModal);
   $('#closeBarEditBtn').addEventListener('click', function(){ $('#barEditModal').hidden = true; });
-  $('#saveBarEditBtn').addEventListener('click', function(){
+  $('#saveBarEditBtn').addEventListener('click', async function(){
     if (!curSong || !selectedImgBar) return;
-    var bar = curSong.systems[selectedImgBar.sysIdx].bars[selectedImgBar.barIdx];
+    var targetSong = curSong;
+    var targetBar = Object.assign({}, selectedImgBar);
+    var candidate = JSON.parse(JSON.stringify(targetSong));
+    var bar = candidate.systems[targetBar.sysIdx].bars[targetBar.barIdx];
     bar.chord = $('#beChord').value.trim() || 'C';
     bar.note = $('#beNote').value.trim() || 'C4';
     bar.memo = $('#beMemo').value.trim();
+    if (!await persistSong(candidate)) return;
+    Object.assign(targetSong, candidate);
+    var customIdx = customSongs.findIndex(function(s){ return s.id === candidate.id; });
+    if (customIdx >= 0 && customSongs[customIdx] !== targetSong) Object.assign(customSongs[customIdx], candidate);
+    var allSong = allSongs.find(function(s){ return s.id === candidate.id; });
+    if (allSong && allSong !== targetSong) Object.assign(allSong, candidate);
+    clearStorageError();
+    if (curSong !== targetSong || !selectedImgBar || selectedImgBar.sysIdx !== targetBar.sysIdx || selectedImgBar.barIdx !== targetBar.barIdx || selectedImgBar.globalIdx !== targetBar.globalIdx) return;
     $('#barEditModal').hidden = true;
-    dbSaveSong(curSong);
     renderImageSystemsOverlay();
-    updateActiveCursor(selectedImgBar.globalIdx, 0, true);
+    updateActiveCursor(targetBar.globalIdx, 0, true);
   });
 
   // ---------- 검은 세로 마디선 자동 감지 (이미지 픽셀 스캔)
@@ -2394,10 +2373,11 @@ function editorCapo(){
       if (!confirm('"' + targetTitle + '" 곡을 목록에서 삭제(숨김)할까요?\n(다시 보려면 [구글 시트] -> [시트에서 다시 불러오기]를 누르면 복구됩니다.)')) return;
       var hiddenList = ls.get('gs.hiddenSheetSongs', []);
       if (hiddenList.indexOf(targetTitle) < 0) hiddenList.push(targetTitle);
+      // 혹시 이전에 IndexedDB에 중복 저장된 흔적이 있다면 함께 제거
+      if (!await removePersistedSong(targetId)) return;
       ls.set('gs.hiddenSheetSongs', hiddenList);
       sheetSongs = sheetSongs.filter(function(s){ return s.id !== targetId && s.title !== targetTitle; });
-      // 혹시 이전에 IndexedDB에 중복 저장된 흔적이 있다면 함께 제거
-      await dbDeleteSong(targetId);
+      clearStorageError();
       customSongs = customSongs.filter(function(s){ return s.id !== targetId; });
       $('#openSheetSyncBtn').textContent = '구글 시트 (' + sheetSongs.length + '곡)';
       rebuildSongSelect(sheetSongs.length ? sheetSongs[0].id : (BUILTIN_SONGS[0] ? BUILTIN_SONGS[0].id : (allSongs[0] ? allSongs[0].id : null)));
@@ -2405,18 +2385,20 @@ function editorCapo(){
     }
 
     if (!confirm('"' + targetTitle + '" 악보를 이 기기(IndexedDB)에서 영구 삭제할까요?')) return;
-    await dbDeleteSong(targetId);
+    if (!await removePersistedSong(targetId)) return;
+    clearStorageError();
     customSongs = customSongs.filter(function(s){ return s.id !== targetId; });
     rebuildSongSelect(sheetSongs.length ? sheetSongs[0].id : (BUILTIN_SONGS[0] ? BUILTIN_SONGS[0].id : (allSongs[0] ? allSongs[0].id : null)));
   });
 
   // ---------- 악보 이름 변경 (직접 올린 교본 이미지/PDF, 직접 입력 악보, 구글 시트 연동곡)
   async function renameCurrentSong(){
-    if (!curSong || curSong.builtin){
+    var targetSong = curSong;
+    if (!targetSong || targetSong.builtin){
       alert('내장 기본 악보는 이름을 변경할 수 없어요.');
       return;
     }
-    var oldTitle = curSong.title || '';
+    var oldTitle = targetSong.title || '';
     var newTitle = prompt('악보 이름을 변경해 주세요:', oldTitle);
     if (newTitle == null) return;
     newTitle = newTitle.trim();
@@ -2426,21 +2408,26 @@ function editorCapo(){
     }
     if (newTitle === oldTitle) return;
 
-    curSong.title = newTitle;
-
-    if (curSong.fromSheet){
+    if (targetSong.fromSheet){
+      targetSong.title = newTitle;
       var titleOverrides = ls.get('gs.sheetTitleOverrides', {});
-      titleOverrides[curSong.id] = newTitle;
+      titleOverrides[targetSong.id] = newTitle;
       ls.set('gs.sheetTitleOverrides', titleOverrides);
-      var ss = sheetSongs.find(function(s){ return s.id === curSong.id; });
+      var ss = sheetSongs.find(function(s){ return s.id === targetSong.id; });
       if (ss) ss.title = newTitle;
     } else {
-      await dbSaveSong(curSong);
-      var cs = customSongs.find(function(s){ return s.id === curSong.id; });
-      if (cs) cs.title = newTitle;
+      var renamedSong = Object.assign({}, targetSong, { title: newTitle });
+      if (!await persistSong(renamedSong)) return;
+      Object.assign(targetSong, renamedSong);
+      var cs = customSongs.find(function(s){ return s.id === targetSong.id; });
+      if (cs && cs !== targetSong) Object.assign(cs, renamedSong);
     }
 
-    rebuildSongSelect(curSong.id);
+    var allSong = allSongs.find(function(s){ return s.id === targetSong.id; });
+    if (allSong && allSong !== targetSong) Object.assign(allSong, targetSong);
+    clearStorageError();
+    if (curSong !== targetSong) return;
+    rebuildSongSelect(targetSong.id);
   }
 
   if ($('#renameSongBtn')) $('#renameSongBtn').addEventListener('click', renameCurrentSong);
@@ -2748,7 +2735,9 @@ function editorCapo(){
   $('#closeBackupBtn').addEventListener('click', function(){ $('#backupModal').hidden = true; });
 
   $('#exportJsonBtn').addEventListener('click', async function(){
-    var songs = await dbGetAllSongs();
+    var songs;
+    try { songs = await dbGetAllSongs(); }
+    catch (error){ reportStorageError(error); return; }
     var payload = {
       version: 1,
       exportedAt: new Date().toISOString(),
@@ -2771,8 +2760,15 @@ function editorCapo(){
     if (!f) return;
     var fr = new FileReader();
     fr.onload = async function(){
+      var data;
       try {
-        var data = JSON.parse(fr.result);
+        data = JSON.parse(fr.result);
+        if (!data || typeof data !== 'object' || (data.customSongs != null && !Array.isArray(data.customSongs))) throw new Error('Invalid backup format');
+      } catch (err){
+        alert('백업 파일 형식이 올바르지 않아요.');
+        return;
+      }
+      try {
         if (Array.isArray(data.customSongs)){
           for (var i = 0; i < data.customSongs.length; i++){
             await dbSaveSong(data.customSongs[i]);
@@ -2780,9 +2776,10 @@ function editorCapo(){
         }
         if (data.appState) ls.set('gs.state', data.appState);
         if (data.history) ls.set('gs.history', data.history);
+        clearStorageError();
         location.reload();
       } catch (err){
-        alert('백업 파일 형식이 올바르지 않아요.');
+        reportStorageError(err);
       }
     };
     fr.readAsText(f);
@@ -2829,219 +2826,6 @@ function editorCapo(){
     historyList = [];
     ls.set('gs.history', historyList);
     renderHistoryTable();
-  });
-
-  // ---------- 외부 songs.json (저작권 없는 기본 내장곡) 및 구글 스프레드시트 연동 엔진
-  var sheetSongs = [];
-
-  async function loadExternalSongsJson(){
-    try {
-      var res = await fetch('./songs.json', { cache: 'no-store' });
-      if (!res.ok) return;
-      var arr = await res.json();
-      if (!Array.isArray(arr) || !arr.length) return;
-      BUILTIN_SONGS = arr.map(function(spec, idx){
-        return buildStructuredSong({
-          id: spec.id || ('builtin-json-' + idx),
-          title: spec.title || ('내장곡 ' + (idx + 1)),
-          badge: spec.badge || 'songs.json 내장 악보',
-          builtin: true,
-          bpm: Number(spec.bpm) || 64,
-          beats: Number(spec.beats) || 4,
-          ytUrl: spec.ytUrl || '',
-          lines: Array.isArray(spec.lines) ? spec.lines : []
-        });
-      });
-    } catch (e){
-      // 로컬 file:// 환경 등에서 fetch 차단 시 코드 내장 BUILTIN_SONGS 폴백 사용
-    }
-  }
-
-  // CORS 및 로컬 file:// 환경 제약을 100% 우회하는 Google Visualization JSONP 로더
-  function extractSheetIdAndGid(rawInput){
-    var str = (rawInput || '').trim();
-    if (!str) return null;
-    var m = str.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-    var sheetId = m ? m[1] : (/^[a-zA-Z0-9-_]{20,}$/.test(str) ? str : null);
-    if (!sheetId) return null;
-    var gidMatch = str.match(/[#&?]gid=([0-9]+)/);
-    var gid = gidMatch ? gidMatch[1] : '0';
-    return { sheetId: sheetId, gid: gid };
-  }
-
-  function loadSheetViaJsonp(sheetId, gid){
-    return new Promise(function(resolve, reject){
-      var cbName = '__gsSheetCb_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
-      var script = document.createElement('script');
-      var timer = setTimeout(function(){
-        cleanup();
-        reject(new Error('응답 시간 초과. 시트 공유 권한이 [링크가 있는 모든 사용자(뷰어)]인지 확인해 주세요.'));
-      }, 8000);
-
-      function cleanup(){
-        clearTimeout(timer);
-        try { delete window[cbName]; } catch (e){ window[cbName] = undefined; }
-        if (script.parentNode) script.parentNode.removeChild(script);
-      }
-
-      window[cbName] = function(res){
-        cleanup();
-        if (!res || res.status === 'error' || !res.table){
-          reject(new Error('시트 데이터를 읽지 못했어요.'));
-          return;
-        }
-        var rows = (res.table.rows || []).map(function(r){
-          return (r.c || []).map(function(cell){
-            if (!cell) return '';
-            return cell.v != null ? String(cell.v) : (cell.f != null ? String(cell.f) : '');
-          });
-        });
-        resolve(rows);
-      };
-
-      script.onerror = function(){
-        cleanup();
-        reject(new Error('시트 접근 실패. 시트 우측 상단 [공유] -> [링크가 있는 모든 사용자(뷰어)]로 설정되어 있는지 확인해 주세요.'));
-      };
-
-      script.src = 'https://docs.google.com/spreadsheets/d/' + encodeURIComponent(sheetId) +
-        '/gviz/tq?tqx=responseHandler:' + cbName + '&gid=' + encodeURIComponent(gid) + '&_=' + Date.now();
-      document.head.appendChild(script);
-    });
-  }
-
-  async function syncGoogleSheetSongs(rawUrl, silent){
-    var info = extractSheetIdAndGid(rawUrl);
-    if (!info){
-      if (!silent) $('#sheetSyncStatus').textContent = '올바른 구글 스프레드시트 공유 링크(URL)를 입력해 주세요.';
-      return false;
-    }
-    if (!silent) $('#sheetSyncStatus').textContent = '구글 드라이브 스프레드시트에서 악보 데이터를 불러오는 중...';
-    try {
-      var rows = await loadSheetViaJsonp(info.sheetId, info.gid);
-      var parsedSongs = [];
-
-      var hiddenTitles = silent ? ls.get('gs.hiddenSheetSongs', []) : [];
-      if (!silent) ls.set('gs.hiddenSheetSongs', []);
-
-      rows.forEach(function(cols, rIdx){
-        var c0 = (cols[0] || '').trim();
-        if (!c0) return;
-        if (c0 === '곡 제목' || c0 === '제목' || c0.toLowerCase() === 'title') return;
-        if (hiddenTitles.indexOf(c0) >= 0) return;
-
-        var title = c0;
-        var beats = 4;
-        var bpm = 64;
-        var badge = '내 구글 시트 악보';
-        var rawScoreParts = [];
-
-        var c1 = (cols[1] || '').trim();
-        if (c1.indexOf('[') === 0 || c1.indexOf('|') >= 0){
-          rawScoreParts = cols.slice(1);
-        } else {
-          beats = Math.round(Number(c1)) || 4;
-          bpm = Math.round(Number((cols[2] || '').trim())) || 64;
-          badge = (cols[3] || '').trim() || ('구글 시트 연동곡 · ' + beats + '/4박자');
-          rawScoreParts = cols.slice(4);
-        }
-
-        var rawJoined = rawScoreParts.map(function(x){ return (x || '').trim(); }).filter(Boolean).join('\n');
-        var lines = splitScoreMeasures(rawJoined);
-
-        if (!lines.length) return;
-
-        var songId = 'sheet-song-' + rIdx;
-        var titleOverrides = ls.get('gs.sheetTitleOverrides', {});
-        var finalTitle = titleOverrides[songId] || title;
-
-        var song = buildStructuredSong({
-          id: songId,
-          title: finalTitle,
-          badge: badge,
-          builtin: false,
-          bpm: bpm,
-          beats: beats,
-          lines: lines
-        });
-        song.fromSheet = true;
-        parsedSongs.push(song);
-      });
-
-      sheetSongs = parsedSongs;
-      ls.set('gs.sheetUrl', rawUrl.trim());
-      var nowStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-      $('#sheetSyncStatus').textContent = '연동 완료 (' + nowStr + ') · 총 ' + parsedSongs.length + '곡을 내 구글 시트에서 불러왔어요.';
-      $('#openSheetSyncBtn').textContent = '구글 시트 (' + parsedSongs.length + '곡)';
-      rebuildSongSelect(parsedSongs.length && !silent ? parsedSongs[0].id : appState.lastSongId);
-      return true;
-    } catch (err){
-      if (!silent){
-        $('#sheetSyncStatus').textContent = '불러오기 실패: ' + err.message;
-      }
-      return false;
-    }
-  }
-
-  $('#openSheetSyncBtn').addEventListener('click', function(){
-    $('#sheetUrlInput').value = ls.get('gs.sheetUrl', '');
-    $('#sheetSyncModal').hidden = false;
-  });
-  $('#closeSheetSyncBtn').addEventListener('click', function(){
-    $('#sheetSyncModal').hidden = true;
-  });
-  $('#syncSheetNowBtn').addEventListener('click', function(){
-    syncGoogleSheetSongs($('#sheetUrlInput').value, false);
-  });
-  $('#clearSheetSyncBtn').addEventListener('click', function(){
-    ls.set('gs.sheetUrl', '');
-    sheetSongs = [];
-    $('#sheetUrlInput').value = '';
-    $('#openSheetSyncBtn').textContent = '구글 시트 연동';
-    $('#sheetSyncStatus').textContent = '구글 시트 연동이 해제되었어요.';
-    rebuildSongSelect((BUILTIN_SONGS[0] ? BUILTIN_SONGS[0].id : (allSongs[0] ? allSongs[0].id : null)));
-  });
-
-  $('#copySheetTemplateBtn').addEventListener('click', async function(){
-    var header = ['곡 제목', '박자', 'BPM', '교본 쪽수/설명', '마디 악보 (줄바꿈 또는 / 로 마디 구분)'].join('\t');
-    var sample1 = formatSongToSheetTsv(
-      '징글 벨즈 (교본 24쪽)',
-      4,
-      64,
-      '교본 24쪽 · 2,3번줄 연습',
-      [
-        '[G] B3 B3 B3 - | 종 소 리 - (0시 0시 0시)',
-        '[G] B3 B3 B3 - | 울 려 라 - (0시 0시 0시)',
-        '[G] B3 D4 G3 A3 | 종 소 리 울 (0시 3레 0솔 2라)',
-        '[G] B3 - - - | 려 - - - (0시 4박)'
-      ]
-    );
-    var tsv = header + '\n' + sample1;
-    try {
-      await navigator.clipboard.writeText(tsv);
-      $('#sheetSyncStatus').textContent = '시트 기본 양식이 복사되었어요! 새 구글 스프레드시트의 A1 칸을 클릭하고 Ctrl+V를 누르세요.';
-    } catch (e){
-      prompt('새 구글 시트 A1 칸에 붙여넣을 양식:', tsv);
-    }
-  });
-
-  $('#copyCurSongTsvBtn').addEventListener('click', async function(){
-    if (!curSong || curSong.type !== 'structured'){
-      alert('구조화된(계이름) 악보가 선택되어 있을 때만 시트 행으로 복사할 수 있어요.');
-      return;
-    }
-    var lines = curSong.measures.map(function(m){
-      var bStr = m.beats.map(function(b){ return (b.tok && b.tok !== '-') ? b.tok : (b.en || '-'); }).join(' ');
-      var chTag = !m.chord ? '-' : (m.chord + (m.autoChord ? '(자동)' : ''));
-      return '[' + chTag + '] ' + bStr + ' | ' + (m.lyric || '');
-    });
-    var tsv = formatSongToSheetTsv(curSong.title, curSong.beats, curSong.bpm, curSong.badge, lines);
-    try {
-      await navigator.clipboard.writeText(tsv);
-      $('#sheetSyncStatus').textContent = '"' + curSong.title + '" 곡이 한 줄(TSV)로 복사되었어요! 구글 시트 빈 행의 A열에 Ctrl+V로 붙여넣으세요.';
-    } catch (e){
-      prompt('구글 시트 A열에 붙여넣을 내용:', tsv);
-    }
   });
 
   // ---------- 초기화 및 곡 목록 구성
@@ -3173,12 +2957,13 @@ function editorCapo(){
   // 앱 부팅: songs.json 로드 + IndexedDB 로드 + 구글 시트 자동 동기화
   initFretboard();
   initEditor();
+  initSheetSync();
   buildFretboard();
   renderHistoryTable();
   setCompactPractice(false);
   Promise.all([
     loadExternalSongsJson(),
-    dbGetAllSongs()
+    dbGetAllSongs().catch(function(error){ reportStorageError(error); return []; })
   ]).then(async function(results){
     var rawDbSongs = results[1] || [];
     var cleanCustom = [];
@@ -3186,7 +2971,7 @@ function editorCapo(){
       var s = rawDbSongs[i];
       // 이전 버그로 인해 구글 시트 곡(sheet-song-*)이 IndexedDB에 중복 저장된 경우 자동 정리
       if (s && (s.fromSheet || String(s.id).indexOf('sheet-song-') === 0)){
-        await dbDeleteSong(s.id);
+        if (!await removePersistedSong(s.id)) continue;
       } else if (s){
         cleanCustom.push(s);
       }
@@ -3196,5 +2981,9 @@ function editorCapo(){
     if (savedSheetUrl){
       await syncGoogleSheetSongs(savedSheetUrl, true);
     }
+    rebuildSongSelect(appState.lastSongId);
+  }).catch(function(){
+    reportStorageError();
+    customSongs = [];
     rebuildSongSelect(appState.lastSongId);
   });

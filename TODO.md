@@ -6,6 +6,8 @@
   - [x] `src/audio.js`: Web Audio API 신디사이저와 가이드음 분리 (공통 카포 피치 연산은 `src/parser.js`)
   - [x] `src/fretboard.js`: 지판 SVG/DOM 렌더링 및 클릭 인터랙션 분리
   - [x] `src/editor.js`: 새 악보 추가 팝업 및 비주얼 그리드 에디터 분리
+  - [x] `src/storage.js`: DOM 독립 IndexedDB 저장소 분리 및 트랜잭션 완료 처리
+  - [x] `src/sheets.js`: 시트 동기화와 복사 동작 분리
 
 ## 2. 파서 로직 통합 (SSOT 달성)
 - [x] 현재 4곳에 분산된 파서 진입점을 단일 함수로 통일하여 정규식 불일치 원천 차단

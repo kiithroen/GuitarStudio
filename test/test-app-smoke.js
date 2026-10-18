@@ -98,6 +98,8 @@ const document = {
 const localValues = new Map();
 const songStore = new Map();
 let copiedText = '';
+let promptResponse = '';
+let failNextTransaction = false;
 const idb = {
   open(){
     const request = {};
@@ -105,7 +107,12 @@ const idb = {
       objectStoreNames: { contains(){ return true; } },
       createObjectStore(){},
       transaction(){
+        let staged = new Map();
+        let deletes = new Set();
         const tx = {
+          oncomplete: null,
+          onabort: null,
+          onerror: null,
           objectStore(){
             return {
               getAll(){
@@ -113,13 +120,32 @@ const idb = {
                 setTimeout(() => { req.result = [...songStore.values()]; if (req.onsuccess) req.onsuccess(); }, 0);
                 return req;
               },
-              put(song){ songStore.set(song.id, song); return {}; },
-              delete(id){ songStore.delete(id); return {}; }
+              put(song){
+                const req = {};
+                staged.set(song.id, song);
+                setTimeout(() => { req.result = song.id; if (req.onsuccess) req.onsuccess(); }, 0);
+                return req;
+              },
+              delete(id){
+                const req = {};
+                deletes.add(id);
+                setTimeout(() => { req.result = undefined; if (req.onsuccess) req.onsuccess(); }, 0);
+                return req;
+              }
             };
-          },
-          oncomplete: null
+          }
         };
-        setTimeout(() => { if (tx.oncomplete) tx.oncomplete(); }, 0);
+        setTimeout(() => {
+          if (failNextTransaction){
+            failNextTransaction = false;
+            tx.error = new Error('Injected transaction abort');
+            if (tx.onabort) tx.onabort({ target: tx });
+            return;
+          }
+          for (const id of deletes) songStore.delete(id);
+          for (const [id, song] of staged) songStore.set(id, song);
+          if (tx.oncomplete) tx.oncomplete({ target: tx });
+        }, 10);
         return tx;
       }
     };
@@ -144,7 +170,7 @@ const sandbox = {
   requestAnimationFrame(){ return 0; },
   cancelAnimationFrame(){},
   getComputedStyle(){ return { getPropertyValue(){ return ''; } }; },
-  alert(){}, confirm(){ return true; }, prompt(){ return ''; },
+  alert(){}, confirm(){ return true; }, prompt(){ return promptResponse; },
   Blob, URL, Map, Set, Date, Math, Promise, Intl,
   setTimeout, clearTimeout, setInterval(){ return 0; }, clearInterval(){},
   innerWidth: 1200,
@@ -166,17 +192,59 @@ async function waitFor(predicate, timeoutMs = 2000){
   }
 }
 
+async function testUnavailableIndexedDbBoot(html){
+  const unavailableElements = new Map();
+  const unavailableDocument = Object.assign({}, document, {
+    getElementById(id){ return this.querySelector('#' + id); },
+    querySelector(selector){
+      if (!selector || selector.charAt(0) !== '#') return null;
+      const id = selector.slice(1);
+      if (!unavailableElements.has(id)) unavailableElements.set(id, makeElement('div', id));
+      return unavailableElements.get(id);
+    }
+  });
+  const unavailableSandbox = {
+    ...sandbox,
+    document: unavailableDocument,
+    indexedDB: { open(){ throw new Error('IndexedDB unavailable'); } },
+    localStorage: { getItem(){ return null; }, setItem(){}, removeItem(){} }
+  };
+  unavailableSandbox.window = unavailableSandbox;
+  unavailableSandbox.self = unavailableSandbox;
+  const unavailableContext = vm.createContext(unavailableSandbox);
+  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
+  for (const script of scripts){
+    vm.runInContext(fs.readFileSync(path.join(root, script), 'utf8'), unavailableContext, { filename: script });
+  }
+  const unhandled = [];
+  const onUnhandled = reason => unhandled.push(reason);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    await waitFor(() => unavailableContext.allSongs.length === 14 && unavailableContext.curSong != null);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(unavailableContext.allSongs.length, 14, 'built-in songs render when IndexedDB is unavailable');
+    assert.ok(unavailableElements.get('measuresGrid').children.length > 0, 'built-in score renders when IndexedDB is unavailable');
+    assert.equal(unavailableElements.get('storageStatus').hidden, false, 'unavailable IndexedDB displays storage guidance');
+    assert.equal(unhandled.length, 0, 'unavailable IndexedDB causes no unhandled rejection');
+  } finally {
+    process.removeListener('unhandledRejection', onUnhandled);
+  }
+}
+
 async function main(){
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  document.querySelector('#storageStatus');
   const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
-  assert.deepEqual(scripts, ['src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/fretboard.js', 'src/editor.js', 'src/app.js']);
+  assert.deepEqual(scripts, ['src/storage.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/fretboard.js', 'src/editor.js', 'src/sheets.js', 'src/app.js']);
   for (const script of scripts){
     const source = fs.readFileSync(path.join(root, script), 'utf8');
     vm.runInContext(source, context, { filename: script });
   }
   await waitFor(() => context.allSongs.length === 14 && context.curSong != null);
+  await testUnavailableIndexedDbBoot(html);
   assert.equal(context.allSongs.length, 14, 'songs.json loads through the app boot path');
   assert.equal(context.curSong.id, 'builtin-lv1-butterfly', 'saved/default song is selected');
+  assert.match(html, /<p id="storageStatus" class="hint" role="status" aria-live="polite" hidden><\/p>/, 'storage failure status is accessible');
   assert.equal(elements.get('fretboard').children.length, 7, 'fretboard initializes six strings and one header');
   assert.ok(elements.get('measuresGrid').children.length > 0, 'selected score renders measures');
   assert.equal(typeof context.parseScore, 'function', 'parser API is available to app scripts');
@@ -207,6 +275,36 @@ async function main(){
   assert.ok(context.customSongs.some(song => song.title === 'smoke saved'), 'save handler builds and stores a structured song');
   assert.ok(songStore.has(context.customSongs.find(song => song.title === 'smoke saved').id), 'save handler reaches IndexedDB');
 
+  const beforeFailedSave = context.customSongs.slice();
+  const selectedBeforeFailedSave = context.curSong.id;
+  const originalDbSaveSong = context.dbSaveSong;
+  context.openConverterEditorModal({ title: 'save retry', beats: 4, rawText: '[C] C4 - - -' });
+  elements.get('nsTitle').value = 'save retry';
+  context.dbSaveSong = async () => { throw new Error('Injected save failure'); };
+  await elements.get('saveNewSongBtn').dispatch('click');
+  assert.equal(elements.get('newSongModal').hidden, false, 'failed save keeps editor modal open');
+  assert.equal(elements.get('saveNewSongBtn').disabled, false, 'failed save re-enables save button');
+  assert.equal(elements.get('storageStatus').hidden, false, 'failed save announces storage error');
+  assert.ok(elements.get('ocrStatusTxt').textContent.includes('저장하지 못했어요'), 'failed save also shows storage guidance inside the editor');
+  assert.deepEqual(context.customSongs.map(song => song.id), beforeFailedSave.map(song => song.id), 'failed save leaves custom songs unchanged');
+  assert.equal(context.curSong.id, selectedBeforeFailedSave, 'failed save preserves selected song');
+  context.dbSaveSong = originalDbSaveSong;
+  await elements.get('saveNewSongBtn').dispatch('click');
+  const retriedSong = context.customSongs.find(song => song.title === 'save retry');
+  assert.ok(retriedSong && songStore.has(retriedSong.id), 'retry persists the song after transaction completion');
+  assert.ok((await context.dbGetAllSongs()).some(song => song.id === retriedSong.id && song.title === 'save retry'), 'completed write is visible to a later read transaction');
+  assert.equal(elements.get('newSongModal').hidden, true, 'successful retry closes the editor modal');
+  assert.equal(elements.get('storageStatus').hidden, true, 'successful retry clears storage error status');
+  assert.equal(elements.get('ocrStatusTxt').textContent, '', 'successful retry clears editor storage guidance');
+
+  await elements.get('openSheetSyncBtn').click();
+  assert.equal(elements.get('sheetSyncModal').hidden, false, 'sheet sync opens through extracted module');
+  await elements.get('copySheetTemplateBtn').click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.match(copiedText, /곡 제목\t박자\tBPM/, 'sheet template copy is wired through extracted module');
+  await elements.get('closeSheetSyncBtn').click();
+  assert.equal(elements.get('sheetSyncModal').hidden, true, 'sheet sync closes through extracted module');
+
   const existing = context.buildStructuredSong({ id: 'custom-edit-source', title: 'Existing song', badge: 'Custom', capo: 4, ytUrl: 'https://youtu.be/keep-me', bpm: 72, beats: 4, lines: ['[C] C4 - - -'] });
   context.customSongs.push(existing);
   context.curSong = existing;
@@ -223,6 +321,74 @@ async function main(){
   assert.equal(songStore.get(existing.id).ytUrl, 'https://youtu.be/keep-me', 'IndexedDB record preserves custom song YouTube URL');
   assert.equal(edited.fromSheet, undefined, 'custom edit does not copy source-only metadata');
   assert.equal(edited.builtin, false, 'custom edit stays a custom song');
+
+  const originalTitle = edited.title;
+  const originalSelected = context.curSong.id;
+  promptResponse = 'Existing song renamed';
+  const originalDbDeleteSong = context.dbDeleteSong;
+  context.dbSaveSong = async () => { throw new Error('Injected rename failure'); };
+  await elements.get('renameSongBtn').click();
+  promptResponse = '';
+  assert.equal(context.customSongs.find(song => song.id === existing.id).title, originalTitle, 'failed rename leaves custom song unchanged');
+  assert.equal(context.curSong.id, originalSelected, 'failed rename preserves selected song');
+  context.dbSaveSong = originalDbSaveSong;
+
+  let finishRename;
+  context.dbSaveSong = () => new Promise(resolve => { finishRename = resolve; });
+  promptResponse = 'Existing song renamed';
+  const pendingRename = elements.get('renameSongBtn').click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  context.changeSongById('builtin-lv1-butterfly');
+  finishRename();
+  await pendingRename;
+  promptResponse = '';
+  context.dbSaveSong = originalDbSaveSong;
+  assert.equal(context.curSong.id, 'builtin-lv1-butterfly', 'completed rename does not replace a song selected during the save');
+  assert.equal(context.customSongs.find(song => song.id === existing.id).title, 'Existing song renamed', 'completed rename updates its original song');
+
+  context.changeSongById(existing.id);
+  const selectedBeforeFailedDelete = context.curSong.id;
+  context.dbDeleteSong = async () => { throw new Error('Injected delete failure'); };
+  await elements.get('deleteSongBtn').click();
+  context.dbDeleteSong = originalDbDeleteSong;
+  assert.ok(context.customSongs.some(song => song.id === existing.id), 'failed delete leaves custom song in memory');
+  assert.equal(context.curSong.id, selectedBeforeFailedDelete, 'failed delete preserves selected song');
+
+  const imageSong = { id: 'image-bar-edit', title: 'Image bar edit', type: 'image', systems: [{ bars: [{ chord: 'C', note: 'C4', memo: 'old' }] }] };
+  const originalUpdateActiveCursor = context.updateActiveCursor;
+  context.updateActiveCursor = function(){};
+  context.customSongs.push(imageSong);
+  context.allSongs.push(imageSong);
+  context.curSong = imageSong;
+  context.selectedImgBar = { sysIdx: 0, barIdx: 0, globalIdx: 0 };
+  await elements.get('editBarMetaBtn').click();
+  assert.equal(elements.get('barEditModal').hidden, false, 'image bar edit modal opens');
+  elements.get('beChord').value = 'G';
+  elements.get('beNote').value = 'D4';
+  elements.get('beMemo').value = 'new';
+  context.dbSaveSong = async () => { throw new Error('Injected image bar failure'); };
+  await elements.get('saveBarEditBtn').click();
+  assert.equal(elements.get('barEditModal').hidden, false, 'failed image bar save keeps modal open');
+  assert.equal(imageSong.systems[0].bars[0].chord, 'C', 'failed image bar save preserves original chord');
+  assert.equal(imageSong.systems[0].bars[0].memo, 'old', 'failed image bar save preserves original memo');
+  context.dbSaveSong = originalDbSaveSong;
+  await elements.get('saveBarEditBtn').click();
+  assert.equal(imageSong.systems[0].bars[0].chord, 'G', 'successful image bar save updates existing object');
+  elements.get('beMemo').value = 'race update';
+  let finishBarSave;
+  context.dbSaveSong = () => new Promise(resolve => { finishBarSave = resolve; });
+  const pendingBarSave = elements.get('saveBarEditBtn').click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  context.changeSongById('builtin-lv1-butterfly');
+  finishBarSave();
+  await pendingBarSave;
+  context.dbSaveSong = originalDbSaveSong;
+  assert.equal(context.curSong.id, 'builtin-lv1-butterfly', 'completed bar save does not replace a song selected during the save');
+  assert.equal(imageSong.systems[0].bars[0].memo, 'race update', 'completed bar save updates the originally edited image song');
+  context.changeSongById('builtin-lv1-butterfly');
+  context.changeSongById(imageSong.id);
+  assert.equal(context.curSong.systems[0].bars[0].memo, 'race update', 'image bar edits survive switching away and back');
+  context.updateActiveCursor = originalUpdateActiveCursor;
 
   for (const source of [
     { ...context.buildStructuredSong({ id: 'builtin-copy-source', title: 'Builtin source', badge: '', capo: 3, ytUrl: 'https://youtu.be/builtin', bpm: 64, beats: 4, lines: ['[G] G3 - - -'] }), builtin: true },

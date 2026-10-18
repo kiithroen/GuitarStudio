@@ -6,19 +6,23 @@
 
 - `index.html`: 앱 화면과 스타일, AudioWorklet 원본 코드를 포함한다.
 - `src/parser.js`: DOM 의존성이 없는 음표·화음 파싱, 마디 구조화, 코드 추론, 에디터 투영, 카포 계산을 제공한다. 브라우저에서는 classic script 전역 API를 제공하고 Node.js에서는 CommonJS API를 내보낸다.
+- `src/storage.js`: DOM 의존성 없이 IndexedDB 악보 저장소와 읽기·쓰기 완료 처리를 제공한다.
 - `src/score.js`: 박자 길이와 점리듬 표시 정보를 계산한다.
 - `src/audio.js`: Web Audio 기타 신디사이저와 프리뷰 음원을 제공한다.
 - `src/guide.js`: 분할 박의 베이스·멜로디·화음 이벤트를 프리뷰, 재생, 예열에서 함께 계산한다.
 - `src/fretboard.js`: 지판, 코드 카드, 하이라이트 및 관련 이벤트를 초기화한다.
 - `src/editor.js`: 악보 입력기, 비주얼 에디터, 저장과 TSV 도우미를 초기화한다.
-- `src/app.js`: 앱 상태, IndexedDB, 시트 동기화, 연습 화면과 앱 부팅을 관리한다.
+- `src/sheets.js`: 구글 시트 JSONP 동기화와 복사 동작을 제공하며, 시트 UI 이벤트는 `initSheetSync()`에서 등록한다.
+- `src/app.js`: 앱 상태, 저장소·시트 연동, 연습 화면과 앱 부팅을 관리한다.
 - `test/test-audio.js`: Node 내장 `vm`으로 실제 `src/audio.js`를 실행해 카포 공명과 캐시 예열을 검증한다.
 - `test/test-guide.js`: 공통 분할음 이벤트의 화음 구성, 베이스 토글, 카포와 재생 시각을 검증한다.
+- `test/test-storage.js`: IndexedDB 모듈의 저장·삭제 완료와 오류 처리를 스텁으로 검증한다.
+- `test/test-sheets.js`: 시트 동기화의 JSONP 응답 처리를 모의 데이터로 검증한다.
 - `test/test-parser.js`: Node 내장 `assert`를 사용하는 의존성 없는 파서 테스트다.
 - `test/test-app-smoke.js`: Node 내장 `vm`과 DOM/IndexedDB 스텁으로 외부 스크립트 부팅, 악보 렌더, 에디터 저장 경로를 확인한다.
 - `test/test-browser-smoke.js`: Node.js 내장 http/WebSocket 및 CDP(Chrome DevTools Protocol)를 사용해 Headless Chrome/Edge 환경에서 실제 DOM 렌더링, 모달 인터랙션, 콘솔 에러 유무를 검증한다.
 
-페이지는 기존처럼 `index.html`을 직접 열거나 정적 웹 서버에서 실행할 수 있다. HTML은 `src/parser.js`, `src/score.js`, `src/audio.js`, `src/guide.js`, `src/fretboard.js`, `src/editor.js`, `src/app.js` 순서로 classic script를 로드한다. 따라서 별도 빌드나 패키지 설치가 필요하지 않으며, 공유 함수는 `window` 전역 이름을 유지한다. 지판과 에디터 이벤트는 앱 상태가 준비된 뒤 각각 `initFretboard()`와 `initEditor()`에서 등록한다.
+페이지는 기존처럼 `index.html`을 직접 열거나 정적 웹 서버에서 실행할 수 있다. HTML은 `src/storage.js`, `src/parser.js`, `src/score.js`, `src/audio.js`, `src/guide.js`, `src/fretboard.js`, `src/editor.js`, `src/sheets.js`, `src/app.js` 순서로 classic script를 로드한다. 따라서 별도 빌드나 패키지 설치가 필요하지 않으며, 공유 함수는 `window` 전역 이름을 유지한다. 저장소 모듈은 DOM을 참조하지 않는다. 지판, 에디터, 시트 UI 이벤트는 앱 상태가 준비된 뒤 각각 `initFretboard()`, `initEditor()`, `initSheetSync()`에서 등록한다.
 
 파서 회귀 테스트와 구문 검사는 프로젝트 루트에서 실행한다.
 
@@ -26,6 +30,8 @@
 node test/test-parser.js
 node test/test-audio.js
 node test/test-guide.js
+node test/test-storage.js
+node test/test-sheets.js
 node test/test-app-smoke.js
 node test/test-browser-smoke.js
 Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName }

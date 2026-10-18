@@ -560,6 +560,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
         <button type="button" class="btn danger sm" id="deleteSongBtn" hidden>삭제</button>
       </div>
     </div>
+    <p id="storageStatus" class="hint" role="status" aria-live="polite" hidden></p>
     <div class="resume-banner" id="resumeBanner" hidden>
       <span id="resumeText">마지막 연습 상태가 복원되었어요.</span>
       <button type="button" class="btn sm" id="resetLoopBtn">전구간 초기화</button>
@@ -1294,12 +1295,14 @@ class OnsetProc extends AudioWorkletProcessor {
 registerProcessor('onset', OnsetProc);
 </script>
 
+<script src="src/storage.js"></script>
 <script src="src/parser.js"></script>
 <script src="src/score.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/guide.js"></script>
 <script src="src/fretboard.js"></script>
 <script src="src/editor.js"></script>
+<script src="src/sheets.js"></script>
 <script src="src/app.js"></script>
 </body>
 </html>

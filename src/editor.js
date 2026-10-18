@@ -688,6 +688,10 @@ function initEditor(){
   });
 
   $('#saveNewSongBtn').addEventListener('click', async function(){
+    var saveButton = $('#saveNewSongBtn');
+    if (saveButton.disabled) return;
+    saveButton.disabled = true;
+    try {
     var title = $('#nsTitle').value.trim() || '내 연습곡';
     var beats = Number($('#nsBeats').value) || 4;
     var bpm = Number($('#nsBpm').value) || 64;
@@ -712,13 +716,17 @@ function initEditor(){
     if (veState.refImageDataUrl){
       song.refImageDataUrl = veState.refImageDataUrl;
     }
-    await dbSaveSong(song);
+    if (!await persistSong(song)) return;
     var existIdx = customSongs.findIndex(function(s){ return s.id === targetId; });
     if (existIdx >= 0) customSongs[existIdx] = song;
     else customSongs.push(song);
 
     $('#newSongModal').hidden = true;
+    clearStorageError();
     rebuildSongSelect(song.id);
+    } finally {
+      saveButton.disabled = false;
+    }
   });
 
 
