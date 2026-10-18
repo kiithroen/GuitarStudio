@@ -35,17 +35,17 @@ function getBeatRightHandLabel(beat){
       hasExplicit = hasExplicit || !!finger;
       return finger || '-';
     });
-    return hasExplicit ? '오른손 ' + labels.join(' / ') : '';
+    return hasExplicit ? labels.join(' / ') : '';
   }
   if (beat.kind === 'rest' || beat.kind === 'hold' || !beat.midi) return '';
   var token = beat.tok || beat.customTok || beat.en;
   if (beat.chordNotes && beat.chordNotes.length >= 2){
     var chordLabel = formatChordRightHandLabel(token, beat.chordNotes);
     return beat.chordNotes.some(function(note, index){ return !!getExplicitRightHand(token, index); })
-      ? '오른손 ' + chordLabel : '';
+      ? chordLabel : '';
   }
   var finger = getExplicitRightHand(token, 0);
-  return finger ? '오른손 ' + finger : '';
+  return finger ? finger : '';
 }
 
 function syncScoreModeUI(){

@@ -66,6 +66,8 @@ Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName; i
 
 2026-10-19 결정: 화면 내 CDE 및 도레미 표기법이 혼재되던 문제를 해결하여 기본값을 CDE 표기법으로 통일하고, 상단 헤더에 `도레미 표기 / CDE 표기` 전환 버튼을 추가해 원클릭으로 전환할 수 있게 했어. 박자 및 음표 표시 문자열은 `src/score.js`의 `formatBeatPitchLabel`과 `getNoteDisplayName`을 단일 진실 공급원(SSOT)으로 삼아 일관되게 포맷팅해.
 
+2026-10-19 결정: 카드 뷰에서 다분할음이나 화음이 많을 때 글자가 카드 밖으로 넘치거나 잘리는 문제를 해결하기 위해, 분할 수(`maxSubParts`)에 따라 마디 카드의 최소 너비를 동적으로 확장하고 음이름 글자 수에 따라 폰트 크기 반응형 클래스(`b-ko-dense`, `b-ko-ultra`)를 부여하도록 조정했어. 또한 카드 내 공간을 절약하고 시인성을 높이기 위해 오른손 운지 라벨에서 불필요한 '오른손 ' 접두사를 제거해 간결한 핑거링 기호(`5줄 p + 1줄 a`, `i / m` 등)만 표시하며, 활성 박자(`active-beat`) 시 오른손 운지와 서브 표기의 대비와 두께를 보강해 재생 중 가독성을 높였어.
+
 브라우저 스모크는 Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 실행 파일을 지정할 수 있어. 임시 HTTP 서버와 임시 브라우저 프로필을 사용하며 Web Audio API 경로를 실제 실행해. 이 테스트는 Node의 내장 `fetch`와 `WebSocket` 전역이 있는 환경이 필요해. 실행 환경은 `node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`로 확인할 수 있어. 자동화 검사는 실제 기기에서의 오디오 청취 품질을 확인하지 않아. 스크린샷 검증은 `test-artifacts/`에 새 파일을 만들 수 있으므로 기존 개인 자료를 보존해.
 
 작업 범위와 필수 검증은 [AGENTS.md](../AGENTS.md)에 있어.

@@ -310,15 +310,20 @@ function curCapo(){
     } else {
       grid.style.gridTemplateColumns = isTab ? 'repeat(auto-fill, minmax(250px, 1fr))' : 'repeat(auto-fill, minmax(260px, 1fr))';
     }
+    var maxSubParts = (curSong.measures || []).reduce(function(maxParts, measure){
+      return (measure.beats || []).reduce(function(measureMax, beat){
+        return Math.max(measureMax, beat.subNotes && beat.subNotes.length || 1);
+      }, maxParts);
+    }, 1);
     if (isTab){
-      var maxSubParts = (curSong.measures || []).reduce(function(maxParts, measure){
-        return (measure.beats || []).reduce(function(measureMax, beat){
-          return Math.max(measureMax, beat.subNotes && beat.subNotes.length || 1);
-        }, maxParts);
-      }, 1);
       var requiredMinWidth = curSong.beats * maxSubParts * 48 + 56;
       var existingMinWidth = curSong.beats >= 9 ? 560 : (curSong.beats >= 8 ? 460 : (curSong.beats >= 6 ? 330 : 250));
       grid.style.gridTemplateColumns = 'repeat(auto-fill,minmax(' + Math.max(existingMinWidth, requiredMinWidth) + 'px,1fr))';
+    } else {
+      var cardBeatWidth = maxSubParts >= 3 ? 108 : (maxSubParts >= 2 ? 88 : 68);
+      var requiredCardMinWidth = curSong.beats * cardBeatWidth + 32;
+      var existingCardMinWidth = curSong.beats >= 9 ? 560 : (curSong.beats >= 8 ? 460 : (curSong.beats >= 6 ? 340 : 260));
+      grid.style.gridTemplateColumns = 'repeat(auto-fill,minmax(' + Math.max(existingCardMinWidth, requiredCardMinWidth) + 'px,1fr))';
     }
     var chordsSet = [];
 
@@ -714,6 +719,12 @@ function curCapo(){
               koEl.textContent = b.subNotes.map(getDisplayPitch).join(' · ');
             } else {
               koEl.textContent = isSolfege ? b.ko : (b.en ? b.en.replace(/\d+$/, '') : b.ko);
+            }
+            var koLen = koEl.textContent.length;
+            if (koLen >= 7){
+              koEl.classList.add('b-ko-ultra');
+            } else if (koLen >= 5){
+              koEl.classList.add('b-ko-dense');
             }
             cell.appendChild(koEl);
 

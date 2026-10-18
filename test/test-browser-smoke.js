@@ -1467,17 +1467,17 @@ async function testSubdividedGuide(client) {
       appState.scoreView = 'card';
       renderSong();
       var pimaCard = document.querySelector('#measuresGrid .beat-cell[data-b="1"]');
-      check(pimaCard.querySelector('.b-right-hand').textContent === '오른손 5줄 p + 1줄 a', 'beat card shows MIDI-sorted chord fingers and strings');
+      check(pimaCard.querySelector('.b-right-hand').textContent === '5줄 p + 1줄 a', 'beat card shows MIDI-sorted chord fingers and strings');
       var partialPimaCard = document.querySelector('#measuresGrid .beat-cell[data-b="2"]');
-      check(partialPimaCard.querySelector('.b-right-hand').textContent === '오른손 5줄 p + 1줄 미지정', 'beat card identifies a chord component without written right-hand fingering');
+      check(partialPimaCard.querySelector('.b-right-hand').textContent === '5줄 p + 1줄 미지정', 'beat card identifies a chord component without written right-hand fingering');
       var dividedPimaCard = document.querySelector('#measuresGrid .beat-cell[data-b="3"]');
-      check(dividedPimaCard.querySelector('.b-right-hand').textContent === '오른손 i / m', 'beat card lists right-hand fingers in subdivision order');
+      check(dividedPimaCard.querySelector('.b-right-hand').textContent === 'i / m', 'beat card lists right-hand fingers in subdivision order');
       var mixedSubHandScore = parseScore('[C] E4@1:i/C3@5+F4@1 - - -', 4);
       window.curSong = { id:'browser-mixed-sub-hand', title:'Mixed subdivision hand', type:'structured', beats:4, measures:mixedSubHandScore.measures };
       appState.scoreView = 'card';
       renderSong();
       var mixedSubHandCard = document.querySelector('#measuresGrid .beat-cell[data-b="0"]');
-      check(mixedSubHandCard.querySelector('.b-right-hand').textContent === '오른손 i / -', 'subdivided chord part with no explicit fingers is shown as a dash');
+      check(mixedSubHandCard.querySelector('.b-right-hand').textContent === 'i / -', 'subdivided chord part with no explicit fingers is shown as a dash');
       var noSubHandScore = parseScore('[C] C3@5+E4@1/F4@2+G4@3 - - -', 4);
       window.curSong = { id:'browser-no-sub-hand', title:'No subdivision hand', type:'structured', beats:4, measures:noSubHandScore.measures };
       renderSong();
@@ -1832,6 +1832,29 @@ async function testBuiltinScores(client, browserBin){
     assert.equal(review.romance.guideEvents.length, 10, 'first measure produces 10 guide note events');
     process.stdout.write('Browser checkpoint: all 13 built-in scores render in TAB/card; Lv.6 Romance first measure has explicit p/a/m/i and 10 timed guide notes\n');
     await captureBuiltinRomanceScreenshots(client,browserBin);
+    // Capture Romance measure 3 card view for visual verification
+    const cardScreenshotDir = path.join(__dirname, '..', 'test-artifacts', 'clean-score-ui');
+    await client.evaluate(`(function(){
+      changeSongById('builtin-lv6-romance-full');
+      appState.scoreView = 'card';
+      renderSong();
+      updateActiveCursor(2, 0, false);
+      var m3 = document.querySelector('#measuresGrid .measure-card[data-m="2"]');
+      if (m3) m3.scrollIntoView();
+    })()`);
+    const cardScreenshot = await client.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+    fs.writeFileSync(path.join(cardScreenshotDir, 'romance-card-m3-cde.png'), Buffer.from(cardScreenshot.data, 'base64'));
+    await client.evaluate(`(function(){
+      appState.notationMode = 'solfege';
+      syncNotationModeUI();
+      renderSong();
+      updateActiveCursor(2, 0, false);
+      var m3 = document.querySelector('#measuresGrid .measure-card[data-m="2"]');
+      if (m3) m3.scrollIntoView();
+    })()`);
+    const cardSolfegeScreenshot = await client.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+    fs.writeFileSync(path.join(cardScreenshotDir, 'romance-card-m3-solfege.png'), Buffer.from(cardSolfegeScreenshot.data, 'base64'));
+    process.stdout.write('Romance card m3 screenshots captured (CDE & solfege)\n');
   } finally {
     await client.evaluate(`(function(){
       var key=${JSON.stringify(restoreKey)},saved=window[key];

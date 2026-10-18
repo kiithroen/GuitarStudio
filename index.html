@@ -189,23 +189,26 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .beat-cell.arp-group-start{margin-left:3px;box-shadow:-3px 0 0 -1px var(--line)}
 
 /* 박자·리듬 카드 친절한 오선지 뷰 스타일 (운지 정보 제외, 박자·리듬·계이름 전용) */
-.beat-cell:not(.tab-cell){padding:6px 2px 5px;min-height:72px;justify-content:space-between;min-width:0;overflow:hidden}
+.beat-cell:not(.tab-cell){padding:6px 3px 6px;min-height:86px;justify-content:space-between;min-width:0;overflow:hidden}
 .b-rhythm-head{display:flex;align-items:center;justify-content:space-between;width:100%;padding:0 2px;margin-bottom:2px;font-size:11px;line-height:1;white-space:nowrap;gap:2px;min-width:0;overflow:hidden}
 .b-idx-badge{font-family:var(--font-num);font-weight:700;color:var(--muted);background:rgba(128,128,128,.12);padding:1px 3px;border-radius:4px;white-space:nowrap;flex-shrink:0;font-size:10px}
 .b-dur-badge{color:var(--accent);display:inline-flex;align-items:center;flex-shrink:0}
 .b-dur-badge .dur-svg{width:11px;height:13px}
 .dur-svg{display:inline-block;vertical-align:middle;flex-shrink:0}
-.b-ko-main{font-size:19px;font-weight:800;color:var(--accent);line-height:1.15;margin:2px 0;white-space:nowrap}
+.b-ko-main{font-size:18px;font-weight:800;color:var(--accent);line-height:1.15;margin:2px 0;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.b-ko-main.b-ko-dense{font-size:14.5px;letter-spacing:-0.3px}
+.b-ko-main.b-ko-ultra{font-size:12.5px;letter-spacing:-0.5px}
 .b-ko-main.b-rest-sym{display:flex;align-items:center;justify-content:center;min-height:26px;margin:2px 0}
 .b-ko-main.b-rest-sym .dur-svg{width:14px;height:22px;color:var(--muted);transition:color .08s}
-.b-note-sub{font-size:10.5px;color:var(--muted);font-weight:600;line-height:1.1;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.b-right-hand{font-size:11px;color:var(--muted);white-space:normal}
+.b-note-sub{font-size:10px;color:var(--muted);font-weight:600;line-height:1.15;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;text-align:center}
+.b-right-hand{font-size:10.5px;color:var(--muted);white-space:normal;text-align:center;line-height:1.2;word-break:keep-all}
 .beat-cell.active-beat .b-idx-badge{background:rgba(255,255,255,.25);color:var(--accent-ink)}
 .beat-cell.active-beat .b-dur-badge{color:var(--accent-ink)}
 .beat-cell.active-beat .dur-svg{color:var(--accent-ink)}
 .beat-cell.active-beat .b-ko-main{color:var(--accent-ink)}
 .beat-cell.active-beat .b-ko-main.b-rest-sym .dur-svg{color:var(--accent-ink)}
-.beat-cell.active-beat .b-note-sub{color:var(--accent-ink)}
+.beat-cell.active-beat .b-right-hand{color:var(--accent-ink);opacity:.95;font-weight:700}
+.beat-cell.active-beat .b-note-sub{color:var(--accent-ink);opacity:.95;font-weight:700}
 .beat-cell.is-rest{opacity:.75}
 .beat-cell.is-rest:hover,.beat-cell.is-rest.active-beat{opacity:1}
 
