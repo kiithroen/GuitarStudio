@@ -361,24 +361,48 @@
   // 연습 시작 전에 곡에 나오는 음을 미리 렌더링해 두어, 재생 도중 새 음을 처음 만들 때 생기는 메인 스레드 지연을 없앰
   function warmKsCache(song){
     if (appState.synthEngine === 'classic' || !song) return;
+    var capo = getSongCapo(song);
     var notes = {};
     function add(midi, isApo, str){
+      if (!midi) return;
+      midi = soundingMidi(midi, capo);
       var s = str || defaultStringFor(midi);
       notes[midi + (isApo ? 'a' : 't') + (s || 0)] = [midi, isApo, s];
+    }
+    function addBeatNotes(chordName, beat, bIdx){
+      var eb = resolveEffectiveBass(chordName, beat, bIdx);
+      if (beat.chordNotes && beat.chordNotes.length > 2){
+        beat.chordNotes.forEach(function(cn){ add(cn.midi, cn.articulation === 'apoyando', cn.str); });
+      } else {
+        if (eb && eb.midi) add(eb.midi, false, eb.str);
+        if (beat.midi) add(beat.midi, beat.articulation === 'apoyando', beat.str);
+      }
     }
     if (song.type === 'structured'){
       song.measures.forEach(function(m){
         m.beats.forEach(function(b, bIdx){
-          var eb = resolveEffectiveBass(m.chord, b, bIdx);
-          if (eb && eb.midi) add(eb.midi, false, eb.str);
-          if (b.midi) add(b.midi, b.articulation === 'apoyando', b.str);
+          if (b.isSubdivided && b.subNotes && b.subNotes.length){
+            getSubdividedGuideEvents(b, {
+              chordName: m.chord,
+              beatIndex: bIdx,
+              startTime: 0,
+              subStep: 1 / b.subNotes.length,
+              capo: capo,
+              beatsPerBar: song.beats || 4,
+              preview: false
+            }).forEach(function(event){
+              add(event.note.midi, event.articulation === 'apoyando', event.str);
+            });
+          } else {
+            addBeatNotes(m.chord, b, bIdx);
+          }
         });
       });
     } else if (song.type === 'image'){
       // 이미지 악보는 마디마다 가이드 음 하나만 재생
       for (var i = 0; i < getMeasureCount(song); i++){
         var bar = getFlatImageBar(i), pn = bar && bar.note ? parseNoteToken(bar.note, 0) : null;
-        if (pn && pn.midi) add(pn.midi, false, null);
+        if (pn && pn.midi) add(pn.midi, false, pn.pos && pn.pos.str);
       }
     }
     Object.keys(notes).slice(0, KS_CACHE_MAX).forEach(function(k){ getKsBuffer(notes[k][0], notes[k][1], notes[k][2]); });
@@ -521,19 +545,21 @@
 
   function addSympatheticResonance(midi, t, scale, playedStr){
     if (!appState.acousticFx || !(appState.sympAmount > 0)) return;
+    var capo = curCapo();
     var f = 440 * Math.pow(2, (midi - 69) / 12);
     var cands = [];
     STRINGS.forEach(function(st){
       if (st.str === playedStr) return;
       // 이미 울리고 있거나 짚고 있는 줄은 따로 공명하지 않음
       if ((stringVoices[st.str] || []).some(function(v){ return !v.symp && v.end > t; })) return;
-      var fOpen = 440 * Math.pow(2, (st.midi - 69) / 12);
+      var openMidi = soundingMidi(st.midi, capo);
+      var fOpen = 440 * Math.pow(2, (openMidi - 69) / 12);
       for (var p = 1; p <= 6; p++){        // 개방현의 p번째 배음
         var fp = p * fOpen;
         if (fp >= 4000) break;
         // 개방현 배음은 대역폭 1/(π·시상수)인 공진기: 연주 음 배음과의 주파수 차이에 따른 로렌츠 응답으로 공명 세기를 정함
         // (옥타브·유니즌은 그대로, 평균율 5도는 약 -4dB, 순정음과 13.7센트 어긋나는 평균율 장3도는 약 -18dB로 자연스럽게 약해짐)
-        var bw = 1 / (Math.PI * sympTau(st.midi, p));
+        var bw = 1 / (Math.PI * sympTau(openMidi, p));
         for (var q = 1; q <= 5; q++){      // 연주 음의 q번째 배음
           var resp = 1 / Math.sqrt(1 + Math.pow(2 * Math.abs(fp - q * f) / bw, 2));
           if (resp > 0.1){
@@ -558,7 +584,7 @@
       o.frequency.value = c.freq;
       var g = actx.createGain();
       var amp = SYMP_LEVEL * appState.sympAmount * scale * c.w;
-      var tau = sympTau(c.st.midi, c.p);
+      var tau = sympTau(soundingMidi(c.st.midi, capo), c.p);
       g.gain.setValueAtTime(0, t);
       g.gain.setTargetAtTime(amp, t, 0.04);              // 진동이 옮겨 가며 서서히 커짐
       g.gain.setTargetAtTime(0, t + 0.15, tau);
