@@ -15,35 +15,35 @@
     { str: 6, name: '6E (낮은 미)', midi: 40, thick: '3.0px' }
   ];
 
-  // 클래식 기타 제1포지션 표준 운지 테이블 (MIDI -> {str, fret, lh(왼손 0~4), rh(오른손 추천)})
+  // 클래식 기타 제1포지션 현·프렛 테이블 (MIDI -> {str, fret})
   var FIRST_POS = {
-    40: { str: 6, fret: 0, lh: 0, rh: 'p' }, // E2 미
-    41: { str: 6, fret: 1, lh: 1, rh: 'p' }, // F2 파
-    43: { str: 6, fret: 3, lh: 3, rh: 'p' }, // G2 솔
-    45: { str: 5, fret: 0, lh: 0, rh: 'p' }, // A2 라
-    47: { str: 5, fret: 2, lh: 2, rh: 'p' }, // B2 시
-    48: { str: 5, fret: 3, lh: 3, rh: 'p' }, // C3 도
-    50: { str: 4, fret: 0, lh: 0, rh: 'p' }, // D3 레
-    52: { str: 4, fret: 2, lh: 2, rh: 'p' }, // E3 미
-    53: { str: 4, fret: 3, lh: 3, rh: 'p' }, // F3 파
-    54: { str: 4, fret: 4, lh: 4, rh: 'i' }, // F#3 파# (4번줄 4프렛)
-    55: { str: 3, fret: 0, lh: 0, rh: 'i' }, // G3 솔
-    56: { str: 3, fret: 1, lh: 1, rh: 'i' }, // G#3 솔# (3번줄 1프렛)
-    57: { str: 3, fret: 2, lh: 2, rh: 'm' }, // A3 라
-    59: { str: 2, fret: 0, lh: 0, rh: 'i' }, // B3 시
-    60: { str: 2, fret: 1, lh: 1, rh: 'm' }, // C4 도 (가온 도)
-    62: { str: 2, fret: 3, lh: 3, rh: 'i' }, // D4 레
-    63: { str: 2, fret: 4, lh: 3, rh: 'm' }, // D#4 레# (2번줄 4프렛 - B7 핵심 구성음)
-    64: { str: 1, fret: 0, lh: 0, rh: 'm' }, // E4 미
-    65: { str: 1, fret: 1, lh: 1, rh: 'i' }, // F4 파
-    66: { str: 1, fret: 2, lh: 2, rh: 'm' }, // F#4 파#
-    67: { str: 1, fret: 3, lh: 3, rh: 'm' }, // G4 솔
-    69: { str: 1, fret: 5, lh: 4, rh: 'a' }, // A4 라
-    71: { str: 1, fret: 7, lh: 4, rh: 'a' }, // B4 시
-    72: { str: 1, fret: 8, lh: 4, rh: 'a' }, // C5 높은 도
-    74: { str: 1, fret: 10, lh: 3, rh: 'a' },// D5 높은 레 (1번줄 10프렛)
-    75: { str: 1, fret: 11, lh: 4, rh: 'a' },// D#5 높은 레# (1번줄 11프렛)
-    76: { str: 1, fret: 12, lh: 4, rh: 'a' } // E5 높은 미 (1번줄 12프렛 - 로망스 하이라이트)
+    40: { str: 6, fret: 0 }, // E2 미
+    41: { str: 6, fret: 1 }, // F2 파
+    43: { str: 6, fret: 3 }, // G2 솔
+    45: { str: 5, fret: 0 }, // A2 라
+    47: { str: 5, fret: 2 }, // B2 시
+    48: { str: 5, fret: 3 }, // C3 도
+    50: { str: 4, fret: 0 }, // D3 레
+    52: { str: 4, fret: 2 }, // E3 미
+    53: { str: 4, fret: 3 }, // F3 파
+    54: { str: 4, fret: 4 }, // F#3 파# (4번줄 4프렛)
+    55: { str: 3, fret: 0 }, // G3 솔
+    56: { str: 3, fret: 1 }, // G#3 솔# (3번줄 1프렛)
+    57: { str: 3, fret: 2 }, // A3 라
+    59: { str: 2, fret: 0 }, // B3 시
+    60: { str: 2, fret: 1 }, // C4 도 (가온 도)
+    62: { str: 2, fret: 3 }, // D4 레
+    63: { str: 2, fret: 4 }, // D#4 레# (2번줄 4프렛 - B7 핵심 구성음)
+    64: { str: 1, fret: 0 }, // E4 미
+    65: { str: 1, fret: 1 }, // F4 파
+    66: { str: 1, fret: 2 }, // F#4 파#
+    67: { str: 1, fret: 3 }, // G4 솔
+    69: { str: 1, fret: 5 }, // A4 라
+    71: { str: 1, fret: 7 }, // B4 시
+    72: { str: 1, fret: 8 }, // C5 높은 도
+    74: { str: 1, fret: 10 },// D5 높은 레 (1번줄 10프렛)
+    75: { str: 1, fret: 11 },// D#5 높은 레# (1번줄 11프렛)
+    76: { str: 1, fret: 12 } // E5 높은 미 (1번줄 12프렛 - 로망스 하이라이트)
   };
 
   // 코드 운지 사전 (strings 배열: [6번줄, 5번줄, 4번줄, 3번줄, 2번줄, 1번줄] 프렛 번호, -1은 뮤트)
@@ -226,17 +226,18 @@
     if (m == null) return null;
     var en = NOTE_EN[m % 12] + (Math.floor(m / 12) - 1);
     var ko = NOTE_KO[m % 12];
-    var pos = FIRST_POS[m];
+    var pos = FIRST_POS[m] ? { str:FIRST_POS[m].str, fret:FIRST_POS[m].fret } : null;
     if (!pos){
       // 가까운 줄에서 계산
       for (var i = 0; i < STRINGS.length; i++){
         var f = m - STRINGS[i].midi;
         if (f >= 0 && f <= 12){
-          pos = { str: STRINGS[i].str, fret: f, lh: Math.min(4, Math.max(0, f)), rh: i < 3 ? 'm' : 'p' };
+          pos = { str: STRINGS[i].str, fret: f };
           break;
         }
       }
     }
+    if (pos){ pos.lh = null; pos.rh = null; }
     return { midi: m, en: en, ko: ko, pos: pos };
   }
 
@@ -281,12 +282,12 @@
       parsedSub.sort(function(a, b){ return a.midi - b.midi; });
       var bassInf = parsedSub[0];
       var melInf = parsedSub[parsedSub.length - 1];
-      var bassPos = bassInf.pos ? Object.assign({}, bassInf.pos, { rh: 'p' }) : { str: 6, fret: 0, lh: 0, rh: 'p' };
+      var bassPos = bassInf.pos ? Object.assign({}, bassInf.pos) : { str: 6, fret: 0, lh: null, rh: null };
       var cleanBassCustom = (bassInf.customTok || '').replace(/^[!>^~]+|[!>^~]+$/g, '');
-      var bassTokStr = cleanBassCustom || ((bassPos.lh != null ? bassPos.lh : '') + bassInf.en);
+      var bassTokStr = cleanBassCustom || bassInf.en;
       var melPos = melInf.pos ? Object.assign({}, melInf.pos) : null;
       var cleanMelCustom = (melInf.customTok || '').replace(/^[!>^~]+|[!>^~]+$/g, '');
-      var melTokStr = cleanMelCustom || ((melPos && melPos.lh != null ? melPos.lh : '') + melInf.en);
+      var melTokStr = cleanMelCustom || melInf.en;
       var articPrefix = inheritedArtic === 'apoyando' ? '!' : (inheritedArtic === 'tirando' ? '~' : '');
       melInf.bass = {
         tok: bassTokStr,
@@ -296,7 +297,7 @@
         str: bassPos.str,
         fret: bassPos.fret,
         lh: bassPos.lh,
-        rh: 'p'
+        rh: null
       };
       if (inheritedArtic){
         melInf.articulation = inheritedArtic;
@@ -304,11 +305,10 @@
       }
 
       // 3음 이상 화음(코드 롤/아르페지오) 지원
-      var chordNotes = parsedSub.map(function(ps, idx){
+      var chordNotes = parsedSub.map(function(ps){
         var pos = ps.pos ? Object.assign({}, ps.pos) : { str: 1, fret: 0, lh: null, rh: null };
         var cleanTok = (ps.customTok || '').replace(/^[!>^~]+|[!>^~]+$/g, '');
-        var tokStr = cleanTok || ((pos.lh != null ? pos.lh : '') + ps.en);
-        var autoRh = idx === 0 ? 'p' : (idx === parsedSub.length - 1 ? 'a' : (idx === 1 ? 'i' : 'm'));
+        var tokStr = cleanTok || ps.en;
         return {
           tok: tokStr,
           midi: ps.midi,
@@ -317,7 +317,7 @@
           str: pos.str,
           fret: pos.fret,
           lh: pos.lh,
-          rh: pos.rh || autoRh,
+          rh: null,
           articulation: ps.articulation || inheritedArtic
         };
       });
@@ -358,11 +358,10 @@
       var info = midiInfo(resolvedMidi);
       if (info && info.pos){
         var newPos = Object.assign({}, info.pos);
-        if (newPos.str <= 3) newPos.rh = altIdx % 2 === 0 ? 'i' : 'm';
         if (customLh != null) newPos.lh = customLh;
         info.pos = newPos;
-        var baseKoTok = (customLh != null && customLh !== FIRST_POS[resolvedMidi]?.lh) ? (customLh + info.en) : info.en;
-        if (articPfx || (customLh != null && customLh !== FIRST_POS[resolvedMidi]?.lh)){
+        var baseKoTok = customLh != null ? customLh + info.en : info.en;
+        if (articPfx || customLh != null){
           info.customTok = articPfx + baseKoTok;
         }
       }
@@ -386,30 +385,24 @@
         var inf = midiInfo(midi);
         if (inf && inf.pos){
           var posCopy = Object.assign({}, inf.pos);
-          var overrideChangedPosition = false;
           if (strOverride && STRINGS[strOverride - 1]){
             var customFret = midi - STRINGS[strOverride - 1].midi;
             if (customFret >= 0 && customFret <= 12){
-              overrideChangedPosition = posCopy.str !== strOverride || posCopy.fret !== customFret;
               posCopy.str = strOverride;
               posCopy.fret = customFret;
-              if (overrideChangedPosition && lhOverride == null){
-                posCopy.lh = Math.min(4, Math.max(0, customFret));
-              }
             } else return null;
           }
-          if (strOverride){
-            posCopy.rh = strOverride <= 3 ? (altIdx % 2 === 0 ? 'i' : 'm') : 'p';
-          } else if (posCopy.str <= 3) posCopy.rh = altIdx % 2 === 0 ? 'i' : 'm';
+          posCopy.lh = null;
+          posCopy.rh = null;
           if (lhOverride != null) posCopy.lh = lhOverride;
           inf.pos = posCopy;
           var coreTok = inf.en;
           if (strOverride){
             coreTok = (lhOverride != null ? lhOverride : '') + inf.en + '@' + strOverride;
-          } else if (lhOverride != null && (!FIRST_POS[midi] || lhOverride !== FIRST_POS[midi].lh)){
+          } else if (lhOverride != null){
             coreTok = lhOverride + inf.en;
           }
-          if (articPfx || strOverride || (lhOverride != null && (!FIRST_POS[midi] || lhOverride !== FIRST_POS[midi].lh))){
+          if (articPfx || strOverride || lhOverride != null){
             inf.customTok = articPfx + coreTok;
           }
         }
@@ -421,6 +414,21 @@
       }
     }
     return null;
+  }
+
+  function getExplicitLeftHand(token, componentIndex){
+    var parts = GuitarNotation.splitBeatSubtokens(token);
+    if (parts.length !== 1) return null;
+    var parsed = parseNoteToken(parts[0], 0);
+    if (!parsed) return null;
+    if (componentIndex != null){
+      if (parsed.chordNotes){
+        var component = parsed.chordNotes[componentIndex];
+        return component && component.lh != null ? component.lh : null;
+      }
+      if (componentIndex !== 0) return null;
+    }
+    return parsed.pos && parsed.pos.lh != null ? parsed.pos.lh : null;
   }
 
   // 마디 내 박자별 아포얀도(주선율 강조) / 티란도(내성 반주) 자동 추론 및 명시 기호(!, ~) 반영
@@ -462,14 +470,6 @@
           });
         }
 
-        // 6/8·9/8 아르페지오 오른손 탄현 손가락(p·i·m·a) 정밀 배정
-        grp.forEach(function(b){
-          if (!b || !b.midi) return;
-          if (b.str === 1 || (b.articulation === 'apoyando' && b.str <= 2)) b.rh = 'a';
-          else if (b.str === 2) b.rh = 'm';
-          else if (b.str === 3) b.rh = 'i';
-          else if (b.str >= 4) b.rh = 'p';
-        });
       }
     }
   }
@@ -632,6 +632,7 @@
     cleanChordToken: cleanChordToken, lookupChord: lookupChord, midiInfo: midiInfo,
     inferChordsForMeasures: inferChordsForMeasures,
     parseNoteToken: parseNoteToken, annotateMeasureArticulation: annotateMeasureArticulation,
+    getExplicitLeftHand: getExplicitLeftHand,
     parseBracketChordSpec: parseBracketChordSpec, tokenizeMeasureBeats: tokenizeMeasureBeats,
     decodeMeasureLine: GuitarNotation.decodeMeasureLine, serializeScoreMeasures: serializeScoreMeasures, validateScore: validateScore,
     getSongCapo: getSongCapo, soundingMidi: soundingMidi, splitScoreMeasures: splitScoreMeasures,

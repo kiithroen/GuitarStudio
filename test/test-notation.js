@@ -56,12 +56,12 @@ test('single-note groups parse their inner token and survive save serialization'
     assert.equal(restored.measures[0].beats[0].tok,token);
   }
 });
-test('string overrides recalculate default fingering without adding a synthetic prefix', function(){
+test('string overrides preserve positions and explicit fingers without inferring fingers', function(){
   const single=parser.parseNoteToken('E4@2',0);
   assert.equal(single.pos.str,2);
   assert.equal(single.pos.fret,5);
-  assert.equal(single.pos.lh,4);
-  assert.equal(single.pos.rh,'i');
+  assert.equal(single.pos.lh,null);
+  assert.equal(single.pos.rh,null);
   assert.equal(single.customTok,'E4@2');
   const explicit=parser.parseNoteToken('3E4@2',0);
   assert.equal(explicit.pos.lh,3);
@@ -71,7 +71,24 @@ test('string overrides recalculate default fingering without adding a synthetic 
   assert.ok(bassSide.chordNotes.some(note=>note.tok==='G3@3'));
   assert.ok(!bassSide.chordNotes.some(note=>/^\d[A-G]/.test(note.tok)));
   const bassString=parser.parseNoteToken('C3@5',0);
-  assert.equal(bassString.pos.rh,'p');
+  assert.equal(bassString.pos.rh,null);
+});
+test('explicit left-hand lookup reads only source token fingering', function(){
+  const getLH=parser.getExplicitLeftHand;
+  assert.equal(getLH('C4'),null);
+  assert.equal(getLH('E4@2'),null);
+  assert.equal(getLH('도4'),null);
+  assert.equal(getLH('솔3'),null);
+  assert.equal(getLH('1C4'),1);
+  assert.equal(getLH('0E4'),0);
+  assert.equal(getLH('3솔'),3);
+  assert.equal(getLH('D4(4)'),4);
+  assert.equal(getLH('(4D4@2)'),4);
+  assert.equal(getLH('G3@3+C4@2',0),null);
+  assert.equal(getLH('G3@3+C4@2',1),null);
+  assert.equal(getLH('0G3@3+1C4@2',0),0);
+  assert.equal(getLH('0G3@3+1C4@2',1),1);
+  assert.equal(getLH('G3/C4'),null);
 });
 test('same-string collisions apply only inside a simultaneous chord', function(){
   assert.ok(parser.validateScore('[C] E4@1+F4@1 - - -',4).errors.some(e=>e.code==='STRING_COLLISION'));

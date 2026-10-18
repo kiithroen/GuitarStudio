@@ -5,10 +5,10 @@ function initEditor(){
       {
         tag: '1번줄 (E)',
         items: [
-          { tok: 'E4',  ko: '0미 (미4)', sub: '1줄 개방' },
-          { tok: 'F4',  ko: '1파 (파4)', sub: '1줄 1프렛' },
-          { tok: 'F#4', ko: '2파#',      sub: '1줄 2프렛' },
-          { tok: 'G4',  ko: '3솔 (솔4)', sub: '1줄 3프렛' },
+          { tok: 'E4',  ko: '미4', sub: '1줄 개방' },
+          { tok: 'F4',  ko: '파4', sub: '1줄 1프렛' },
+          { tok: 'F#4', ko: '파#4', sub: '1줄 2프렛' },
+          { tok: 'G4',  ko: '솔4', sub: '1줄 3프렛' },
           { tok: 'A4',  ko: '라4',       sub: '1줄 5프렛' },
           { tok: 'B4',  ko: '시4',       sub: '1줄 7프렛' },
           { tok: 'C5',  ko: '도5',       sub: '1줄 8프렛' },
@@ -18,27 +18,27 @@ function initEditor(){
       {
         tag: '2·3번줄',
         items: [
-          { tok: 'B3',  ko: '0시 (시3)', sub: '2줄 개방' },
-          { tok: 'C4',  ko: '1도 (도4)', sub: '2줄 1프렛' },
-          { tok: 'D4',  ko: '3레 (레4)', sub: '2줄 3프렛' },
-          { tok: 'G3',  ko: '0솔 (솔3)', sub: '3줄 개방' },
-          { tok: 'G#3', ko: '1솔#',      sub: '3줄 1프렛' },
-          { tok: 'A3',  ko: '2라 (라3)', sub: '3줄 2프렛' }
+          { tok: 'B3',  ko: '시3', sub: '2줄 개방' },
+          { tok: 'C4',  ko: '도4', sub: '2줄 1프렛' },
+          { tok: 'D4',  ko: '레4', sub: '2줄 3프렛' },
+          { tok: 'G3',  ko: '솔3', sub: '3줄 개방' },
+          { tok: 'G#3', ko: '솔#3', sub: '3줄 1프렛' },
+          { tok: 'A3',  ko: '라3', sub: '3줄 2프렛' }
         ]
       },
       {
         tag: '4~6번줄 (저음)',
         items: [
-          { tok: 'D3',  ko: '0레 (레3)', sub: '4줄 개방' },
-          { tok: 'E3',  ko: '2미 (미3)', sub: '4줄 2프렛' },
-          { tok: 'F3',  ko: '3파 (파3)', sub: '4줄 3프렛' },
-          { tok: 'F#3', ko: '4파#',      sub: '4줄 4프렛' },
-          { tok: 'A2',  ko: '0라 (라2)', sub: '5줄 개방' },
-          { tok: 'B2',  ko: '2시 (시2)', sub: '5줄 2프렛' },
-          { tok: 'C3',  ko: '3도 (도3)', sub: '5줄 3프렛' },
-          { tok: 'E2',  ko: '0미 (미2)', sub: '6줄 개방' },
-          { tok: 'F2',  ko: '1파 (파2)', sub: '6줄 1프렛' },
-          { tok: 'G2',  ko: '3솔 (솔2)', sub: '6줄 3프렛' }
+          { tok: 'D3',  ko: '레3', sub: '4줄 개방' },
+          { tok: 'E3',  ko: '미3', sub: '4줄 2프렛' },
+          { tok: 'F3',  ko: '파3', sub: '4줄 3프렛' },
+          { tok: 'F#3', ko: '파#3', sub: '4줄 4프렛' },
+          { tok: 'A2',  ko: '라2', sub: '5줄 개방' },
+          { tok: 'B2',  ko: '시2', sub: '5줄 2프렛' },
+          { tok: 'C3',  ko: '도3', sub: '5줄 3프렛' },
+          { tok: 'E2',  ko: '미2', sub: '6줄 개방' },
+          { tok: 'F2',  ko: '파2', sub: '6줄 1프렛' },
+          { tok: 'G2',  ko: '솔2', sub: '6줄 3프렛' }
         ]
       }
     ],
@@ -46,40 +46,40 @@ function initEditor(){
       {
         tag: '가온~고음 (도4~)',
         items: [
-          { tok: 'C4',  ko: '도 (1도)',  sub: '2줄 1프렛 (단축1)' },
-          { tok: 'D4',  ko: '레 (3레)',  sub: '2줄 3프렛 (단축2)' },
-          { tok: 'E4',  ko: '미 (0미)',  sub: '1줄 개방 (단축3)' },
-          { tok: 'F4',  ko: '파 (1파)',  sub: '1줄 1프렛 (단축4)' },
-          { tok: 'F#4', ko: '파# (2파#)',sub: '1줄 2프렛' },
-          { tok: 'G4',  ko: '솔 (3솔)',  sub: '1줄 3프렛 (단축5)' },
+          { tok: 'C4',  ko: '도4',  sub: '2줄 1프렛 (단축1)' },
+          { tok: 'D4',  ko: '레4',  sub: '2줄 3프렛 (단축2)' },
+          { tok: 'E4',  ko: '미4',  sub: '1줄 개방 (단축3)' },
+          { tok: 'F4',  ko: '파4',  sub: '1줄 1프렛 (단축4)' },
+          { tok: 'F#4', ko: '파#4', sub: '1줄 2프렛' },
+          { tok: 'G4',  ko: '솔4',  sub: '1줄 3프렛 (단축5)' },
           { tok: 'A4',  ko: '라4',       sub: '1줄 5프렛' },
           { tok: 'B4',  ko: '시4',       sub: '1줄 7프렛' },
-          { tok: 'C5',  ko: '높은도',    sub: '1줄 8프렛 (단축8)' },
+          { tok: 'C5',  ko: '도5',    sub: '1줄 8프렛 (단축8)' },
           { tok: '-',   ko: '쉼/유지(-)',sub: 'Space / 0' }
         ]
       },
       {
         tag: '중저음 (도3~시3)',
         items: [
-          { tok: 'C3',  ko: '낮은도',    sub: '5줄 3프렛' },
-          { tok: 'D3',  ko: '낮은레',    sub: '4줄 개방' },
-          { tok: 'E3',  ko: '낮은미',    sub: '4줄 2프렛' },
-          { tok: 'F3',  ko: '낮은파',    sub: '4줄 3프렛' },
-          { tok: 'F#3', ko: '낮은파#',   sub: '4줄 4프렛' },
-          { tok: 'G3',  ko: '솔3 (0솔)', sub: '3줄 개방' },
-          { tok: 'G#3', ko: '솔#3(1솔#)',sub: '3줄 1프렛' },
-          { tok: 'A3',  ko: '라3 (2라)', sub: '3줄 2프렛 (단축6)' },
-          { tok: 'B3',  ko: '시3 (0시)', sub: '2줄 개방 (단축7)' }
+          { tok: 'C3',  ko: '도3',  sub: '5줄 3프렛' },
+          { tok: 'D3',  ko: '레3',  sub: '4줄 개방' },
+          { tok: 'E3',  ko: '미3',  sub: '4줄 2프렛' },
+          { tok: 'F3',  ko: '파3',  sub: '4줄 3프렛' },
+          { tok: 'F#3', ko: '파#3', sub: '4줄 4프렛' },
+          { tok: 'G3',  ko: '솔3',  sub: '3줄 개방' },
+          { tok: 'G#3', ko: '솔#3',sub: '3줄 1프렛' },
+          { tok: 'A3',  ko: '라3',  sub: '3줄 2프렛 (단축6)' },
+          { tok: 'B3',  ko: '시3',  sub: '2줄 개방 (단축7)' }
         ]
       },
       {
         tag: '베이스 (미2~시2)',
         items: [
-          { tok: 'E2',  ko: '6줄 미',    sub: '6줄 개방' },
-          { tok: 'F2',  ko: '6줄 파',    sub: '6줄 1프렛' },
-          { tok: 'G2',  ko: '6줄 솔',    sub: '6줄 3프렛' },
-          { tok: 'A2',  ko: '5줄 라',    sub: '5줄 개방' },
-          { tok: 'B2',  ko: '5줄 시',    sub: '5줄 2프렛' }
+          { tok: 'E2',  ko: '미2', sub: '6줄 개방' },
+          { tok: 'F2',  ko: '파2', sub: '6줄 1프렛' },
+          { tok: 'G2',  ko: '솔2', sub: '6줄 3프렛' },
+          { tok: 'A2',  ko: '라2', sub: '5줄 개방' },
+          { tok: 'B2',  ko: '시2', sub: '5줄 2프렛' }
         ]
       }
     ]
@@ -285,9 +285,12 @@ function initEditor(){
         var cell = document.createElement('div');
         cell.className = 've-cell' + (veState.selBar === mIdx && veState.selBeat === bIdx ? ' selected' : '');
         var koLabel = inf ? ((inf.pos && inf.pos.lh != null ? inf.pos.lh : '') + inf.ko) : '-';
-        function noteLabel(note){
+        function noteLabel(note, sourceToken){
           if (!note) return '-';
-          if (note.chordNotes && note.chordNotes.length >= 2) return note.chordNotes.map(function(component){ return component.ko; }).join('+');
+          if (note.chordNotes && note.chordNotes.length >= 2) return note.chordNotes.map(function(component, componentIndex){
+            var explicitLH = getExplicitLeftHand(sourceToken, componentIndex);
+            return (explicitLH == null ? '' : explicitLH) + component.ko;
+          }).join('+');
           return (note.pos && note.pos.lh != null ? note.pos.lh : '') + note.ko;
         }
         var artBadge = '';
@@ -300,7 +303,7 @@ function initEditor(){
           var subs = tok.split('/');
           var subKo = subs.map(function(stk){
             var sn = parseNoteToken(stk, bIdx);
-            return sn ? noteLabel(sn) : stk;
+            return sn ? noteLabel(sn, stk) : stk;
           }).join('/');
           var subLabel = document.createElement('b');
           subLabel.textContent = subKo;
@@ -312,7 +315,7 @@ function initEditor(){
           cell.appendChild(subCount);
         } else if (inf && inf.chordNotes && inf.chordNotes.length >= 2){
           var chordLabel = inf.chordNotes.length === 2 ? '겹음' : '화음';
-          cell.innerHTML = '<b>' + inf.chordNotes.map(function(c){ return c.ko; }).join('+') + '</b><small style="color:var(--muted);font-weight:700">' + chordLabel + artBadge + '</small>';
+          cell.innerHTML = '<b>' + noteLabel(inf, tok) + '</b><small style="color:var(--muted);font-weight:700">' + chordLabel + artBadge + '</small>';
         } else {
           cell.innerHTML = '<b>' + koLabel + '</b><small>' + (inf && inf.pos ? (inf.pos.str + '줄' + inf.pos.fret) : '쉼/유지') + artBadge + '</small>';
         }

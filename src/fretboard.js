@@ -116,15 +116,14 @@ function initFretboard(){
     }
 
     var lhNames = { 0: '0 (개방현)', 1: '1번 (검지)', 2: '2번 (중지)', 3: '3번 (약지)', 4: '4번 (소지)' };
-    var rhNames = { p: 'p (엄지 - 저음줄)', i: 'i (검지)', m: 'm (중지)', a: 'a (약지)' };
 
     // 3. 현재 박자 목표 악보 음 표시 (초록 마커)
     if (targetNote && targetNote.midi){
       var info = midiInfo(targetNote.midi);
       var str = targetNote.str || (info.pos && info.pos.str);
       var fret = targetNote.fret != null ? targetNote.fret : (info.pos && info.pos.fret);
-      var lh = targetNote.lh != null ? targetNote.lh : (info.pos && info.pos.lh);
-      var rh = targetNote.rh || (info.pos && info.pos.rh) || 'i';
+      var sourceToken = targetNote.tok || targetNote.customTok || targetNote.en;
+      var lh = getExplicitLeftHand(sourceToken);
       var artic = targetNote.articulation;
       var articTag = artic === 'apoyando'
         ? (' · 아포얀도(눌러치기' + (targetNote.explicitArticulation ? '·!' : '·자동') + ')')
@@ -138,27 +137,31 @@ function initFretboard(){
       if (targetNote.chordNotes && targetNote.chordNotes.length >= 2){
         var noteNames = targetNote.chordNotes.map(function(c){ return c.str + '줄 ' + c.ko + (c.fret === 0 ? '(개방)' : '(' + c.fret + '프)'); }).join(' + ');
         var noteHeading = targetNote.chordNotes.length === 2 ? '겹음: ' : (chordName ? cleanChordToken(chordName) + ' 화음: ' : '화음: ');
-        $('#guideNoteTxt').textContent = noteHeading + noteNames + capoTag;
-        var lhStrs = targetNote.chordNotes.map(function(c){ return c.str + '줄 ' + (c.fret === 0 ? '0' : c.lh + '번'); }).join(' + ');
+        $('#guideNoteTxt').textContent = noteHeading + noteNames + capoTag + articTag;
+        var lhStrs = targetNote.chordNotes.map(function(c, componentIndex){
+          var explicitLH = getExplicitLeftHand(sourceToken, componentIndex);
+          return c.str + '줄 ' + (explicitLH == null ? '미지정' : (explicitLH === 0 ? '0' : explicitLH + '번'));
+        }).join(' + ');
         $('#guideLhTxt').textContent = '왼손 운지: ' + lhStrs;
-        $('#guideRhTxt').textContent = targetNote.chordNotes.length === 2 ? '동시 탄현' + articTag : '상행 롤 아르페지오';
+        $('#guideRhTxt').textContent = '-';
       } else {
-        $('#guideNoteTxt').textContent = info.en + ' (' + info.ko + ') · ' + str + '번줄 ' + (fret === 0 ? '개방현' : fret + '프렛') + capoTag;
-        $('#guideLhTxt').textContent = lhNames[lh] || (lh + '번 손가락');
-        $('#guideRhTxt').textContent = (rhNames[rh] || rh) + articTag;
+        $('#guideNoteTxt').textContent = info.en + ' (' + info.ko + ') · ' + str + '번줄 ' + (fret === 0 ? '개방현' : fret + '프렛') + capoTag + articTag;
+        $('#guideLhTxt').textContent = lh == null ? '미지정' : (lhNames[lh] || (lh + '번 손가락'));
+        $('#guideRhTxt').textContent = '-';
       }
 
       var notesToHighlight = (targetNote.chordNotes && targetNote.chordNotes.length >= 2)
         ? targetNote.chordNotes
         : [{ str: str, fret: fret, lh: lh, ko: info.ko }];
 
-      notesToHighlight.forEach(function(nt){
+      notesToHighlight.forEach(function(nt, componentIndex){
+        var explicitLH = getExplicitLeftHand(sourceToken, targetNote.chordNotes && targetNote.chordNotes.length >= 2 ? componentIndex : undefined);
         if (nt.fret === 0){
           var openEl = $('#fretboard .fb-open[data-str="' + nt.str + '"]');
           if (openEl){
             openEl.style.color = '#62d491';
             openEl.style.fontWeight = '700';
-            openEl.textContent = (openEl.dataset.baseLabel || '') + '·' + nt.ko;
+            openEl.textContent = (openEl.dataset.baseLabel || '') + '·' + nt.ko + (explicitLH != null ? '(' + explicitLH + ')' : '');
           }
         } else if (nt.str && nt.fret > 0){
           var targetCell = $('#fretboard .fb-cell[data-str="' + nt.str + '"][data-fret="' + nt.fret + '"]');
@@ -166,7 +169,7 @@ function initFretboard(){
             targetCell.textContent = '';
             var tmk = document.createElement('span');
             tmk.className = 'fb-marker target-note';
-            tmk.textContent = nt.ko + (nt.lh ? '(' + nt.lh + ')' : '');
+            tmk.textContent = nt.ko + (explicitLH != null ? '(' + explicitLH + ')' : '');
             targetCell.appendChild(tmk);
           }
         }
@@ -174,7 +177,7 @@ function initFretboard(){
     } else if (ch){
       $('#guideNoteTxt').textContent = ch.name;
       $('#guideLhTxt').textContent = ch.desc;
-      $('#guideRhTxt').textContent = '아르페지오 또는 스트로크';
+      $('#guideRhTxt').textContent = '-';
     } else {
       $('#guideNoteTxt').textContent = '쉼표 / 유지 박자';
       $('#guideLhTxt').textContent = '이전 음 여운 유지 또는 쉼';
