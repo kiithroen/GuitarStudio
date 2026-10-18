@@ -263,13 +263,12 @@
           var parsedParts = parts.map(function(part){
             var parsed = parseNoteToken ? parseNoteToken(part,0) : null;
             return {tok:part,midi:parsed ? parsed.midi : null,
-              explicitDurationSlots:parsed ? parsed.explicitDurationSlots : null,
               str:parsed && parsed.pos ? parsed.pos.str : null,
               chordNotes:parsed && parsed.chordNotes ? parsed.chordNotes : null};
           });
           var first = parsedParts[0];
           return {tok:token,isSubdivided:parts.length > 1,subNotes:parts.length > 1 ? parsedParts : undefined,
-            midi:first && first.midi,explicitDurationSlots:first && first.explicitDurationSlots,
+            midi:first && first.midi,
             str:first && first.str,chordNotes:first && first.chordNotes};
         })};
       });

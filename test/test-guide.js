@@ -101,24 +101,23 @@ assert.deepEqual(Array.from(parsedMixedChordEvents, event => [event.note.midi, e
   [40, 'tirando', 0.62, 7, 0.4, 6], [71, 'apoyando', 1.16, 7, 0.4, 1]
 ], 'parsed mixed chord uses component articulations and keeps simultaneous timing and strings');
 
-const durationScore = parser.parseScore('[C] ~0E2@6:p*3+!4B4@1:a*1 B3@2:m*1 G3@3:i*1 r', 4);
+const durationScore = parser.parseScore('[C] ~0E2@6:p+!4B4@1:a - - r', 4);
 const durationBeat = durationScore.measures[0].beats[0];
 const durationEvents = context.getBeatGuideEvents(durationBeat, { startTime:0, slotDuration:0.5 });
 assert.deepEqual(Array.from(durationEvents, event => [event.note.midi,event.duration,event.articulation]), [
-  [40,1.5,'tirando'], [71,0.5,'apoyando']
-], 'annotated chord components use independent explicit note-off times');
+  [40,1.5,'tirando'], [71,1.5,'apoyando']
+], 'annotated chord components use their shared note-or-hold part duration');
 const resumedBeat = durationScore.measures[0].beats[1];
 const resumedMiddle = context.getBeatGuideEvents(resumedBeat, {
   startTime:0.5, slotDuration:0.5, measures:durationScore.measures, resumeHold:true
 });
 assert.deepEqual(Array.from(resumedMiddle, event => [event.note.midi,event.when,event.duration]), [
-  [59,0.5,0.5], [40,0.5,1.0]
-], 'middle resume restores only earlier notes still sounding at the selected beat position');
-assert.equal(resumedMiddle.some(event => event.note.midi === 71),false,'an expired chord member is not resumed');
+  [40,0.5,1.0], [71,0.5,1.0]
+], 'middle resume restores the entire held chord with one common remaining length');
 const clippedResume = context.getBeatGuideEvents(resumedBeat, {
   startTime:0.5, slotDuration:0.5, measures:durationScore.measures, resumeHold:true, maxDurationSlots:0.5
 });
-assert.equal(clippedResume.find(event => event.note.midi === 40).duration,0.25,'resume duration respects loop clipping');
+assert.ok(clippedResume.every(event => event.duration === 0.25),'resume duration respects loop clipping');
 const restResume = context.getBeatGuideEvents(durationScore.measures[0].beats[3], {
   startTime:1.5, slotDuration:0.5, measures:durationScore.measures, resumeHold:true
 });

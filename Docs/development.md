@@ -23,7 +23,7 @@ Guitar Studio는 번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱
 
 ## 데이터 흐름과 유지보수 계약
 
-`parseScore`와 `GuitarNotation.validateScore`가 텍스트 악보의 파싱·검증 기준이야. `GuitarRhythm.annotate`는 파싱된 마디에 칸 길이, 시작 위치, 음별 악보 길이와 유지 체인을 계산하고 `resolveHold`/`getSoundingNotes`는 연결된 원음이나 특정 시점에 악보상 살아 있는 음을 돌려줘. `guide.js`는 이 결과로 음별 `event.duration`을 가진 재생 이벤트를 만들고 `audio.js`에 예약해. 오디오 수명은 악보 길이와 분리돼: 구조화 가이드는 기존 KS 버퍼 감쇠 또는 classic 공통 자연 감쇠 프로파일을 사용하고, 재탄현·전체 쉼·정지·곡 교체·가이드 끄기·곡/loop 끝에서 직접음을 정리해. 이 관계의 SSOT는 `rhythm.js`의 음가/유지 계산, `guide.js`의 이벤트와 복원 경로, `audio.js`의 `naturalDecay` 및 강제 정리야. 관련 회귀 근거는 `test/test-rhythm.js`, `test/test-guide.js`, `test/test-audio.js`에 둬. 사용 문법은 [악보 입력 형식](score-format.md), 세부 오디오 계약은 [리듬·오디오 계약](beginner-rhythm.md)을 따라.
+`parseScore`와 `GuitarNotation.validateScore`가 텍스트 악보의 파싱·검증 기준이야. `GuitarRhythm.annotate`는 파싱된 마디에 part 공통 칸 길이, 시작 위치와 유지 체인을 계산하고 `resolveHold`/`getSoundingNotes`는 연결된 원음 또는 화음 전체와 남은 공통 길이를 돌려줘. `guide.js`는 이 결과로 part의 `durationUnits`에 따른 재생 이벤트를 만들고 `audio.js`에 예약해. 오디오 수명은 악보 길이와 분리돼: 구조화 가이드는 기존 KS 버퍼 감쇠 또는 classic 공통 자연 감쇠 프로파일을 사용하고, 재탄현·전체 쉼·정지·곡 교체·가이드 끄기·곡/loop 끝에서 직접음을 정리해. 이 관계의 SSOT는 `rhythm.js`의 음가/유지 계산, `guide.js`의 이벤트와 복원 경로, `audio.js`의 `naturalDecay` 및 강제 정리야. 관련 회귀 근거는 `test/test-rhythm.js`, `test/test-guide.js`, `test/test-audio.js`에 둬. 사용 문법은 [악보 입력 형식](score-format.md), 세부 오디오 계약은 [리듬·오디오 계약](beginner-rhythm.md)을 따라.
 
 `tok`와 원본 입력을 기준으로 파생 필드를 다시 계산해. IndexedDB에는 이미지·PDF 악보가, localStorage에는 앱 설정과 곡별 최근 연습 BPM·구간 이어가기 상태가 저장돼. 이전 구조화 악보 데이터베이스 레코드는 자동 삭제하지 않고 앱에서 노출하지 않아. 백업 포맷은 버전 1의 `customSongs` 키를 유지하며, 이 키는 이미지 전용 데이터를 담아. Google Sheets 연동은 읽기 전용이야. `soundingMidi`는 `src/parser.js`의 공통 카포 실음 변환 함수야.
 
@@ -31,7 +31,7 @@ Guitar Studio는 번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱
 
 완료된 작업은 모듈 분리와 공통 파서·카포 경로, 단위·스모크 테스트 추가, 초보 리듬 입력과 재생 계약 정리야. alphaTab 재생은 `codex/alphatab-player` 실험 브랜치에 남아 있고 main 앱은 기존 엔진을 사용해.
 
-2026-10-19 결정: `*N`은 악보에 적힌 음가를 보존하며 표시와 논리적 중간 위치 복원에 사용해. 음가 끝에서 소리를 끊지 않고, 구조화 가이드는 오디오의 자연 감쇠를 사용해. 같은 현 재탄현·전체 쉼·정지·곡 교체·가이드 끄기·곡/loop 끝은 강제 정리 경계야. 기존에는 첫 분할 길이를 화음 전체에 적용해 저음 음가가 유지되지 않았고, 음가 종료 note-off를 걸어 아르페지오 내성까지 잘리는 접근도 있었어. 새 엔진이나 독립 성부 scheduler 없이 기존 리듬·가이드·오디오 경로에서 음가와 자연 수명을 분리했어. resume는 기존 다음 박 예약의 `getSoundingNotes`로 악보상 유지 중인 음만 되살리며, 이미 끝난 자연 여운이나 리버브를 복원하지 않아.
+2026-10-19 결정: 음별 길이 접미사는 악보 음가와 자연 여운을 혼동시키고 자동 생성 입력을 복잡하게 해 제거했어. 기존 part 공통 길이와 자연 감쇠 경로를 사용하며, 독립 성부 scheduler나 별도 음가 입력 문법은 추가하지 않았어.
 
 ## 검증
 

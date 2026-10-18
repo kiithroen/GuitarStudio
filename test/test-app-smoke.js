@@ -239,7 +239,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=natural-ring-1')), 'every app script uses the natural-ring revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=simple-length-1')), 'every app script uses the simple-length revision');
   assert.doesNotMatch(html, /newTextSongBtn|editStructuredBtn|convertImgToScoreBtn|ocrModalFileInput|refImgDetails|refScoreImg|newSongModal|veBarsGrid/);
   for (const script of scripts){
     const source = fs.readFileSync(path.join(root, script), 'utf8');
@@ -272,15 +272,24 @@ async function main(){
     const romance = context.curSong;
     const romanceText = context.serializeScoreMeasures(romance.measures, '\n');
     const reparsedRomance = context.parseScore(romanceText, romance.beats);
-    assert.equal(reparsedRomance.errors.length, 0, 'note-duration source round-trips through the common parser');
+    assert.equal(reparsedRomance.errors.length, 0, 'simple beat and subdivision notation round-trips through the common parser');
+    assert.doesNotMatch(romanceText, /\*\d/, 'built-in score serialization has no per-note length syntax');
     const firstBeat = romance.measures[0].beats[0];
     const bass = firstBeat.subNotes[0].chordNotes.find(note => note.midi === 40);
     const melody = firstBeat.subNotes[0].chordNotes.find(note => note.midi === 71);
-    assert.equal(bass.explicitDurationSlots, romance.beats, 'Romance first bass keeps its written full-measure duration');
-    assert.equal(melody.explicitDurationSlots, 1, 'Romance first melody keeps its written one-slot duration');
+    const openingPart = firstBeat.subNotes[0];
+    assert.equal(Object.hasOwn(bass, 'explicitDurationSlots') || Object.hasOwn(bass, 'startUnits') || Object.hasOwn(bass, 'durationUnits'), false,
+      'Romance bass has no removed per-component duration metadata');
+    assert.equal(Object.hasOwn(melody, 'explicitDurationSlots') || Object.hasOwn(melody, 'startUnits') || Object.hasOwn(melody, 'durationUnits'), false,
+      'Romance melody has no removed per-component duration metadata');
+    assert.equal(openingPart.durationUnits, openingPart.slotUnits, 'Romance opening chord uses its shared subdivision duration');
     const roundTripBass = reparsedRomance.measures[0].beats[0].subNotes[0].chordNotes.find(note => note.midi === 40);
-    assert.equal(roundTripBass.explicitDurationSlots, bass.explicitDurationSlots, 'serialized score restores the explicit bass duration');
-    assert.equal(roundTripBass.durationUnits, bass.durationUnits, 'serialized score recomputes the actual bass duration');
+    assert.equal(Object.hasOwn(roundTripBass, 'durationUnits'), false, 'serialized score restores the bass without per-note duration metadata');
+    assert.equal(reparsedRomance.measures[0].beats[0].subNotes[0].durationUnits, openingPart.durationUnits,
+      'serialized score recomputes the shared chord duration from its subdivision');
+
+    const removedLengthSyntax = context.parseScore('[C] 0E2@6:p*3 - -', 3);
+    assert.ok(removedLengthSyntax.errors.length > 0, 'removed per-note length syntax is rejected instead of upgraded');
 
     const slotDuration = 60 / Number(romance.bpm);
     const previewCalls = [];
@@ -298,9 +307,10 @@ async function main(){
     context.updateActiveCursor(0, 0, true);
     const previewBass = previewCalls.find(event => event.midi === 40);
     const previewMelody = previewCalls.find(event => event.midi === 71);
-    assert.equal(previewBass.duration, bass.explicitDurationSlots * slotDuration, 'app preview schedules the explicit bass for its parsed slot count');
-    assert.equal(previewMelody.duration, melody.explicitDurationSlots * slotDuration, 'app preview keeps the simultaneous melody at its parsed slot count');
-    assert.equal(previewBass.when, previewMelody.when, 'independent chord durations preserve the shared attack');
+    const sharedDuration = openingPart.durationUnits / context.GuitarRhythm.UNITS_PER_SLOT * slotDuration;
+    assert.equal(previewBass.duration, sharedDuration, 'app preview schedules the bass for its shared chord subdivision duration');
+    assert.equal(previewMelody.duration, sharedDuration, 'app preview schedules the melody for the same shared chord duration');
+    assert.equal(previewBass.when, previewMelody.when, 'chord components preserve their shared attack');
     assert.deepEqual([previewBass.midi, previewBass.articulation, previewBass.str], [bass.midi, 'tirando', 6],
       'app preview keeps the written bass pitch, articulation, and string');
     assert.deepEqual([previewMelody.midi, previewMelody.articulation, previewMelody.str], [melody.midi, 'apoyando', 1],
@@ -310,11 +320,13 @@ async function main(){
     assert.equal(previewBass.options.exactDuration, undefined, 'structured app preview does not use the legacy exact-duration gate');
     assert.ok(Number.isFinite(previewBass.options.hardStopAt), 'structured app preview still carries its loop or song hard stop');
 
+    const openingPartSlots = openingPart.durationUnits / context.GuitarRhythm.UNITS_PER_SLOT;
+    const clipSlots = openingPartSlots / 2;
     const clipped = context.getBeatGuideEvents(firstBeat, {
-      startTime: 0, slotDuration, measures: romance.measures, maxDurationSlots: 1
+      startTime: 0, slotDuration, measures: romance.measures, maxDurationSlots: clipSlots
     });
-    assert.equal(clipped.find(event => event.note.midi === 40).duration, slotDuration,
-      'guide event respects a one-slot loop boundary for the longer bass');
+    assert.equal(clipped.find(event => event.note.midi === 40).duration, clipSlots * slotDuration,
+      'guide event clips its shared chord duration at a shorter loop boundary');
   } finally {
     context.curSong = savedPractice.song;
     context.curMeasureIdx = savedPractice.measure;

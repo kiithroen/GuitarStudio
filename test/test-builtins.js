@@ -20,6 +20,15 @@ assert.equal(songById.has('builtin-lv3-arirang'), false, 'Arirang is absent from
 
 for (const song of songs){
   assert.ok(Array.isArray(song.lines) && song.lines.length > 0, `${song.id} has score lines`);
+  for (const line of song.lines){
+    const scoreText = line.split('|', 1)[0].replace(/^\s*\[[^\]]*\]\s*/, '');
+    for (const beat of parser.tokenizeMeasureBeats(scoreText)) for (const part of beat.split('/')){
+      if (/^[rR-]$/.test(part)) continue;
+      for (const noteToken of part.split('+')){
+        assert.doesNotMatch(noteToken, /\*(?:\d|\.)/, `${song.id} does not use the removed per-note length suffix: ${noteToken}`);
+      }
+    }
+  }
   const parsed = parser.parseScore(song.lines, song.beats);
   assert.deepEqual(parsed.errors, [], `${song.id} parses without score errors`);
   assert.match(song.badge, /앱 (운지|연습용) 제안/, `${song.id} labels the app's fingering as a proposal`);
@@ -29,7 +38,7 @@ for (const song of songs){
     for (const beat of parser.tokenizeMeasureBeats(scoreText)) for (const part of beat.split('/')){
       if (/^[rR-]$/.test(part)) continue;
       for (const noteToken of part.split('+')){
-        assert.match(noteToken, /^[!~]?[0-4].+@[1-6]:[pima](?:\*(?:[1-9]\d*(?:\.\d+)?|0?\.\d+))?$/, `${song.id} attack states articulation, LH, string, RH, and optional duration data: ${noteToken}`);
+        assert.match(noteToken, /^[!~]?[0-4].+@[1-6]:[pima]$/, `${song.id} attack states articulation, LH, string, and RH: ${noteToken}`);
         const parsed = parser.parseNoteToken(noteToken, 0);
         assert.ok(parsed && parsed.pos && parsed.pos.lh != null, `${song.id} explicit note metadata parses: ${noteToken}`);
         assert.equal(parsed.pos.str, Number(noteToken.match(/@([1-6])/)[1]), `${song.id} string override matches parser placement: ${noteToken}`);
@@ -95,7 +104,7 @@ assert.match(lv6.lines[6], /~1E4@2:m\/~1C4@3:i/, 'Lv.6 Am inner voice uses the s
 assert.match(lv6.lines[8], /~1F#4@2:m\/~3D#4@3:i/, 'Lv.6 B7 inner voice has the specified bar and string placement');
 assert.match(lv6.lines[9], /!4D#5@1:a/, 'Lv.6 D#5 uses string one fret eleven');
 assert.match(lv6.lines[13], /~1D#3@4:p/, 'Lv.6 m14 uses the specified D-sharp bass');
-assert.match(lv6.lines[14], /~2E3@4:p\*\d+(?:\.\d+)?\+!0E4@1:a\*\d+(?:\.\d+)?\/~0B3@2:m\/~0G3@3:i ~2B2@5:p\*\d+(?:\.\d+)?\+!0E4@1:a\*\d+(?:\.\d+)?\/~0B3@2:m\/~0G3@3:i ~3G2@6:p\*\d+(?:\.\d+)?\+!0E4@1:a\*\d+(?:\.\d+)?/, 'Lv.6 m15 changes bass to E3, B2, and G2 with explicit bass and melody durations');
+assert.match(lv6.lines[14], /~2E3@4:p\+!0E4@1:a\/~0B3@2:m\/~0G3@3:i ~2B2@5:p\+!0E4@1:a\/~0B3@2:m\/~0G3@3:i ~3G2@6:p\+!0E4@1:a/, 'Lv.6 m15 changes bass to E3, B2, and G2 with the existing melody and inner subdivision');
 assert.match(lv6.lines[15], /~0E2@6:p\+!0E4@1:a - r/, 'Lv.6 m16 has no arpeggio, then holds two slots and rests');
 const parsedLv6 = parser.parseScore(lv6.lines, lv6.beats);
 for (let measureIndex = 0; measureIndex < 15; measureIndex++){
@@ -106,45 +115,25 @@ for (let measureIndex = 0; measureIndex < 15; measureIndex++){
 const lv5Parsed = parser.parseScore(lv5.lines, lv5.beats);
 const lv5Rhythm = rhythm.annotate(lv5Parsed.measures, lv5.beats);
 const lv6Rhythm = rhythm.annotate(parsedLv6.measures, lv6.beats);
-function explicitSlotsFromSource(note){
-  const token = note.tok || note.customTok || '';
-  const match = token.match(/\*(\d+(?:\.\d+)?)$/);
-  return match ? Number(match[1]) : null;
-}
-function firstAttackChord(parsed, measureIndex){
-  const beat = parsed.measures[measureIndex].beats[0];
-  return beat.subNotes ? beat.subNotes[0] : beat;
-}
 for (let measureIndex = 0; measureIndex < 14; measureIndex++){
-  const lv5First = firstAttackChord(lv5Parsed, measureIndex);
-  const lv5Bass = lv5First.chordNotes.find(note => note.str >= 4);
-  const lv5Melody = lv5First.chordNotes.find(note => note.str === 1);
-  const lv5ExpectedBassSlots = lv5.beats;
-  const lv5ExpectedBassUnits = explicitSlotsFromSource(lv5Bass) * rhythm.UNITS_PER_SLOT;
-  assert.equal(explicitSlotsFromSource(lv5Bass), lv5ExpectedBassSlots, `Lv.5 m${measureIndex + 1} bass source explicitly specifies one bar's slots`);
-  assert.equal(lv5Bass.durationUnits, lv5ExpectedBassUnits, `Lv.5 m${measureIndex + 1} bass sustains for its source duration`);
-  assert.equal(explicitSlotsFromSource(lv5Melody), null, `Lv.5 m${measureIndex + 1} melody keeps its existing one-slot notation`);
-  assert.equal(lv5Melody.durationUnits, lv5First.slotUnits, `Lv.5 m${measureIndex + 1} melody retains its ordinary slot duration`);
-
-  const lv6Beat = parsedLv6.measures[measureIndex].beats[0];
-  const lv6First = lv6Beat.subNotes[0];
-  const lv6Bass = lv6First.chordNotes.find(note => note.str >= 4);
-  const lv6Melody = lv6First.chordNotes.find(note => note.str === 1);
-  const lv6ExpectedBassSlots = lv6.beats;
-  const lv6ExpectedOneSlot = lv6First.slotUnits * lv6Beat.subNotes.length / rhythm.UNITS_PER_SLOT;
-  const lv6ExpectedBassUnits = explicitSlotsFromSource(lv6Bass) * rhythm.UNITS_PER_SLOT;
-  const lv6ExpectedMelodyUnits = explicitSlotsFromSource(lv6Melody) * rhythm.UNITS_PER_SLOT;
-  assert.equal(explicitSlotsFromSource(lv6Bass), lv6ExpectedBassSlots, `Lv.6 m${measureIndex + 1} bass source explicitly specifies one bar's slots`);
-  assert.equal(explicitSlotsFromSource(lv6Melody), lv6ExpectedOneSlot, `Lv.6 m${measureIndex + 1} first melody source explicitly specifies one grid slot`);
-  assert.equal(lv6Bass.durationUnits, lv6ExpectedBassUnits, `Lv.6 m${measureIndex + 1} bass event duration follows its explicit source length`);
-  assert.equal(lv6Melody.durationUnits, lv6ExpectedMelodyUnits, `Lv.6 m${measureIndex + 1} melody event duration follows its explicit source length`);
+  for (const [song, parsed] of [[lv5, lv5Parsed],[lv6, parsedLv6]]){
+    const measure = parsed.measures[measureIndex];
+    for (const beat of measure.beats){
+      for (const part of beat.subNotes || [beat]){
+        if (part.kind !== 'note') continue;
+        assert.equal(part.durationUnits, part.slotUnits, `${song.id} m${measureIndex + 1} uses the ordinary part duration`);
+        for (const note of part.chordNotes || []){
+          assert.equal(note.durationUnits, undefined, `${song.id} m${measureIndex + 1} does not carry component-specific duration data`);
+        }
+      }
+    }
+  }
 }
-for (const lv6Beat of parsedLv6.measures[14].beats){
-  const parts = lv6Beat.subNotes || [lv6Beat];
-  const oneSlotSlots = parts[0].slotUnits * parts.length / rhythm.UNITS_PER_SLOT;
-  for (const note of parts[0].chordNotes){
-    if (note.rh === 'p' || note.rh === 'a') assert.equal(explicitSlotsFromSource(note), oneSlotSlots, `Lv.6 m15 ${note.en} ${note.rh} part explicitly uses one grid slot`);
-    else assert.equal(explicitSlotsFromSource(note), null, `Lv.6 m15 inner ${note.en} retains the existing subdivision duration`);
+for (const beat of parsedLv6.measures[14].beats){
+  for (const part of beat.subNotes || [beat]){
+    if (part.kind !== 'note') continue;
+    assert.equal(part.durationUnits, part.slotUnits, `Lv.6 m15 uses the ordinary subdivision duration`);
+    for (const note of part.chordNotes || []) assert.equal(note.durationUnits, undefined, `Lv.6 m15 ${note.en} does not carry component-specific duration data`);
   }
 }
 assert.ok(lv5Rhythm.events.length && lv6Rhythm.events.length, 'Romance duration checks run through parser-to-rhythm annotation');
@@ -197,13 +186,18 @@ for (const [song, maxMeasure, bassBeats] of [[lv5,14,1],[lv6,14,1]]){
 const fixtureSlotDuration = 0.6;
 const firstMeasureEvents = parsedLv6.measures[0].beats.flatMap(beat => guideContext.getBeatGuideEvents(beat, { slotDuration:fixtureSlotDuration }));
 assert.deepEqual(Array.from(firstMeasureEvents, event => event.gain), [0.62,1.16,0.62,0.62,1.16,0.62,0.62,1.16,0.62,0.62], 'Lv.6 m1 guide events contain one bass, three melodies, and six inner notes with independent articulation gains');
-const firstLv6Chord = parsedLv6.measures[0].beats[0].subNotes[0].chordNotes;
-const firstLv6Bass = firstLv6Chord.find(note => note.str >= 4);
-const firstLv6Melody = firstLv6Chord.find(note => note.str === 1);
-const firstLv6BassEvent = firstMeasureEvents.find(event => event.note.midi === firstLv6Bass.midi);
-const firstLv6MelodyEvent = firstMeasureEvents.find(event => event.note.midi === firstLv6Melody.midi);
-assert.ok(Math.abs(firstLv6BassEvent.duration - explicitSlotsFromSource(firstLv6Bass) * fixtureSlotDuration) < 1e-9, 'Lv.6 E2 guide duration matches its raw source duration and fixture slot duration');
-assert.ok(Math.abs(firstLv6MelodyEvent.duration - explicitSlotsFromSource(firstLv6Melody) * fixtureSlotDuration) < 1e-9, 'Lv.6 B4 guide duration matches its raw source duration and fixture slot duration');
+for (const beat of parsedLv6.measures[0].beats){
+  const events = guideContext.getBeatGuideEvents(beat, { slotDuration:fixtureSlotDuration });
+  for (const part of beat.subNotes || [beat]){
+    if (part.kind !== 'note') continue;
+    const expectedDuration = part.durationUnits / rhythm.UNITS_PER_SLOT * fixtureSlotDuration;
+    for (const note of part.chordNotes || [part]){
+      const event = events.find(candidate => candidate.note === note);
+      assert.ok(event, `Lv.6 m1 ${note.en} guide event exists`);
+      assert.ok(Math.abs(event.duration - expectedDuration) < 1e-9, `Lv.6 m1 ${note.en} guide duration follows its source part duration`);
+    }
+  }
+}
 
 const brahms = songById.get('builtin-lv3-brahms');
 assert.match(brahms.lines[15], /1F4@1:[im]\/3G4@1:[im]\/1F4@1:[im]\/-/, 'Brahms four-part subdivision retains its final hold');

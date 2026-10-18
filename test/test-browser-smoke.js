@@ -262,8 +262,8 @@ async function testConcertHallOfflineRender(client){
       window.trackedGuideVoices=[]; window.stringVoices={}; ensureAudioCtx();
       dryGainNode.gain.value=0.88; wetGainNode.gain.value=0;
       if(naturalDecay){
-        var note=Object.assign({},event.note,{durationUnits:Math.round(duration/slotDuration*GuitarRhythm.UNITS_PER_SLOT)});
-        var part={kind:'note',tok:note.tok,slotUnits:GuitarRhythm.UNITS_PER_SLOT,durationUnits:note.durationUnits,chordNotes:[note]};
+        var durationUnits=Math.round(duration/slotDuration*GuitarRhythm.UNITS_PER_SLOT);
+        var part={kind:'note',tok:event.note.tok,slotUnits:GuitarRhythm.UNITS_PER_SLOT,durationUnits:durationUnits,chordNotes:[event.note]};
         scheduleBeatGuide({kind:'note',subNotes:[part]},{startTime:startTime,slotDuration:slotDuration,measures:[],maxDurationSlots:slotsPerBar});
       } else playGuitarNote(event.note.midi,duration,startTime,event.gain,event.articulation,event.str,{exactDuration:true,hardStopAt:startTime+slotsPerBar*slotDuration});
       if(windowStart==null) windowStart=Math.max.apply(null,sourceStops)+0.02;
@@ -291,12 +291,12 @@ async function testConcertHallOfflineRender(client){
       async function renderScore(rawScore, loopSlots){
         var parsed=parseScore(rawScore,3);
         if(parsed.errors.length) throw new Error('natural boundary fixture parse failed: '+JSON.stringify(parsed.errors));
-        var slotDuration=0.6,rate=48000,ctx=new OfflineAudioContext(2,rate*3,rate),sourceStops=[];
+        var slotDuration=60/Number(100),rate=48000,ctx=new OfflineAudioContext(2,rate*3,rate),sourceStops=[],sourceStopEvents=[],sourceId=0;
         ctx.resume=function(){return Promise.resolve();};
         var originalCreate=ctx.createBufferSource.bind(ctx);
-        ctx.createBufferSource=function(){var source=originalCreate(),stop=source.stop.bind(source);source.stop=function(time){sourceStops.push(time);return stop(time);};return source;};
+        ctx.createBufferSource=function(){var source=originalCreate(),stop=source.stop.bind(source),id=++sourceId;source.stop=function(time){sourceStops.push(time);sourceStopEvents.push({id:id,kind:'buffer',time:time});return stop(time);};return source;};
         var originalOscillator=ctx.createOscillator.bind(ctx);
-        ctx.createOscillator=function(){var source=originalOscillator(),stop=source.stop.bind(source);source.stop=function(time){sourceStops.push(time);return stop(time);};return source;};
+        ctx.createOscillator=function(){var source=originalOscillator(),stop=source.stop.bind(source),id=++sourceId;source.stop=function(time){sourceStops.push(time);sourceStopEvents.push({id:id,kind:'oscillator',time:time});return stop(time);};return source;};
         window.actx=ctx;window.outGain=null;window.clickBus=null;window.guitarBus=null;window.dryGainNode=null;window.wetGainNode=null;
         window.reverbNode=null;window.bodyModes=[];window.trackedGuideVoices=[];window.stringVoices={};
         appState.acousticFx=false;appState.bodyAmount=0;appState.sympAmount=0;appState.synthEngine=engine;ensureAudioCtx();
@@ -309,11 +309,12 @@ async function testConcertHallOfflineRender(client){
         var reattackTime=startTime+slotDuration,restTime=startTime+2*slotDuration,restWindowStart=restTime+0.04,restWindowEnd=restTime+0.2;
         var buffer=await ctx.startRendering(),left=buffer.getChannelData(0),right=buffer.getChannelData(1),peak=0,sum=0,count=0;
         for(var i=0;i<buffer.length;i++){peak=Math.max(peak,Math.abs(left[i]),Math.abs(right[i]));if(i>=Math.floor(restWindowStart*rate)&&i<Math.floor(restWindowEnd*rate)){var sample=(left[i]+right[i])*0.5;sum+=sample*sample;count++;}}
-        return {sourceStops:sourceStops,afterRestRms:count?Math.sqrt(sum/count):0,peak:peak,slotDuration:slotDuration,startTime:startTime,
+        var finalSourceStops=Object.values(sourceStopEvents.reduce(function(byId,event){byId[event.id]=event;return byId;},{}));
+        return {sourceStops:sourceStops,sourceStopEvents:sourceStopEvents,finalSourceStops:finalSourceStops,afterRestRms:count?Math.sqrt(sum/count):0,peak:peak,slotDuration:slotDuration,startTime:startTime,
           reattackTime:loopSlots==null?reattackTime:null,restTime:loopSlots==null?restTime:null,restWindowStart:restWindowStart,restWindowEnd:restWindowEnd,
           loopStopAt:loopSlots==null?null:startTime+loopSlots*slotDuration};
       }
-      return {engine:engine,restAndReattack:await renderScore('[C] 0E2@6:p*3 2E2@6:p*1 r',null),loopClip:await renderScore('[C] 0E2@6:p*3 - -',0.5)};
+      return {engine:engine,restAndReattack:await renderScore('[C] 0E2@6:p 2F#2@6:p r',null),loopClip:await renderScore('[C] 0E2@6:p - -',0.5)};
     }
     async function renderChord(engine, chord, wet, amount){
       amount = amount == null ? 1 : amount;
@@ -365,51 +366,56 @@ async function testConcertHallOfflineRender(client){
         lv6Renders.push(await renderRomance(engine,hallMode,lv6));
       }
       var lv6BassEvent=lv6Events.find(function(event){return event.note.midi===40;});
-      var lv6BassPart=lv6.measures[0].beats[0].subNotes[0].chordNotes.find(function(note){return note.midi===40;});
-      if(!lv6BassPart || !Number.isFinite(Number(lv6BassPart.explicitDurationSlots))) throw new Error('Lv.6 first bass has no parsed explicit duration for the offline comparison');
-      var lv6OpeningChord=lv6.measures[0].beats[0].subNotes[0].chordNotes;
-      var lv6MelodyPart=lv6OpeningChord.find(function(note){return note.midi===71;});
+      var lv6BassPart=lv6.measures[0].beats[0].subNotes[0];
+      var lv6OpeningChord=lv6BassPart.chordNotes;
+      var lv6BassNote=lv6OpeningChord.find(function(note){return note.midi===40;});
       var lv6InnerParts=[lv6.measures[0].beats[0].subNotes[1],lv6.measures[0].beats[0].subNotes[2]];
-      var lv6DefaultBassDuration=lv6SlotDuration/lv6.measures[0].beats[0].subNotes.length;
-      var lv6LongBassDuration=lv6BassEvent.duration;
+      var lv6BassNominalDuration=Number(lv6BassPart.durationUnits)/GuitarRhythm.UNITS_PER_SLOT*lv6SlotDuration;
       var lv6BassStart=lv6BassEvent.when;
-      if(Math.abs(lv6LongBassDuration-Number(lv6BassPart.explicitDurationSlots)*lv6SlotDuration)>1e-9) throw new Error('Lv.6 bass guide event duration does not match its parsed explicit source duration');
-      var lv6BassWindowEnd=lv6BassStart+lv6LongBassDuration-0.05;
+      var lv6BassNextStart=Infinity;
+      lv6.measures.forEach(function(measure){measure.beats.forEach(function(beat){(beat.subNotes||[beat]).forEach(function(part){
+        (part.chordNotes&&part.chordNotes.length?part.chordNotes:[part]).forEach(function(note){
+          if(note.str===lv6BassNote.str&&Number.isFinite(Number(part.startUnits))&&part.startUnits>lv6BassPart.startUnits) lv6BassNextStart=Math.min(lv6BassNextStart,part.startUnits);
+        });
+      });});});
+      if(!Number.isFinite(lv6BassNextStart)) throw new Error('Lv.6 opening bass has no later same-string attack for its natural-tail comparison');
+      var lv6BassWindowEnd=lv6BassStart+(lv6BassNextStart-lv6BassPart.startUnits)/GuitarRhythm.UNITS_PER_SLOT*lv6SlotDuration-0.05;
       var lv6BassComparison=[];
       for(var bassEngine of ['ks','classic']){
-        var gatedShort=await renderIsolatedPart(bassEngine,lv6BassEvent,lv6DefaultBassDuration,lv6SlotDuration,Number(lv6.beats),lv6BassStart,null,lv6BassWindowEnd,false);
-        var naturalShort=await renderIsolatedPart(bassEngine,lv6BassEvent,lv6DefaultBassDuration,lv6SlotDuration,Number(lv6.beats),lv6BassStart,gatedShort.windowStart,lv6BassWindowEnd,true);
-        var naturalLong=await renderIsolatedPart(bassEngine,lv6BassEvent,lv6LongBassDuration,lv6SlotDuration,Number(lv6.beats),lv6BassStart,gatedShort.windowStart,lv6BassWindowEnd,true);
-        lv6BassComparison.push({engine:bassEngine,explicitDurationSlots:Number(lv6BassPart.explicitDurationSlots),
-          defaultDuration:lv6DefaultBassDuration,longDuration:lv6LongBassDuration,windowStart:gatedShort.windowStart,windowEnd:lv6BassWindowEnd,
-          gatedShortWindowRms:gatedShort.windowRms,naturalShortWindowRms:naturalShort.windowRms,naturalLongWindowRms:naturalLong.windowRms,
-          gatedShortSourceStops:gatedShort.sourceStops,naturalShortSourceStops:naturalShort.sourceStops,naturalLongSourceStops:naturalLong.sourceStops,
-          naturalShortPeak:naturalShort.peak,naturalLongPeak:naturalLong.peak,
-          gatedShortWavBase64:gatedShort.wavBase64,naturalShortWavBase64:naturalShort.wavBase64,naturalLongWavBase64:naturalLong.wavBase64});
+        var gated=await renderIsolatedPart(bassEngine,lv6BassEvent,lv6BassNominalDuration,lv6SlotDuration,Number(lv6.beats),lv6BassStart,null,lv6BassWindowEnd,false);
+        var natural=await renderIsolatedPart(bassEngine,lv6BassEvent,lv6BassNominalDuration,lv6SlotDuration,Number(lv6.beats),lv6BassStart,gated.windowStart,lv6BassWindowEnd,true);
+        lv6BassComparison.push({engine:bassEngine,nominalDuration:lv6BassNominalDuration,sourceDurationUnits:Number(lv6BassPart.durationUnits),
+          sourceStartUnits:Number(lv6BassPart.startUnits),nextSameStringUnits:lv6BassNextStart,windowStart:gated.windowStart,windowEnd:lv6BassWindowEnd,
+          gatedWindowRms:gated.windowRms,naturalWindowRms:natural.windowRms,gatedSourceStops:gated.sourceStops,naturalSourceStops:natural.sourceStops,
+          naturalPeak:natural.peak,gatedWavBase64:gated.wavBase64,naturalWavBase64:natural.wavBase64});
       }
       var m9=lv6.measures[8], m9Targets=[];
       m9.beats.forEach(function(beat,beatIndex){
         var guideEvents=getBeatGuideEvents(beat,{startTime:beatIndex*lv6SlotDuration,slotDuration:lv6SlotDuration,measures:lv6.measures,capo:getSongCapo(lv6)});
         guideEvents.forEach(function(event){if(((event.note.midi===66 && event.str===2) || (event.note.midi===63 && event.str===3)) &&
-          !m9Targets.some(function(target){return target.event.note.midi===event.note.midi && target.event.str===event.str;})) m9Targets.push({event:event});});
+          !m9Targets.some(function(target){return target.event.note.midi===event.note.midi && target.event.str===event.str;})){
+            var sourcePart=(beat.subNotes||[beat]).find(function(part){return (part.chordNotes&&part.chordNotes.length?part.chordNotes:[part]).indexOf(event.note)>=0;});
+            m9Targets.push({event:event,sourcePart:sourcePart});
+          }});
       });
       if(m9Targets.length!==2) throw new Error('Lv.6 measure 9 did not expose the expected F#4/D#4 inner notes on separate strings: '+JSON.stringify(m9.beats.map(function(beat){return getBeatGuideEvents(beat,{startTime:0,slotDuration:lv6SlotDuration,measures:lv6.measures}).map(function(event){return [event.note.midi,event.str,event.note.tok];});})));
       var m9Comparisons=[];
       for(var m9Target of m9Targets){
-        var note=m9Target.event.note, nextStart=Infinity;
+        var note=m9Target.event.note, sourcePart=m9Target.sourcePart, nextStart=Infinity;
+        if(!sourcePart||!Number.isFinite(Number(sourcePart.startUnits))) throw new Error('Lv.6 m9 inner note did not retain its source part start position');
         lv6.measures.forEach(function(measure){measure.beats.forEach(function(beat){(beat.subNotes||[beat]).forEach(function(part){
           (part.chordNotes&&part.chordNotes.length?part.chordNotes:[part]).forEach(function(candidate){
-            if(candidate.str===note.str && candidate.startUnits>note.startUnits) nextStart=Math.min(nextStart,candidate.startUnits);
+            if(candidate.str===note.str && Number.isFinite(Number(part.startUnits)) && part.startUnits>sourcePart.startUnits) nextStart=Math.min(nextStart,part.startUnits);
           });
         });});});
         if(!Number.isFinite(nextStart)) throw new Error('Lv.6 measure 9 inner note has no later same-string attack for a bounded natural-tail window');
-        var start=0.1, slotsUntilNext=(nextStart-note.startUnits)/GuitarRhythm.UNITS_PER_SLOT;
+        var start=0.1, slotsUntilNext=(nextStart-sourcePart.startUnits)/GuitarRhythm.UNITS_PER_SLOT;
         var nextAt=start+slotsUntilNext*lv6SlotDuration, windowEnd=nextAt-0.02;
         var gate=await renderIsolatedPart('ks',m9Target.event,m9Target.event.duration,lv6SlotDuration,slotsUntilNext,start,null,windowEnd,false);
         var natural=await renderIsolatedPart('ks',m9Target.event,m9Target.event.duration,lv6SlotDuration,slotsUntilNext,start,gate.windowStart,windowEnd,true);
         var classicGate=await renderIsolatedPart('classic',m9Target.event,m9Target.event.duration,lv6SlotDuration,slotsUntilNext,start,null,windowEnd,false);
         var classicNatural=await renderIsolatedPart('classic',m9Target.event,m9Target.event.duration,lv6SlotDuration,slotsUntilNext,start,classicGate.windowStart,windowEnd,true);
-        m9Comparisons.push({midi:note.midi,str:note.str,durationUnits:note.durationUnits,duration:m9Target.event.duration,
+        m9Comparisons.push({midi:note.midi,str:note.str,durationUnits:sourcePart.durationUnits,sourceStartUnits:sourcePart.startUnits,duration:m9Target.event.duration,
           nextSameStringUnits:nextStart,nextAt:nextAt,ks:{windowStart:gate.windowStart,windowEnd:windowEnd,gatedRms:gate.windowRms,naturalRms:natural.windowRms,
             peak:natural.peak,sourceStops:gate.sourceStops,wavBase64:natural.wavBase64},
           classic:{windowStart:classicGate.windowStart,windowEnd:windowEnd,gatedRms:classicGate.windowRms,naturalRms:classicNatural.windowRms,
@@ -421,18 +427,14 @@ async function testConcertHallOfflineRender(client){
       result.lv6FirstMeasure={id:lv6.id,bpm:lv6.bpm,events:lv6Events.map(function(event){return {
         midi:event.note.midi,when:event.when,duration:event.duration,gain:event.gain,articulation:event.articulation,str:event.str
       };}),beats:Number(lv6.beats),unitsPerSlot:Number(GuitarRhythm.UNITS_PER_SLOT),
-        melodyExplicitDurationSlots:Number(lv6MelodyPart.explicitDurationSlots),
-        bassExplicitDurationSlots:Number(lv6BassPart.explicitDurationSlots),bassDefaultDuration:lv6DefaultBassDuration,
-        bassDurationUnits:Number(lv6BassPart.durationUnits),melodyDurationUnits:Number(lv6MelodyPart.durationUnits),
-        durationUnits:{bass:lv6BassPart.durationUnits,melody:lv6MelodyPart.durationUnits,
+        bassDurationUnits:Number(lv6BassPart.durationUnits),melodyDurationUnits:Number(lv6BassPart.durationUnits),
+        durationUnits:{bass:lv6BassPart.durationUnits,melody:lv6BassPart.durationUnits,
           inners:lv6InnerParts.map(function(part){return part.durationUnits;}),slotUnits:lv6.measures[0].beats[0].subNotes[0].slotUnits},
-        bassLongDuration:lv6LongBassDuration,bassWindowEnd:lv6BassWindowEnd,
-        bassComparison:lv6BassComparison.map(function(item){return {engine:item.engine,explicitDurationSlots:item.explicitDurationSlots,
-          defaultDuration:item.defaultDuration,longDuration:item.longDuration,windowStart:item.windowStart,windowEnd:item.windowEnd,
-          gatedShortWindowRms:item.gatedShortWindowRms,naturalShortWindowRms:item.naturalShortWindowRms,naturalLongWindowRms:item.naturalLongWindowRms,
-          gatedShortSourceStops:item.gatedShortSourceStops,naturalShortSourceStops:item.naturalShortSourceStops,naturalLongSourceStops:item.naturalLongSourceStops,
-          naturalShortPeak:item.naturalShortPeak,naturalLongPeak:item.naturalLongPeak,
-          gatedShortWavBase64:item.gatedShortWavBase64,naturalShortWavBase64:item.naturalShortWavBase64,naturalLongWavBase64:item.naturalLongWavBase64};}),
+        bassNominalDuration:lv6BassNominalDuration,bassWindowEnd:lv6BassWindowEnd,
+        bassComparison:lv6BassComparison.map(function(item){return {engine:item.engine,nominalDuration:item.nominalDuration,sourceDurationUnits:item.sourceDurationUnits,
+          sourceStartUnits:item.sourceStartUnits,nextSameStringUnits:item.nextSameStringUnits,windowStart:item.windowStart,windowEnd:item.windowEnd,
+          gatedWindowRms:item.gatedWindowRms,naturalWindowRms:item.naturalWindowRms,gatedSourceStops:item.gatedSourceStops,naturalSourceStops:item.naturalSourceStops,
+          naturalPeak:item.naturalPeak,gatedWavBase64:item.gatedWavBase64,naturalWavBase64:item.naturalWavBase64};}),
         m9Comparisons:m9Comparisons,renders:lv6Renders};
     } finally {
       window.actx=saved.actx; window.outGain=saved.outGain; window.clickBus=saved.clickBus;
@@ -463,29 +465,22 @@ async function testConcertHallOfflineRender(client){
   assert.equal(render.lv6FirstMeasure.events.length, 10, 'Lv.6 first measure guide emits bass, melody, and inner voice notes');
   assert.deepEqual(render.lv6FirstMeasure.events.slice(0, 2).map(function(event){return [event.midi,event.gain,event.articulation,event.str];}),
     [[40,0.62,'tirando',6],[71,1.16,'apoyando',1]], 'Lv.6 opening bass and melody retain their written articulation and strings');
-  assert.equal(render.lv6FirstMeasure.bassExplicitDurationSlots, render.lv6FirstMeasure.beats,
-    'Lv.6 opening bass duration comes from its parsed full-measure source suffix');
-  assert.equal(render.lv6FirstMeasure.melodyExplicitDurationSlots, 1, 'Lv.6 opening melody retains its parsed one-slot suffix');
-  assert.equal(render.lv6FirstMeasure.durationUnits.bass,
-    render.lv6FirstMeasure.bassExplicitDurationSlots * render.lv6FirstMeasure.unitsPerSlot,
-    'Lv.6 bass keeps its parsed independent duration in rhythm units');
-  assert.equal(render.lv6FirstMeasure.durationUnits.melody,
-    render.lv6FirstMeasure.melodyExplicitDurationSlots * render.lv6FirstMeasure.unitsPerSlot,
-    'Lv.6 melody keeps its parsed independent duration in rhythm units');
+  assert.equal(render.lv6FirstMeasure.durationUnits.bass, render.lv6FirstMeasure.durationUnits.melody,
+    'Lv.6 opening bass and melody use one shared chord duration');
+  assert.equal(render.lv6FirstMeasure.durationUnits.bass, render.lv6FirstMeasure.durationUnits.slotUnits,
+    'Lv.6 opening chord uses its parsed subdivision duration');
   assert.ok(render.lv6FirstMeasure.durationUnits.inners.every(function(units){return units === render.lv6FirstMeasure.durationUnits.slotUnits;}),
     'Lv.6 inner notes retain their default one-subdivision duration');
   const lv6BassEvent = render.lv6FirstMeasure.events.find(function(event){return event.midi === 40;});
   const lv6MelodyEvent = render.lv6FirstMeasure.events.find(function(event){return event.midi === 71;});
   assert.ok(Math.abs(lv6BassEvent.duration - render.lv6FirstMeasure.bassDurationUnits / 12 * 60 / render.lv6FirstMeasure.bpm) < 1e-9 &&
-    Math.abs(lv6MelodyEvent.duration - render.lv6FirstMeasure.melodyDurationUnits / 12 * 60 / render.lv6FirstMeasure.bpm) < 1e-9,
-    'Lv.6 event durations convert parsed note units through the song tempo');
+    Math.abs(lv6MelodyEvent.duration - lv6BassEvent.duration) < 1e-9,
+    'Lv.6 chord event durations convert the common parsed part units through the song tempo');
   assert.equal(render.lv6FirstMeasure.bassComparison.length, 2, 'isolated Romance bass comparison covers both existing synth engines');
-  assert.ok(render.lv6FirstMeasure.bassComparison.every(function(item){return item.explicitDurationSlots === render.lv6FirstMeasure.beats &&
-    item.windowStart > Math.max.apply(null,item.gatedShortSourceStops) && item.windowEnd < 0.1 + item.longDuration &&
-    item.windowEnd > item.windowStart && item.gatedShortWindowRms < 1e-8 && item.naturalShortWindowRms > 1e-8 &&
-    item.naturalLongWindowRms > 1e-8 && Math.abs(item.naturalLongWindowRms-item.naturalShortWindowRms) < Math.max(item.naturalLongWindowRms,item.naturalShortWindowRms)*0.1 &&
-    item.naturalShortPeak < 1 && item.naturalLongPeak < 1;}),
-    'KS and classic preserve E2 natural decay after score duration differs, while the legacy gated short source is silent');
+  assert.ok(render.lv6FirstMeasure.bassComparison.every(function(item){return item.sourceDurationUnits > 0 &&
+    item.windowStart > Math.max.apply(null,item.gatedSourceStops) && item.windowEnd < 0.1 + item.nextSameStringUnits / render.lv6FirstMeasure.unitsPerSlot * 60 / render.lv6FirstMeasure.bpm &&
+    item.windowEnd > item.windowStart && item.gatedWindowRms < 1e-8 && item.naturalWindowRms > 1e-8 && item.naturalPeak < 1;}),
+    'KS and classic keep a short subdivision E2 ringing after its legacy gate and before the next same-string attack');
   assert.equal(render.lv6FirstMeasure.m9Comparisons.length, 2, 'actual measure 9 inner-note isolation covers F#4 and D#4');
   assert.deepEqual(render.lv6FirstMeasure.m9Comparisons.map(function(item){return [item.midi,item.str];}), [[66,2],[63,3]],
     'm9 sustain window targets parsed F#4 on string 2 and D#4 on string 3');
@@ -499,26 +494,25 @@ async function testConcertHallOfflineRender(client){
     var reattack=item.restAndReattack.reattackTime;
     var rest=item.restAndReattack.restTime;
     var loopHardStop=item.loopClip.loopStopAt;
-    return item.restAndReattack.sourceStops.some(function(stop){return stop>=reattack&&stop<=reattack+0.12;}) &&
-      item.restAndReattack.sourceStops.some(function(stop){return stop>=rest&&stop<=rest+0.02;}) &&
-      item.restAndReattack.afterRestRms<1e-8 && item.loopClip.sourceStops.some(function(stop){return stop>=loopHardStop&&stop<=loopHardStop+0.02;}) &&
+    return item.restAndReattack.finalSourceStops.some(function(entry){return entry.time>=reattack&&entry.time<=reattack+0.12;}) &&
+      item.restAndReattack.finalSourceStops.every(function(entry){return entry.time<=rest+0.02;}) &&
+      item.restAndReattack.afterRestRms<1e-8 && item.loopClip.finalSourceStops.length>0 &&
+      item.loopClip.finalSourceStops.every(function(entry){return entry.time>=loopHardStop&&entry.time<=loopHardStop+0.02;}) &&
       item.restAndReattack.peak<1 && item.loopClip.peak<1;}),
     'actual natural guide voices are cut by same-string reattack, a rest, and a loop hard stop in KS/classic offline rendering: '+JSON.stringify(render.naturalBoundaries));
   assert.ok(render.lv6FirstMeasure.renders.length === 4 && render.lv6FirstMeasure.renders.every(function(item){return item.peak < 1 && item.rms > 0 && item.eventCount === 10;}),
     'actual scheduleBeatGuide Lv.6 first measure renders audible, unclipped KS/classic dry/hall audio');
-  const artifact = path.join(root, 'test-artifacts', 'audio-release-check-' + Date.now() + '.json');
+  const artifact = path.join(root, 'test-artifacts', 'remove-note-length', 'audio-release-check-' + Date.now() + '.json');
   fs.mkdirSync(path.dirname(artifact), { recursive:true });
   const bassWavPaths = [];
   render.lv6FirstMeasure.bassComparison.forEach(function(item){
     const gatedPath = path.join(path.dirname(artifact), 'romance-e2-gated-' + item.engine + '-' + Date.now() + '.wav');
-    const naturalShortPath = path.join(path.dirname(artifact), 'romance-e2-natural-short-' + item.engine + '-' + Date.now() + '.wav');
-    const naturalLongPath = path.join(path.dirname(artifact), 'romance-e2-natural-long-' + item.engine + '-' + Date.now() + '.wav');
-    fs.writeFileSync(gatedPath, Buffer.from(item.gatedShortWavBase64, 'base64'));
-    fs.writeFileSync(naturalShortPath, Buffer.from(item.naturalShortWavBase64, 'base64'));
-    fs.writeFileSync(naturalLongPath, Buffer.from(item.naturalLongWavBase64, 'base64'));
-    bassWavPaths.push(gatedPath, naturalShortPath, naturalLongPath);
+    const naturalPath = path.join(path.dirname(artifact), 'romance-e2-natural-' + item.engine + '-' + Date.now() + '.wav');
+    fs.writeFileSync(gatedPath, Buffer.from(item.gatedWavBase64, 'base64'));
+    fs.writeFileSync(naturalPath, Buffer.from(item.naturalWavBase64, 'base64'));
+    bassWavPaths.push(gatedPath, naturalPath);
   });
-  render.lv6FirstMeasure.bassComparison.forEach(function(item){ delete item.gatedShortWavBase64; delete item.naturalShortWavBase64; delete item.naturalLongWavBase64; });
+  render.lv6FirstMeasure.bassComparison.forEach(function(item){ delete item.gatedWavBase64; delete item.naturalWavBase64; });
   const m9WavPaths=[];
   render.lv6FirstMeasure.m9Comparisons.forEach(function(item){
     for(const engine of ['ks','classic']){
@@ -535,7 +529,7 @@ async function testConcertHallOfflineRender(client){
   process.stdout.write('Artifact: ' + artifact + '\n');
   process.stdout.write('Romance E2 WAV evidence: ' + bassWavPaths.join(' ; ') + '\n');
   process.stdout.write('Romance m9 inner WAV evidence: ' + m9WavPaths.join(' ; ') + '\n');
-  process.stdout.write('Browser checkpoint: OfflineAudioContext legacy exact API matrix, KS/classic hard cutoff, 12 duration/FX cases, isolated hall tail, 12 six-string chords, four actual scheduleBeatGuide Lv.6 first-measure renders, E2 natural-tail comparisons, and m9 F#4/D#4 direct-sound sustain windows passed (wet tail ratio ' + render.tailRatio.toFixed(4) + ', max chord peak ' + Math.max.apply(null,render.chords.map(function(chord){return chord.peak;})).toFixed(4) + ')\n');
+  process.stdout.write('Browser checkpoint: OfflineAudioContext legacy exact API matrix, KS/classic hard cutoff, 12 duration/FX cases, isolated hall tail, 12 six-string chords, four actual scheduleBeatGuide Lv.6 first-measure renders, short-subdivision E2 natural-tail comparison, and m9 F#4/D#4 direct-sound sustain windows passed (wet tail ratio ' + render.tailRatio.toFixed(4) + ', max chord peak ' + Math.max.apply(null,render.chords.map(function(chord){return chord.peak;})).toFixed(4) + ')\n');
 }
 
 async function testPracticeSessionLifecycle(client) {
@@ -905,9 +899,9 @@ async function testSubdividedGuide(client) {
       var sameFretPills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill')).filter(function(p){ return Math.abs(parseFloat(p.style.left) - 25) < 0.001; });
       check(sameFretPills.length === 1 && sameFretPills[0].classList.contains('note-fret'), 'same-string same-fret pair draws one neutral note pill');
 
-      var durationScore = parseScore('[C] ~0E2@6:p*3+!4B4@1:a*1 - -', 3);
-      check(durationScore.errors.length === 0, 'independent bass duration fixture parses as a valid three-beat score');
-      window.curSong = { id:'browser-independent-duration', title:'Independent duration', type:'structured', beats:3, bpm:100, measures:durationScore.measures };
+      var durationScore = parseScore('[C] ~0E2@6:p+!4B4@1:a - -', 3);
+      check(durationScore.errors.length === 0, 'shared chord and whole-chord hold fixture parses as a valid three-beat score');
+      window.curSong = { id:'browser-shared-duration', title:'Shared duration', type:'structured', beats:3, bpm:100, measures:durationScore.measures };
       appState.beats = 3;
       appState.bpm = 100;
       appState.loopStart = 1;
@@ -921,10 +915,12 @@ async function testSubdividedGuide(client) {
       window.playSession = { inCountIn:false, nextBeatTime:100, spb:0.6, bpb:3, bIdx:0, mIdx:0, loopCompleted:0, resumeNextHold:false, endScheduled:false };
       window.isPlaying = true;
       schedulerTick();
-      check(emitted.length === 2 && emitted.map(function(event){return event.midi;}).join(',') === '40,71', 'normal scheduler emits the independent bass and melody once');
+      check(emitted.length === 2 && emitted.map(function(event){return event.midi;}).join(',') === '40,71', 'normal scheduler emits both shared-chord notes once');
       check(emitted.every(function(event){return event.options && event.options.naturalDecay === true && event.options.exactDuration === undefined;}), 'app scheduler passes natural decay to the actual guide notes');
-      check(emitted.every(function(event){return event.when === 100;}) && Math.abs(emitted.find(function(event){return event.midi === 40;}).duration - 1.8) < 1e-9 && Math.abs(emitted.find(function(event){return event.midi === 71;}).duration - 0.6) < 1e-9,
-        'normal scheduler preserves simultaneous onset and independent three-slot/one-slot durations');
+      var sharedHoldUnits = durationScore.measures[0].beats[0].durationUnits;
+      var sharedHoldDuration = sharedHoldUnits / GuitarRhythm.UNITS_PER_SLOT * window.playSession.spb;
+      check(emitted.every(function(event){return event.when === 100 && Math.abs(event.duration-sharedHoldDuration)<1e-9;}),
+        'normal scheduler preserves simultaneous onset and the shared whole-chord hold-chain duration');
       var guideButton = document.getElementById('guideSoundBtn');
       guideButton.click();
       check(appState.guideSound === false && stopped.length > 0, 'turning guide sound off cuts scheduled guide voices');
@@ -932,43 +928,43 @@ async function testSubdividedGuide(client) {
       check(appState.guideSound === true && window.playSession.resumeNextHold === true, 'turning guide sound on arms one resume at the next scheduled beat');
       window.actx.currentTime = 100.59;
       schedulerTick();
-      check(emitted.length === 3 && emitted[2].midi === 40 && emitted[2].when === 100.6 && Math.abs(emitted[2].duration - 1.2) < 1e-9,
-        'guide re-enable restores only the still-sounding bass with its remaining duration');
+      check(emitted.length === 4 && emitted.slice(2).map(function(event){return event.midi;}).sort().join(',') === '40,71' &&
+        emitted.slice(2).every(function(event){return event.when === 100.6 && Math.abs(event.duration-1.2)<1e-9;}),
+        'guide re-enable restores the whole still-sounding chord with its remaining duration');
 
-      var previewResumeScore = parseScore('[C] ~0E2@6:p*3+!4B4@1:a*1 B3@2:m G3@3:i', 3);
-      check(previewResumeScore.errors.length === 0, 'new-attack preview fixture parses as a valid three-beat score');
-      window.curSong = { id:'browser-duration-preview-resume', title:'Duration preview resume', type:'structured', beats:3, bpm:100, measures:previewResumeScore.measures };
+      var previewResumeScore = parseScore('[C] 0E2@6:p+!4B4@1:a - -', 3);
+      check(previewResumeScore.errors.length === 0, 'whole-chord preview fixture parses as a valid three-beat score');
+      window.curSong = { id:'browser-shared-chord-preview-resume', title:'Shared chord preview resume', type:'structured', beats:3, bpm:100, measures:previewResumeScore.measures };
       appState.loopStart = 1;
       appState.loopEnd = 1;
       renderSong();
       emitted = [];
       window.actx.currentTime = 105;
       updateActiveCursor(0, 1, true);
-      check(emitted.length === 2 && emitted.some(function(event){return event.midi === 59;}) && emitted.some(function(event){return event.midi === 40;}) &&
-        emitted.every(function(event){return event.when === 105;}) && !emitted.some(function(event){return event.midi === 71;}) &&
-        Math.abs(emitted.find(function(event){return event.midi === 40;}).duration - 1.2) < 1e-9 &&
-        Math.abs(emitted.find(function(event){return event.midi === 59;}).duration - 0.6) < 1e-9,
-        'preview on a new-attack beat restores only the surviving bass and plays the new note once');
+      check(emitted.length === 2 && emitted.map(function(event){return event.midi;}).sort().join(',') === '40,71' &&
+        emitted.every(function(event){return event.when === 105 && Math.abs(event.duration-1.2)<1e-9;}),
+        'preview on a hold restores every note in the still-sounding chord once with its remaining duration');
 
-      var sameStringDurationScore = parseScore('[C] ~0E2@6:p*3 2E2@6:p*1 -', 3);
+      var sameStringDurationScore = parseScore('[C] 0E2@6:p 2F#2@6:p -', 3);
       window.curSong = { id:'browser-duration-same-string', title:'Duration same string', type:'structured', beats:3, bpm:100, measures:sameStringDurationScore.measures };
       renderSong();
       emitted = [];
       window.actx.currentTime = 110;
       updateActiveCursor(0, 2, true);
-      check(emitted.length === 0, 'preview does not restore a bass already clipped by a same-string reattack');
+      check(emitted.length === 1 && emitted[0].midi === 42,
+        'preview after a same-string reattack restores only the newer note, not the clipped earlier note');
 
-      var loopClipScore = parseScore('[C] E4@1 B3@2 ~0E2@6:p*3\\n[G] B3@2 G3@3 D4@4', 3);
-      check(loopClipScore.errors.length === 0 && loopClipScore.measures.length === 2, 'loop-boundary fixture has two valid measures so its cutoff is before song end');
-      window.curSong = { id:'browser-duration-loop-clip', title:'Duration loop clip', type:'structured', beats:3, bpm:100, measures:loopClipScore.measures };
+      var loopClipScore = parseScore('[C] 0E2@6:p - -\\n[G] - - -\\n[D] - - -', 3);
+      check(loopClipScore.errors.length === 0 && loopClipScore.measures.length === 3, 'loop-boundary hold fixture has three valid measures so its cutoff is before song end');
+      window.curSong = { id:'browser-shared-hold-loop-clip', title:'Shared hold loop clip', type:'structured', beats:3, bpm:100, measures:loopClipScore.measures };
       appState.loopStart = 1;
       renderSong();
-      appState.loopEnd = 1;
+      appState.loopEnd = 2;
       emitted = [];
       window.actx.currentTime = 120;
-      updateActiveCursor(0, 2, true);
+      updateActiveCursor(1, 2, true);
       check(emitted.length === 1 && emitted[0].midi === 40 && Math.abs(emitted[0].duration - 0.6) < 1e-9,
-        'last-slot preview clips an explicit longer bass to the loop boundary (' + JSON.stringify(emitted.map(function(event){return {midi:event.midi,duration:event.duration,when:event.when};})) + ')');
+        'last-slot preview clips a cross-bar shared hold at the loop boundary (' + JSON.stringify(emitted.map(function(event){return {midi:event.midi,duration:event.duration,when:event.when};})) + ')');
 
       var clockScore = parseScore('[C] 0E2 r 0G2 G2@6+B2@5\\n[G] - - - -\\n[D] - - E3 r', 4);
       check(clockScore.errors.length === 0 && clockScore.measures.length === 3 && clockScore.measures.every(function(measure){ return measure.beats.length === 4; }), 'fake-clock runtime fixture is a complete three-measure source score');
@@ -1202,7 +1198,7 @@ async function capturePimaScreenshots(client) {
     var score = document.getElementById('structuredScoreWrap');
     if (score) score.scrollIntoView({ block:'start' });
   })()`);
-  const screenshotDir = path.join(__dirname, '..', 'test-artifacts');
+  const screenshotDir = path.join(__dirname, '..', 'test-artifacts', 'remove-note-length');
   fs.mkdirSync(screenshotDir, { recursive:true });
   const prefix = 'explicit-pima-' + process.pid + '-' + Date.now();
   const outputs = [];
@@ -1219,7 +1215,7 @@ async function capturePimaScreenshots(client) {
 }
 
 async function captureBuiltinRomanceScreenshots(client, browserBin){
-  const screenshotDir = path.join(__dirname, '..', 'test-artifacts');
+  const screenshotDir = path.join(__dirname, '..', 'test-artifacts', 'remove-note-length');
   fs.mkdirSync(screenshotDir, { recursive:true });
   const browserName = path.basename(browserBin, path.extname(browserBin)).toLowerCase();
   const timestamp = Date.now();
@@ -1353,6 +1349,7 @@ async function testBuiltinScores(client, browserBin){
       if(score) score.scrollIntoView({block:'start'});
       return {catalogCount:window.BUILTIN_SONGS.length,rendered:results,romance:{id:romance.id,bpm:romance.bpm,beats:romance.beats,
         firstMeasureBeats:first.beats.length,subdivisionCounts:first.beats.map(function(beat){return beat.subNotes.length;}),
+        durationName:getBeatDurationInfo(first.beats,0,romance.beats).durName,
         fingers:fingers.slice(0,4),tabLabels:tabLabels,tabTitles:tabTitles,tabRhBadges:tabRhBadges,
          cardLabels:cardLabels,cardTitles:cardTitles,cardDurationBadges:cardDurationBadges,cardArticulationClasses:cardArticulationClasses,
         cardTitleHasPartArticulation:cardTitleHasPartArticulation,cardTitleHasUniformArticulation:cardTitleHasUniformArticulation,
@@ -1372,9 +1369,9 @@ async function testBuiltinScores(client, browserBin){
     assert.ok(review.romance.tabTitles[0].includes('E2~+B4! · B3~ · G3~'), 'first TAB title shows the bass, melody, and inner-note techniques');
     assert.deepEqual(review.romance.tabRhBadges, [false,false,false], 'TAB articulation marks are included in pitch labels without old end badges');
     assert.deepEqual(review.romance.cardLabels, ['E2~+B4! · B3~ · G3~','B4! · B3~ · G3~','B4! · B3~ · G3~'], 'card labels show each Lv.6 note articulation independently');
-    assert.ok(review.romance.tabTitles[0].includes('E2 3칸 + B4 1칸'), 'TAB tooltip names the independent bass and melody durations');
-    assert.ok(review.romance.cardTitles[0].includes('E2 3칸 + B4 1칸'), 'card tooltip names the independent bass and melody durations');
-    assert.deepEqual(review.romance.cardDurationBadges, ['3분할','3분할','3분할'], 'mixed note lengths leave the existing group badges unchanged');
+    assert.ok(review.romance.durationName && review.romance.tabTitles[0].includes(review.romance.durationName), 'TAB tooltip shows shared part durations for the subdivisions');
+    assert.ok(review.romance.cardTitles[0].includes(review.romance.durationName), 'card tooltip shows shared part durations for the subdivisions');
+    assert.deepEqual(review.romance.cardDurationBadges, ['3분할','3분할','3분할'], 'shared-length notation keeps the existing group badges');
     assert.ok(review.romance.cardTitleHasPartArticulation, 'card tooltip shows each pitch articulation');
     assert.equal(review.romance.cardTitleHasUniformArticulation, false, 'mixed articulation tooltip does not assign one technique to the whole beat');
     assert.deepEqual(review.romance.cardArticulationClasses, [false,false,false], 'mixed articulation card beats have no uniform apo/tir class');
@@ -1442,7 +1439,8 @@ async function testInvalidStructuredPersistence(client) {
     var oldSave = window.dbSaveImageSong;
     var writes = [];
     try {
-      var invalid = { id:'browser-invalid-readonly', title:'Invalid read-only', type:'structured', beats:4, measures:parseScore('[C] C4', 4).measures, fromSheet:true };
+      var invalidParse = parseScore('[C] 0E2@6:p*3 - -', 3);
+      var invalid = { id:'browser-invalid-readonly', title:'Invalid read-only', type:'structured', beats:3, measures:invalidParse.measures, fromSheet:true };
       var sourceToken = invalid.measures[0].beats[0].tok;
       window.allSongs.push(invalid);
       window.dbSaveImageSong = function(song){ writes.push(song.id); return Promise.resolve(true); };
@@ -1455,7 +1453,7 @@ async function testInvalidStructuredPersistence(client) {
       window.isPlaying = true;
       window.playSession = {};
       stopPractice();
-      return { writes:writes, blocked:blocked, textMetadata:JSON.parse(localStorage.getItem('gs.state')).bpm === 88, sourcePreserved:invalid.measures[0].beats[0].tok === sourceToken };
+      return { writes:writes, blocked:blocked, invalidErrors:invalidParse.errors.length, textMetadata:JSON.parse(localStorage.getItem('gs.state')).bpm === 88, sourcePreserved:invalid.measures[0].beats[0].tok === sourceToken };
     } finally {
       window.dbSaveImageSong = oldSave;
       window.allSongs = originalSongs;
@@ -1468,6 +1466,7 @@ async function testInvalidStructuredPersistence(client) {
   })()`);
   assert.deepEqual(result.writes, [], 'invalid read-only text selection and practice settings never write IndexedDB');
   assert.equal(result.blocked, true, 'invalid read-only score playback remains blocked');
+  assert.ok(result.invalidErrors > 0, 'removed *N syntax is rejected by the parser before app playback');
   assert.equal(result.textMetadata, true, 'app settings remain in local storage');
   assert.equal(result.sourcePreserved, true, 'invalid read-only score source remains unchanged');
   process.stdout.write('Checks: invalid read-only playback guard 4\n');
@@ -1476,7 +1475,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=natural-ring-1')), 'all app scripts use the shared natural-ring revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=simple-length-1')), 'all app scripts use the shared simple-length revision');
   const browserBin = findBrowserBinary();
   if (!browserBin) {
     process.stdout.write('SKIP: No Chrome or Edge binary found for browser test\n');
@@ -1771,7 +1770,7 @@ async function main() {
 
     await cdp.send('Page.reload', { ignoreCache: true });
     await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.BUILTIN_SONGS.length === 13 && window.imageSongs.some(function(song){ return song.id === "browser-backup-image"; })', 8000);
-    const screenshotDir = path.join(__dirname, '..', 'test-artifacts');
+    const screenshotDir = path.join(__dirname, '..', 'test-artifacts', 'remove-note-length');
     let screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review.png');
     if (fs.existsSync(screenshotTarget)) screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review-' + Date.now() + '.png');
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });

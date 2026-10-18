@@ -191,14 +191,11 @@ test('exact KS note-off starts the natural release and source ends within the re
   assert.ok(dryVoice.out.gain.events.some(event => event[0] === 'target' && event[2] === 3.125 && event[3] === 0.035), 'dry release starts at written note-off with the established tau');
 });
 
-test('per-note guide durations stay nominal while KS and classic voices decay naturally', function(){
-  const parsed = parser.parseScore('[Em] ~0E2@6:p*3+!4B4@1:a*1 B3@2:m G3@3:i', 3);
+test('guide chord parts share a nominal tie-chain duration while KS and classic voices decay naturally', function(){
+  const parsed = parser.parseScore('[Em] ~0E2@6:p+!4B4@1:a - -', 3);
   assert.deepEqual(parsed.errors, []);
   const beat = parsed.measures[0].beats[0];
-  const expectedNoteOffs = [
-    2 + Number(beat.chordNotes.find(note => note.midi === 71).explicitDurationSlots) * 0.4,
-    2 + Number(beat.chordNotes.find(note => note.midi === 40).explicitDurationSlots) * 0.4
-  ].sort((a, b) => a - b);
+  const nominalEnd = 2 + beat.durationUnits / 12 * 0.4;
 
   ['ks', 'classic'].forEach(engine => {
     const { context, gains } = makeContext(0, false);
@@ -206,17 +203,16 @@ test('per-note guide durations stay nominal while KS and classic voices decay na
     context.appState.sympAmount = 0;
     context.__audioHooks.replaceGetKsBuffer(() => ({ duration:4 }));
     const events = context.scheduleBeatGuide(beat, {
-      startTime:2, slotDuration:0.4, measures:parsed.measures, maxDurationSlots:3
+      startTime:2, slotDuration:0.4, measures:parsed.measures, maxDurationSlots:4
     });
     assert.deepEqual(Array.from(events, event => event.note.midi), [40, 71], engine + ' keeps bass and melody events');
-    const expectedDuration = new Map(beat.chordNotes.map(note => [note.midi, Number(note.explicitDurationSlots) * 0.4]));
-    assert.ok(events.every(event => Math.abs(event.duration - expectedDuration.get(event.note.midi)) < 1e-9 && event.when === 2),
-      engine + ' keeps the written independent durations and simultaneous attack');
+    assert.ok(events.every(event => Math.abs(event.duration - beat.durationUnits / 12 * 0.4) < 1e-9 && event.when === 2),
+      engine + ' uses the common part duration and simultaneous attack');
     const actualVoices = context.trackedGuideVoices.filter(voice => !voice.symp);
     assert.equal(actualVoices.length,2,engine+' tracks both simultaneous chord voices');
-    assert.ok(actualVoices.every(voice=>voice.end>Math.max(...expectedNoteOffs)),engine+' voices continue beyond their nominal written lengths until loop stop');
+    assert.ok(actualVoices.every(voice=>voice.end>nominalEnd),engine+' voices continue beyond the nominal tie-chain length until loop stop');
     const nominalNoteOffs = gains.flatMap(node=>node.gain.events)
-      .filter(event=>event[0]==='target'&&event[1]===0&&expectedNoteOffs.some(expected=>Math.abs(event[2]-expected)<1e-9));
+      .filter(event=>event[0]==='target'&&event[1]===0&&Math.abs(event[2]-nominalEnd)<1e-9);
     assert.deepEqual(nominalNoteOffs,[],engine+' does not gate the actual sound at nominal duration');
   });
 });
@@ -264,7 +260,7 @@ test('classic natural envelope uses the shared KS profile and never gates at nom
 });
 
 test('parsed guide notes on other strings do not truncate a longer natural tail', function(){
-  const parsed = parser.parseScore('[Em] ~0E2@6:p*3+!4B4@1:a*1 B3@2:m G3@3:i', 3);
+  const parsed = parser.parseScore('[Em] ~0E2@6:p+!4B4@1:a B3@2:m G3@3:i', 3);
   assert.deepEqual(parsed.errors, []);
   const { context } = makeContext(2, false);
   context.appState.sympAmount = 0;

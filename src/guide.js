@@ -33,7 +33,7 @@ function getBeatGuideEvents(beat, options){
     ? GuitarRhythm.resolveHold(measures, parts[0]) : null;
   var events = [];
 
-  function pushForPart(part, index, kind, noteSource, noteDurationOverride){
+  function pushForPart(part, index, kind, noteSource){
     var offsetSlots = index / count;
     var when = startTime + offsetSlots * slotDuration;
     var slotUnits = Number(part && part.slotUnits) || 12 / count;
@@ -51,20 +51,12 @@ function getBeatGuideEvents(beat, options){
     if (kind !== 'note' || duration <= 0) return;
     guideNotes(noteSource).forEach(function(note){
       if (!note || !note.midi) return;
-      var noteDurationUnits = noteDurationOverride != null ? Number(noteDurationOverride) :
-        (note.durationUnits == null ? durationUnits : Number(note.durationUnits));
-      var noteDuration = noteDurationUnits / 12 * slotDuration;
-      if (Number.isFinite(Number(options.maxDurationSlots))){
-        var noteRemainingSlots = Math.max(0, Number(options.maxDurationSlots) - offsetSlots);
-        noteDuration = Math.min(noteDuration, noteRemainingSlots * slotDuration);
-      }
-      if (!(noteDuration > 0)) return;
       var hasChordComponents = Array.isArray(noteSource.chordNotes) && noteSource.chordNotes.length > 0;
       var articulation = hasChordComponents
         ? (note.articulation || null)
         : (note.articulation || noteSource.articulation || part.articulation || null);
       var gain = articulation === 'apoyando' ? 1.16 : (articulation === 'tirando' ? 0.62 : 1.0);
-      events.push({ kind:'note', note:note, duration:noteDuration, when:when,
+      events.push({ kind:'note', note:note, duration:duration, when:when,
         gain:gain, articulation:articulation, str:note.str });
     });
   }
@@ -77,7 +69,7 @@ function getBeatGuideEvents(beat, options){
           ? (resumeSource.durationUnits == null ? 12 : Number(resumeSource.durationUnits))
           : Number(part.durationUnits);
         var resumePart = { slotUnits:part.slotUnits, durationUnits:resumeDuration };
-        pushForPart(resumePart, index, 'note', resumeSource, resumeDuration);
+        pushForPart(resumePart, index, 'note', resumeSource);
       }
       return;
     }
@@ -86,7 +78,7 @@ function getBeatGuideEvents(beat, options){
   annotatedResume.forEach(function(item){
     var note = item.note;
     if (!note || !note.midi || !(item.remainingUnits > 0)) return;
-    pushForPart({slotUnits:item.remainingUnits,durationUnits:item.remainingUnits},0,'note',note,item.remainingUnits);
+    pushForPart({slotUnits:item.remainingUnits,durationUnits:item.remainingUnits},0,'note',note);
   });
   return events.sort(function(a, b){
     if (a.when !== b.when) return a.when - b.when;

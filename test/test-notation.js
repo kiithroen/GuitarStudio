@@ -49,20 +49,25 @@ test('right-hand suffix validation preserves octave and string diagnostics', fun
     assert.ok(result.errors.length,token+' must remain invalid');
   }
 });
-test('duration validation and structural rhythm diagnostics match parser output', function(){
-  const valid='[C] E2@6*3+B4@1*1 B3@2*1 G3@3*1 r';
+test('removed duration postfix is rejected consistently by validation and parsing', function(){
+  const valid='[C] E2@6+B4@1 B3@2:m G3@3:i r';
   assert.deepEqual(parser.parseScore(valid,4).errors,[]);
   assert.deepEqual(parser.validateScore(valid,4).errors,[]);
-  for(const raw of ['E4*0 r r r','E4*0.1 r r r','E4*2*3 r r r','r*3 r r r','- C4 D4 E4']){
+  const memo='[C] C4 - - - | "메모 *3"';
+  assert.deepEqual(parser.validateScore(memo,4).errors,[],'asterisks in quoted measure notes remain ordinary text');
+  assert.equal(parser.parseScore(memo,4).measures[0].lyric,'메모 *3');
+  assert.deepEqual(parser.validateScore('C4*3 - - -',4).errors,parser.parseScore('C4*3 - - -',4).errors,
+    'the note-token asterisk remains invalid rather than being stripped');
+  for(const raw of ['E4*3 r r r','E4*1.5 r r r','E4*3*2 r r r','r*3 r r r','-*3 r r r','- C4 D4 E4']){
     const parsed=parser.parseScore(raw,4).errors.map(error=>[error.code,error.measure,error.beat]);
     const validated=parser.validateScore(raw,4).errors.map(error=>[error.code,error.measure,error.beat]);
     assert.deepEqual(validated,parsed,raw+' parser and validator agree');
     assert.ok(parsed.length,raw+' is rejected');
   }
-  const saved=parser.buildStructuredSong({id:'duration-roundtrip',lines:[valid],beats:4});
-  const restored=parser.buildStructuredSong({id:'duration-restored',lines:[parser.serializeScoreMeasures(saved.measures)],beats:4});
+  const saved=parser.buildStructuredSong({id:'note-roundtrip',lines:[valid],beats:4});
+  const restored=parser.buildStructuredSong({id:'note-restored',lines:[parser.serializeScoreMeasures(saved.measures)],beats:4});
   assert.deepEqual(restored.measures[0].beats.map(beat=>beat.tok),saved.measures[0].beats.map(beat=>beat.tok));
-  assert.deepEqual(restored.measures[0].beats[0].chordNotes.map(note=>note.explicitDurationSlots),[3,1]);
+  assert.ok(restored.measures[0].beats[0].chordNotes.every(note=>!Object.hasOwn(note,'explicitDurationSlots')));
   let annotated = null;
   global.GuitarRhythm = {annotate:measures=>{ annotated=measures; return {errors:[]}; }};
   try {
@@ -70,9 +75,9 @@ test('duration validation and structural rhythm diagnostics match parser output'
   } finally {
     delete global.GuitarRhythm;
   }
-  assert.deepEqual([annotated[0].beats[0].explicitDurationSlots,annotated[0].beats[0].str], [null,1]);
-  assert.deepEqual(annotated[0].beats[0].chordNotes.map(note=>note.explicitDurationSlots),[3,1]);
-  assert.equal(annotated[0].beats[1].explicitDurationSlots,1,'single-note duration metadata reaches rhythm validation');
+  assert.deepEqual([annotated[0].beats[0].str,annotated[0].beats[0].chordNotes.map(note=>note.str)], [1,[6,1]]);
+  assert.ok(annotated[0].beats.every(beat=>!Object.hasOwn(beat,'explicitDurationSlots')));
+  assert.ok(annotated[0].beats[0].chordNotes.every(note=>!Object.hasOwn(note,'explicitDurationSlots')));
 });
 test('parser and validator share grouped subdivision splitting', function(){
   const result=parser.parseScore('[C] (C4 D4) - - -',4);

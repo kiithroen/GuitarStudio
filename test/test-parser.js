@@ -3,7 +3,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const parser = require('../src/parser.js');
 const score = require('../src/score.js');
-const rhythm = require('../src/rhythm.js');
 
 let checks = 0;
 function test(name, fn){
@@ -39,29 +38,25 @@ test('single notes retain English, Korean, octave, fingering, and string overrid
   assert.equal(overridden.customTok, '1E4@2');
 });
 
-test('duration postfix validates units and stays attached to each chord component', function(){
-  for (const [token,slots,units] of [['E4*3',3,36],['E4*1',1,12],['E4*1.5',1.5,18],['E4*0.25',0.25,3],['E4*0.0833333333',0.0833333333,1]]){
-    const note=parser.parseNoteToken(token,0);
-    assert.equal(note.explicitDurationSlots,slots,token);
-    assert.equal(note.customTok,token,token+' canonical token');
-    assert.equal(Math.round(note.explicitDurationSlots*rhythm.UNITS_PER_SLOT),units,token+' normalized integer units');
-  }
-  for (const token of ['E4*0','E4*0.000000000001','E4*-1','E4*1e2','E4*Infinity','E4*NaN','E4*0.1','E4**3','E4*3*1','E4*','r*3','-*3','.*3','E4*3:p','E4:p*3!']){
+test('duration postfix syntax is rejected instead of normalized or converted', function(){
+  for (const token of ['E4*3','E4*1','E4*1.5','E4*0.25','E4*0.0833333333','E4*0','E4*0.000000000001','E4*-1','E4*1e2','E4*Infinity','E4*NaN','E4*0.1','E4**3','E4*3*1','E4*','r*3','-*3','.*3','E4*3:p','E4:p*3!','~0E2@6:p*3+!4B4@1:a*1']){
     assert.equal(parser.parseNoteToken(token,0),null,token+' is rejected');
     assert.ok(parser.parseScore(token+' r r r',4).errors.length,token+' fails score validation');
   }
-  const chord=parser.parseNoteToken('~0E2@6:p*3+!4B4@1:a*1',0);
-  assert.deepEqual(chord.chordNotes.map(note=>[note.explicitDurationSlots,note.tok]),[
-    [3,'~0E2@6:p*3'],[1,'!4B4@1:a*1']
-  ]);
-  assert.equal(chord.explicitDurationSlots,null,'chord representative does not leak final component duration');
-  const scoreData=parse('[C] ~0E2@6:p*3+!4B4@1:a*1 B3@2:m*1 G3@3:i*1 r',4);
+  const scoreData=parse('[C] ~0E2@6:p+!4B4@1:a B3@2:m G3@3:i r',4);
   assert.deepEqual(scoreData.errors,[]);
-  assert.equal(scoreData.measures[0].beats[0].chordNotes[0].explicitDurationSlots,3);
-  assert.equal(scoreData.measures[0].beats[0].chordNotes[1].explicitDurationSlots,1);
+  assert.equal(Object.hasOwn(scoreData.measures[0].beats[0].chordNotes[0],'explicitDurationSlots'),false);
+  assert.equal(Object.hasOwn(scoreData.measures[0].beats[0].chordNotes[1],'explicitDurationSlots'),false);
   const serialized=parser.serializeScoreMeasures(scoreData.measures);
-  assert.match(serialized,/~0E2@6:p\*3\+!4B4@1:a\*1/);
+  assert.match(serialized,/~0E2@6:p\+!4B4@1:a/);
+  assert.doesNotMatch(serialized,/\*/);
   assert.deepEqual(parse(serialized,4).measures[0].beats.map(beat=>beat.tok),scoreData.measures[0].beats.map(beat=>beat.tok));
+  const memo=parse('[C] C4 - - - | "메모 *3"',4);
+  assert.deepEqual(memo.errors,[],'asterisks in quoted measure notes are not note syntax');
+  assert.equal(memo.measures[0].lyric,'메모 *3');
+  const memoRoundTrip=parse(parser.serializeScoreMeasures(memo.measures),4);
+  assert.equal(memoRoundTrip.measures[0].lyric,'메모 *3','quoted note text preserves asterisks through serialization');
+  assert.ok(parse('C4*3 - - -',4).errors.length,'an asterisk in the note token remains invalid');
 });
 
 test('explicit right-hand suffixes stay attached to their written note only', function(){

@@ -89,36 +89,6 @@
     });
     if (activeChain) finalizeChain(activeChain.endUnits);
 
-    var totalUnits = measures.length * slots * UNITS_PER_SLOT;
-    var sounding = [], rests = [];
-    locationMap.forEach(function(entry){
-      var part = entry.part;
-      if (part.kind === 'rest') { rests.push(entry.startUnits); return; }
-      if (part.kind !== 'note') return;
-      var components = Array.isArray(part.chordNotes) && part.chordNotes.length ? part.chordNotes : [part];
-      components.forEach(function(note){
-        if (!note) return;
-        var explicit = note.explicitDurationSlots;
-        var requested = explicit == null ? part.durationUnits : Math.round(explicit * UNITS_PER_SLOT);
-        note.startUnits = entry.startUnits;
-        note.durationUnits = requested;
-        sounding.push({note:note,part:part,startUnits:entry.startUnits,endUnits:entry.startUnits+requested,stringNo:Number(note.str)});
-      });
-    });
-    sounding.forEach(function(item){
-      var end = Math.min(item.endUnits,totalUnits);
-      rests.forEach(function(restStart){ if (restStart > item.startUnits && restStart < end) end = restStart; });
-      sounding.forEach(function(other){
-        if (Number.isInteger(item.stringNo) && item.stringNo > 0 && other.startUnits > item.startUnits &&
-            other.stringNo === item.stringNo && other.startUnits < end) end = other.startUnits;
-      });
-      item.note.durationUnits = Math.max(0,end-item.startUnits);
-      if (!(Array.isArray(item.part.chordNotes) && item.part.chordNotes.length)){
-        item.part.durationUnits = item.note.durationUnits;
-        var event = events.find(function(candidate){ return candidate.part === item.part; });
-        if (event) event.durationUnits = item.note.durationUnits;
-      }
-    });
     return {events:events,totalUnits:measures.length * slots * UNITS_PER_SLOT,errors:errors};
   }
 
@@ -130,12 +100,13 @@
         var parts = partsFor(beat);
         parts.forEach(function(part){
           if (!part || part.kind !== 'note') return;
+          var start = Number(part.startUnits), duration = Number(part.durationUnits);
+          if (!Number.isFinite(start) || !Number.isFinite(duration)) return;
+          var end = start + duration;
+          if (!(start < position && end > position)) return;
           var notes = Array.isArray(part.chordNotes) && part.chordNotes.length ? part.chordNotes : [part];
           notes.forEach(function(note){
-            var start = Number(note.startUnits), duration = Number(note.durationUnits);
-            if (!Number.isFinite(start) || !Number.isFinite(duration)) return;
-            var end = start + duration;
-            if (start < position && end > position) result.push({note:note,remainingUnits:end-position});
+            if (note) result.push({note:note,remainingUnits:end-position});
           });
         });
       });
