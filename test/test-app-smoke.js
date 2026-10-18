@@ -239,7 +239,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=note-duration-1')), 'every app script uses the note-duration revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=natural-ring-1')), 'every app script uses the natural-ring revision');
   assert.doesNotMatch(html, /newTextSongBtn|editStructuredBtn|convertImgToScoreBtn|ocrModalFileInput|refImgDetails|refScoreImg|newSongModal|veBarsGrid/);
   for (const script of scripts){
     const source = fs.readFileSync(path.join(root, script), 'utf8');
@@ -287,8 +287,8 @@ async function main(){
     context.actx = { currentTime: 30 };
     context.ensureAudioCtx = function(){};
     context.stopGuitarNotes = function(){};
-    context.playGuitarNote = function(midi, duration, when, gain, articulation, str){
-      previewCalls.push({ midi, duration, when, gain, articulation, str });
+    context.playGuitarNote = function(midi, duration, when, gain, articulation, str, options){
+      previewCalls.push({ midi, duration, when, gain, articulation, str, options });
     };
     context.appState.guideSound = true;
     context.appState.bpm = romance.bpm;
@@ -301,6 +301,14 @@ async function main(){
     assert.equal(previewBass.duration, bass.explicitDurationSlots * slotDuration, 'app preview schedules the explicit bass for its parsed slot count');
     assert.equal(previewMelody.duration, melody.explicitDurationSlots * slotDuration, 'app preview keeps the simultaneous melody at its parsed slot count');
     assert.equal(previewBass.when, previewMelody.when, 'independent chord durations preserve the shared attack');
+    assert.deepEqual([previewBass.midi, previewBass.articulation, previewBass.str], [bass.midi, 'tirando', 6],
+      'app preview keeps the written bass pitch, articulation, and string');
+    assert.deepEqual([previewMelody.midi, previewMelody.articulation, previewMelody.str], [melody.midi, 'apoyando', 1],
+      'app preview keeps the written melody pitch, articulation, and string');
+    assert.equal(previewBass.options.naturalDecay, true, 'structured app preview requests the natural sound lifetime');
+    assert.equal(previewMelody.options.naturalDecay, true, 'structured app preview requests natural decay for every chord component');
+    assert.equal(previewBass.options.exactDuration, undefined, 'structured app preview does not use the legacy exact-duration gate');
+    assert.ok(Number.isFinite(previewBass.options.hardStopAt), 'structured app preview still carries its loop or song hard stop');
 
     const clipped = context.getBeatGuideEvents(firstBeat, {
       startTime: 0, slotDuration, measures: romance.measures, maxDurationSlots: 1

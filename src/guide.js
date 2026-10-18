@@ -108,7 +108,7 @@ function scheduleBeatGuide(beat, options){
       return;
     }
     var midi = soundingMidi(event.note.midi, options.capo);
-    playGuitarNote(midi, event.duration, event.when, event.gain, event.articulation, event.str, { exactDuration:true, hardStopAt:hardStopAt });
+    playGuitarNote(midi, event.duration, event.when, event.gain, event.articulation, event.str, { naturalDecay:true, hardStopAt:hardStopAt });
   });
   return events;
 }

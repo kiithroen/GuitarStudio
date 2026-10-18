@@ -80,7 +80,7 @@ function makeContext(capo, acousticFx){
     console
   };
   vm.createContext(context);
-  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, legacyToneDuration, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
+  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, renderKsString, getNaturalDecayProfile, legacyToneDuration, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
   return { context, oscillators, filters, compressors, gains };
 }
 
@@ -191,7 +191,7 @@ test('exact KS note-off starts the natural release and source ends within the re
   assert.ok(dryVoice.out.gain.events.some(event => event[0] === 'target' && event[2] === 3.125 && event[3] === 0.035), 'dry release starts at written note-off with the established tau');
 });
 
-test('per-note guide durations schedule independent KS and classic note-offs for one chord', function(){
+test('per-note guide durations stay nominal while KS and classic voices decay naturally', function(){
   const parsed = parser.parseScore('[Em] ~0E2@6:p*3+!4B4@1:a*1 B3@2:m G3@3:i', 3);
   assert.deepEqual(parsed.errors, []);
   const beat = parsed.measures[0].beats[0];
@@ -212,13 +212,91 @@ test('per-note guide durations schedule independent KS and classic note-offs for
     const expectedDuration = new Map(beat.chordNotes.map(note => [note.midi, Number(note.explicitDurationSlots) * 0.4]));
     assert.ok(events.every(event => Math.abs(event.duration - expectedDuration.get(event.note.midi)) < 1e-9 && event.when === 2),
       engine + ' keeps the written independent durations and simultaneous attack');
-    const noteOffs = gains.flatMap(node => node.gain.events)
-      .filter(event => event[0] === 'target' && event[1] === 0)
-      .map(event => event[2])
-      .filter(time => expectedNoteOffs.some(expected => Math.abs(time - expected) < 1e-9))
-      .sort((a, b) => a - b);
-    assert.deepEqual(noteOffs, expectedNoteOffs, engine + ' schedules separate production note-off times from each guide event');
+    const actualVoices = context.trackedGuideVoices.filter(voice => !voice.symp);
+    assert.equal(actualVoices.length,2,engine+' tracks both simultaneous chord voices');
+    assert.ok(actualVoices.every(voice=>voice.end>Math.max(...expectedNoteOffs)),engine+' voices continue beyond their nominal written lengths until loop stop');
+    const nominalNoteOffs = gains.flatMap(node=>node.gain.events)
+      .filter(event=>event[0]==='target'&&event[1]===0&&expectedNoteOffs.some(expected=>Math.abs(event[2]-expected)<1e-9));
+    assert.deepEqual(nominalNoteOffs,[],engine+' does not gate the actual sound at nominal duration');
   });
+});
+
+test('natural KS tails ignore nominal duration, prefer natural mode, and obey loop and string cutoffs', function(){
+  const { context } = makeContext(0, false);
+  context.appState.sympAmount = 0;
+  context.__audioHooks.replaceGetKsBuffer(() => ({ duration:4 }));
+  context.playGuitarNote(40, 0.125, 1, 1, null, 6, { naturalDecay:true, exactDuration:true });
+  const first = context.trackedGuideVoices.at(-1);
+  assert.equal(first.end, 5, 'natural mode uses the KS buffer end even when exactDuration is also true');
+  assert.equal(first.damp.gain.events.some(event => event[0] === 'target' && event[1] === 0), false,
+    'natural KS does not add a nominal note-off envelope');
+  context.playGuitarNote(64, 0.125, 1.5, 1, null, 1, { naturalDecay:true });
+  assert.equal(first.end, 5, 'a different string onset leaves the natural tail intact');
+  context.playGuitarNote(40, 0.125, 2, 1, null, 6, { naturalDecay:true });
+  assert.equal(first.end, 2.1, 'same-string reattack cuts the earlier natural voice using the established 100ms release');
+
+  const loop = makeContext(0, false);
+  loop.context.appState.sympAmount = 0;
+  loop.context.__audioHooks.replaceGetKsBuffer(() => ({ duration:4 }));
+  loop.context.playGuitarNote(40, 0.125, 2, 1, null, 6, { naturalDecay:true, hardStopAt:2.5 });
+  const loopVoice = loop.context.trackedGuideVoices.at(-1);
+  assert.equal(loopVoice.end, 2.515, 'natural source is bounded by loop hard stop plus cleanup margin');
+  assert.deepEqual(loop.gains.at(-1).gain.events.slice(-2).map(event => event.slice(0, 3)),
+    [['set', 1, 2.5], ['linear', 0, 2.51]], 'damp cleanup is scheduled at the natural hard-stop boundary');
+  loop.context.__audioHooks.stopGuitarNotes(2.2);
+  assert.ok(Math.abs(loopVoice.end - 2.215) < 1e-9, 'a user stop advances an earlier natural cutoff and never extends it');
+});
+
+test('classic natural envelope uses the shared KS profile and never gates at nominal duration', function(){
+  [false, true].forEach(isFx => {
+    const { context, filters } = makeContext(0, isFx);
+    const profile = context.__audioHooks.getNaturalDecayProfile(40, true, 6);
+    const voice = context.__audioHooks.buildClassicVoice(40, 1, 0.125, 1, true, true, false, isFx,
+      true, NaN, true, 6);
+    const events = voice.out.gain.events;
+    assert.equal(voice.stopAt, 1 + profile.duration, 'classic natural source uses the same profile lifetime');
+    assert.equal(events.some(event => event[0] === 'target' && event[2] === 1.125), false,
+      'classic natural mode has no note-off gate at the written length');
+    assert.ok(events.some(event => event[0] === 'linear' && event[1] === 0 && event[2] === voice.stopAt),
+      'classic natural envelope fades only at its natural lifetime');
+    assert.ok(filters[0].frequency.events.at(-1)[2] > 1.125, 'classic filter contour remains independent of nominal length');
+  });
+});
+
+test('parsed guide notes on other strings do not truncate a longer natural tail', function(){
+  const parsed = parser.parseScore('[Em] ~0E2@6:p*3+!4B4@1:a*1 B3@2:m G3@3:i', 3);
+  assert.deepEqual(parsed.errors, []);
+  const { context } = makeContext(2, false);
+  context.appState.sympAmount = 0;
+  context.__audioHooks.replaceGetKsBuffer(() => ({ duration:4 }));
+  context.scheduleBeatGuide(parsed.measures[0].beats[0], {
+    startTime:0, slotDuration:0.5, measures:parsed.measures, maxDurationSlots:3, capo:2
+  });
+  const bass = context.trackedGuideVoices.find(voice => !voice.symp && voice.srcs[0].buffer.duration === 4);
+  assert.ok(bass);
+  const bassEnd = bass.end;
+  context.playGuitarNote(59, 0.5, 0.5, 1, null, 2, { naturalDecay:true, hardStopAt:1.5 });
+  assert.equal(bass.end, bassEnd, 'a later guide-like note on another string does not shorten the bass tail');
+  assert.equal(context.trackedGuideVoices[0].srcs[0].buffer.duration, 4, 'KS buffer source is preserved through guide playback');
+});
+
+test('a parsed guide rest cuts a natural tail while capo is applied once to classic pitch', function(){
+  const parsed = parser.parseScore('[C] C4 r D4 E4', 4);
+  assert.deepEqual(parsed.errors, []);
+  const { context, oscillators } = makeContext(0, false);
+  context.appState.synthEngine = 'classic';
+  context.appState.sympAmount = 0;
+  context.scheduleBeatGuide(parsed.measures[0].beats[0], {
+    startTime:1, slotDuration:0.5, measures:parsed.measures, maxDurationSlots:4, capo:2
+  });
+  const first = context.trackedGuideVoices.find(voice => !voice.symp);
+  const expectedFrequency = 440 * Math.pow(2, (62 - 69) / 12) * 1.005;
+  assert.ok(Math.abs(oscillators[0].frequency.events[0][1] - expectedFrequency) < 1e-9,
+    'classic natural guide receives the capo-adjusted pitch exactly once');
+  context.scheduleBeatGuide(parsed.measures[0].beats[1], {
+    startTime:1.5, slotDuration:0.5, measures:parsed.measures, maxDurationSlots:4, capo:2
+  });
+  assert.ok(Math.abs(first.end - 1.515) < 1e-9, 'parsed whole-beat rest stops the previously sounding natural note');
 });
 
 test('exact classic tone decay is preserved independently from the natural note-off release', function(){

@@ -7,6 +7,7 @@
   // 기존 합성음의 저음 고배음이 지나치게 깎이지 않도록 cutoff 하한을 둠
   var CLASSIC_BASS_ATTACK_CUTOFF = 1200;
   var CLASSIC_BASS_DECAY_CUTOFF = 600;
+  var NATURAL_TAIL_FADE = 0.04;
   // 클래식 기타 몸통 공명 모드 [주파수Hz, Q, 원음 대비 크기]: 공기(헬름홀츠) · 상판 기본 · 상판-뒤판 결합 · 고차 상판 모드
   var BODY_MODES = [[98, 12, 0.45], [196, 16, 0.38], [245, 14, 0.15], [390, 10, 0.20], [550, 9, 0.12]];
   var REVERB_EARLY = [ // [초, 크기] 채널별로 시간만 다르게 해 자연스러운 좌우 폭
@@ -233,6 +234,17 @@
     apo: [0.62, 0.48], tir: [0.48, 0.58] // [수직, 수평] 비율
   };
 
+  function getNaturalDecayProfile(midi, isApoyando, strNo){
+    var frequency = 440 * Math.pow(2, (midi - 69) / 12);
+    var st = strNo ? STRINGS[strNo - 1] : null;
+    var fret = st ? Math.max(0, midi - st.midi) : 0;
+    var isWound = st ? strNo >= 4 : midi < 55;
+    var t60Fund = 8.0 * Math.pow(frequency / 82.4, -0.33) * (isApoyando ? 1.15 : 1.0) * (fret > 0 ? 0.92 : 1.0);
+    var t60High = (isWound ? 0.6 : (isApoyando ? 0.5 : 0.6)) * (fret > 0 ? 0.95 : 1.0) * Math.max(0.88, 1 - 0.008 * fret);
+    var duration = Math.min(isWound ? 6 : 5, t60Fund * KS_POLAR.hT60);
+    return {frequency:frequency,fret:fret,isWound:isWound,t60Fund:t60Fund,t60High:t60High,duration:duration};
+  }
+
   // 한 방향 진동의 루프 필터·지연 설계: 기음과 3kHz 두 지점의 감쇠 시간(T60)과 정확한 음정을 동시에 맞춤
   function ksDesign(sr, f, t60Fund, t60High){
     var w1 = 2 * Math.PI * f / sr, wh = 2 * Math.PI * 3000 / sr;
@@ -317,19 +329,19 @@
   // - 4·5·6번줄은 금속 권선현이라 고음 배음이 더 오래 남음
   function renderKsString(ctx, midi, isApoyando, strNo){
     var sr = ctx.sampleRate;
-    var f = 440 * Math.pow(2, (midi - 69) / 12);
-    var st = strNo ? STRINGS[strNo - 1] : null;
-    var fret = st ? Math.max(0, midi - st.midi) : 0;
-    var isWound = st ? strNo >= 4 : midi < 55;
+    var profile = getNaturalDecayProfile(midi,isApoyando,strNo);
+    var f = profile.frequency;
+    var fret = profile.fret;
+    var isWound = profile.isWound;
     // 감쇠 목표(두 진동을 합친 평균): 기음 T60은 저음일수록 길고(E2 8초 · E4 5초 · E5 4초), 3kHz 대역은 0.5~0.6초에 걸쳐 사라짐
     // (고음 배음이 너무 빨리 죽으면 높은 음이 사인파처럼 뭉개져 음이 흐릿하게 들림)
-    var t60Fund = 8.0 * Math.pow(f / 82.4, -0.33) * (isApoyando ? 1.15 : 1.0) * (fret > 0 ? 0.92 : 1.0);
-    var t60High = (isWound ? 0.6 : (isApoyando ? 0.5 : 0.6)) * (fret > 0 ? 0.95 : 1.0) * Math.max(0.88, 1 - 0.008 * fret);
+    var t60Fund = profile.t60Fund;
+    var t60High = profile.t60High;
     var P = KS_POLAR, wts = isApoyando ? P.apo : P.tir;
     var V = ksDesign(sr, f * Math.pow(2, P.vDetuneCents / 1200), t60Fund * P.vT60, t60High * P.vHigh);
     var H = ksDesign(sr, f, t60Fund * P.hT60, t60High * P.hHigh);
 
-    var len = Math.floor(sr * Math.min(isWound ? 6 : 5, t60Fund * P.hT60));
+    var len = Math.floor(sr * profile.duration);
     var buf = ctx.createBuffer(1, len, sr);
     var out = buf.getChannelData(0);
     var betaScale = Math.pow(2, 0.2 * fret / 12);
@@ -342,7 +354,7 @@
     var early = Math.min(len, Math.floor(sr * 0.25)), sumSq = 0, n;
     for (n = 0; n < early; n++) sumSq += out[n] * out[n];
     var rms = Math.sqrt(sumSq / early);
-    var fade = Math.floor(sr * 0.04), nrm = rms > 0 ? 0.28 / rms : 1;
+    var fade = Math.floor(sr * NATURAL_TAIL_FADE), nrm = rms > 0 ? 0.28 / rms : 1;
     for (n = 0; n < len; n++){
       var fg = n > len - fade ? (len - n) / fade : 1;
       out[n] *= nrm * fg;
@@ -427,7 +439,8 @@
     return Number.isFinite(hardStopAt) ? Math.min(stopAt, hardStopAt + 0.015) : stopAt;
   }
 
-  function buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, strNo, exactDuration, hardStopAt){
+  function buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, strNo, exactDuration, hardStopAt, naturalDecay){
+    exactDuration = !!exactDuration && !naturalDecay;
     var src = actx.createBufferSource();
     src.buffer = getKsBuffer(midi, isApoyando, strNo);
     // 강한 탄현 순간 장력이 커져 음정이 살짝 높게 시작했다 안착하는 현상 (아포얀도가 더 큼)
@@ -439,9 +452,11 @@
     g.gain.linearRampToValueAtTime(peakGain, t + 0.002);
     // 현은 스스로 감쇠하므로 엔벨로프는 음 길이가 끝날 때 손가락으로 줄을 멈추는 동작만 담당 (드라이 모드는 더 짧게 끊음)
     var relAt = exactDuration ? t + dur : t + Math.max(0.06, dur * 0.75);
-    g.gain.setTargetAtTime(0, relAt, isFx ? 0.06 : 0.035);
-    var stopAt = Math.min(t + src.buffer.duration, relAt + 0.4);
-    if (exactDuration) stopAt = boundExactVoiceStop(stopAt, hardStopAt);
+    if (!naturalDecay) g.gain.setTargetAtTime(0, relAt, isFx ? 0.06 : 0.035);
+    var stopAt = naturalDecay
+      ? t + src.buffer.duration
+      : Math.min(t + src.buffer.duration, relAt + 0.4);
+    if (exactDuration || naturalDecay) stopAt = boundExactVoiceStop(stopAt, hardStopAt);
     src.connect(g);
     src.start(t);
     src.stop(stopAt);
@@ -449,9 +464,11 @@
   }
 
   // 기존 합성음 (삼각파 2개 + 사인파 + 로우패스 스윕): 물리 모델 음원과 A/B 비교용
-  function buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx, exactDuration, hardStopAt){
+  function buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx, exactDuration, hardStopAt, naturalDecay, strNo){
     var freq = 440 * Math.pow(2, (midi - 69) / 12);
-    var toneDuration = exactDuration ? Math.max(dur, legacyToneDuration(dur, isBass, isApoyando, isFx)) : dur;
+    exactDuration = !!exactDuration && !naturalDecay;
+    var toneDuration = exactDuration || naturalDecay ? Math.max(dur, legacyToneDuration(dur, isBass, isApoyando, isFx)) : dur;
+    var profile = naturalDecay ? getNaturalDecayProfile(midi,isApoyando,strNo) : null;
 
     var o1 = actx.createOscillator();
     var o2 = actx.createOscillator();
@@ -503,8 +520,29 @@
     // 주법별 오실레이터 비율·피크 차이로 생기는 음량 차이 상쇄 (실측: 같은 scale에서 아포얀도 +3.9dB(드라이 +3.1dB), 티란도 -1.2dB)
     // 강약은 호출부 scale(아포얀도 ×1.16, 티란도 ×0.62)로만 정해져 물리음원과 같은 균형이 됨 (보정 전에는 티란도가 주선율보다 10.6dB 작았음)
     var artComp = isBass ? 1 : (isApoyando ? (isFx ? 0.64 : 0.70) : (isTirando ? 1.15 : 1));
-    if (isFx){
-      var peakGain = (isBass ? 0.44 : (isApoyando ? 0.42 : 0.36)) * scale * artComp;
+    var peakGain = (isFx ? (isBass ? 0.44 : (isApoyando ? 0.42 : 0.36)) :
+      (isBass ? 0.42 : (isApoyando ? 0.40 : 0.34))) * scale * artComp;
+    if (naturalDecay){
+      var lifetime = profile.duration;
+      var fadeStart = t + lifetime - NATURAL_TAIL_FADE;
+      var decayTau = profile.t60Fund / Math.log(1000);
+      var decayStart, startGain;
+      if (isFx){
+        g.gain.setValueAtTime(0.0008, t);
+        g.gain.linearRampToValueAtTime(peakGain, t + (isBass ? 0.006 : 0.005));
+        decayStart = t + Math.min(0.20, toneDuration * 0.28);
+        startGain = peakGain * (isApoyando ? 0.50 : 0.42);
+        g.gain.exponentialRampToValueAtTime(startGain, decayStart);
+      } else {
+        g.gain.setValueAtTime(0.0008, t);
+        g.gain.linearRampToValueAtTime(peakGain, t + 0.004);
+        decayStart = t + 0.004;
+        startGain = peakGain;
+      }
+      var targetGain = startGain * Math.exp(-(fadeStart - decayStart) / decayTau);
+      g.gain.exponentialRampToValueAtTime(targetGain, fadeStart);
+      g.gain.linearRampToValueAtTime(0, t + lifetime);
+    } else if (isFx){
       g.gain.setValueAtTime(0.0008, t);
       g.gain.linearRampToValueAtTime(peakGain, t + (isBass ? 0.006 : 0.005));
       // 초기 탄현 어택 이후 몸통 서스테인으로 자연스럽게 이어지는 2단 감쇠(Pluck -> Sustain)
@@ -512,7 +550,6 @@
       g.gain.exponentialRampToValueAtTime(0.0005, t + toneDuration);
     } else {
       // 드라이 모드: 웅웅거리는 서스테인 꼬리 없이 음의 시작과 끝이 분명한 1단 직관적 감쇠
-      var peakGain = (isBass ? 0.42 : (isApoyando ? 0.40 : 0.34)) * scale * artComp;
       g.gain.setValueAtTime(0.0008, t);
       g.gain.linearRampToValueAtTime(peakGain, t + 0.004);
       g.gain.exponentialRampToValueAtTime(0.0005, t + toneDuration);
@@ -523,7 +560,7 @@
     o3.connect(g3); g3.connect(filter);
     filter.connect(g);
     var noteOut = g;
-    var stopAt = t + dur + 0.03;
+    var stopAt = naturalDecay ? t + profile.duration : t + dur + 0.03;
     if (exactDuration){
       var noteOffAt = t + dur;
       var gate = actx.createGain();
@@ -532,6 +569,8 @@
       g.connect(gate);
       noteOut = gate;
       stopAt = Math.min(t + toneDuration + 0.03, noteOffAt + 0.4);
+      stopAt = boundExactVoiceStop(stopAt, hardStopAt);
+    } else if (naturalDecay){
       stopAt = boundExactVoiceStop(stopAt, hardStopAt);
     }
     o1.start(t); o2.start(t); o3.start(t);
@@ -549,20 +588,21 @@
     var isApoyando = articulation === 'apoyando';
     var isTirando = articulation === 'tirando';
     var isFx = !!appState.acousticFx;
-    var exactDuration = !!(options && options.exactDuration);
-    var dur = exactDuration ? Math.max(0, Number(durSec) || 0) : legacyToneDuration(durSec, isBass, isApoyando, isFx); // 드라이 톤: 음간 중첩 없는 또렷하고 깔끔한 감쇠
+    var naturalDecay = !!(options && options.naturalDecay);
+    var exactDuration = !!(options && options.exactDuration) && !naturalDecay;
+    var dur = exactDuration || naturalDecay ? Math.max(0, Number(durSec) || 0) : legacyToneDuration(durSec, isBass, isApoyando, isFx); // 드라이 톤: 음간 중첩 없는 또렷하고 깔끔한 감쇠
     if (dur <= 0) return;
     var scale = gainScale != null ? gainScale : 1.0;
     var sNo = strNum || defaultStringFor(midi);
 
-    var hardStopAt = exactDuration && options ? Number(options.hardStopAt) : NaN;
+    var hardStopAt = (exactDuration || naturalDecay) && options ? Number(options.hardStopAt) : NaN;
     var voice = appState.synthEngine === 'classic'
-      ? buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx, exactDuration, hardStopAt)
-      : buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, sNo, exactDuration, hardStopAt);
+      ? buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx, exactDuration, hardStopAt, naturalDecay, sNo)
+      : buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, sNo, exactDuration, hardStopAt, naturalDecay);
 
     // 같은 줄 재탄현 시 이 보이스만 독립적으로 끊을 수 있도록 엔벨로프 뒤에 별도 감쇠 게인을 둠
     var damp = actx.createGain();
-    if (Number.isFinite(hardStopAt) && hardStopAt < t + dur + 0.4){
+    if (Number.isFinite(hardStopAt) && hardStopAt < voice.stopAt){
       damp.gain.setValueAtTime(1, t);
       damp.gain.setValueAtTime(1, hardStopAt);
       damp.gain.linearRampToValueAtTime(0, hardStopAt + 0.01);

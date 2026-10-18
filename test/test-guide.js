@@ -75,14 +75,15 @@ context.scheduleBeatGuide(restBeat, { startTime:5, slotDuration:0.9, capo:2, max
 assert.deepEqual(calls.map(call => call[0]), ['note', 'stop', 'note'], 'rest cuts current sound and later note is scheduled afterward');
 assert.equal(calls[0][1], 62, 'capo is applied once at scheduling');
 assert.equal(calls[0][6], 2, 'physical string is preserved');
-assert.equal(calls[0][7].exactDuration, true, 'exact duration option is passed through');
+assert.equal(calls[0][7].naturalDecay, true, 'guide enables natural decay');
+assert.equal(calls[0][7].exactDuration, undefined, 'guide does not turn the nominal score length into note-off');
 assert.ok(Math.abs(calls[0][7].hardStopAt - 5.75) < 1e-9, 'loop boundary is passed as the absolute per-voice hard stop');
 assert.ok(Math.abs(calls[2][7].hardStopAt - 5.75) < 1e-9, 'all scheduled notes share the same loop boundary');
 
 calls.length = 0;
 context.scheduleSubdividedGuide(restBeat, { startTime:1, subStep:0.1, capo:0 });
 assert.deepEqual(calls.map(call => call[0]), ['note', 'stop', 'note'], 'legacy subdivided scheduler delegates rest cutoff');
-assert.ok(calls.filter(call => call[0] === 'note').every(call => call[7] && call[7].exactDuration), 'legacy wrapper uses exact note duration');
+assert.ok(calls.filter(call => call[0] === 'note').every(call => call[7] && call[7].naturalDecay && !call[7].exactDuration), 'subdivided guide uses natural decay while retaining nominal event durations');
 assert.equal(calls[2][3], 1.2, 'legacy wrapper uses the shared event onset');
 assert.equal(context.getSubdividedGuideEvents(restBeat, { startTime:1, subStep:0.1 }).length, 2, 'legacy event accessor remains notes-only');
 const legacySplit = { subNotes:restBeat.subNotes };
