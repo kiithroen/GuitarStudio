@@ -315,8 +315,9 @@ function curCapo(){
         m.beats.forEach(function(b, bIdx){
           var cell = document.createElement('div');
           var extraCls = ' tab-cell';
-          if (b.explicitArticulation && b.articulation === 'apoyando') extraCls += ' arp-melody';
-          else if (b.explicitArticulation && b.articulation === 'tirando') extraCls += ' arp-sub';
+          var uniformArticulation = getUniformBeatArticulation(b);
+          if (uniformArticulation === 'apoyando') extraCls += ' arp-melody';
+          else if (uniformArticulation === 'tirando') extraCls += ' arp-sub';
           if (((curSong.beats === 9 || curSong.beats === 6) && (bIdx === 3 || bIdx === 6)) || (curSong.beats === 8 && bIdx === 4)){
             extraCls += ' arp-group-start';
           }
@@ -325,11 +326,11 @@ function curCapo(){
           cell.dataset.b = bIdx;
           var beatToken = b.tok || b.customTok || b.en;
           var effBass = getExplicitBass(b);
-
-          var articDesc = b.explicitArticulation && b.articulation === 'apoyando'
+          var pitchLabel = formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(m.chord || '')});
+          var articDesc = uniformArticulation === 'apoyando'
             ? ' [악보 지정 아포얀도(!)]'
-            : (b.explicitArticulation && b.articulation === 'tirando' ? ' [악보 지정 티란도(~)]' : '');
-          cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + articDesc + ' (클릭: 운지 보기 및 음 듣기)';
+            : (uniformArticulation === 'tirando' ? ' [악보 지정 티란도(~)]' : '');
+          cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + (pitchLabel ? ': ' + pitchLabel : '') + articDesc + ' (클릭: 운지 보기 및 음 듣기)';
 
           var topRow = document.createElement('div');
           topRow.className = 'tab-cell-top';
@@ -340,44 +341,11 @@ function curCapo(){
             var enEl = document.createElement('span');
             enEl.className = 'tab-cell-en';
 
-            if (!b.isSubdivided && b.chordNotes && b.chordNotes.length > 2){
-              if (m.chord){
-                enEl.textContent = cleanChordToken(m.chord);
-              } else {
-                enEl.textContent = b.chordNotes.map(function(c){
-                  return (c.en || '').replace(/\d+$/, '') || c.en || '';
-                }).filter(Boolean).join('·');
-              }
-            } else if (b.isSubdivided && b.subNotes){
-              enEl.textContent = b.subNotes.map(function(s){
-                if (s.kind === 'rest' || /^[rR]$/.test(s.tok || '')) return '쉼';
-                if (s.kind === 'hold' || !s.en || s.en === '-') return '유지';
-                if (s.chordNotes && s.chordNotes.length >= 2){
-                  return s.chordNotes.map(function(cn){ return (cn.en || '').replace(/\d+$/, ''); }).filter(Boolean).join('+');
-                }
-                return s.en.replace(/\d+$/, '');
-              }).join('·');
-            } else if (!b.isSubdivided && b.chordNotes && b.chordNotes.length === 2){
-              enEl.textContent = b.chordNotes.map(function(cn){ return cn.en || ''; }).filter(Boolean).join('+');
-            } else if (b.kind === 'rest') {
-              enEl.textContent = '쉼';
-            } else if (b.kind === 'hold') {
-              enEl.textContent = '유지';
-            } else {
-              enEl.textContent = b.en || '';
-            }
+            enEl.textContent = formatBeatPitchLabel(b, {compact:true, chord:cleanChordToken(m.chord || '')});
             if (enEl.textContent){
               solfegeWrap.appendChild(enEl);
               topRow.appendChild(solfegeWrap);
             }
-          }
-          var hasArticulationMark = b.explicitArticulation && (b.articulation === 'apoyando' || b.articulation === 'tirando');
-          if (hasArticulationMark){
-            var rhEl = document.createElement('span');
-            rhEl.className = 'tab-cell-rh';
-            var rhText = b.articulation === 'apoyando' ? '!' : '~';
-            rhEl.textContent = rhText;
-            topRow.appendChild(rhEl);
           }
           cell.appendChild(topRow);
 
@@ -603,15 +571,17 @@ function curCapo(){
           var durInfo = getBeatDurationInfo(m.beats, bIdx, curSong.beats);
           var cell = document.createElement('div');
           var extraCls = '';
-          if (b.explicitArticulation && b.articulation === 'apoyando'){
+          var uniformArticulation = getUniformBeatArticulation(b);
+          if (uniformArticulation === 'apoyando'){
             extraCls += ' arp-melody';
-          } else if (b.explicitArticulation && b.articulation === 'tirando'){
+          } else if (uniformArticulation === 'tirando'){
             extraCls += ' arp-sub';
           }
           if (((curSong.beats === 9 || curSong.beats === 6) && (bIdx === 3 || bIdx === 6)) || (curSong.beats === 8 && bIdx === 4)){
             extraCls += ' arp-group-start';
           }
           var mainKind = b.kind || (b.midi ? 'note' : 'rest');
+          var pitchLabel = formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(m.chord || '')});
           if (mainKind === 'rest'){
             extraCls += ' is-rest';
           }
@@ -619,12 +589,12 @@ function curCapo(){
           cell.dataset.m = mIdx;
           cell.dataset.b = bIdx;
 
-          var articDesc = b.explicitArticulation && b.articulation === 'apoyando'
+          var articDesc = uniformArticulation === 'apoyando'
             ? ' [악보 지정 아포얀도(!)]'
-            : (b.explicitArticulation && b.articulation === 'tirando' ? ' [악보 지정 티란도(~)]' : '');
+            : (uniformArticulation === 'tirando' ? ' [악보 지정 티란도(~)]' : '');
 
           var detailDesc = m.no + '마디 ' + (bIdx + 1) + '박: ' +
-            (mainKind === 'rest' ? '쉼' : (mainKind === 'hold' ? '유지' : (b.ko + ' (' + b.en + ', ' + getOctaveLabel(b.midi) + ') · ' + durInfo.durName))) +
+            (mainKind === 'rest' ? '쉼' : (mainKind === 'hold' ? '유지' : (pitchLabel + ' · ' + durInfo.durName))) +
             (durInfo.kind === 'group' ? ' · 분할별 길이: ' + durInfo.durName : '') +
             articDesc + ' (클릭: 음 듣기 및 지판 확인)';
           cell.title = detailDesc;
@@ -669,20 +639,7 @@ function curCapo(){
             // 3. 옥타브 위치 및 영문 음높이 서브 표기 (가온 C4, 중간 E4 등)
             var subEl = document.createElement('span');
             subEl.className = 'b-note-sub';
-            if (!b.isSubdivided && b.chordNotes && b.chordNotes.length >= 2){
-              subEl.textContent = b.chordNotes.length === 2
-                ? b.chordNotes.map(function(c){ return c.en; }).join('+')
-                : '화음 ' + b.chordNotes[0].en + '~' + b.en;
-            } else if (b.isSubdivided && b.subNotes){
-              subEl.textContent = b.subNotes.map(function(s){
-                if (s.kind === 'rest' || /^[rR]$/.test(s.tok || '')) return '쉼';
-                if (s.kind === 'hold' || s.en === '-') return '유지';
-                if (s.chordNotes && s.chordNotes.length >= 2) return s.chordNotes.map(function(c){ return c.en; }).join('+');
-                return s.en;
-              }).join(' · ');
-            } else {
-              subEl.textContent = getOctaveLabel(b.midi) + ' ' + b.en;
-            }
+            subEl.textContent = (!b.isSubdivided && (!b.chordNotes || b.chordNotes.length < 2) ? getOctaveLabel(b.midi) + ' ' : '') + formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(m.chord || '')});
             cell.appendChild(subEl);
             var rightHandLabel = getBeatRightHandLabel(b);
             if (rightHandLabel){

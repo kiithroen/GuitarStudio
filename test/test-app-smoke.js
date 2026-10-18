@@ -239,7 +239,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=builtin-score-review-2')), 'every app script uses the shared built-in score review revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=note-strokes-1')), 'every app script uses the note-strokes revision');
   assert.doesNotMatch(html, /newTextSongBtn|editStructuredBtn|convertImgToScoreBtn|ocrModalFileInput|refImgDetails|refScoreImg|newSongModal|veBarsGrid/);
   for (const script of scripts){
     const source = fs.readFileSync(path.join(root, script), 'utf8');

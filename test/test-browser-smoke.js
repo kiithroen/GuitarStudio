@@ -1027,16 +1027,45 @@ async function testBuiltinScores(client, browserBin){
       });
       changeSongById('builtin-lv6-romance-full');
       appState.scoreView='tab';
-      renderSong();
       var romance=window.allSongs.find(function(song){return song.id==='builtin-lv6-romance-full';});
       if(!romance) throw new Error('Lv.6 Romance built-in score is missing');
-      var first=romance.measures[0];
       if(romance.beats!==3||Number(romance.bpm)!==56) throw new Error('Lv.6 Romance meter or tempo mismatch');
+      var slotDuration=1;
+      var sourceScore=serializeScoreMeasures(romance.measures,'\\n');
+      function guideSignature(){
+        var signature=[];
+        romance.measures[0].beats.forEach(function(beat,index){
+          getBeatGuideEvents(beat,{startTime:index*slotDuration,slotDuration:slotDuration,measures:romance.measures}).forEach(function(event){
+            signature.push([event.note.midi,event.when,event.duration,event.articulation]);
+          });
+        });
+        return signature;
+      }
+      var sourceGuide=guideSignature();
+      renderSong();
+      var first=romance.measures[0];
       if(!first||first.beats.length!==3||!first.beats.every(function(beat){return beat.subNotes&&beat.subNotes.length===3;})) throw new Error('Lv.6 first measure must have three beats split into three notes');
       var firstMeasure=document.querySelector('#measuresGrid .measure-card[data-m="0"]');
       var fingers=firstMeasure?Array.from(firstMeasure.querySelectorAll('.tab-note-rh')).map(function(node){return node.textContent;}):[];
       if(fingers.slice(0,4).join('/')!=='p/a/m/i') throw new Error('Lv.6 first measure TAB does not show explicit p/a/m/i: '+fingers.join('/'));
-      var slotDuration=1, events=[];
+      var tabCells=[0,1,2].map(function(index){return document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="'+index+'"]');});
+      var tabLabels=tabCells.map(function(cell){return cell&&cell.querySelector('.tab-cell-en')?cell.querySelector('.tab-cell-en').textContent:null;});
+      var tabTitles=tabCells.map(function(cell){return cell?cell.title:'';});
+      var tabRhBadges=tabCells.map(function(cell){return !!(cell&&cell.querySelector('.tab-cell-rh'));});
+      if(serializeScoreMeasures(romance.measures,'\\n')!==sourceScore||JSON.stringify(guideSignature())!==JSON.stringify(sourceGuide)) throw new Error('Lv.6 TAB rendering changed serialized score or guide event semantics');
+
+      appState.scoreView='card';
+      renderSong();
+      var cardCells=[0,1,2].map(function(index){return document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="'+index+'"]');});
+      var cardLabels=cardCells.map(function(cell){return cell&&cell.querySelector('.b-note-sub')?cell.querySelector('.b-note-sub').textContent:null;});
+      var cardTitles=cardCells.map(function(cell){return cell?cell.title:'';});
+      var cardArticulationClasses=cardCells.map(function(cell){return !!(cell&&(cell.classList.contains('arp-melody')||cell.classList.contains('arp-sub')));});
+      if(serializeScoreMeasures(romance.measures,'\\n')!==sourceScore||JSON.stringify(guideSignature())!==JSON.stringify(sourceGuide)) throw new Error('Lv.6 card rendering changed serialized score or guide event semantics');
+      appState.scoreView='tab';
+      renderSong();
+      if(serializeScoreMeasures(romance.measures,'\\n')!==sourceScore||JSON.stringify(guideSignature())!==JSON.stringify(sourceGuide)) throw new Error('Lv.6 restored TAB rendering changed serialized score or guide event semantics');
+
+      var events=[];
       first.beats.forEach(function(beat,index){
         events=events.concat(getBeatGuideEvents(beat,{startTime:index*slotDuration,slotDuration:slotDuration,measures:romance.measures}));
       });
@@ -1050,11 +1079,18 @@ async function testBuiltinScores(client, browserBin){
         events.filter(function(event){return event.note.midi!==40&&event.note.midi!==71;}).length!==6) throw new Error('Lv.6 bass/melody/inner note counts are not 1/3/6');
       if(events[0].note.midi!==40||events[0].gain!==0.62||events[0].articulation!=='tirando'||
         events[1].note.midi!==71||events[1].gain!==1.16||events[1].articulation!=='apoyando') throw new Error('Lv.6 opening bass/melody articulation or gain mismatch');
+      var cardTitleHasPartArticulation=cardTitles[0].indexOf('E2~+B4! · B3~ · G3~')>=0&&cardTitles[1].indexOf('B4! · B3~ · G3~')>=0;
+      var cardTitleHasUniformArticulation=cardTitles.some(function(title){return title.indexOf('악보 지정 아포얀도(!)')>=0||title.indexOf('악보 지정 티란도(~)')>=0;});
       var score=document.getElementById('structuredScoreWrap');
       if(score) score.scrollIntoView({block:'start'});
       return {catalogCount:window.BUILTIN_SONGS.length,rendered:results,romance:{id:romance.id,bpm:romance.bpm,beats:romance.beats,
         firstMeasureBeats:first.beats.length,subdivisionCounts:first.beats.map(function(beat){return beat.subNotes.length;}),
-        fingers:fingers.slice(0,4),guideEvents:events.map(function(event){return {midi:event.note.midi,when:event.when,gain:event.gain,
+        fingers:fingers.slice(0,4),tabLabels:tabLabels,tabTitles:tabTitles,tabRhBadges:tabRhBadges,
+        cardLabels:cardLabels,cardTitles:cardTitles,cardArticulationClasses:cardArticulationClasses,
+        cardTitleHasPartArticulation:cardTitleHasPartArticulation,cardTitleHasUniformArticulation:cardTitleHasUniformArticulation,
+        serializationPreserved:serializeScoreMeasures(romance.measures,'\\n')===sourceScore,
+        guidePreserved:JSON.stringify(guideSignature())===JSON.stringify(sourceGuide),
+        guideEvents:events.map(function(event){return {midi:event.note.midi,when:event.when,gain:event.gain,
           articulation:event.articulation,str:event.str,duration:event.duration};})}};
     })()`);
     assert.equal(review.catalogCount, 13, 'all built-in scores are reviewed');
@@ -1064,6 +1100,15 @@ async function testBuiltinScores(client, browserBin){
     assert.equal(review.romance.beats, 3, 'Lv.6 Romance uses three beats per measure');
     assert.deepEqual(review.romance.subdivisionCounts, [3,3,3], 'all first-measure beats use three subdivisions');
     assert.deepEqual(review.romance.fingers, ['p','a','m','i'], 'first measure TAB shows explicit p/a/m/i fingers');
+    assert.deepEqual(review.romance.tabLabels, ['E~+B!·B~·G~','B!·B~·G~','B!·B~·G~'], 'TAB labels show each Lv.6 note articulation independently');
+    assert.ok(review.romance.tabTitles[0].includes('E2~+B4! · B3~ · G3~'), 'first TAB title shows the bass, melody, and inner-note techniques');
+    assert.deepEqual(review.romance.tabRhBadges, [false,false,false], 'TAB articulation marks are included in pitch labels without old end badges');
+    assert.deepEqual(review.romance.cardLabels, ['E2~+B4! · B3~ · G3~','B4! · B3~ · G3~','B4! · B3~ · G3~'], 'card labels show each Lv.6 note articulation independently');
+    assert.ok(review.romance.cardTitleHasPartArticulation, 'card tooltip shows each pitch articulation');
+    assert.equal(review.romance.cardTitleHasUniformArticulation, false, 'mixed articulation tooltip does not assign one technique to the whole beat');
+    assert.deepEqual(review.romance.cardArticulationClasses, [false,false,false], 'mixed articulation card beats have no uniform apo/tir class');
+    assert.equal(review.romance.serializationPreserved, true, 'TAB/card rendering leaves serialized built-in score unchanged');
+    assert.equal(review.romance.guidePreserved, true, 'TAB/card rendering leaves pitch, time, duration, and articulation guide events unchanged');
     assert.equal(review.romance.guideEvents.length, 10, 'first measure produces 10 guide note events');
     process.stdout.write('Browser checkpoint: all 13 built-in scores render in TAB/card; Lv.6 Romance first measure has explicit p/a/m/i and 10 timed guide notes\n');
     await captureBuiltinRomanceScreenshots(client,browserBin);
@@ -1160,7 +1205,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=builtin-score-review-2')), 'all app scripts use the built-in score review revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=note-strokes-1')), 'all app scripts use the shared note-strokes revision');
   const browserBin = findBrowserBinary();
   if (!browserBin) {
     process.stdout.write('SKIP: No Chrome or Edge binary found for browser test\n');

@@ -57,6 +57,67 @@ var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./
     return infoForPart(b);
   }
 
+  function formatBeatPitchLabel(beat, options){
+    var opts = options || {};
+    var compact = opts.compact === true;
+    var isGroup = !!(beat && beat.kind === 'group' && Array.isArray(beat.subNotes));
+    function articulationSuffix(note){
+      if (!note || note.explicitArticulation !== true) return '';
+      if (note.articulation === 'apoyando') return '!';
+      if (note.articulation === 'tirando') return '~';
+      return '';
+    }
+    function formatNote(note, omitOctave){
+      if (!note || note.kind === 'invalid') return '오류';
+      if (note.kind === 'rest') return '쉼';
+      if (note.kind === 'hold') return '유지';
+      var name = note.en || '';
+      if (omitOctave) name = name.replace(/\d+$/, '');
+      return name + articulationSuffix(note);
+    }
+    function formatPart(part, omitOctave){
+      if (!part || part.kind === 'invalid') return '오류';
+      if (part.kind === 'rest') return '쉼';
+      if (part.kind === 'hold') return '유지';
+      if (Array.isArray(part.chordNotes) && part.chordNotes.length){
+        return part.chordNotes.map(function(note){ return formatNote(note, omitOctave); }).join('+');
+      }
+      return formatNote(part, omitOctave);
+    }
+    if (!beat) return '';
+    if (beat.kind === 'invalid') return '오류';
+    if (beat.kind === 'rest') return '쉼';
+    if (beat.kind === 'hold') return '유지';
+    if (isGroup){
+      return beat.subNotes.map(function(part){ return formatPart(part, compact); }).join(compact ? '·' : ' · ');
+    }
+    if (Array.isArray(beat.chordNotes) && beat.chordNotes.length > 2){
+      var hasExplicitMark = beat.chordNotes.some(function(note){ return articulationSuffix(note) !== ''; });
+      if (compact && !hasExplicitMark && opts.chord) return String(opts.chord);
+      return beat.chordNotes.map(function(note){ return formatNote(note, compact); }).join('+');
+    }
+    return formatPart(beat, false);
+  }
+
+  function getUniformBeatArticulation(beat){
+    if (!beat) return null;
+    var notes = [];
+    function collect(part){
+      if (!part || part.kind === 'rest' || part.kind === 'hold' || part.kind === 'invalid') return;
+      if (Array.isArray(part.chordNotes) && part.chordNotes.length){
+        part.chordNotes.forEach(function(note){ collect(note); });
+      } else if (part.kind === 'note' || part.midi != null){
+        notes.push(part);
+      }
+    }
+    if (beat.kind === 'group' && Array.isArray(beat.subNotes)) beat.subNotes.forEach(collect);
+    else collect(beat);
+    if (!notes.length || notes.some(function(note){ return note.explicitArticulation !== true; })) return null;
+    var articulation = notes[0].articulation;
+    if (articulation !== 'apoyando' && articulation !== 'tirando') return null;
+    return notes.every(function(note){ return note.articulation === articulation; }) ? articulation : null;
+  }
 
 
-if (typeof module !== 'undefined' && module.exports){ module.exports = { NOTE_DUR_SVGS: NOTE_DUR_SVGS, getBeatDurationInfo: getBeatDurationInfo }; }
+
+if (typeof module !== 'undefined' && module.exports){ module.exports = { NOTE_DUR_SVGS: NOTE_DUR_SVGS, getBeatDurationInfo: getBeatDurationInfo, formatBeatPitchLabel: formatBeatPitchLabel, getUniformBeatArticulation: getUniformBeatArticulation }; }

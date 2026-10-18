@@ -36,6 +36,7 @@ Guitar Studio는 번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱
 프로젝트에는 브라우저 밖에서 실행하는 테스트와 브라우저 스모크 테스트가 있어. 각 테스트는 해당 모듈, 저장, 시트 응답, 이미지 분석, 앱 부팅, 실제 DOM 흐름을 확인해.
 
 ```powershell
+node test/test-score.js
 node test/test-parser.js
 node test/test-builtins.js
 node test/test-notation.js
@@ -49,6 +50,8 @@ node test/test-app-smoke.js
 node test/test-browser-smoke.js
 Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
 ```
+
+2026-10-19 결정: TAB·박자 카드·tooltip의 음이름과 구성음별 주법 표시는 `src/score.js`의 공통 formatter가 단일 진실 공급원이야. 그룹 대표 주법을 박 전체에 붙이면 아포얀도와 티란도가 섞인 박의 차이가 사라질 수 있어서 각 구성음 표기, TAB·박자 카드·tooltip 표시가 일치하는지 `test/test-score.js`와 브라우저 스모크로 확인해. 이 회귀 검사에는 렌더링 전후 악보 직렬화와 재생 이벤트 비교도 포함해 표시만 바뀌었는지 확인해.
 
 브라우저 스모크는 Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 실행 파일을 지정할 수 있어. 임시 HTTP 서버와 임시 브라우저 프로필을 사용하며 Web Audio API 경로를 실제 실행해. 이 테스트는 Node의 내장 `fetch`와 `WebSocket` 전역이 있는 환경이 필요해. 실행 환경은 `node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`로 확인할 수 있어. 자동화 검사는 실제 기기에서의 오디오 청취 품질을 확인하지 않아. 스크린샷 검증은 `test-artifacts/`에 새 파일을 만들 수 있으므로 기존 개인 자료를 보존해.
 
