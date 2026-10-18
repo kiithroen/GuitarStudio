@@ -115,32 +115,10 @@ function initFretboard(){
       }
     }
 
-    var effBass = getExplicitBass(targetNote);
     var lhNames = { 0: '0 (개방현)', 1: '1번 (검지)', 2: '2번 (중지)', 3: '3번 (약지)', 4: '4번 (소지)' };
     var rhNames = { p: 'p (엄지 - 저음줄)', i: 'i (검지)', m: 'm (중지)', a: 'a (약지)' };
 
-    // 2. 엄지(p) 베이스 음 표시 (주황/골드 마커)
-    if (effBass && effBass.midi){
-      if (effBass.fret === 0){
-        var bassOpenEl = $('#fretboard .fb-open[data-str="' + effBass.str + '"]');
-        if (bassOpenEl){
-          bassOpenEl.style.color = '#ffb74d';
-          bassOpenEl.style.fontWeight = '700';
-          bassOpenEl.textContent = (bassOpenEl.dataset.baseLabel || '') + '·p' + effBass.ko;
-        }
-      } else if (effBass.str && effBass.fret > 0){
-        var bassCell = $('#fretboard .fb-cell[data-str="' + effBass.str + '"][data-fret="' + effBass.fret + '"]');
-        if (bassCell){
-          bassCell.textContent = '';
-          var bmk = document.createElement('span');
-          bmk.className = 'fb-marker bass-note';
-          bmk.textContent = 'p' + effBass.ko + (effBass.lh ? '(' + effBass.lh + ')' : '');
-          bassCell.appendChild(bmk);
-        }
-      }
-    }
-
-    // 3. 현재 박자 목표 멜로디 음 표시 (초록 마커)
+    // 3. 현재 박자 목표 악보 음 표시 (초록 마커)
     if (targetNote && targetNote.midi){
       var info = midiInfo(targetNote.midi);
       var str = targetNote.str || (info.pos && info.pos.str);
@@ -157,24 +135,21 @@ function initFretboard(){
       var songCapo = getSongCapo(curSong);
       var capoTag = songCapo > 0 ? (' [Capo ' + songCapo + ' 실음: ' + midiInfo(soundingMidi(targetNote.midi, songCapo)).en + ']') : '';
 
-      if (targetNote.chordNotes && targetNote.chordNotes.length > 2){
+      if (targetNote.chordNotes && targetNote.chordNotes.length >= 2){
         var noteNames = targetNote.chordNotes.map(function(c){ return c.str + '줄 ' + c.ko + (c.fret === 0 ? '(개방)' : '(' + c.fret + '프)'); }).join(' + ');
-        $('#guideNoteTxt').textContent = (chordName ? cleanChordToken(chordName) + ' 화음' : '화음') + ': ' + noteNames + capoTag;
+        var noteHeading = targetNote.chordNotes.length === 2 ? '겹음: ' : (chordName ? cleanChordToken(chordName) + ' 화음: ' : '화음: ');
+        $('#guideNoteTxt').textContent = noteHeading + noteNames + capoTag;
         var lhStrs = targetNote.chordNotes.map(function(c){ return c.str + '줄 ' + (c.fret === 0 ? '0' : c.lh + '번'); }).join(' + ');
         $('#guideLhTxt').textContent = '왼손 운지: ' + lhStrs;
-        $('#guideRhTxt').textContent = '상행 롤 아르페지오 (p → i → m → a 또는 엄지 롤 ↑)';
-      } else if (effBass && effBass.midi){
-        $('#guideNoteTxt').textContent = info.en + '(' + info.ko + ') + 저음 ' + effBass.en + '(' + effBass.ko + '·' + effBass.str + '줄 ' + (effBass.fret === 0 ? '개방' : effBass.fret + '프') + ')' + capoTag;
-        $('#guideLhTxt').textContent = '멜로디 ' + (lhNames[lh] || lh) + ' + 저음 ' + (effBass.fret === 0 ? '0(개방)' : (effBass.lh + '번'));
-        $('#guideRhTxt').textContent = 'p(엄지·' + effBass.str + '줄) + ' + (rhNames[rh] || rh) + ' 동시 탄현' + articTag;
+        $('#guideRhTxt').textContent = targetNote.chordNotes.length === 2 ? '동시 탄현' + articTag : '상행 롤 아르페지오';
       } else {
         $('#guideNoteTxt').textContent = info.en + ' (' + info.ko + ') · ' + str + '번줄 ' + (fret === 0 ? '개방현' : fret + '프렛') + capoTag;
         $('#guideLhTxt').textContent = lhNames[lh] || (lh + '번 손가락');
         $('#guideRhTxt').textContent = (rhNames[rh] || rh) + articTag;
       }
 
-      var notesToHighlight = (targetNote.chordNotes && targetNote.chordNotes.length > 2)
-        ? targetNote.chordNotes.slice(1)
+      var notesToHighlight = (targetNote.chordNotes && targetNote.chordNotes.length >= 2)
+        ? targetNote.chordNotes
         : [{ str: str, fret: fret, lh: lh, ko: info.ko }];
 
       notesToHighlight.forEach(function(nt){
@@ -199,7 +174,7 @@ function initFretboard(){
     } else if (ch){
       $('#guideNoteTxt').textContent = ch.name;
       $('#guideLhTxt').textContent = ch.desc;
-      $('#guideRhTxt').textContent = 'p(엄지) + i·m·a 아르페지오 또는 스트로크';
+      $('#guideRhTxt').textContent = '아르페지오 또는 스트로크';
     } else {
       $('#guideNoteTxt').textContent = '쉼표 / 유지 박자';
       $('#guideLhTxt').textContent = '이전 음 여운 유지 또는 쉼';

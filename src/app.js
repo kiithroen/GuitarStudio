@@ -500,6 +500,8 @@ function editorCapo(){
           cell.dataset.m = mIdx;
           cell.dataset.b = bIdx;
           var effBass = getExplicitBass(b);
+          var hasChordNotes = !!((b.chordNotes && b.chordNotes.length >= 2) || (b.isSubdivided && b.subNotes && b.subNotes.some(function(sub){ return sub.chordNotes && sub.chordNotes.length >= 2; })));
+          var isRolledChord = !b.isSubdivided && b.chordNotes && b.chordNotes.length > 2;
 
           var articDesc = b.articulation === 'apoyando'
             ? (' [아포얀도 주선율 · ' + (b.explicitArticulation ? '악보지정(!)' : '최고음 자동추론') + ']')
@@ -541,13 +543,11 @@ function editorCapo(){
               topRow.appendChild(solfegeWrap);
             }
           }
-          if (b.rh || effBass){
+          if (isRolledChord || (!hasChordNotes && b.rh)){
             var rhEl = document.createElement('span');
             rhEl.className = 'tab-cell-rh';
-            var rhText = effBass ? 'p+' + (b.rh || '') : (b.rh || '');
-            if (!b.isSubdivided && b.chordNotes && b.chordNotes.length > 2){
-              rhText = '↑';
-            } else if (b.articulation === 'apoyando'){
+            var rhText = isRolledChord ? '↑' : (b.rh || '');
+            if (!isRolledChord && b.articulation === 'apoyando'){
               rhText += '!';
             }
             rhEl.textContent = rhText;
@@ -582,8 +582,7 @@ function editorCapo(){
             b.chordNotes.forEach(function(cn, cnIdx){
               if (cn.str){
                 var cPill = document.createElement('span');
-                var isBass = (cnIdx === 0);
-                cPill.className = 'tab-fret-pill ' + (isBass ? 'bass-fret' : 'mel-fret');
+                cPill.className = 'tab-fret-pill note-fret';
                 cPill.style.top = ((cn.str - 1) * 20) + '%';
                 cPill.textContent = String(cn.fret != null ? cn.fret : 0);
                 if (cn.lh != null && cn.lh > 0){
@@ -599,10 +598,10 @@ function editorCapo(){
             var numSubs = b.subNotes.length;
             b.subNotes.forEach(function(sn, sIdx){
               var leftPct = (((sIdx + 0.5) / numSubs) * 100) + '%';
-              function addSubPill(note, role, transform){
+              function addSubPill(note, transform){
                 if (!note || !note.str) return;
                 var pill = document.createElement('span');
-                pill.className = 'tab-fret-pill ' + role;
+                pill.className = 'tab-fret-pill note-fret';
                 pill.style.position = 'absolute';
                 pill.style.top = ((note.str - 1) * 20) + '%';
                 pill.style.left = leftPct;
@@ -627,18 +626,18 @@ function editorCapo(){
                 dash.style.opacity = '0.4';
                 gridEl.appendChild(dash);
               } else if (sn.chordNotes && sn.chordNotes.length > 2){
-                sn.chordNotes.forEach(function(cn, cnIdx){ addSubPill(cn, cnIdx === 0 ? 'bass-fret' : 'mel-fret'); });
+                sn.chordNotes.forEach(function(cn){ addSubPill(cn); });
               } else if (sn.chordNotes && sn.chordNotes.length === 2){
                 var subBass = getExplicitBass(sn);
                 var pairSameStr = !!(subBass && subBass.str && sn.str && subBass.str === sn.str);
                 var pairSameFret = pairSameStr && subBass.fret === sn.fret;
                 var pairBassTransform = pairSameStr && !pairSameFret ? 'translate(-85%, -50%)' : null;
                 var pairMelTransform = pairSameStr && !pairSameFret ? 'translate(-15%, -50%)' : null;
-                if (subBass && subBass.midi) addSubPill(subBass, 'bass-fret', pairBassTransform);
-                if (sn.midi && !pairSameFret) addSubPill(sn, 'mel-fret', pairMelTransform);
+                if (subBass && subBass.midi) addSubPill(subBass, pairBassTransform);
+                if (sn.midi && !pairSameFret) addSubPill(sn, pairMelTransform);
               } else if (sn.midi && sn.str){
                 var mPill = document.createElement('span');
-                mPill.className = 'tab-fret-pill mel-fret';
+                mPill.className = 'tab-fret-pill note-fret';
                 mPill.style.position = 'absolute';
                 mPill.style.top = ((sn.str - 1) * 20) + '%';
                 mPill.style.left = leftPct;
@@ -660,10 +659,10 @@ function editorCapo(){
             var sameFret = sameStr && (effBass.fret === b.fret);
             var diffFret = sameStr && (effBass.fret !== b.fret);
 
-            // 1. 베이스 프렛 (주황/골드)
+            // 1. 낮은 구성음 프렛
             if (hasBass){
               var bPill = document.createElement('span');
-              bPill.className = 'tab-fret-pill bass-fret';
+              bPill.className = 'tab-fret-pill note-fret';
               bPill.style.top = ((effBass.str - 1) * 20) + '%';
               if (diffFret){
                 bPill.style.left = '38%';
@@ -678,11 +677,11 @@ function editorCapo(){
               gridEl.appendChild(bPill);
             }
 
-            // 2. 멜로디 프렛 (인디고/블루)
+            // 2. 높은 구성음 프렛
             if (hasMel){
               if (!sameFret){
                 var mPill = document.createElement('span');
-                mPill.className = 'tab-fret-pill mel-fret';
+                mPill.className = 'tab-fret-pill note-fret';
                 mPill.style.top = ((b.str - 1) * 20) + '%';
                 if (diffFret){
                   mPill.style.left = '62%';

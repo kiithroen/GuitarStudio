@@ -29,6 +29,7 @@
 페이지는 기존처럼 `index.html`을 직접 열거나 정적 웹 서버에서 실행할 수 있다. HTML은 `src/storage.js`, `src/notation.js`, `src/parser.js`, `src/score.js`, `src/audio.js`, `src/guide.js`, `src/ai-prompt.js`, `src/image-analysis.js`, `src/fretboard.js`, `src/editor.js`, `src/sheets.js`, `src/app.js` 순서로 classic script를 로드한다. 따라서 별도 빌드나 패키지 설치가 필요하지 않으며, 공유 함수는 `window` 전역 이름을 유지한다. 저장소 모듈은 DOM을 참조하지 않는다. 지판, 에디터, 시트 UI 이벤트는 앱 상태가 준비된 뒤 각각 `initFretboard()`, `initEditor()`, `initSheetSync()`에서 등록한다.
 
 자동 베이스 반주 추가 기능은 없다. 악보에 `+`로 입력한 음은 모두 표시하고 재생한다.
+겹음에 베이스 역할이나 오른손 운지를 자동 지정해 표시하지 않는다.
 
 ## 악보 문법과 오류 처리
 

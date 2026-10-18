@@ -122,7 +122,7 @@ function initEditor(){
     var btn = $('#veBassCombineBtn');
     if (!btn) return;
     btn.classList.toggle('active', !!veState.bassCombine);
-    btn.textContent = veState.bassCombine ? '+ 베이스 겹음 묶기: 켜짐' : '+ 베이스 겹음 묶기: 꺼짐';
+    btn.textContent = veState.bassCombine ? '+ 겹음 묶기: 켜짐' : '+ 겹음 묶기: 꺼짐';
   }
 
   $('#veBassCombineBtn').addEventListener('click', function(){
@@ -210,16 +210,19 @@ function initEditor(){
     var measures = veState.bars.map(function(bar){
       var koLyrics = bar.notes.map(function(n){
         if (!n || n === '-') return '-';
+        function noteKo(note){
+          if (!note) return '-';
+          if (note.chordNotes && note.chordNotes.length >= 2) return note.chordNotes.map(function(component){ return component.ko; }).join('+');
+          return note.ko;
+        }
         if (n.indexOf('/') >= 0){
           return n.split('/').map(function(sub){
             var sn = parseNoteToken(sub, 0);
-            if (!sn) return '-';
-            return sn.bass ? ('p' + sn.bass.ko + '+' + sn.ko) : sn.ko;
+            return noteKo(sn);
           }).join('/');
         }
         var inf = parseNoteToken(n, 0);
-        if (!inf) return '-';
-        return inf.bass ? ('p' + inf.bass.ko + '+' + inf.ko) : inf.ko;
+        return noteKo(inf);
       }).join(' ');
       var chTag = (!bar.chord || bar.chord === '-')
         ? '-'
@@ -282,6 +285,11 @@ function initEditor(){
         var cell = document.createElement('div');
         cell.className = 've-cell' + (veState.selBar === mIdx && veState.selBeat === bIdx ? ' selected' : '');
         var koLabel = inf ? ((inf.pos && inf.pos.lh != null ? inf.pos.lh : '') + inf.ko) : '-';
+        function noteLabel(note){
+          if (!note) return '-';
+          if (note.chordNotes && note.chordNotes.length >= 2) return note.chordNotes.map(function(component){ return component.ko; }).join('+');
+          return (note.pos && note.pos.lh != null ? note.pos.lh : '') + note.ko;
+        }
         var artBadge = '';
         if (inf && inf.explicitArticulation){
           artBadge = inf.articulation === 'apoyando'
@@ -292,7 +300,7 @@ function initEditor(){
           var subs = tok.split('/');
           var subKo = subs.map(function(stk){
             var sn = parseNoteToken(stk, bIdx);
-            return sn ? ((sn.pos && sn.pos.lh != null ? sn.pos.lh : '') + sn.ko) : stk;
+            return sn ? noteLabel(sn) : stk;
           }).join('/');
           var subLabel = document.createElement('b');
           subLabel.textContent = subKo;
@@ -302,10 +310,9 @@ function initEditor(){
           subCount.textContent = subs.length + '분할';
           cell.appendChild(subLabel);
           cell.appendChild(subCount);
-        } else if (inf && inf.chordNotes && inf.chordNotes.length > 2){
-          cell.innerHTML = '<b>' + inf.chordNotes.map(function(c){ return c.ko; }).join('+') + '</b><small style="color:#b45309;font-weight:700">화음' + artBadge + '</small>';
-        } else if (inf && inf.bass){
-          cell.innerHTML = '<b>p' + inf.bass.ko + '+' + koLabel + '</b><small style="color:#b45309;font-weight:700">' + inf.bass.str + '줄+' + (inf.pos ? inf.pos.str + '줄' + inf.pos.fret : '') + artBadge + '</small>';
+        } else if (inf && inf.chordNotes && inf.chordNotes.length >= 2){
+          var chordLabel = inf.chordNotes.length === 2 ? '겹음' : '화음';
+          cell.innerHTML = '<b>' + inf.chordNotes.map(function(c){ return c.ko; }).join('+') + '</b><small style="color:var(--muted);font-weight:700">' + chordLabel + artBadge + '</small>';
         } else {
           cell.innerHTML = '<b>' + koLabel + '</b><small>' + (inf && inf.pos ? (inf.pos.str + '줄' + inf.pos.fret) : '쉼/유지') + artBadge + '</small>';
         }
@@ -327,7 +334,7 @@ function initEditor(){
   }
 
   function updateVeSelectionLabel(){
-    $('#veSelectedLabel').textContent = '선택된 위치: ' + (veState.selBar + 1) + '마디 ' + (veState.selBeat + 1) + '박 · 패드 클릭(Shift+클릭 시 베이스 겹음, ! 키로 아포얀도 강조)';
+    $('#veSelectedLabel').textContent = '선택된 위치: ' + (veState.selBar + 1) + '마디 ' + (veState.selBeat + 1) + '박 · 패드 클릭(Shift+클릭 시 겹음, ! 키로 아포얀도 강조)';
   }
 
   function applyNoteToSelectedCell(tok, isShift){
