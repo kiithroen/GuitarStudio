@@ -953,7 +953,7 @@ function editorCapo(){
         plusB.style.cssText = 'border:0;background:rgba(0,0,0,.35);color:#fff;border-radius:3px;padding:1px 6px;font-size:11px';
         plusB.addEventListener('click', function(e){
           e.stopPropagation();
-          if (sys.bars.length < 10){ sys.bars.push({ chord: 'C', note: '', memo: '', w: 1 }); syncAfterImageGridChange(); }
+          if (sys.bars.length < 10){ sys.bars.push({ chord: '', note: '', memo: '', w: 1 }); syncAfterImageGridChange(); }
         });
 
         var eqB = document.createElement('button');
@@ -1243,12 +1243,7 @@ function editorCapo(){
       if (w > 0.12 && h > 0.04){
         curSong.systems.push({
           x: +x.toFixed(4), y: +y.toFixed(4), w: +w.toFixed(4), h: +h.toFixed(4),
-          bars: [
-            { chord: 'C', note: 'C4', memo: '', w: 1 },
-            { chord: 'G7', note: 'D4', memo: '', w: 1 },
-            { chord: 'C', note: 'E4', memo: '', w: 1 },
-            { chord: 'C', note: 'C4', memo: '', w: 1 }
-          ]
+          bars: new Array(4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; })
         });
         syncAfterImageGridChange();
       }
@@ -1380,9 +1375,9 @@ function editorCapo(){
         imgCell.appendChild(ph);
         scrollScoreLookAhead($('#imgStageScroll'), imgCell, nextImgCell, prog);
       }
-      var barData = getFlatImageBar(mIdx) || { chord: 'C', note: 'C4' };
-      var parsedNote = parseNoteToken(barData.note || 'C4', 0);
-      highlightFretboard(barData.chord || 'C', parsedNote, false, false, bIdx);
+      var barData = getFlatImageBar(mIdx);
+      var parsedNote = barData && barData.note ? parseNoteToken(barData.note, 0) : null;
+      highlightFretboard(barData && barData.chord ? barData.chord : '', parsedNote, false, false, bIdx);
       if (playPreviewSound && parsedNote && parsedNote.midi){
         var songCapo = getSongCapo(curSong);
         playGuitarNote(soundingMidi(parsedNote.midi, songCapo), 0.75, null, null, null, parsedNote.pos && parsedNote.pos.str);
@@ -2120,11 +2115,12 @@ function editorCapo(){
   }
 
   async function createImageSong(title, firstDataUrl, pdfPages){
+    function blankBars(){ return new Array(4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; }); }
     var defaultSystems = pdfPages ? [
-      { x: 0.08, y: 0.14, w: 0.84, h: 0.18, bars: [{ chord: 'C', note: 'C4', memo: '', w: 1 }, { chord: 'G7', note: 'D4', memo: '', w: 1 }, { chord: 'C', note: 'E4', memo: '', w: 1 }, { chord: 'C', note: 'C4', memo: '', w: 1 }] },
-      { x: 0.08, y: 0.42, w: 0.84, h: 0.18, bars: [{ chord: 'F', note: 'F4', memo: '', w: 1 }, { chord: 'C', note: 'E4', memo: '', w: 1 }, { chord: 'G7', note: 'D4', memo: '', w: 1 }, { chord: 'C', note: 'C4', memo: '', w: 1 }] }
+      { x: 0.08, y: 0.14, w: 0.84, h: 0.18, bars: blankBars() },
+      { x: 0.08, y: 0.42, w: 0.84, h: 0.18, bars: blankBars() }
     ] : [
-      { x: 0.12, y: 0.15, w: 0.55, h: 0.72, bars: [{ chord: 'C', note: 'C4', memo: '', w: 1 }, { chord: 'G7', note: 'D4', memo: '', w: 1 }, { chord: 'C', note: 'E4', memo: '', w: 1 }, { chord: 'C', note: 'C4', memo: '', w: 1 }] }
+      { x: 0.12, y: 0.15, w: 0.55, h: 0.72, bars: blankBars() }
     ];
     var song = {
       id: 'song-' + Date.now(),
@@ -2160,12 +2156,7 @@ function editorCapo(){
     var nextY = Math.min(0.80, 0.12 + n * 0.22);
     curSong.systems.push({
       x: 0.10, y: nextY, w: 0.70, h: 0.20,
-      bars: [
-        { chord: 'C', note: 'C4', memo: '', w: 1 },
-        { chord: 'G7', note: 'D4', memo: '', w: 1 },
-        { chord: 'C', note: 'E4', memo: '', w: 1 },
-        { chord: 'C', note: 'C4', memo: '', w: 1 }
-      ]
+      bars: new Array(4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; })
     });
     syncAfterImageGridChange();
   });
@@ -2196,8 +2187,8 @@ function editorCapo(){
     var bar = sys && sys.bars[selectedImgBar.barIdx];
     if (!bar) return;
     $('#barEditTitle').textContent = (selectedImgBar.globalIdx + 1) + '마디 코드 · 운지 메모 설정';
-    $('#beChord').value = bar.chord || 'C';
-    $('#beNote').value = bar.note || 'C4';
+    $('#beChord').value = bar.chord || '';
+    $('#beNote').value = bar.note || '';
     $('#beMemo').value = bar.memo || '';
     $('#barEditModal').hidden = false;
   }
@@ -2210,8 +2201,8 @@ function editorCapo(){
     var targetBar = Object.assign({}, selectedImgBar);
     var candidate = JSON.parse(JSON.stringify(targetSong));
     var bar = candidate.systems[targetBar.sysIdx].bars[targetBar.barIdx];
-    bar.chord = $('#beChord').value.trim() || 'C';
-    bar.note = $('#beNote').value.trim() || 'C4';
+    bar.chord = $('#beChord').value.trim();
+    bar.note = $('#beNote').value.trim();
     bar.memo = $('#beMemo').value.trim();
     if (!await persistSong(candidate)) return;
     Object.assign(targetSong, candidate);
@@ -2226,142 +2217,48 @@ function editorCapo(){
     updateActiveCursor(targetBar.globalIdx, 0, true);
   });
 
-  // ---------- 검은 세로 마디선 자동 감지 (이미지 픽셀 스캔)
-  async function loadImageElement(src){
-    return new Promise(function(resolve, reject){
-      var im = new Image();
-      im.onload = function(){ resolve(im); };
-      im.onerror = reject;
-      im.src = src;
-    });
-  }
-
-  async function scanBarlinesAndNotesFromImage(dataUrl, sysRect){
-    var im = await loadImageElement(dataUrl);
-    var W = im.naturalWidth || im.width;
-    var H = im.naturalHeight || im.height;
-    var cv = document.createElement('canvas');
-    var scale = Math.min(1, 1000 / Math.max(W, 1));
-    var cw = Math.max(100, Math.round(W * scale));
-    var ch = Math.max(60, Math.round(H * scale));
-    cv.width = cw;
-    cv.height = ch;
-    var ctx = cv.getContext('2d');
-    ctx.drawImage(im, 0, 0, cw, ch);
-    var imgData = ctx.getImageData(0, 0, cw, ch).data;
-
-    var rx0 = Math.floor((sysRect ? sysRect.x : 0.05) * cw);
-    var ry0 = Math.floor((sysRect ? sysRect.y : 0.12) * ch);
-    var rw  = Math.floor((sysRect ? sysRect.w : 0.85) * cw);
-    var rh  = Math.floor((sysRect ? sysRect.h : 0.76) * ch);
-
-    // 1. 각 x열마다 세로로 어두운 픽셀(검은 마디선) 밀도 계산
-    var colDark = new Float32Array(rw);
-    for (var dx = 0; dx < rw; dx++){
-      var x = rx0 + dx;
-      var darkCnt = 0;
-      for (var dy = Math.floor(rh * 0.1); dy < Math.floor(rh * 0.9); dy++){
-        var y = ry0 + dy;
-        var idx = (y * cw + x) * 4;
-        var r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2];
-        if (r < 75 && g < 75 && b < 75) darkCnt++;
-      }
-      colDark[dx] = darkCnt / (rh * 0.8);
-    }
-
-    // 피크(세로 마디선) 추출 (최소 간격 rw * 0.08)
-    var barXs = [];
-    var minGap = Math.max(12, Math.floor(rw * 0.08));
-    for (var i = 2; i < rw - 2; i++){
-      if (colDark[i] > 0.42 && colDark[i] >= colDark[i - 1] && colDark[i] >= colDark[i + 1]){
-        if (!barXs.length || (i - barXs[barXs.length - 1].dx) > minGap){
-          barXs.push({ dx: i, strength: colDark[i], normX: (rx0 + i) / cw });
-        } else if (colDark[i] > barXs[barXs.length - 1].strength){
-          barXs[barXs.length - 1] = { dx: i, strength: colDark[i], normX: (rx0 + i) / cw };
-        }
-      }
-    }
-
-    // 2. 마디 구간 안에 있는 유채색 음표 스티커(교본의 도/라/레 컬러 블럭 등) 위치 스캔
-    // 왼쪽 줄 이름 라벨 영역(첫 번째 굵은 너트선 왼쪽)은 제외
-    var startDx = barXs.length >= 2 ? barXs[0].dx + 8 : Math.floor(rw * 0.12);
-    var endDx = barXs.length >= 2 ? barXs[barXs.length - 1].dx : Math.floor(rw * 0.85);
-    var colorBlobs = [];
-    var stepX = Math.max(2, Math.floor(rw / 120));
-    var stepY = Math.max(2, Math.floor(rh / 60));
-
-    for (var cx = startDx; cx < endDx; cx += stepX){
-      for (var cy = Math.floor(rh * 0.05); cy < Math.floor(rh * 0.95); cy += stepY){
-        var pIdx = ((ry0 + cy) * cw + (rx0 + cx)) * 4;
-        var pr = imgData[pIdx], pg = imgData[pIdx + 1], pb = imgData[pIdx + 2];
-        var maxC = Math.max(pr, pg, pb), minC = Math.min(pr, pg, pb);
-        // 따뜻하거나 선명한 유채색 스티커(주황/연두/노랑 등)이고 파란색/보라색 원(p/i/m)은 제외
-        if (maxC > 130 && (maxC - minC) > 45 && pr > pb + 25){
-          colorBlobs.push({ dx: cx, dy: cy, relY: cy / rh });
-        }
-      }
-    }
-
-    // 인접한 컬러 점들을 클러스터링해서 개별 음표 위치 추출
-    colorBlobs.sort(function(a, b){ return a.dx - b.dx; });
-    var noteClusters = [];
-    colorBlobs.forEach(function(pt){
-      var last = noteClusters[noteClusters.length - 1];
-      if (last && Math.abs(pt.dx - last.dx) < rw * 0.045){
-        last.sumX += pt.dx; last.sumY += pt.relY; last.n++;
-        last.dx = last.sumX / last.n; last.relY = last.sumY / last.n;
-      } else {
-        noteClusters.push({ dx: pt.dx, relY: pt.relY, sumX: pt.dx, sumY: pt.relY, n: 1 });
-      }
-    });
-    noteClusters = noteClusters.filter(function(c){ return c.n >= 3; });
-
-    // y위치(0~1)를 클래식 기타 1~6번줄 대표 1포지션 음으로 매핑
-    function mapRelYToNote(relY){
-      if (relY < 0.22) return 'E4'; // 1번줄 미/파/솔
-      if (relY < 0.38) return 'C4'; // 2번줄 도/레
-      if (relY < 0.54) return 'A3'; // 3번줄 솔/라
-      if (relY < 0.70) return 'D3'; // 4번줄 레/미/파
-      if (relY < 0.85) return 'A2'; // 5번줄 라/시/도
-      return 'E2';                  // 6번줄 미
-    }
-
-    noteClusters.forEach(function(c){
-      c.normX = (rx0 + c.dx) / cw;
-      c.guessNote = mapRelYToNote(c.relY);
-    });
-
-    return { barXs: barXs, noteClusters: noteClusters, cw: cw, ch: ch };
-  }
-
+  // ---------- 이미지에서 마디 경계만 자동 감지
   $('#autoDetectBarsBtn').addEventListener('click', async function(){
     if (!curSong || curSong.type !== 'image' || !curSong.systems.length) return;
-    var sys = curSong.systems[0];
-    var res = await scanBarlinesAndNotesFromImage(curSong.imageDataUrl, sys);
-    if (res.barXs.length >= 2){
-      var firstX = res.barXs[0].normX;
-      var lastX = res.barXs[res.barXs.length - 1].normX;
-      if (lastX - firstX > 0.12){
-        sys.x = +firstX.toFixed(4);
-        sys.w = +(lastX - firstX).toFixed(4);
-        var newBars = [];
-        for (var i = 0; i < res.barXs.length - 1; i++){
-          var segW = res.barXs[i + 1].normX - res.barXs[i].normX;
-          newBars.push({
-            chord: i % 2 === 0 ? 'C' : 'G7',
-            note: 'C4',
-            memo: '',
-            w: +Math.max(0.2, segW * 10).toFixed(3)
-          });
+    var targetSong = curSong;
+    var targetSysIdx = 0;
+    var targetSys = targetSong.systems[targetSysIdx];
+    var targetImage = targetSong.imageDataUrl;
+    var targetSysSnapshot = JSON.stringify(targetSys);
+    try {
+      var boundaries = await scanImageBarlines(targetImage, targetSys);
+      if (curSong !== targetSong || targetSong.imageDataUrl !== targetImage || targetSong.systems[targetSysIdx] !== targetSys || JSON.stringify(targetSys) !== targetSysSnapshot) return;
+      if (boundaries.length >= 2 && boundaries[boundaries.length - 1] - boundaries[0] > 0.12){
+        var newBarCount = boundaries.length - 1;
+        var oldBars = targetSys.bars || [];
+        var hasManualData = oldBars.some(function(bar){ return !!(bar && (bar.chord || bar.note || bar.memo)); });
+        if (newBarCount !== oldBars.length && hasManualData){
+          alert('기존 음표·코드가 있어 마디 영역을 자동 교체하지 않았어요. 수동으로 영역을 조정해 주세요.');
+          return;
         }
-        sys.bars = newBars;
+        var newBars = [];
+        for (var i = 0; i < newBarCount; i++){
+          var prior = newBarCount === oldBars.length ? oldBars[i] : null;
+          var segmentWidth = boundaries[i + 1] - boundaries[i];
+          newBars.push(Object.assign({}, prior || {}, {
+            chord: prior && prior.chord || '',
+            note: prior && prior.note || '',
+            memo: prior && prior.memo || '',
+            w: +Math.max(0.2, segmentWidth * 10).toFixed(3)
+          }));
+        }
+        targetSys.x = +boundaries[0].toFixed(4);
+        targetSys.w = +(boundaries[boundaries.length - 1] - boundaries[0]).toFixed(4);
+        targetSys.bars = newBars;
         syncAfterImageGridChange();
+        alert('마디 영역만 추정했어요. 음표·코드는 인식하지 않았어요.');
         return;
       }
+      alert('뚜렷한 검은 세로 마디선을 찾지 못했어요. 먼저 줄 박스를 악보 줄 위치에 대략 맞춘 뒤 다시 눌러 보세요.');
+    } catch (error){
+      alert('이미지 마디 영역을 분석하지 못했어요. 이미지와 줄 영역을 확인한 뒤 다시 시도해 주세요.');
     }
-    alert('뚜렷한 검은 세로 마디선을 찾지 못했어요. 먼저 줄 박스를 악보 줄 위치에 대략 맞춘 뒤 다시 눌러 보세요.');
   });
-
   // ---------- 원클릭 계이름 비주얼 에디터 (모드 전환: 1. 기타 줄별 / 2. 계이름 도레미파솔라시 순서)
   // ---------- 곡 삭제 (IndexedDB 저장곡 & 구글 시트 연동곡 모두 지원)
   $('#deleteSongBtn').addEventListener('click', async function(){
@@ -2973,6 +2870,11 @@ function editorCapo(){
       if (s && (s.fromSheet || String(s.id).indexOf('sheet-song-') === 0)){
         if (!await removePersistedSong(s.id)) continue;
       } else if (s){
+        if (s.type === 'structured' && s.notationVersion !== 2 && Array.isArray(s.measures)){
+          var migratedSong = Object.assign({}, s, { notationVersion: 2 });
+          try { await dbSaveSong(migratedSong); s = migratedSong; }
+          catch (migrationError){ reportStorageError(migrationError); }
+        }
         cleanCustom.push(s);
       }
     }

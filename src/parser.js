@@ -1,5 +1,6 @@
 (function(global){
   'use strict';
+  var GuitarNotation = typeof module !== 'undefined' && module.exports ? require('./notation.js') : global.GuitarNotation;
   // ---------- 음악 이론 & 클래식 기타 1포지션 매핑 사전
   var NOTE_EN = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   var NOTE_KO = ['도', '도#', '레', '레#', '미', '파', '파#', '솔', '솔#', '라', '라#', '시'];
@@ -262,9 +263,10 @@
 
     // 2성부 및 다성부(엄지 베이스 + 내성 + 주선율 화음 탄현) 표기 예: 0E2+4B4, 3C3+2E3+0G3+1C4
     if (tok.indexOf('+') >= 0){
-      var subParts = tok.split('+').map(function(s){ return s.trim(); }).filter(Boolean);
-      var parsedSub = subParts.map(function(sp){ return parseNoteToken(sp, altIdx); }).filter(Boolean);
-      if (!parsedSub.length) return null;
+      var subParts = tok.split('+').map(function(s){ return s.trim(); });
+      if (subParts.some(function(s){ return !s; })) return null;
+      var parsedSub = subParts.map(function(sp){ return parseNoteToken(sp, altIdx); });
+      if (!parsedSub.length || parsedSub.some(function(note){ return !note; })) return null;
       if (parsedSub.length === 1){
         if (explicitArtic){
           parsedSub[0].articulation = explicitArtic;
@@ -371,31 +373,39 @@
       return info;
     }
 
-    var m = tok.match(/^([0-4])?([A-Ga-g])(#?)([2-5])?(?:@([1-6]))?$/);
+    var m = tok.match(/^([0-4])?([A-Ga-g])([#b♯♭♮]?)([2-5])?(?:@([1-6]))?$/);
     if (m){
       var lhOverride = m[1] !== undefined && m[1] !== '' ? Number(m[1]) : null;
-      var name = m[2].toUpperCase() + (m[3] || '');
+      var accidental = (m[3] || '').replace('♯','#').replace('♭','b').replace('♮','');
+      var semitones = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
+      var pitch = semitones[m[2].toUpperCase()] + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0);
       var oct = m[4] ? Number(m[4]) : 4;
       var strOverride = m[5] ? Number(m[5]) : null;
-      var semi = NOTE_EN.indexOf(name);
-      if (semi >= 0){
-        var midi = (oct + 1) * 12 + semi;
+      if (pitch >= -1){
+        var midi = (oct + 1) * 12 + pitch;
         var inf = midiInfo(midi);
         if (inf && inf.pos){
           var posCopy = Object.assign({}, inf.pos);
+          var overrideChangedPosition = false;
           if (strOverride && STRINGS[strOverride - 1]){
             var customFret = midi - STRINGS[strOverride - 1].midi;
             if (customFret >= 0 && customFret <= 12){
+              overrideChangedPosition = posCopy.str !== strOverride || posCopy.fret !== customFret;
               posCopy.str = strOverride;
               posCopy.fret = customFret;
-            }
+              if (overrideChangedPosition && lhOverride == null){
+                posCopy.lh = Math.min(4, Math.max(0, customFret));
+              }
+            } else return null;
           }
-          if (posCopy.str <= 3) posCopy.rh = altIdx % 2 === 0 ? 'i' : 'm';
+          if (strOverride){
+            posCopy.rh = strOverride <= 3 ? (altIdx % 2 === 0 ? 'i' : 'm') : 'p';
+          } else if (posCopy.str <= 3) posCopy.rh = altIdx % 2 === 0 ? 'i' : 'm';
           if (lhOverride != null) posCopy.lh = lhOverride;
           inf.pos = posCopy;
           var coreTok = inf.en;
           if (strOverride){
-            coreTok = (lhOverride != null ? lhOverride : posCopy.lh) + inf.en + '@' + strOverride;
+            coreTok = (lhOverride != null ? lhOverride : '') + inf.en + '@' + strOverride;
           } else if (lhOverride != null && (!FIRST_POS[midi] || lhOverride !== FIRST_POS[midi].lh)){
             coreTok = lhOverride + inf.en;
           }
@@ -501,15 +511,7 @@
     return 0;
   }
 
-  function tokenizeMeasureBeats(str){
-    var tokens = [];
-    var re = /\(([^)]+)\)|(\S+)/g;
-    var m;
-    while ((m = re.exec(str)) !== null){
-      tokens.push(m[0]);
-    }
-    return tokens;
-  }
+  function tokenizeMeasureBeats(str){ return GuitarNotation.tokenizeMeasureBeats(str); }
 
 
 
@@ -520,32 +522,41 @@
     return Number(midi) + offset;
   }
 
-  function splitScoreMeasures(raw){
-    var text = Array.isArray(raw) ? raw.join('\n') : String(raw || '');
-    return text.split(/\r?\n|\s+\/\s+|\/\//).map(function(line){ return line.trim(); }).filter(Boolean);
+  function splitScoreMeasures(raw){ return GuitarNotation.splitScoreMeasures(raw); }
+  function validateScore(raw, beats){
+    var result = GuitarNotation.validateScore(raw, beats, parseNoteToken);
+    splitScoreMeasures(raw).forEach(function(line, index){
+      var decoded = GuitarNotation.decodeMeasureLine(line);
+      if (decoded.chordRaw == null) return;
+      var chord = parseBracketChordSpec(decoded.chordRaw);
+      if (chord.chord && !CHORD_DB[chord.chord]) result.warnings.push({
+        code:'UNSUPPORTED_CHORD', measure:index + 1, beat:null,
+        message:'코드 사전에 없는 코드 표기야: '+chord.chord+'.'
+      });
+    });
+    return result;
   }
+  function serializeScoreMeasures(measures, separator){ return GuitarNotation.serializeScoreMeasures(measures, separator); }
 
   function parseScore(raw, beats){
-    var bpb = Math.max(1, Math.floor(Number(beats) || 4));
+    var missingBeats = beats == null || (typeof beats === 'string' && beats.trim() === '');
+    var numericBeats = missingBeats ? 4 : Number(beats);
+    var validBeats = Number.isFinite(numericBeats) && Number.isInteger(numericBeats) && numericBeats >= 1 && numericBeats <= 12;
+    var bpb = validBeats ? numericBeats : 4;
     var lines = splitScoreMeasures(raw);
-    var anyNeedInfer = false;
+    var anyNeedInfer = false, diagnostics = validateScore(raw, beats);
     var measures = lines.map(function(line, mIdx){
-      var parts = line.split('|');
-      var left = parts[0].trim();
-      var lyric = parts.length > 1 ? parts.slice(1).join('|').trim() : '';
+      var decoded = GuitarNotation.decodeMeasureLine(line);
+      var left = decoded.notation;
+      var lyric = decoded.lyric;
       var chordSpec = { chord: '', autoChord: true, needsInfer: true };
-      var cm = left.match(/^\[([^\]]*)\]\s*(.*)$/);
-      if (cm){ chordSpec = parseBracketChordSpec(cm[1]); left = cm[2].trim(); }
+      if (decoded.chordRaw != null){ chordSpec = parseBracketChordSpec(decoded.chordRaw); left = left.replace(/^\[[^\]]*\]\s*/, '').trim(); }
       if (chordSpec.needsInfer) anyNeedInfer = true;
       var tokens = tokenizeMeasureBeats(left);
       var parsedBeats = [];
       for (var b = 0; b < bpb; b++){
         var tok = tokens[b] || '-';
-        var grouped = tok.length >= 2 && tok.charAt(0) === '(' && tok.charAt(tok.length - 1) === ')'
-          ? tok.slice(1, -1)
-          : tok;
-        var rawSubToks = grouped.indexOf('/') >= 0 ? grouped.split('/') : (grouped.indexOf(',') >= 0 ? grouped.split(',') : grouped.split(/\s+/));
-        rawSubToks = rawSubToks.map(function(value){ return value.trim(); }).filter(Boolean);
+        var rawSubToks = GuitarNotation.splitBeatSubtokens(tok);
         if (rawSubToks.length > 1){
           var parsedSubs = rawSubToks.map(function(stk){
             var note = parseNoteToken(stk, mIdx * bpb + b);
@@ -576,7 +587,7 @@
             explicitArticulation: !!(first && first.explicitArticulation), autoArticulation: false
           });
         } else {
-          var noteInfo = parseNoteToken(tok, mIdx * bpb + b);
+          var noteInfo = parseNoteToken(rawSubToks[0] || tok, mIdx * bpb + b);
           parsedBeats.push({
             tok: tok, isSubdivided: false,
             midi: noteInfo ? noteInfo.midi : null,
@@ -597,15 +608,16 @@
         needsInfer: chordSpec.needsInfer, lyric: lyric, beats: parsedBeats };
     });
     if (anyNeedInfer) inferChordsForMeasures(measures, bpb);
-    return { lines: lines, beats: bpb, measures: measures };
+    return { lines: lines, beats: bpb, measures: measures, errors: diagnostics.errors, warnings: diagnostics.warnings };
   }
 
   function buildStructuredSong(spec){
     var score = parseScore(spec.lines || spec.raw || [], spec.beats);
+    if (score.errors.length){ var error = new Error('악보에 저장할 수 없는 오류가 있어.'); error.name = 'ScoreValidationError'; error.errors = score.errors; throw error; }
     return {
       id: spec.id, title: spec.title, badge: spec.badge, type: 'structured',
       builtin: !!spec.builtin, bpm: spec.bpm, beats: score.beats,
-      capo: getSongCapo(spec), ytUrl: spec.ytUrl || '', measures: score.measures
+      capo: getSongCapo(spec), ytUrl: spec.ytUrl || '', measures: score.measures, notationVersion: 2
     };
   }
 
@@ -628,6 +640,7 @@
     inferChordsForMeasures: inferChordsForMeasures,
     parseNoteToken: parseNoteToken, annotateMeasureArticulation: annotateMeasureArticulation,
     parseBracketChordSpec: parseBracketChordSpec, tokenizeMeasureBeats: tokenizeMeasureBeats,
+    decodeMeasureLine: GuitarNotation.decodeMeasureLine, serializeScoreMeasures: serializeScoreMeasures, validateScore: validateScore,
     getSongCapo: getSongCapo, soundingMidi: soundingMidi, splitScoreMeasures: splitScoreMeasures,
     parseScore: parseScore, buildStructuredSong: buildStructuredSong,
     projectScoreToEditorBars: projectScoreToEditorBars, parseTextToVeBars: parseTextToVeBars

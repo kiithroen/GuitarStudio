@@ -3,6 +3,7 @@ const path = require('path');
 const vm = require('vm');
 const assert = require('node:assert/strict');
 const parserSource = fs.readFileSync(path.join(__dirname, '../src/parser.js'), 'utf8');
+const notationSource = fs.readFileSync(path.join(__dirname, '../src/notation.js'), 'utf8');
 const sheetsSource = fs.readFileSync(path.join(__dirname, '../src/sheets.js'), 'utf8');
 
 let checks = 0;
@@ -38,6 +39,7 @@ function makeHarness(){
   context.$ = function(selector){ return document.querySelector(selector); };
   context.window = context;
   vm.createContext(context);
+  vm.runInContext(notationSource, context, { filename: 'notation.js' });
   vm.runInContext(parserSource, context, { filename: 'parser.js' });
   vm.runInContext(sheetsSource, context, { filename: 'sheets.js' });
   return { context, elements, timers, scripts, lsData };
@@ -72,7 +74,7 @@ await test('JSONP error and timeout clean all pending resources', async function
   await assert.rejects(timed, /응답 시간 초과/);
   assert.equal(h.context[timedCb], undefined); assert.equal(timedScript.parentNode, null); assert.equal(h.timers.has(timedTimer), false);
 });
-await test('sync parses sheet rows, slash measures and lyrics, hidden titles, overrides, and silent selection', async function(){
+await test('sync parses sheet rows and keeps spaced lyric slashes within one measure', async function(){
   const ls = h.context.ls;
   ls.set('gs.hiddenSheetSongs', ['Hidden']);
   ls.set('gs.sheetTitleOverrides', { 'sheet-song-3': 'Override title' });
@@ -87,8 +89,11 @@ await test('sync parses sheet rows, slash measures and lyrics, hidden titles, ov
   assert.equal(await promise, true);
   assert.equal(h.context.sheetSongs.length, 3);
   assert.equal(h.context.sheetSongs[0].id, 'sheet-song-1');
+  assert.equal(h.context.sheetSongs[0].measures.length, 1);
+  assert.equal(h.context.sheetSongs[0].measures[0].lyric, 'one / lyric');
   assert.equal(h.context.sheetSongs[1].title, 'Hidden');
-  assert.match(h.context.sheetSongs[1].measures[0].lyric, /lyric\/slash/);
+  assert.equal(h.context.sheetSongs[1].measures[0].lyric, 'lyric/slash');
+  assert.equal(h.context.sheetSongs[1].measures.length, 1);
   assert.equal(h.context.sheetSongs[2].title, 'Override title');
   assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.hiddenSheetSongs', null))), []);
   assert.equal(h.context.rebuilt.at(-1), 'sheet-song-1');
@@ -104,6 +109,23 @@ await test('sync parses sheet rows, slash measures and lyrics, hidden titles, ov
   assert.equal(h.context.sheetSongs.length, 1);
   assert.equal(h.context.sheetSongs[0].title, 'Visible');
   assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.hiddenSheetSongs', null))), ['Hidden']);
+  assert.equal(h.context.rebuilt.at(-1), 'builtin-last');
+});
+await test('invalid sheet row preserves previous songs and settings', async function(){
+  const ls = h.context.ls;
+  const previous = h.context.sheetSongs.slice();
+  const previousUrl = ls.get('gs.sheetUrl', '');
+  ls.set('gs.hiddenSheetSongs', ['Keep hidden']);
+  const promise = h.context.syncGoogleSheetSongs('https://docs.google.com/spreadsheets/d/sheet1234567890123456/edit', false);
+  const cb = callbackName(h.scripts.at(-1));
+  h.context[cb]({ table: { rows: [
+    { c: [{ v: 'Bad row' }, { v: '4' }, { v: '80' }, { v: 'badge' }, { v: '[C] C4 H4 - -' }] }
+  ] } });
+  assert.equal(await promise, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.context.sheetSongs)), JSON.parse(JSON.stringify(previous)));
+  assert.equal(ls.get('gs.sheetUrl', ''), previousUrl);
+  assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.hiddenSheetSongs', []))), ['Keep hidden']);
+  assert.match(h.elements.sheetSyncStatus.textContent, /1행/);
   assert.equal(h.context.rebuilt.at(-1), 'builtin-last');
 });
 await test('initSheetSync registers handlers once and keeps manual/silent behaviors distinct', function(){

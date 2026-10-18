@@ -996,8 +996,10 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
 [C] G4 G4 G4 - | 솔 솔 솔 -</textarea>
       </div>
     </details>
+    <div id="scoreValidationStatus" role="status" aria-live="polite" style="white-space:pre-line"></div>
 
     <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
+      <button type="button" class="btn" id="convertLegacyScoreBtn">구형 / 악보 변환</button>
       <button type="button" class="btn" id="copyVeRowTsvBtn" title="구글 스프레드시트 A열에 Ctrl+V로 바로 붙여넣을 수 있게 한 줄(TSV)로 복사합니다">구글 시트 한 줄(TSV)로 복사</button>
       <button type="button" class="btn primary" id="saveNewSongBtn">이 내용으로 내 악보 저장 및 열기</button>
     </div>
@@ -1296,12 +1298,16 @@ registerProcessor('onset', OnsetProc);
 </script>
 
 <script src="src/storage.js"></script>
+<script src="src/notation.js"></script>
 <script src="src/parser.js"></script>
 <script src="src/score.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/guide.js"></script>
+<script src="src/ai-prompt.js"></script>
+<script src="src/image-analysis.js"></script>
 <script src="src/fretboard.js"></script>
 <script src="src/editor.js"></script>
+<script src="src/notation-migration.js"></script>
 <script src="src/sheets.js"></script>
 <script src="src/app.js"></script>
 </body>
