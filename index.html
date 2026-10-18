@@ -253,6 +253,7 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .tab-cell-grid{position:relative;width:100%;height:90px;margin-top:8px}
 .tab-fret-pill{position:absolute;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:16px;padding:0 2.5px;border-radius:4px;font-family:var(--font-num);font-size:11.5px;font-weight:800;line-height:1;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.08);z-index:2;white-space:nowrap}
 .tab-fret-pill.note-fret{color:var(--fg);border-color:rgba(45,76,155,.45)}
+.tab-fret-pill.tab-held-fret{opacity:.68;border-style:dashed;box-shadow:none}
 .beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret{background:var(--accent);color:#fff;border-color:var(--accent)}
 .tab-cell-lh{font-size:9px;font-weight:700;margin-left:1px;opacity:.85}
 .tab-rest-dash{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:var(--font-num);font-size:13px;color:var(--muted);font-weight:700}
@@ -582,7 +583,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
           <button type="button" class="step-btn" id="bpmDown" aria-label="BPM 2 내리기">-2</button>
           <div class="bpm-read">
             <span class="bpm-num" id="bpmNum">64</span>
-            <span class="bpm-unit">BPM · <span class="tempo-it" id="tempoName">Larghetto</span></span>
+          <span class="bpm-unit">BPM (칸/분) · <span id="bpmUnitLabel">4분음표 한 칸</span> · <span class="tempo-it" id="tempoName">Larghetto</span></span>
           </div>
           <button type="button" class="step-btn" id="bpmUp" aria-label="BPM 2 올리기">+2</button>
         </div>
@@ -595,7 +596,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
               <option value="4" selected>4/4</option>
               <option value="6">6/8</option>
               <option value="8">4/4 (8박 핑거스타일)</option>
-              <option value="9">9/8 (3박 셋잇단)</option>
+              <option value="9">9/8 (8분음표 9칸)</option>
             </select>
           </label>
           <label class="ctrl-item" title="메트로놈 클릭 볼륨 (0으로 내리면 메트로놈 소리만 끄고 기타 소리만 감상할 수 있습니다)">클릭음
@@ -932,11 +933,11 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
           <option value="4" selected>4/4 (4박자)</option>
           <option value="6">6/8 (6박자)</option>
           <option value="8">4/4 (8분음표 8박 · 핑거스타일)</option>
-          <option value="9">9/8 (3박 셋잇단 아르페지오)</option>
+          <option value="9">9/8 (8분음표 9칸)</option>
         </select>
       </div>
       <div class="form-row">
-        <label class="label" for="nsBpm">기본 BPM</label>
+        <label class="label" for="nsBpm">기본 BPM (1클릭=한 칸)</label>
         <input type="number" id="nsBpm" value="64" min="30" max="180">
       </div>
     </div>
@@ -962,7 +963,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
             <button type="button" id="padModeStringBtn" role="tab" aria-selected="true">기타 줄별 (1~6번줄)</button>
             <button type="button" id="padModeSolfegeBtn" role="tab" aria-selected="false">계이름 순서 (도레미파솔라시)</button>
           </div>
-          <span class="label" id="veSelectedLabel">선택된 위치: 1마디 1박</span>
+          <span class="label" id="veSelectedLabel">선택된 위치: 1마디 1박 · Space/0/r: 쉼, -: 앞 음 유지</span>
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap">
           <button type="button" class="btn sm" id="veApoyandoBtn" title="선택된 박자 음에 ! (아포얀도 주선율 강조) 또는 ~ (티란도 여린 반주) 표기를 전환합니다">! 아포얀도(강조) 전환</button>
@@ -980,7 +981,7 @@ td[data-cls="off"]{color:var(--off);font-weight:600}
 
     <!-- 5. 텍스트 원본 (실시간 양방향 동기화) -->
     <details open>
-      <summary class="label" style="cursor:pointer">제미니/안티그래비티 변환 텍스트 붙여넣기 &amp; 직접 편집 (표기법: <code>0E2+4B4</code> 동시탄현 · <code>!4B4</code> 아포얀도 강조 · <code>~0B3</code> 티란도 반주 · <code>1C4@3</code> 줄지정)</summary>
+      <summary class="label" style="cursor:pointer">제미니/안티그래비티 변환 텍스트 붙여넣기 &amp; 직접 편집 (표기법: <code>0E2+4B4</code> 동시탄현 · <code>r</code> 쉼 · <code>-</code> 앞 음 유지 · <code>!4B4</code>/<code>~0B3</code> 명시 주법 · <code>1C4@3</code> 줄지정)</summary>
       <div class="form-row" style="margin-top:6px">
         <textarea id="nsMeasuresTxt">[C] G4 E4 E4 - | 솔 미 미 -
 [G7] F4 D4 D4 - | 파 레 레 -
@@ -1290,6 +1291,7 @@ registerProcessor('onset', OnsetProc);
 
 <script src="src/storage.js"></script>
 <script src="src/notation.js"></script>
+<script src="src/rhythm.js"></script>
 <script src="src/parser.js"></script>
 <script src="src/score.js"></script>
 <script src="src/audio.js"></script>

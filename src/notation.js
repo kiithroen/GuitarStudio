@@ -191,7 +191,7 @@
       if (quoted) add(errors, 'UNBALANCED_DELIMITER', measureNo, null, '따옴표가 닫히지 않았어.');
 
       if (tokens.length > bpb) add(errors, 'TOO_MANY_BEATS', measureNo, bpb + 1, '마디의 박 수가 설정된 ' + bpb + '박을 초과해.');
-      if (tokens.length < bpb) add(warnings, 'MISSING_BEATS', measureNo, null, '마디가 ' + bpb + '박보다 짧아. 부족한 박은 유지/쉼(-)으로 해석돼.');
+      if (tokens.length < bpb) add(errors, 'MISSING_BEATS', measureNo, tokens.length + 1, '마디에 ' + (bpb - tokens.length) + '칸이 부족해. 누락된 칸을 r 또는 음표로 직접 입력해줘.');
 
       tokens.forEach(function(token, beatIndex){
         var parts = splitBeatSubtokens(token);
@@ -200,7 +200,11 @@
         }
 
         parts.forEach(function(part){
-          if (!part || /^(-|\.|R|r)$/.test(part)) return;
+          if (part === '.'){
+            add(errors, 'AMBIGUOUS_REST_TOKEN', measureNo, beatIndex + 1, '점(.)은 쉼인지 유지인지 모호해. 쉼은 r, 유지는 -로 입력해줘.');
+            return;
+          }
+          if (!part || /^(-|R|r)$/.test(part)) return;
           if (part.indexOf('/') >= 0){
             add(errors, 'ISOLATED_SLASH', measureNo, beatIndex + 1, '박 안의 단독 슬래시 표기를 확인해줘.');
             return;
@@ -250,6 +254,20 @@
         });
       });
     });
+    var rhythmApi = typeof GuitarRhythm !== 'undefined' ? GuitarRhythm : (typeof module !== 'undefined' && module.exports ? require('./rhythm.js') : null);
+    if (rhythmApi && lines.length){
+      var rhythmMeasures = lines.map(function(line){
+        var decoded = decodeMeasureLine(line), tokens = tokenizeMeasureBeats(decoded.notation);
+        return {beats:tokens.map(function(token){
+          var parts = splitBeatSubtokens(token);
+          var parsedParts = parts.map(function(part){ return {tok:part,midi:parseNoteToken ? (parseNoteToken(part,0)||{}).midi : null}; });
+          return {tok:token,isSubdivided:parts.length > 1,subNotes:parts.length > 1 ? parsedParts : undefined,midi:parsedParts[0] && parsedParts[0].midi};
+        })};
+      });
+      rhythmApi.annotate(rhythmMeasures,bpb).errors.forEach(function(error){
+        add(errors,error.code,error.measure,error.beat,error.message);
+      });
+    }
     return {errors:errors, warnings:warnings};
   }
 

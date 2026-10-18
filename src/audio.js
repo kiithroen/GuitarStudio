@@ -9,6 +9,13 @@
     [[0.019, 0.42], [0.027, 0.33], [0.041, 0.27], [0.053, 0.21], [0.068, 0.16], [0.083, 0.12]],
     [[0.022, 0.40], [0.031, 0.31], [0.037, 0.26], [0.058, 0.20], [0.072, 0.15], [0.089, 0.11]]
   ];
+  var trackedGuideVoices = [];
+
+  function trackGuideVoice(voice, when){
+    var now = actx ? actx.currentTime : when;
+    trackedGuideVoices = trackedGuideVoices.filter(function(active){ return active && active.end > now; });
+    trackedGuideVoices.push(voice);
+  }
 
   function buildConcertHallReverbBuffer(ctx){
     var rate = ctx.sampleRate;
@@ -406,7 +413,7 @@
     Object.keys(notes).slice(0, KS_CACHE_MAX).forEach(function(k){ getKsBuffer(notes[k][0], notes[k][1], notes[k][2]); });
   }
 
-  function buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, strNo){
+  function buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, strNo, exactDuration){
     var src = actx.createBufferSource();
     src.buffer = getKsBuffer(midi, isApoyando, strNo);
     // 강한 탄현 순간 장력이 커져 음정이 살짝 높게 시작했다 안착하는 현상 (아포얀도가 더 큼)
@@ -417,9 +424,15 @@
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(peakGain, t + 0.002);
     // 현은 스스로 감쇠하므로 엔벨로프는 음 길이가 끝날 때 손가락으로 줄을 멈추는 동작만 담당 (드라이 모드는 더 짧게 끊음)
-    var relAt = t + Math.max(0.06, dur * 0.75);
-    g.gain.setTargetAtTime(0, relAt, isFx ? 0.06 : 0.035);
-    var stopAt = Math.min(t + src.buffer.duration, relAt + 0.4);
+    var relAt = exactDuration ? t + dur : t + Math.max(0.06, dur * 0.75);
+    if (exactDuration){
+      g.gain.setTargetAtTime(0, relAt, 0.002);
+    } else {
+      g.gain.setTargetAtTime(0, relAt, isFx ? 0.06 : 0.035);
+    }
+    var stopAt = exactDuration
+      ? Math.min(t + src.buffer.duration, relAt + 0.015)
+      : Math.min(t + src.buffer.duration, relAt + 0.4);
     src.connect(g);
     src.start(t);
     src.stop(stopAt);
@@ -427,7 +440,7 @@
   }
 
   // 기존 합성음 (삼각파 2개 + 사인파 + 로우패스 스윕): 물리 모델 음원과 A/B 비교용
-  function buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx){
+  function buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx, exactDuration){
     var freq = 440 * Math.pow(2, (midi - 69) / 12);
 
     var o1 = actx.createOscillator();
@@ -494,7 +507,7 @@
     o3.connect(g3); g3.connect(filter);
     filter.connect(g);
 
-    var stopAt = t + dur + 0.03;
+    var stopAt = t + dur + (exactDuration ? 0.015 : 0.03);
     o1.start(t); o2.start(t); o3.start(t);
     o1.stop(stopAt); o2.stop(stopAt); o3.stop(stopAt);
     return { out: g, srcs: [o1, o2, o3], stopAt: stopAt };
@@ -502,7 +515,7 @@
 
   // 클래식 기타 나일론 현 + 저음 권선현(Wound Bass) + 아포얀도(Apoyando)/티란도(Tirando) 음색 재생
   // strNum: 실제 탄현하는 줄 번호(1~6). 생략하면 1포지션 표준 운지로 추정
-  function playGuitarNote(midi, durSec, when, gainScale, articulation, strNum){
+  function playGuitarNote(midi, durSec, when, gainScale, articulation, strNum, options){
     if (!midi) return;
     ensureAudioCtx();
     var t = when != null ? when : actx.currentTime;
@@ -510,26 +523,58 @@
     var isApoyando = articulation === 'apoyando';
     var isTirando = articulation === 'tirando';
     var isFx = !!appState.acousticFx;
-    var dur = isFx
+    var exactDuration = !!(options && options.exactDuration);
+    var dur = exactDuration ? Math.max(0, Number(durSec) || 0) : (isFx
       ? Math.max(0.35, (durSec || 0.75) * (isBass ? 1.45 : (isApoyando ? 1.38 : 1.2)))
-      : Math.max(0.18, (durSec || 0.5) * 0.85); // 드라이 톤: 음간 중첩 없는 또렷하고 깔끔한 감쇠
+      : Math.max(0.18, (durSec || 0.5) * 0.85)); // 드라이 톤: 음간 중첩 없는 또렷하고 깔끔한 감쇠
+    if (dur <= 0) return;
     var scale = gainScale != null ? gainScale : 1.0;
     var sNo = strNum || defaultStringFor(midi);
 
     var voice = appState.synthEngine === 'classic'
-      ? buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx)
-      : buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, sNo);
+      ? buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx, exactDuration)
+      : buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, sNo, exactDuration);
 
     // 같은 줄 재탄현 시 이 보이스만 독립적으로 끊을 수 있도록 엔벨로프 뒤에 별도 감쇠 게인을 둠
     var damp = actx.createGain();
     voice.out.connect(damp);
     damp.connect(guitarBus || actx.destination);
 
+    var voiceRecord = { start:t, end:voice.stopAt, damp:damp, srcs:voice.srcs };
     if (sNo){
       dampSameStringVoices(sNo, t);
-      (stringVoices[sNo] = stringVoices[sNo] || []).push({ start: t, end: voice.stopAt, damp: damp, srcs: voice.srcs });
+      (stringVoices[sNo] = stringVoices[sNo] || []).push(voiceRecord);
     }
+    trackGuideVoice(voiceRecord, t);
     addSympatheticResonance(midi, t, scale, sNo);
+  }
+
+  // 가이드 쉼이나 위치 변경에서 기타 보이스만 끊고 클릭·마이크 경로는 유지한다.
+  function stopGuitarNotes(when){
+    if (!actx) return;
+    var t = when != null ? Number(when) : actx.currentTime;
+    if (!Number.isFinite(t)) t = actx.currentTime;
+    var now = actx.currentTime;
+    trackedGuideVoices.forEach(function(voice){
+      if (!voice || voice.end <= t) return;
+      var start = Number(voice.start) || 0;
+      var candidateStop = start >= t ? start : t + 0.015;
+      var stopAt = Math.min(Number(voice.end), candidateStop);
+      if (stopAt >= voice.end) return;
+      var cutoff = start >= t ? start : t;
+      var gain = voice.damp && voice.damp.gain;
+      if (gain){
+        if (typeof gain.cancelScheduledValues === 'function') gain.cancelScheduledValues(cutoff);
+        if (typeof gain.setValueAtTime === 'function') gain.setValueAtTime(start >= t ? 0 : 1, cutoff);
+        if (start < t && typeof gain.linearRampToValueAtTime === 'function') gain.linearRampToValueAtTime(0, cutoff + 0.01);
+      }
+      (voice.srcs || []).forEach(function(source){ try { source.stop(stopAt); } catch (e){} });
+      voice.end = stopAt;
+    });
+    trackedGuideVoices = trackedGuideVoices.filter(function(voice){ return voice && voice.end > now; });
+    Object.keys(stringVoices).forEach(function(strNo){
+      stringVoices[strNo] = stringVoices[strNo].filter(function(voice){ return voice && voice.end > now; });
+    });
   }
 
   // ---------- 공명현: 연주한 음의 배음이 쉬고 있는 개방현의 배음과 겹치면 그 개방현이 저절로 살짝 울림
@@ -576,6 +621,7 @@
         v.damp.gain.setValueAtTime(1, t);
         v.damp.gain.setTargetAtTime(0, t, 0.08);
         v.srcs.forEach(function(o){ try { o.stop(t + 0.6); } catch (e){} });
+        v.end = Math.min(v.end, t + 0.6);
         return false;
       });
       var o = actx.createOscillator();
@@ -593,7 +639,9 @@
       var stopAt = t + 0.15 + Math.min(6, tau * 7);
       o.start(t);
       o.stop(stopAt);
-      stringVoices[c.st.str].push({ start: t, end: stopAt, damp: damp, srcs: [o], symp: true });
+      var voiceRecord = { start:t, end:stopAt, damp:damp, srcs:[o], symp:true };
+      stringVoices[c.st.str].push(voiceRecord);
+      trackGuideVoice(voiceRecord, t);
     });
   }
 

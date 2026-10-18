@@ -1,4 +1,5 @@
 'use strict';
+var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./rhythm.js') : window.GuitarRhythm;
   var NOTE_DUR_SVGS = {
     whole: '<svg class="dur-svg" viewBox="0 0 16 16" width="12" height="12"><ellipse cx="8" cy="8.5" rx="5.5" ry="3.5" transform="rotate(-25 8 8.5)" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
     half: '<svg class="dur-svg" viewBox="0 0 14 16" width="10" height="12"><ellipse cx="4.5" cy="11.5" rx="3.3" ry="2.2" transform="rotate(-20 4.5 11.5)" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="7.3" y="1" width="1.4" height="11" fill="currentColor"/></svg>',
@@ -12,53 +13,48 @@
 
   function getBeatDurationInfo(beats, bIdx, bpb){
     var b = beats[bIdx];
-    var isCompound = (bpb === 6 || bpb === 9 || bpb === 12);
-    if (!b || (!b.midi && !b.isSubdivided)){
-      return {
-        isRest: true,
-        svg: isCompound ? NOTE_DUR_SVGS.restEighth : NOTE_DUR_SVGS.restQuarter,
-        label: isCompound ? '8분쉼' : '쉼표',
-        durName: isCompound ? '8분 쉼표' : '4분 쉼표'
-      };
+    var Rhythm = GuitarRhythm;
+    var grid = Rhythm ? Rhythm.getGridInfo(bpb) : {slotQuarterLength:1};
+    function gcd(a,b){ return b ? gcd(b,a % b) : a; }
+    function exactSlots(units){
+      var divisor = gcd(units,12) || 1;
+      return (units/divisor) + (12/divisor === 1 ? '' : '/' + (12/divisor)) + '칸';
     }
-    if (b.isSubdivided && b.subNotes && b.subNotes.length > 1){
-      var n = b.subNotes.length;
-      if (n === 2){
-        if (b.subNotes[0].tok === '-'){
-          return { isRest: false, svg: NOTE_DUR_SVGS.eighth, label: '8분(엇박)', durName: '8분 쉼/유지 + 8분음표' };
-        }
-        return { isRest: false, svg: NOTE_DUR_SVGS.eighth, label: '8분×2', durName: '8분음표 2개 (반박+반박)' };
+    function infoForPart(part){
+      var kind = part && part.kind;
+      if (kind === 'rest'){
+        var restUnits = part.durationUnits;
+        var restLength = restUnits / 12 * grid.slotQuarterLength;
+        var restSvg = restLength === 1 ? NOTE_DUR_SVGS.restQuarter : (restLength === 0.5 ? NOTE_DUR_SVGS.restEighth : '');
+        return {isRest:true,kind:'rest',svg:restSvg,label:'쉼',durName:'쉼'};
       }
-      if (n === 3) return { isRest: false, svg: NOTE_DUR_SVGS.eighth, label: '3잇단', durName: '셋잇단음표' };
-      if (n === 4) return { isRest: false, svg: NOTE_DUR_SVGS.eighth, label: '16분×4', durName: '16분음표 4개' };
-      return { isRest: false, svg: '', label: n + '분할', durName: n + '분할 음표' };
-    }
-    var span = 1;
-    for (var i = bIdx + 1; i < beats.length; i++){
-      var nextB = beats[i];
-      if (nextB && nextB.midi != null && !nextB.isSubdivided) break;
-      if (nextB && nextB.isSubdivided && nextB.subNotes && nextB.subNotes.length > 1){
-        if (nextB.subNotes[0].tok === '-'){
-          span += (nextB.subNotes[0].durFrac || 0.5);
-        }
-        break;
+      if (kind === 'hold') return {isRest:false,kind:'hold',svg:'',label:'유지',durName:'유지'};
+      if (kind === 'invalid' || !part || part.kind !== 'note') return {isRest:false,kind:'invalid',svg:'',label:'오류',durName:'오류'};
+      var units = part.durationUnits;
+      if (!Number.isFinite(units)) units = part.slotUnits || 12;
+      var quarterLength = grid.slotQuarterLength * units / 12;
+      var entries = [
+        [0.125,'32분','32분음표',''],
+        [0.25,'16분','16분음표',''],
+        [0.5,'8분','8분음표',NOTE_DUR_SVGS.eighth],
+        [0.75,'점8분','점8분음표',''],
+        [1,'4분','4분음표',NOTE_DUR_SVGS.quarter],
+        [1.5,'점4분','점4분음표',NOTE_DUR_SVGS.quarterDot],
+        [2,'2분','2분음표',NOTE_DUR_SVGS.half],
+        [3,'점2분','점2분음표',NOTE_DUR_SVGS.halfDot],
+        [4,'온음','온음표',NOTE_DUR_SVGS.whole]
+      ];
+      for (var i=0;i<entries.length;i++){
+        if (quarterLength === entries[i][0]) return {isRest:false,kind:'note',svg:entries[i][3],label:entries[i][1],durName:entries[i][2]};
       }
-      span++;
+      var exact = exactSlots(units);
+      return {isRest:false,kind:'note',svg:'',label:exact,durName:exact};
     }
-    if (isCompound){
-      if (span === 1) return { isRest: false, svg: NOTE_DUR_SVGS.eighth, label: '8분', durName: '8분음표' };
-      if (span === 2) return { isRest: false, svg: NOTE_DUR_SVGS.quarter, label: '4분', durName: '4분음표' };
-      if (span === 3) return { isRest: false, svg: NOTE_DUR_SVGS.quarterDot, label: '점4분', durName: '점4분음표 (1박)' };
-      if (span === 4 || span === 5) return { isRest: false, svg: NOTE_DUR_SVGS.half, label: '2분', durName: '2분음표 (2박)' };
-      if (span >= 6) return { isRest: false, svg: NOTE_DUR_SVGS.halfDot, label: '점2분', durName: '점2분음표' };
-      return { isRest: false, svg: '', label: span + '박', durName: span + '박' };
+    if (b && b.kind === 'group' && Array.isArray(b.subNotes)){
+      var descriptions = b.subNotes.map(function(part){ return infoForPart(part).durName; });
+      return {isRest:false,kind:'group',svg:'',label:b.subNotes.length + '분할',durName:descriptions.join(' · ')};
     }
-    if (span === 1) return { isRest: false, svg: NOTE_DUR_SVGS.quarter, label: '4분', durName: '4분음표 (1박)' };
-    if (span === 1.5) return { isRest: false, svg: NOTE_DUR_SVGS.quarterDot, label: '점4분', durName: '점4분음표 (1.5박)' };
-    if (span === 2) return { isRest: false, svg: NOTE_DUR_SVGS.half, label: '2분', durName: '2분음표 (2박)' };
-    if (span === 3) return { isRest: false, svg: NOTE_DUR_SVGS.halfDot, label: '점2분', durName: '점2분음표 (3박)' };
-    if (span >= 4) return { isRest: false, svg: NOTE_DUR_SVGS.whole, label: '온음', durName: '온음표 (4박)' };
-    return { isRest: false, svg: '', label: span + '박', durName: span + '박' };
+    return infoForPart(b);
   }
 
 

@@ -1,6 +1,7 @@
 (function(global){
   'use strict';
   var GuitarNotation = typeof module !== 'undefined' && module.exports ? require('./notation.js') : global.GuitarNotation;
+  var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./rhythm.js') : global.GuitarRhythm;
   // ---------- 음악 이론 & 클래식 기타 1포지션 매핑 사전
   var NOTE_EN = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   var NOTE_KO = ['도', '도#', '레', '레#', '미', '파', '파#', '솔', '솔#', '라', '라#', '시'];
@@ -431,47 +432,14 @@
     return parsed.pos && parsed.pos.lh != null ? parsed.pos.lh : null;
   }
 
-  // 마디 내 박자별 아포얀도(주선율 강조) / 티란도(내성 반주) 자동 추론 및 명시 기호(!, ~) 반영
-  // - 6/8, 9/8박자에서는 3음 묶음(셋잇단) 내 실제 음높이(midi)를 비교하여 최고음을 아포얀도 주선율로 자동 감지
-  //   (하행 a-m-i 로망스는 1·4·7박, 상행 i-m-a 카르카시는 3·6·9박, 쉼표 칸은 강조 제외)
+  // 명시된 아포얀도/티란도만 남긴다. 자동 주법 추론은 수행하지 않는다.
   function annotateMeasureArticulation(beats, bpb){
     if (!Array.isArray(beats)) return;
-    var isTripletMeter = (bpb === 6 || bpb === 9);
-
-    if (isTripletMeter){
-      for (var gStart = 0; gStart < beats.length; gStart += 3){
-        var grp = beats.slice(gStart, gStart + 3);
-        var pitched = grp.filter(function(b){ return b && b.midi != null; });
-        if (!pitched.length) continue;
-
-        if (pitched.length === 1){
-          // 묶음 내 음이 1개뿐이고 나머지가 쉼표(-)인 경우(예: 종지 마디): 해당 음만 주선율 강조, 쉼표 칸은 제외
-          var onlyB = pitched[0];
-          if (!onlyB.explicitArticulation){
-            onlyB.articulation = 'apoyando';
-            onlyB.autoArticulation = true;
-          }
-        } else {
-          var maxMidi = -1, minMidi = 999;
-          pitched.forEach(function(b){
-            if (b.midi > maxMidi) maxMidi = b.midi;
-            if (b.midi < minMidi) minMidi = b.midi;
-          });
-          grp.forEach(function(b, k){
-            if (!b || !b.midi) return;
-            if (b.explicitArticulation) return;
-            if (maxMidi > minMidi){
-              b.articulation = (b.midi === maxMidi) ? 'apoyando' : 'tirando';
-            } else {
-              // 3음 모두 같은 음(트레몰로 등)일 때는 묶음 첫 박을 주선율로 처리
-              b.articulation = (k === 0) ? 'apoyando' : 'tirando';
-            }
-            b.autoArticulation = true;
-          });
-        }
-
-      }
-    }
+    beats.forEach(function(beat){
+      if (!beat) return;
+      delete beat.autoArticulation;
+      if (beat.isSubdivided && Array.isArray(beat.subNotes)) beat.subNotes.forEach(function(part){ if (part) delete part.autoArticulation; });
+    });
   }
 
   function getExplicitBass(beat){
@@ -547,15 +515,15 @@
       if (chordSpec.needsInfer) anyNeedInfer = true;
       var tokens = tokenizeMeasureBeats(left);
       var parsedBeats = [];
-      for (var b = 0; b < bpb; b++){
-        var tok = tokens[b] || '-';
+      for (var b = 0; b < tokens.length; b++){
+        var tok = tokens[b];
         var rawSubToks = GuitarNotation.splitBeatSubtokens(tok);
         if (rawSubToks.length > 1){
           var parsedSubs = rawSubToks.map(function(stk){
             var note = parseNoteToken(stk, mIdx * bpb + b);
             return {
               tok: stk, midi: note ? note.midi : null, en: note ? note.en : '-',
-              ko: note ? note.ko : (stk === '-' ? '유지' : '쉼'),
+              ko: note ? note.ko : (/^[rR]$/.test(stk) ? '쉼' : (stk === '-' ? '유지' : '')),
               str: note && note.pos ? note.pos.str : null,
               fret: note && note.pos ? note.pos.fret : null,
               lh: note && note.pos ? note.pos.lh : null,
@@ -564,12 +532,13 @@
               chordNotes: note && note.chordNotes ? note.chordNotes : null,
               articulation: note && note.articulation ? note.articulation : null,
               explicitArticulation: !!(note && note.explicitArticulation),
-              durFrac: 1 / rawSubToks.length
+              durFrac: 1 / rawSubToks.length,
+              kind: /^[rR]$/.test(stk) ? 'rest' : (stk === '-' ? 'hold' : (stk === '.' ? 'invalid' : (note ? 'note' : 'invalid')))
             };
           });
           var first = parsedSubs.find(function(note){ return note.midi != null; });
           parsedBeats.push({
-            tok: tok, isSubdivided: true, subNotes: parsedSubs,
+            tok: tok, isSubdivided: true, kind:'group', subNotes: parsedSubs,
             midi: first ? first.midi : null,
             en: parsedSubs.map(function(note){ return note.en; }).join('/'),
             ko: parsedSubs.map(function(note){ return note.ko; }).join('/'),
@@ -577,14 +546,14 @@
             lh: first ? first.lh : null, rh: first ? first.rh : null,
             bass: first ? first.bass : null, chordNotes: first ? first.chordNotes : null,
             articulation: first ? first.articulation : null,
-            explicitArticulation: !!(first && first.explicitArticulation), autoArticulation: false
+            explicitArticulation: !!(first && first.explicitArticulation)
           });
         } else {
           var noteInfo = parseNoteToken(rawSubToks[0] || tok, mIdx * bpb + b);
           parsedBeats.push({
-            tok: tok, isSubdivided: false,
+            tok: tok, isSubdivided: false, kind:/^[rR]$/.test(tok) ? 'rest' : (tok === '-' ? 'hold' : (tok === '.' ? 'invalid' : (noteInfo ? 'note' : 'invalid'))),
             midi: noteInfo ? noteInfo.midi : null,
-            en: noteInfo ? noteInfo.en : '-', ko: noteInfo ? noteInfo.ko : '쉼/유지',
+            en: noteInfo ? noteInfo.en : '-', ko: noteInfo ? noteInfo.ko : (/^[rR]$/.test(tok) ? '쉼' : (tok === '-' ? '유지' : '')),
             str: noteInfo && noteInfo.pos ? noteInfo.pos.str : null,
             fret: noteInfo && noteInfo.pos ? noteInfo.pos.fret : null,
             lh: noteInfo && noteInfo.pos ? noteInfo.pos.lh : null,
@@ -592,7 +561,7 @@
             bass: noteInfo && noteInfo.bass ? noteInfo.bass : null,
             chordNotes: noteInfo && noteInfo.chordNotes ? noteInfo.chordNotes : null,
             articulation: noteInfo && noteInfo.articulation ? noteInfo.articulation : null,
-            explicitArticulation: !!(noteInfo && noteInfo.explicitArticulation), autoArticulation: false
+            explicitArticulation: !!(noteInfo && noteInfo.explicitArticulation)
           });
         }
       }
@@ -601,6 +570,7 @@
         needsInfer: chordSpec.needsInfer, lyric: lyric, beats: parsedBeats };
     });
     if (anyNeedInfer) inferChordsForMeasures(measures, bpb);
+    if (typeof GuitarRhythm !== 'undefined') GuitarRhythm.annotate(measures,bpb);
     return { lines: lines, beats: bpb, measures: measures, errors: diagnostics.errors, warnings: diagnostics.warnings };
   }
 

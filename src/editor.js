@@ -12,7 +12,6 @@ function initEditor(){
           { tok: 'A4',  ko: '라4',       sub: '1줄 5프렛' },
           { tok: 'B4',  ko: '시4',       sub: '1줄 7프렛' },
           { tok: 'C5',  ko: '도5',       sub: '1줄 8프렛' },
-          { tok: '-',   ko: '쉼/유지(-)',sub: 'Space / 0' }
         ]
       },
       {
@@ -55,7 +54,6 @@ function initEditor(){
           { tok: 'A4',  ko: '라4',       sub: '1줄 5프렛' },
           { tok: 'B4',  ko: '시4',       sub: '1줄 7프렛' },
           { tok: 'C5',  ko: '도5',    sub: '1줄 8프렛 (단축8)' },
-          { tok: '-',   ko: '쉼/유지(-)',sub: 'Space / 0' }
         ]
       },
       {
@@ -134,7 +132,7 @@ function initEditor(){
     if (stopVisualEditOnScoreError()) return;
     var bar = veState.bars[veState.selBar];
     if (!bar) return;
-    var curTok = bar.notes[veState.selBeat] || '-';
+    var curTok = bar.notes[veState.selBeat] || 'r';
     if (!curTok || curTok === '-') return;
     var inf = parseNoteToken(curTok, veState.selBeat);
     if (!inf || !inf.midi) return;
@@ -192,6 +190,25 @@ function initEditor(){
       });
       wrap.appendChild(rowEl);
     });
+
+    var rhythmRow = document.createElement('div');
+    rhythmRow.className = 'note-pad-row';
+    var rhythmLabel = document.createElement('span');
+    rhythmLabel.className = 'np-row-tag';
+    rhythmLabel.textContent = '리듬 기호';
+    rhythmRow.appendChild(rhythmLabel);
+    [
+      {tok:'r', ko:'r 쉼', sub:'이전 음을 끝내기'},
+      {tok:'-', ko:'- 유지', sub:'앞 음을 다시 치지 않기'}
+    ].forEach(function(item){
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'np-btn';
+      btn.innerHTML = '<b>' + item.ko + '</b><small>' + item.sub + '</small>';
+      btn.addEventListener('click', function(){ applyNoteToSelectedCell(item.tok, false); });
+      rhythmRow.appendChild(btn);
+    });
+    wrap.appendChild(rhythmRow);
   }
 
   $('#padModeStringBtn').addEventListener('click', function(){
@@ -280,11 +297,12 @@ function initEditor(){
       beatsDiv.style.setProperty('--ve-bpb', bpb);
 
       for (var bIdx = 0; bIdx < bpb; bIdx++){
-        var tok = bar.notes[bIdx] || '-';
+        var tok = bar.notes[bIdx] || 'r';
         var inf = parseNoteToken(tok, bIdx);
         var cell = document.createElement('div');
         cell.className = 've-cell' + (veState.selBar === mIdx && veState.selBeat === bIdx ? ' selected' : '');
-        var koLabel = inf ? ((inf.pos && inf.pos.lh != null ? inf.pos.lh : '') + inf.ko) : '-';
+        var isRhythm = tok === 'r' || tok === 'R' || tok === '-';
+        var koLabel = isRhythm ? (tok === '-' ? '유지' : '쉼') : (inf ? ((inf.pos && inf.pos.lh != null ? inf.pos.lh : '') + inf.ko) : tok);
         function noteLabel(note, sourceToken){
           if (!note) return '-';
           if (note.chordNotes && note.chordNotes.length >= 2) return note.chordNotes.map(function(component, componentIndex){
@@ -302,6 +320,7 @@ function initEditor(){
         if (tok.indexOf('/') >= 0){
           var subs = tok.split('/');
           var subKo = subs.map(function(stk){
+            if (stk === '-' || /^[rR]$/.test(stk)) return stk === '-' ? '유지' : '쉼';
             var sn = parseNoteToken(stk, bIdx);
             return sn ? noteLabel(sn, stk) : stk;
           }).join('/');
@@ -317,7 +336,7 @@ function initEditor(){
           var chordLabel = inf.chordNotes.length === 2 ? '겹음' : '화음';
           cell.innerHTML = '<b>' + noteLabel(inf, tok) + '</b><small style="color:var(--muted);font-weight:700">' + chordLabel + artBadge + '</small>';
         } else {
-          cell.innerHTML = '<b>' + koLabel + '</b><small>' + (inf && inf.pos ? (inf.pos.str + '줄' + inf.pos.fret) : '쉼/유지') + artBadge + '</small>';
+          cell.innerHTML = '<b>' + koLabel + '</b><small>' + (isRhythm ? (tok === '-' ? '앞 음 유지' : '명시적 쉼') : (inf && inf.pos ? (inf.pos.str + '줄' + inf.pos.fret) : '음 위치 확인')) + artBadge + '</small>';
         }
         cell.addEventListener('click', (function(mI, bI){
           return function(){
@@ -337,38 +356,42 @@ function initEditor(){
   }
 
   function updateVeSelectionLabel(){
-    $('#veSelectedLabel').textContent = '선택된 위치: ' + (veState.selBar + 1) + '마디 ' + (veState.selBeat + 1) + '박 · 패드 클릭(Shift+클릭 시 겹음, ! 키로 아포얀도 강조)';
+    $('#veSelectedLabel').textContent = '선택된 위치: ' + (veState.selBar + 1) + '마디 ' + (veState.selBeat + 1) + '박 · Space/0/r: 쉼, -: 앞 음 유지 · Shift+클릭: 겹음';
   }
 
   function applyNoteToSelectedCell(tok, isShift){
     if (stopVisualEditOnScoreError()) return;
     if (!veState.bars.length){
-      veState.bars.push({ chord: 'C', autoChord: true, notes: new Array(veState.beats).fill('-'), lyric: '' });
+      veState.bars.push({ chord: 'C', autoChord: true, notes: new Array(veState.beats).fill('r'), lyric: '' });
     }
     var bar = veState.bars[veState.selBar];
     if (!bar) return;
-    var curTok = bar.notes[veState.selBeat] || '-';
-    var combineMode = !!(veState.bassCombine || isShift);
+    var curTok = bar.notes[veState.selBeat] || 'r';
+    var isRhythmToken = tok === 'r' || tok === '-';
+    var curIsRhythm = curTok === 'r' || curTok === 'R' || curTok === '-';
+    var combineMode = !isRhythmToken && !curIsRhythm && !!(veState.bassCombine || isShift);
     var nextRawTok = tok;
 
-    if (combineMode && tok !== '-' && curTok && curTok !== '-'){
+    if (combineMode && curTok){
       // 기존 음에서 멜로디만 추출하거나 새 음과 결합해 베이스+멜로디 2성부 토큰 생성
       var baseParts = curTok.split('+');
       var otherTok = baseParts[baseParts.length - 1];
       nextRawTok = otherTok + '+' + tok;
     }
 
-    var inf = parseNoteToken(nextRawTok, veState.selBeat);
-    bar.notes[veState.selBeat] = inf ? (inf.customTok || inf.en) : '-';
+    var inf = isRhythmToken ? null : parseNoteToken(nextRawTok, veState.selBeat);
+    bar.notes[veState.selBeat] = isRhythmToken ? tok : (inf ? (inf.customTok || inf.en) : nextRawTok);
     if (inf){
       var ecp = editorCapo();
       if (inf.chordNotes && inf.chordNotes.length > 2){
-        inf.chordNotes.forEach(function(cn, i){
-          playGuitarNote(soundingMidi(cn.midi, ecp), i === 0 ? 0.75 : 0.55, actx.currentTime + (i * 0.025), 0.9, null, cn.str);
+        var chordPreviewTime = actx.currentTime + 0.02;
+        inf.chordNotes.forEach(function(cn){
+          playGuitarNote(soundingMidi(cn.midi, ecp), 0.75, chordPreviewTime, 0.9, inf.articulation || null, cn.str);
         });
       } else {
-        if (inf.bass && inf.bass.midi) playGuitarNote(soundingMidi(inf.bass.midi, ecp), 0.75);
-        if (inf.midi) playGuitarNote(soundingMidi(inf.midi, ecp), 0.45);
+        var pairPreviewTime = actx.currentTime + 0.02;
+        if (inf.bass && inf.bass.midi) playGuitarNote(soundingMidi(inf.bass.midi, ecp), 0.75, pairPreviewTime, 0.9, inf.articulation || null, inf.bass.str);
+        if (inf.midi) playGuitarNote(soundingMidi(inf.midi, ecp), 0.75, pairPreviewTime, 0.9, inf.articulation || null, inf.str);
       }
     }
 
@@ -392,7 +415,7 @@ function initEditor(){
 
     var keyMap = {
       '1': 'C4', '2': 'D4', '3': 'E4', '4': 'F4', '5': 'G4', '6': 'A3', '7': 'B3', '8': 'C5',
-      '0': '-', '-': '-', ' ': '-'
+      '0': 'r', ' ': 'r', 'r': 'r', 'R': 'r', '-': '-'
     };
     if (e.key === '!' || e.key === '>'){
       e.preventDefault();
@@ -474,7 +497,7 @@ function initEditor(){
     veState.bars.push({
       chord: '-',
       autoChord: true,
-      notes: new Array(veState.beats).fill('-'),
+      notes: new Array(veState.beats).fill('r'),
       lyric: ''
     });
     veState.selBar = veState.bars.length - 1;
@@ -559,7 +582,7 @@ function initEditor(){
       title: '',
       beats: 4,
       bpm: 64,
-      rawText: '[C] C4 - - - | 도\n[G7] A3 - D4 - | 라 레'
+      rawText: '[C] C4 r r r | 도\n[G7] A3 r D4 r | 라 레'
     });
   });
 
@@ -567,7 +590,7 @@ function initEditor(){
   $('#convertImgToScoreBtn').addEventListener('click', function(){
     if (!curSong || curSong.type !== 'image') return;
     var beats = curSong.beats || 4;
-    var placeholder = '[-] ' + new Array(beats).fill('-').join(' ');
+    var placeholder = '[-] ' + new Array(beats).fill('r').join(' ');
     openConverterEditorModal({
       editingSongId: curSong.id,
       imageDataUrl: curSong.imageDataUrl,

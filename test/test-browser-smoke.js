@@ -246,6 +246,7 @@ async function testPracticeSessionLifecycle(client) {
 
       var pendingResolve;
       window.playSession = null;
+      window.curSong = original.song;
       window.ensureMicWorklet = function(){ return new Promise(function(resolve){ pendingResolve = resolve; }); };
       window.ensureAudioCtx = function(){};
       appState.micScoring = true;
@@ -326,6 +327,8 @@ async function testSubdividedGuide(client) {
       song: window.curSong,
       actx: window.actx,
       playGuitarNote: window.playGuitarNote,
+      stopGuitarNotes: window.stopGuitarNotes,
+      warmKsCache: window.warmKsCache,
       scheduleMetronomeClick: window.scheduleMetronomeClick,
       ensureAudioCtx: window.ensureAudioCtx,
       setTimeout: window.setTimeout,
@@ -333,17 +336,19 @@ async function testSubdividedGuide(client) {
       playing: window.isPlaying,
       measure: window.curMeasureIdx,
       beat: window.curBeatIdx,
-      state: { guideSound: appState.guideSound, scoreView: appState.scoreView, beats: appState.beats, bpm: appState.bpm, loopStart: appState.loopStart, loopEnd: appState.loopEnd, loopEnable: appState.loopEnable }
+      state: { guideSound: appState.guideSound, scoreView: appState.scoreView, beats: appState.beats, bpm: appState.bpm, loopStart: appState.loopStart, loopEnd: appState.loopEnd, loopEnable: appState.loopEnable, micScoring: appState.micScoring }
     };
     var assertions = [];
     var emitted = [];
+    var stopped = [];
     function check(ok, message){ if (!ok) throw new Error(message); assertions.push(message); }
     try {
-      var parsedGuide = parseScore('[C] -/0E2+0G3+1C4/0D3+0A3+1F4 - -', 4);
+      var parsedGuide = parseScore('[C] r/0E2+0G3+1C4/0D3+0A3+1F4 - -', 4);
       var song = { id: 'browser-guide-regression', title: 'Guide Capo 2', type: 'structured', beats: parsedGuide.beats, bpm: 60, capo: 2, measures: parsedGuide.measures };
       window.curSong = song;
       window.ensureAudioCtx = function(){};
       window.playGuitarNote = function(midi, duration, when, gain, articulation, str){ emitted.push({ midi: midi, duration: duration, when: when, gain: gain, articulation: articulation, str: str }); };
+      window.stopGuitarNotes = function(when){ stopped.push(when); };
       window.scheduleMetronomeClick = function(){};
       window.actx = { currentTime: 2, outputLatency: 0, baseLatency: 0 };
       appState.guideSound = true;
@@ -355,12 +360,19 @@ async function testSubdividedGuide(client) {
       check(emitted.length === 6, 'preview preserves both full chords after the leading rest');
       check(emitted.map(function(event){ return event.midi; }).join(',') === '42,57,62,52,59,67', 'preview applies capo while retaining every chord pitch');
       check(emitted.map(function(event){ return event.str; }).join(',') === '6,3,2,4,3,1', 'preview preserves each physical string');
-      check(Math.abs(emitted[0].when - 2.22) < 0.000001 && Math.abs(emitted[3].when - 2.44) < 0.000001, 'preview starts chord groups at their subdivision positions');
+      check(Math.abs(emitted[0].when - (2 + 1 / 3)) < 0.000001 && Math.abs(emitted[3].when - (2 + 2 / 3)) < 0.000001, 'preview starts chord groups at their subdivision positions');
+      check(emitted.slice(0, 3).every(function(event){ return event.when === emitted[0].when && event.duration === emitted[0].duration; }) && emitted.slice(3).every(function(event){ return event.when === emitted[3].when && event.duration === emitted[3].duration; }), 'each chord shares one exact attack time and duration');
       var pills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill'));
       check(pills.length === 6 && pills.every(function(p){ return p.classList.contains('note-fret'); }), 'TAB grid renders every subdivided pitch with the same neutral note style');
       check(pills.filter(function(p){ return Math.abs(parseFloat(p.style.left) - 50) < 0.001; }).length === 3 && pills.filter(function(p){ return Math.abs(parseFloat(p.style.left) - 83.3333333333) < 0.001; }).length === 3, 'TAB chord fingering pills stay at each subdivision position');
       var tabTop = document.querySelector('#measuresGrid .beat-cell[data-b="0"] .tab-cell-en');
-      check(tabTop && tabTop.textContent === '-·E+G+C·D+A+F', 'TAB top label lists the component names within each subnote');
+      check(tabTop && tabTop.textContent === '쉼·E+G+C·D+A+F', 'TAB top label distinguishes the rest from note components');
+      appState.scoreView = 'card';
+      renderSong();
+      var rhythmCell = document.querySelector('#measuresGrid .beat-cell[data-b="0"]');
+      check(rhythmCell.querySelector('.b-dur-badge').textContent.trim().length > 0 && /분할별 길이/.test(rhythmCell.title), 'duration badge and tooltip show subdivision duration details');
+      appState.scoreView = 'tab';
+      renderSong();
 
       emitted = [];
       var timers = [];
@@ -374,8 +386,9 @@ async function testSubdividedGuide(client) {
       check(emitted.map(function(event){ return event.midi; }).join(',') === '42,57,62,52,59,67', 'runtime uses capo-adjusted pitches for every chord note');
       check(timers.length >= 3, 'runtime schedules beat and later subnote UI updates');
 
-      var pairBeat = parseScore('[C] -/0E2+1C4/D4 - -', 4).measures[0].beats[0];
-      var pairSong = { id: 'browser-guide-pair', title: 'Pair', badge: '', type: 'structured', beats: 4, measures: [{ no: 1, chord: 'C', autoChord: false, beats: [pairBeat] }] };
+      var pairParsed = parseScore('[C] r/0E2+1C4/D4 - - -', 4);
+      var pairBeat = pairParsed.measures[0].beats[0];
+      var pairSong = { id: 'browser-guide-pair', title: 'Pair', badge: '', type: 'structured', beats: 4, measures: pairParsed.measures };
       window.curSong = pairSong;
       renderSong();
       var splitPairPills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill'));
@@ -389,7 +402,7 @@ async function testSubdividedGuide(client) {
       window.actx.currentTime = 7;
       emitted = [];
       updateActiveCursor(0, 0, true);
-      check(emitted.map(function(event){ return event.midi; }).join(',') === '40,60,62' && Math.abs(emitted[0].when - 7.22) < 0.000001, 'preview plays every explicit pair component at its subnote time');
+      check(emitted.map(function(event){ return event.midi; }).join(',') === '40,60,62' && Math.abs(emitted[0].when - (7 + (60 / appState.bpm) / 3)) < 0.000001, 'preview plays every explicit pair component at its subnote time');
       check(pairEvents[0].when === 8.2, 'explicit pair bass plays only at its own subnote time');
 
       emitted = [];
@@ -410,7 +423,86 @@ async function testSubdividedGuide(client) {
       var sameFretPills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill')).filter(function(p){ return Math.abs(parseFloat(p.style.left) - 25) < 0.001; });
       check(sameFretPills.length === 1 && sameFretPills[0].classList.contains('note-fret'), 'same-string same-fret pair draws one neutral note pill');
 
-      var melodySong = { type: 'structured', measures: parseScore('[C] -/C4/D4 - -', 4).measures };
+      var clockScore = parseScore('[C] 0E2 r 0G2 G2@6+B2@5\\n[G] - - - -\\n[D] - - E3 r', 4);
+      check(clockScore.errors.length === 0 && clockScore.measures.length === 3 && clockScore.measures.every(function(measure){ return measure.beats.length === 4; }), 'fake-clock runtime fixture is a complete three-measure source score');
+      window.curSong = { id:'browser-rhythm-clock', title:'Rhythm clock', type:'structured', beats:4, bpm:100, capo:2, measures:clockScore.measures };
+      appState.beats = 4;
+      appState.bpm = 100;
+      appState.loopEnable = false;
+      appState.loopStart = 1;
+      appState.loopEnd = 3;
+      renderSong();
+      emitted = [];
+      stopped = [];
+      window.actx.currentTime = 39.99;
+      window.playSession = { inCountIn:false, nextBeatTime:40, spb:0.6, bpb:4, bIdx:0, mIdx:0, loopCompleted:0, resumeNextHold:false, hits:[], endScheduled:false };
+      window.isPlaying = true;
+      schedulerTick();
+      window.actx.currentTime = 40.59;
+      schedulerTick();
+      window.actx.currentTime = 41.19;
+      schedulerTick();
+      check(stopped.length === 1 && stopped[0] === 40.6, 'a rest schedules voice stop at its exact slot time');
+      check(emitted.length === 2 && emitted[1].when === 41.2, 'the note after a rest still schedules normally');
+
+      emitted = [];
+      window.actx.currentTime = 50.59;
+      window.playSession = { inCountIn:false, nextBeatTime:50.6, spb:0.6, bpb:4, bIdx:1, mIdx:1, loopCompleted:0, resumeNextHold:false, hits:[], endScheduled:false };
+      schedulerTick();
+      check(emitted.length === 0, 'an ordinary internal hold slot schedules no new note-on');
+
+      emitted = [];
+      appState.loopStart = 2;
+      appState.loopEnd = 2;
+      var loopStartHold = clockScore.measures[1].beats[0];
+      var loopStartSource = GuitarRhythm.resolveHold(clockScore.measures, loopStartHold);
+      check(loopStartHold.kind === 'hold' && loopStartSource && loopStartSource.tok === 'G2@6+B2@5', 'loop-start test targets a cross-bar hold linked to the original chord');
+      window.actx.currentTime = 59.99;
+      window.playSession = { inCountIn:false, nextBeatTime:60, spb:0.6, bpb:4, bIdx:0, mIdx:1, loopCompleted:0, resumeNextHold:false, hits:[], endScheduled:false };
+      schedulerTick();
+      check(emitted.length === 2 && emitted[0].midi !== emitted[1].midi && emitted[0].when === emitted[1].when, 'loop-start hold resumes the original chord once with simultaneous attacks');
+      check(emitted.every(function(event){ return event.duration === 2.4; }), 'loop-start resumed chord clips to the four slots remaining in the loop');
+
+      emitted = [];
+      appState.loopStart = 1;
+      appState.loopEnd = 3;
+      appState.micScoring = false;
+      window.warmKsCache = function(){};
+      window.curMeasureIdx = 1;
+      window.curBeatIdx = 1;
+      window.isPlaying = false;
+      window.playSession = null;
+      window.actx.currentTime = 70;
+      stopped = [];
+      await startPractice();
+      var resumedSession = window.playSession;
+      check(resumedSession && resumedSession.resumeNextHold === true && resumedSession.mIdx === 1 && resumedSession.bIdx === 1, 'middle-slot practice start arms one hold resume outside loop start (' + JSON.stringify(resumedSession && {resume:resumedSession.resumeNextHold,m:resumedSession.mIdx,b:resumedSession.bIdx}) + ')');
+      check(stopped.length === 1 && stopped[0] === 70, 'practice start cuts the prior preview before count-in');
+      for (var countInIndex = 0; countInIndex < 4; countInIndex++){
+        window.actx.currentTime = resumedSession.nextBeatTime - 0.01;
+        schedulerTick();
+      }
+      window.actx.currentTime = resumedSession.nextBeatTime - 0.01;
+      schedulerTick();
+      check(emitted.length === 2 && emitted[0].when === emitted[1].when, 'middle-slot first hold resumes its original chord once');
+      window.actx.currentTime = resumedSession.nextBeatTime - 0.01;
+      schedulerTick();
+      check(emitted.length === 2, 'the next hold inside the resumed chain does not retrigger');
+      window.isPlaying = false;
+      window.playSession = null;
+
+      window.curSong = original.song;
+      renderSong();
+      var clickSession = { inCountIn:false, nextBeatTime:10, spb:0.6, bpb:4, bIdx:0, mIdx:0, loopCompleted:0, hits:[], endScheduled:false };
+      window.playSession = clickSession;
+      window.isPlaying = true;
+      emitted = [];
+      document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="1"]').click();
+      check(window.isPlaying && window.playSession === clickSession && clickSession.bIdx === 0 && clickSession.mIdx === 0, 'clicking another slot during playback updates the view without seeking the scheduler');
+      check(emitted.length === 0, 'clicking during playback does not layer an unintended preview note');
+      window.isPlaying = false;
+
+      var melodySong = { type: 'structured', measures: parseScore('[C] r/C4/D4 - - -', 4).measures };
       var melodyEvents = getSubdividedGuideEvents(melodySong.measures[0].beats[0], { startTime: 9, subStep: 0.2, capo: 0, beatsPerBar: 4, preview: false });
       check(melodyEvents.length === 2, 'single-note subnotes in a chord-named bar receive no added bass');
       check(melodyEvents.every(function(event){ return event.note.midi === 60 || event.note.midi === 62; }), 'single-note subnotes retain only the written pitches');
@@ -531,6 +623,8 @@ async function testSubdividedGuide(client) {
       window.curSong = original.song;
       window.actx = original.actx;
       window.playGuitarNote = original.playGuitarNote;
+      window.stopGuitarNotes = original.stopGuitarNotes;
+      window.warmKsCache = original.warmKsCache;
       window.scheduleMetronomeClick = original.scheduleMetronomeClick;
       window.ensureAudioCtx = original.ensureAudioCtx;
       window.setTimeout = original.setTimeout;
@@ -593,6 +687,50 @@ async function testStorageFailureRecovery(client) {
   process.stdout.write('Checks: storage recovery and sheet wiring ' + result.length + '\n');
 }
 
+async function testInvalidStructuredPersistence(client) {
+  const result = await client.evaluate(`(async function(){
+    var originalSong = window.curSong;
+    var originalSongs = window.allSongs.slice();
+    var originalCustomSongs = window.customSongs.slice();
+    var originalSave = window.dbSaveSong;
+    var originalState = { bpm: appState.bpm, loopStart: appState.loopStart, loopEnd: appState.loopEnd };
+    var originalPlaying = window.isPlaying;
+    var originalSession = window.playSession;
+    var writes = [];
+    try {
+      var invalid = { id:'browser-invalid-personal', title:'Invalid personal', type:'structured', beats:4, measures:parseScore('[C] C4', 4).measures };
+      window.customSongs.push(invalid);
+      window.allSongs.push(invalid);
+      window.dbSaveSong = function(song){ writes.push(song.id); return Promise.resolve(true); };
+      changeSongById(invalid.id);
+      await startPractice();
+      var invalidPlaybackBlocked = window.isPlaying === false && window.playSession == null && /재생할 수 없는 악보/.test(document.getElementById('phaseTxt').textContent);
+      saveAppState();
+      appState.bpm = 88;
+      saveAppState();
+      window.isPlaying = true;
+      window.playSession = { hits:[] };
+      stopPractice(false);
+      return { writes:writes.slice(), source:invalid.measures[0].beats[0].tok, invalidPlaybackBlocked:invalidPlaybackBlocked, appStateSaved:JSON.parse(localStorage.getItem('gs.state')).bpm === 88, songMetadataUntouched:invalid.lastBpm === undefined && invalid.lastPracticedAt === undefined };
+    } finally {
+      window.dbSaveSong = originalSave;
+      window.customSongs.splice(0, window.customSongs.length, ...originalCustomSongs);
+      window.allSongs = originalSongs;
+      window.curSong = originalSong;
+      Object.keys(originalState).forEach(function(key){ appState[key] = originalState[key]; });
+      window.isPlaying = originalPlaying;
+      window.playSession = originalSession;
+      renderSong();
+    }
+  })()`);
+  assert.deepEqual(result.writes, [], 'invalid personal score selection, app-state save, BPM change, and stop do not overwrite IndexedDB');
+  assert.equal(result.source, 'C4', 'invalid personal score source remains unchanged');
+  assert.equal(result.invalidPlaybackBlocked, true, 'invalid structured score cannot start playback and reports its location');
+  assert.equal(result.appStateSaved, true, 'app settings still save while invalid song persistence is skipped');
+  assert.equal(result.songMetadataUntouched, true, 'invalid song metadata is not mutated during app-state save');
+  process.stdout.write('Checks: invalid structured persistence guard 5\n');
+}
+
 async function main() {
   const browserBin = findBrowserBinary();
   if (!browserBin) {
@@ -612,6 +750,7 @@ async function main() {
     '--no-default-browser-check',
     '--disable-background-networking',
     '--disable-gpu',
+    '--autoplay-policy=no-user-gesture-required',
     'about:blank'
   ], { stdio: 'ignore' });
 
@@ -645,6 +784,27 @@ async function main() {
     const measureCount = await cdp.evaluate('document.getElementById("measuresGrid").children.length');
     assert.ok(measureCount > 0, 'measures grid rendered in browser DOM');
 
+    const audioBoot = await cdp.evaluate(`(async function(){
+      ensureAudioCtx();
+      if (window.actx && window.actx.state === 'suspended') await window.actx.resume();
+      return { supported: !!(window.AudioContext || window.webkitAudioContext), instance: !!window.actx && (window.actx instanceof (window.AudioContext || window.webkitAudioContext)), state: window.actx && window.actx.state };
+    })()`);
+    assert.equal(audioBoot.supported, true, 'browser exposes a real Web Audio engine');
+    assert.equal(audioBoot.instance, true, 'app initializes a real AudioContext');
+    assert.equal(audioBoot.state, 'running', 'AudioContext resumes in the browser test');
+    const liveGuide = await cdp.evaluate(`(function(){
+      var parsed = parseScore('[C] 0E2 r r r', 4);
+      warmKsCache({ type:'structured', measures:parsed.measures, capo:2 });
+      var start = actx.currentTime + 0.05;
+      var noteEvents = scheduleBeatGuide(parsed.measures[0].beats[0], { startTime:start, slotDuration:0.12, measures:parsed.measures, capo:2, maxDurationSlots:1 });
+      var restEvents = scheduleBeatGuide(parsed.measures[0].beats[1], { startTime:start + 0.12, slotDuration:0.12, measures:parsed.measures, capo:2, maxDurationSlots:1 });
+      stopGuitarNotes(actx.currentTime + 0.01);
+      return { noteKinds:noteEvents.map(function(event){ return event.kind; }), restKinds:restEvents.map(function(event){ return event.kind; }), audioState:actx.state };
+    })()`);
+    assert.deepEqual(liveGuide.noteKinds, ['note'], 'real audio scheduler emits a note from a parsed score');
+    assert.deepEqual(liveGuide.restKinds, ['rest'], 'real audio scheduler processes a future rest event');
+    assert.equal(liveGuide.audioState, 'running', 'real guide scheduler runs on the initialized AudioContext');
+
     const bassButtonAbsent = await cdp.evaluate('document.getElementById("toggleAutoBassBtn") === null');
     assert.equal(bassButtonAbsent, true, 'automatic bass accompaniment toggle is removed');
     process.stdout.write('Browser checkpoint: boot and initial DOM passed\n');
@@ -670,12 +830,41 @@ async function main() {
       var beatSelect = document.getElementById('nsBeats');
       beatSelect.value = '6';
       beatSelect.dispatchEvent(new Event('change', { bubbles: true }));
-      var beatRecovery = textarea.value === raw && veState.beats === 6 && veState.bars.length === 1 && veState.bars[0].notes.length === 6;
+      var underfillPreserved = textarea.value === raw && veState.beats === 6 && veState.bars.length === 0 && /박/.test(status.textContent);
+      var matchingRaw = '[C] C4 D4 E4 F4 G4 A4 | "matching"';
+      textarea.value = matchingRaw;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      var beatRecovery = textarea.value === matchingRaw && veState.bars.length === 1 && veState.bars[0].notes.length === 6;
       openConverterEditorModal({ title: 'invalid save', beats: 4, rawText: raw });
       var before = customSongs.length;
       document.getElementById('saveNewSongBtn').click();
       var invalidSaveBlocked = customSongs.length === before && textarea.value === raw;
       document.getElementById('closeNewSongBtn').click();
+      var invalidInputs = ['[C] - C4 r r', '[C] C4', '[C] C4 . r r'];
+      var originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      var originalPrompt = window.prompt;
+      var clipboardCalls = 0;
+      var promptCalls = 0;
+      var invalidExportsBlocked = false;
+      try {
+        Object.defineProperty(navigator, 'clipboard', { configurable:true, value:{ writeText:function(){ clipboardCalls++; return Promise.resolve(); } } });
+        window.prompt = function(){ promptCalls++; };
+        invalidExportsBlocked = invalidInputs.every(function(sourceText){
+          openConverterEditorModal({ title:'invalid export', beats:4, rawText:sourceText });
+          var countBefore = customSongs.length;
+          var validation = validateScore(sourceText, 4);
+          document.getElementById('saveNewSongBtn').click();
+          document.getElementById('copyVeRowTsvBtn').click();
+          var blocked = validation.errors.length > 0 && customSongs.length === countBefore && textarea.value === sourceText;
+          document.getElementById('closeNewSongBtn').click();
+          return blocked;
+        });
+      } finally {
+        if (originalClipboardDescriptor) Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor);
+        else delete navigator.clipboard;
+        window.prompt = originalPrompt;
+      }
+      invalidExportsBlocked = invalidExportsBlocked && clipboardCalls === 0 && promptCalls === 0;
       var originalSong = curSong;
       var specialLyric = 'slash // pipe | quote " and /';
       var source = buildStructuredSong({ id:'browser-lyric-roundtrip', title:'lyric', beats:4, lines:['[C] C4 - - -'] });
@@ -685,12 +874,14 @@ async function main() {
       var lyricRoundTrip = decodeMeasureLine(document.getElementById('nsMeasuresTxt').value).lyric === specialLyric;
       document.getElementById('closeNewSongBtn').click();
       curSong = originalSong;
-      return { preserved:preserved, overflowDiagnostic:overflowDiagnostic, beatRecovery:beatRecovery, invalidSaveBlocked:invalidSaveBlocked, lyricRoundTrip:lyricRoundTrip };
+      return { preserved:preserved, overflowDiagnostic:overflowDiagnostic, underfillPreserved:underfillPreserved, beatRecovery:beatRecovery, invalidSaveBlocked:invalidSaveBlocked, invalidExportsBlocked:invalidExportsBlocked, lyricRoundTrip:lyricRoundTrip };
     })()`);
     assert.equal(notationUi.preserved, true, 'overflow input remains intact and is not projected');
     assert.match(notationUi.overflowDiagnostic, /5박/, 'overflow input reports its excess beat');
-    assert.equal(notationUi.beatRecovery, true, 'changing to a matching meter safely restores projection');
+    assert.equal(notationUi.underfillPreserved, true, 'changing meter preserves the source and does not fill missing slots');
+    assert.equal(notationUi.beatRecovery, true, 'a complete six-slot source safely restores projection');
     assert.equal(notationUi.invalidSaveBlocked, true, 'invalid score cannot be saved');
+    assert.equal(notationUi.invalidExportsBlocked, true, 'orphan hold, missing slots, and ambiguous dot cannot be saved or exported as TSV');
     assert.equal(notationUi.lyricRoundTrip, true, 'structured edit opening preserves JSON lyric delimiters');
     process.stdout.write('Browser checkpoint: notation UI passed\n');
 
@@ -707,7 +898,7 @@ async function main() {
         curSong = target;
         document.getElementById('convertImgToScoreBtn').click();
         var defaultText = document.getElementById('nsMeasuresTxt').value;
-        var defaultOk = defaultText === '[-] - - - -';
+        var defaultOk = defaultText === '[-] r r r r';
         var metadataOk = document.getElementById('nsBpm').value === '91' && veState.sourceBadge === 'Source badge' && veState.refImageDataUrl === target.imageDataUrl;
         document.getElementById('closeNewSongBtn').click();
 
@@ -752,6 +943,7 @@ async function main() {
     process.stdout.write('Browser checkpoint: practice session passed\n');
     await testSubdividedGuide(cdp);
     await testStorageFailureRecovery(cdp);
+    await testInvalidStructuredPersistence(cdp);
 
     // Test editor modal interaction in browser
     await cdp.evaluate('window.openConverterEditorModal({ title: "browser-test-song", beats: 4, rawText: "[C] C4 -/D4 - - | browser test" })');
@@ -794,6 +986,32 @@ async function main() {
     const ytLinkText = await cdp.evaluate('document.querySelector("#ytQuickLinks a") ? document.querySelector("#ytQuickLinks a").textContent : ""');
     assert.ok(ytLinkText.length > 0, "youtube quick links rendered");
     assert.equal(ytLinkText.includes("[Lv"), false, "youtube search query excludes [Lv..] tags");
+
+    await cdp.send('Page.reload', { ignoreCache: true });
+    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.BUILTIN_SONGS.length === 14 && window.customSongs.some(function(song){ return song.title === "browser storage failure"; })', 8000);
+    const screenshotDir = path.join(__dirname, '..', 'test-artifacts');
+    let screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review.png');
+    if (fs.existsSync(screenshotTarget)) screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review-' + Date.now() + '.png');
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+    await cdp.evaluate(`(function(){
+      var parsed = parseScore('[C] C4 - - 1E4\\n[G] - r 0E2+1C4 -', 4);
+      window.curSong = { id:'beginner-rhythm-review', title:'Beginner rhythm review', type:'structured', beats:4, bpm:80, measures:parsed.measures };
+      appState.scoreView = 'tab';
+      appState.beats = 4;
+      appState.bpm = 80;
+      window.curMeasureIdx = 0;
+      window.curBeatIdx = 0;
+      renderSong();
+      return true;
+    })()`);
+    const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    fs.mkdirSync(path.dirname(screenshotTarget), { recursive: true });
+    fs.writeFileSync(screenshotTarget, Buffer.from(screenshot.data, 'base64'));
+    const imageHeader = fs.readFileSync(screenshotTarget).subarray(0, 24);
+    assert.equal(imageHeader.readUInt32BE(16), 1280, 'review screenshot is 1280px wide');
+    assert.equal(imageHeader.readUInt32BE(20), 900, 'review screenshot is 900px tall');
+    process.stdout.write('Artifact: ' + screenshotTarget + '\n');
+    process.stdout.write('Browser checkpoint: reload persistence, Web Audio boot, and 1280x900 screenshot passed\n');
 
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');

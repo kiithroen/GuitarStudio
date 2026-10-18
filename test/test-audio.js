@@ -11,6 +11,17 @@ const audioSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'audio.js'
 
 function makeContext(capo){
   const oscillators = [];
+  function param(initial){
+    return { value:initial || 0, setValueAtTime(value, time){ this.last = ['set', value, time]; },
+      linearRampToValueAtTime(value, time){ this.last = ['linear', value, time]; },
+      exponentialRampToValueAtTime(value, time){ this.last = ['exponential', value, time]; },
+      setTargetAtTime(value, time, constant){ this.last = ['target', value, time, constant]; },
+      cancelScheduledValues(time){ this.cancelAt = time; } };
+  }
+  function source(){
+    return { playbackRate:param(1), connect(){}, start(time){ this.startedAt = time; },
+      stop(time){ this.stopAt = time; } };
+  }
   const context = {
     appState: { acousticFx: true, sympAmount: 1, synthEngine: 'ks' },
     STRINGS: [
@@ -20,18 +31,21 @@ function makeContext(capo){
     stringVoices: {},
     guitarBus: {},
     actx: {
+      currentTime: 0,
       destination: {},
       createOscillator(){
         const oscillator = {
-          frequency: { value: 0 },
+          frequency: param(0),
           connect(){}, start(){},
           stop(time){ this.stopAt = time; }
         };
         oscillators.push(oscillator);
         return oscillator;
       },
+      createBufferSource: source,
+      createBiquadFilter(){ return { frequency:param(0), Q:param(0), type:'', connect(){} }; },
       createGain(){
-        return { gain: { setValueAtTime(){}, setTargetAtTime(){} }, connect(){} };
+        return { gain:param(0), connect(){} };
       }
     },
     curCapo(){ return capo; },
@@ -46,7 +60,7 @@ function makeContext(capo){
     console
   };
   vm.createContext(context);
-  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
+  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
   return { context, oscillators };
 }
 
@@ -144,6 +158,111 @@ test('warm cache skips classic engine and keeps the 64-note limit', function(){
   context.appState.synthEngine = 'ks';
   context.__audioHooks.warmKsCache({ type: 'structured', capo: 0, measures: [{ chord: '', beats: Array.from({ length: 70 }, (_, i) => beat(i)) }] });
   assert.equal(calls.length, 64);
+});
+
+test('exact KS duration ends at the requested time with a short release tail', function(){
+  const { context } = makeContext(0);
+  context.__audioHooks.replaceGetKsBuffer(() => ({ duration:4 }));
+  const voice = context.__audioHooks.buildKsVoice(60, 2, 0.125, 1, false, false, true, 2, true);
+  assert.equal(voice.stopAt, 2.14);
+});
+
+test('exact classic duration ends at the requested time and regular gate remains separate', function(){
+  const { context } = makeContext(0);
+  const exact = context.__audioHooks.buildClassicVoice(64, 1, 0.2, 1, false, false, false, false, true);
+  const regular = context.__audioHooks.buildClassicVoice(64, 1, 0.2, 1, false, false, false, false, false);
+  assert.ok(Math.abs(exact.stopAt - 1.215) < 1e-9);
+  assert.ok(Math.abs(regular.stopAt - 1.23) < 1e-9);
+});
+
+test('stopGuitarNotes cuts direct and sympathetic voices at the requested time only', function(){
+  const { context } = makeContext(0);
+  const stopped = [];
+  const gainFor = () => ({ gain:{ cancelScheduledValues(){}, setValueAtTime(){}, linearRampToValueAtTime(value, time){ stopped.push(['ramp', value, time]); } } });
+  const sourceFor = () => ({ stop(time){ stopped.push(['stop', time]); } });
+  context.stringVoices = {
+    1:[{ start:2, end:5, damp:gainFor(), srcs:[sourceFor()] }],
+    2:[{ start:4, end:6, symp:true, damp:gainFor(), srcs:[sourceFor()] }],
+    3:[{ start:8, end:9, damp:gainFor(), srcs:[sourceFor()] }]
+  };
+  context.trackedGuideVoices = Object.values(context.stringVoices).flat();
+  context.__audioHooks.stopGuitarNotes(4);
+  assert.deepEqual(stopped.filter(x => x[0] === 'stop').map(x => x[1]), [4.015, 4, 8]);
+  assert.deepEqual(stopped.filter(x => x[0] === 'ramp').map(x => x[2]), [4.01]);
+  assert.equal(context.stringVoices[1].length, 1, 'future stop remains tracked until the audio clock passes its cutoff');
+  assert.equal(context.stringVoices[2].length, 1, 'future-start voice remains tracked until its scheduled start');
+  assert.equal(context.stringVoices[3].length, 1, 'future reservation remains tracked until its cutoff');
+});
+
+test('stopGuitarNotes still cuts a direct voice after same-string reattack removed it from the string list', function(){
+  const { context } = makeContext(0);
+  const stopped = [];
+  const voice = { start:2, end:8,
+    damp:{ gain:{ setValueAtTime(){}, setTargetAtTime(){} } },
+    srcs:[{ stop(time){ stopped.push(time); } }] };
+  context.stringVoices = { 1:[voice] };
+  context.trackedGuideVoices = [voice];
+  context.__audioHooks.dampSameStringVoices(1, 2.1);
+  assert.equal(context.stringVoices[1].length, 0, 'normal reattack bookkeeping removes the previous voice from its string list');
+  context.__audioHooks.stopGuitarNotes(2.15);
+  assert.equal(stopped.length, 2, 'reattack release is replaced by stop cutoff');
+  assert.ok(Math.abs(stopped[1] - 2.165) < 1e-9, 'previous direct voice is cut within 15ms of stop');
+});
+
+test('stopGuitarNotes cuts sympathetic voices after resonance refresh removes them from the string list', function(){
+  const { context } = makeContext(0);
+  context.__audioHooks.addSympatheticResonance(64, 1, 1, 2);
+  const oldVoices = Object.values(context.stringVoices).flat().filter(voice => voice.symp);
+  assert.ok(oldVoices.length > 0, 'first note creates sympathetic voices');
+  context.__audioHooks.addSympatheticResonance(64, 1.2, 1, 2);
+  assert.ok(oldVoices.some(voice => !Object.values(context.stringVoices).flat().includes(voice)), 'resonance refresh removes old voices from their string lists');
+  context.__audioHooks.stopGuitarNotes(1.5);
+  assert.ok(oldVoices.every(voice => voice.srcs[0].stopAt <= 1.515), 'refreshed sympathetic releases are cut within 15ms of stop');
+});
+
+test('scheduling a later subdivision does not prune a voice before the real audio clock reaches its end', function(){
+  const { context } = makeContext(0);
+  context.actx.currentTime = 1;
+  const stopped = [];
+  const active = { start:0.9, end:1.25, damp:{ gain:{ cancelScheduledValues(){}, setValueAtTime(){}, linearRampToValueAtTime(){} } },
+    srcs:[{ stop(time){ stopped.push(time); } }] };
+  context.trackedGuideVoices = [active];
+  context.stringVoices = { 1:[active] };
+  const later = { start:1.3, end:1.6, damp:{ gain:{} }, srcs:[] };
+  context.__audioHooks.trackGuideVoice(later, 1.3);
+  assert.ok(context.trackedGuideVoices.includes(active), 'still sounding voice survives a future event registration');
+  context.__audioHooks.stopGuitarNotes(1.1);
+  assert.ok(Math.abs(stopped[0] - 1.115) < 1e-9, 'intermediate stop still cuts the earlier voice within 15ms');
+});
+
+test('a future rest cutoff stays tracked so an earlier user stop can move it forward', function(){
+  const { context } = makeContext(0);
+  context.actx.currentTime = 1;
+  const stopped = [];
+  const voice = { start:1, end:2, damp:{ gain:{ cancelScheduledValues(){}, setValueAtTime(){}, linearRampToValueAtTime(){} } },
+    srcs:[{ stop(time){ stopped.push(time); } }] };
+  context.trackedGuideVoices = [voice];
+  context.stringVoices = { 1:[voice] };
+  context.__audioHooks.stopGuitarNotes(1.5);
+  assert.equal(voice.end, 1.515, 'future rest establishes its cutoff without dropping the live registry entry');
+  assert.ok(context.trackedGuideVoices.includes(voice));
+  context.__audioHooks.stopGuitarNotes(1.2);
+  assert.ok(Math.abs(voice.end - 1.215) < 1e-9, 'earlier stop moves the cutoff earlier');
+  assert.ok(Math.abs(stopped[1] - 1.215) < 1e-9);
+});
+
+test('repeated stop requests never extend an already scheduled voice end', function(){
+  const { context } = makeContext(0);
+  context.actx.currentTime = 1;
+  const stopped = [];
+  const voice = { start:1, end:2, damp:{ gain:{ cancelScheduledValues(){}, setValueAtTime(){}, linearRampToValueAtTime(){} } },
+    srcs:[{ stop(time){ stopped.push(time); } }] };
+  context.trackedGuideVoices = [voice];
+  context.stringVoices = { 1:[voice] };
+  context.__audioHooks.stopGuitarNotes(1.5);
+  context.__audioHooks.stopGuitarNotes(1.505);
+  assert.equal(voice.end, 1.515, 'later request preserves the earlier cutoff');
+  assert.deepEqual(stopped, [1.515], 'later request does not reschedule an extended stop');
 });
 
 process.stdout.write('1..' + checks + '\n');

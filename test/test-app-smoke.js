@@ -237,7 +237,7 @@ async function main(){
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   document.querySelector('#storageStatus');
   const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
-  assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/ai-prompt.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/editor.js', 'src/sheets.js', 'src/app.js']);
+  assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/ai-prompt.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/editor.js', 'src/sheets.js', 'src/app.js']);
   for (const script of scripts){
     const source = fs.readFileSync(path.join(root, script), 'utf8');
     vm.runInContext(source, context, { filename: script });
@@ -260,7 +260,7 @@ async function main(){
   assert.match(copiedText, /E4@1\/F4@1/, 'AI prompt example uses a slash without spaces inside a beat');
   assert.doesNotMatch(copiedText, /E4@1 \/ F4@1/, 'AI prompt has no spaced slash subdivision examples');
   assert.match(copiedText, /마디는 줄바꿈 또는 `\/\/`로만 나눠/, 'AI prompt explains the canonical bar separator');
-  const promptExample = context.parseScore('[C] E4@1/F4@1 - - - | ""\n[C] C4@2 - - - | ""', 4);
+  const promptExample = context.parseScore('[C] E4@1/F4@1 r r r | ""\n[C] C4@2 - - - | ""', 4);
   assert.equal(promptExample.measures.length, 2, 'the prompt sample parses as two measures');
   assert.equal(promptExample.measures[0].beats[0].subNotes.length, 2, 'the prompt subdivision sample parses as two subnotes');
 

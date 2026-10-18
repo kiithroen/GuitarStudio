@@ -1,52 +1,106 @@
+function guideParts(beat){
+  return beat && Array.isArray(beat.subNotes) && beat.subNotes.length ? beat.subNotes : (beat ? [beat] : []);
+}
+
+function guidePartKind(part){
+  if (part && part.kind) return part.kind;
+  var tok = String(part && part.tok || '').trim();
+  if (/^[rR]$/.test(tok)) return 'rest';
+  if (tok === '-') return 'hold';
+  return part && part.midi != null ? 'note' : 'invalid';
+}
+
+function guideNotes(part){
+  if (!part) return [];
+  if (Array.isArray(part.chordNotes) && part.chordNotes.length) return part.chordNotes;
+  return part.midi != null ? [part] : [];
+}
+
+function getBeatGuideEvents(beat, options){
+  options = options || {};
+  var parts = guideParts(beat);
+  if (!parts.length) return [];
+  var count = parts.length;
+  var startTime = Number(options.startTime) || 0;
+  var slotDuration = Number(options.slotDuration) || 0;
+  if (!(slotDuration > 0)) return [];
+  var measures = options.measures;
+  var firstKind = guidePartKind(parts[0]);
+  var resumeSource = options.resumeHold && firstKind === 'hold' && typeof GuitarRhythm !== 'undefined'
+    ? GuitarRhythm.resolveHold(measures, parts[0]) : null;
+  var events = [];
+
+  function pushForPart(part, index, kind, noteSource){
+    var offsetSlots = index / count;
+    var when = startTime + offsetSlots * slotDuration;
+    var slotUnits = Number(part && part.slotUnits) || 12 / count;
+    var durationUnits = Number(part && part.durationUnits) || slotUnits;
+    var duration = durationUnits / 12 * slotDuration;
+    if (Number.isFinite(Number(options.maxDurationSlots))){
+      var remainingSlots = Math.max(0, Number(options.maxDurationSlots) - offsetSlots);
+      duration = Math.min(duration, remainingSlots * slotDuration);
+    }
+    if (kind === 'rest'){
+      events.push({ kind:'rest', when:when, duration:duration });
+      return;
+    }
+    if (kind !== 'note' || duration <= 0) return;
+    guideNotes(noteSource).forEach(function(note){
+      if (!note || !note.midi) return;
+      var articulation = note.articulation || noteSource.articulation || part.articulation || null;
+      var gain = articulation === 'apoyando' ? 1.16 : (articulation === 'tirando' ? 0.62 : 1.0);
+      events.push({ kind:'note', note:note, duration:duration, when:when,
+        gain:gain, articulation:articulation, str:note.str });
+    });
+  }
+
+  parts.forEach(function(part, index){
+    var kind = guidePartKind(part);
+    if (kind === 'hold'){
+      if (index === 0 && resumeSource){
+        var resumeDuration = Number(part.durationUnits) || Number(resumeSource.durationUnits) || 12;
+        var resumePart = { slotUnits:part.slotUnits, durationUnits:resumeDuration };
+        pushForPart(resumePart, index, 'note', resumeSource);
+      }
+      return;
+    }
+    pushForPart(part, index, kind, part);
+  });
+  return events.sort(function(a, b){
+    if (a.when !== b.when) return a.when - b.when;
+    if (a.kind === b.kind) return 0;
+    return a.kind === 'rest' ? -1 : 1;
+  });
+}
+
+function scheduleBeatGuide(beat, options){
+  options = options || {};
+  var events = getBeatGuideEvents(beat, options);
+  events.forEach(function(event){
+    if (event.kind === 'rest'){
+      stopGuitarNotes(event.when);
+      return;
+    }
+    var midi = soundingMidi(event.note.midi, options.capo);
+    playGuitarNote(midi, event.duration, event.when, event.gain, event.articulation, event.str, { exactDuration:true });
+  });
+  return events;
+}
+
 function getSubdividedGuideEvents(beat, options){
   if (!beat || !beat.subNotes || !beat.subNotes.length) return [];
   options = options || {};
-  var noteCount = beat.subNotes.length;
   var subStep = Number(options.subStep) || 0;
-  var startTime = Number(options.startTime) || 0;
-  var preview = !!options.preview;
-  var beatsPerBar = Number(options.beatsPerBar) || 4;
-  var beatDuration = subStep * noteCount;
-  var bassDuration = preview ? 1.25 : beatDuration * ((beatsPerBar === 6 || beatsPerBar === 9) ? 8.2 : 2.2);
-
-  var events = [];
-  function addEvent(note, duration, when, gain, articulation, str){
-    if (!note || !note.midi) return;
-    events.push({ note: note, duration: duration, when: when, gain: gain, articulation: articulation, str: str });
-  }
-
-  beat.subNotes.forEach(function(note, noteIndex){
-    if (!note || note.tok === '-' || note.midi == null) return;
-    var noteTime = startTime + noteIndex * subStep;
-    var melDuration = preview ? 0.75 : subStep * 1.5;
-    var articulation = note.articulation || beat.articulation;
-    var melodyGain = preview ? 1.0 : (articulation === 'apoyando' ? 1.16 : 1.0);
-
-    if (note.chordNotes && note.chordNotes.length > 2){
-      var rollStep = Math.min(0.028, subStep / (note.chordNotes.length + 1));
-      note.chordNotes.forEach(function(chordNote, chordIndex){
-        var isBass = chordIndex === 0;
-        addEvent(chordNote, isBass ? bassDuration : melDuration, noteTime + chordIndex * rollStep, isBass ? 1.12 : 1.0, chordNote.articulation || articulation, chordNote.str);
-      });
-      return;
-    }
-
-    if (note.chordNotes && note.chordNotes.length === 2){
-      var explicitBass = getExplicitBass(note);
-      if (explicitBass){
-        addEvent(explicitBass, bassDuration, noteTime, 1.12, null, explicitBass.str);
-      }
-    }
-
-    addEvent(note, melDuration, noteTime, melodyGain, articulation, note.str);
+  var guideOptions = Object.assign({}, options, {
+    slotDuration: subStep * beat.subNotes.length
   });
-
-  return events;
+  return getBeatGuideEvents(beat, guideOptions).filter(function(event){ return event.kind === 'note'; });
 }
 
 function scheduleSubdividedGuide(beat, options){
   options = options || {};
-  getSubdividedGuideEvents(beat, options).forEach(function(event){
-    playGuitarNote(soundingMidi(event.note.midi, options.capo), event.duration, event.when, event.gain, event.articulation, event.str);
+  var guideOptions = Object.assign({}, options, {
+    slotDuration: (Number(options.subStep) || 0) * (beat && beat.subNotes ? beat.subNotes.length : 0)
   });
+  return scheduleBeatGuide(beat, guideOptions);
 }

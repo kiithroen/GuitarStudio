@@ -33,7 +33,7 @@ async function main(){
       assert.equal(parsedLines.measures.length, 2);
       assert.equal(parsedTsv.measures.length, 2);
       assert.deepEqual(parsedLines.measures.map(function(measure){ return measure.beats.map(function(beat){ return beat.tok; }); }), parsedTsv.measures.map(function(measure){ return measure.beats.map(function(beat){ return beat.tok; }); }));
-      assert.deepEqual(parsedLines.measures[0].beats.map(function(beat){ return beat.tok; }), ['E4@1/F4@1'].concat(new Array(beats - 1).fill('-')));
+      assert.deepEqual(parsedLines.measures[0].beats.map(function(beat){ return beat.tok; }), ['E4@1/F4@1'].concat(new Array(beats - 1).fill('r')));
       assert.equal(parsedLines.measures[1].beats[0].tok, 'C4@2');
     });
   });

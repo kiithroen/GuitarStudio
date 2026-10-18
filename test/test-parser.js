@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const parser = require('../src/parser.js');
 const score = require('../src/score.js');
+const rhythm = require('../src/rhythm.js');
 
 let checks = 0;
 function test(name, fn){
@@ -72,15 +73,18 @@ test('two, three, and four subdivisions preserve tokens and duration fractions',
     assert.equal(beat.subNotes.reduce((sum, n) => sum + n.durFrac, 0), 1);
   }
   const triplet = parse('[C] C4/D4/E4 - - -', 4).measures[0].beats[0];
-  assert.equal(score.getBeatDurationInfo([triplet], 0, 4).durName, '셋잇단음표');
+  const tripletInfo = score.getBeatDurationInfo([triplet], 0, 4);
+  assert.equal(tripletInfo.label, '3분할');
+  assert.equal(tripletInfo.durName, '1/3칸 · 1/3칸 · 10/3칸');
 });
 
-test('held-note dotted rhythm C4 -/D4 has a 1.5 beat duration', function(){
-  const beats = parse('[C] C4 -/D4 - -', 4).measures[0].beats;
-  const duration = score.getBeatDurationInfo(beats, 0, 4);
-  assert.equal(duration.label, '점4분');
-  assert.match(duration.durName, /1\.5박/);
-  assert.equal(beats[1].subNotes[0].tok, '-');
+test('explicit subdivisions report their exact duration and retain explicit technique', function(){
+  const beat = parse('[C] !C4/D4/E4 - - -', 4).measures[0].beats[0];
+  assert.equal(beat.subNotes[0].durationUnits, 4);
+  assert.equal(beat.subNotes[0].articulation, 'apoyando');
+  assert.equal(beat.subNotes[0].explicitArticulation, true);
+  assert.equal(beat.subNotes[1].articulation, null);
+  assert.equal(score.getBeatDurationInfo([beat], 0, 4).durName, '1/3칸 · 1/3칸 · 10/3칸');
 });
 
 test('measure separators are newline, CRLF, and double slash; single slash remains inside a bar', function(){
@@ -148,6 +152,7 @@ test('all songs.json entries parse into the expected number of beats per measure
     const structured = parser.buildStructuredSong(song);
     assert.equal(structured.id, song.id);
     assert.equal(structured.measures.length, song.lines.length, song.id);
+    assert.equal(parse(song.lines.join('\n'),song.beats).errors.length,0,song.id);
     for (const measure of structured.measures){
       assert.equal(measure.beats.length, song.beats, song.id);
       assert.ok(measure.beats.every(beat => typeof beat.tok === 'string'), song.id);

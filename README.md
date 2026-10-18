@@ -7,12 +7,13 @@
 - `index.html`: 앱 화면과 스타일, AudioWorklet 원본 코드를 포함한다.
 - `src/parser.js`: DOM 의존성이 없는 음표·화음 파싱, 마디 구조화, 코드 추론, 에디터 투영, 카포 계산을 제공한다. 브라우저에서는 classic script 전역 API를 제공하고 Node.js에서는 CommonJS API를 내보낸다.
 - `src/notation.js`: 악보 마디 분할, 가사 JSON 인용, 정규 직렬화와 저장 전 검증을 제공한다.
+- `src/rhythm.js`: 음 시작·쉼·유지와 마디를 넘는 길이를 12단위 정수로 계산한다. 화면과 가이드 재생이 같은 결과를 사용한다.
 - `src/ai-prompt.js`: 선택한 박자·템포에 맞는 악보 변환 프롬프트를 만든다.
 - `src/image-analysis.js`: 악보 이미지에서 마디 경계 후보 좌표를 분석한다.
 - `src/storage.js`: DOM 의존성 없이 IndexedDB 악보 저장소와 읽기·쓰기 완료 처리를 제공한다.
 - `src/score.js`: 박자 길이와 점리듬 표시 정보를 계산한다.
 - `src/audio.js`: Web Audio 기타 신디사이저와 프리뷰 음원을 제공한다.
-- `src/guide.js`: 분할 박의 베이스·멜로디·화음 이벤트를 프리뷰, 재생, 예열에서 함께 계산한다.
+- `src/guide.js`: 단음·화음·쉼·유지의 이벤트를 미리듣기와 재생에서 함께 계산한다. 화음은 동시에 치고, 내부 유지는 다시 치지 않는다.
 - `src/fretboard.js`: 지판, 코드 카드, 하이라이트 및 관련 이벤트를 초기화한다.
 - `src/editor.js`: 악보 입력기, 비주얼 에디터, 저장과 TSV 도우미를 초기화한다.
 - `src/sheets.js`: 구글 시트 JSONP 동기화와 복사 동작을 제공하며, 시트 UI 이벤트는 `initSheetSync()`에서 등록한다.
@@ -23,23 +24,36 @@
 - `test/test-sheets.js`: 시트 동기화의 JSONP 응답 처리를 모의 데이터로 검증한다.
 - `test/test-image-conversion.js`: 프롬프트 예시의 파싱과 이미지 마디선 좌표 분석을 검증한다.
 - `test/test-parser.js`: Node 내장 `assert`를 사용하는 의존성 없는 파서 테스트다.
+- `test/test-rhythm.js`: 쉼·유지·마디 경계·분할 음가와 박자 단위를 검증한다.
 - `test/test-app-smoke.js`: Node 내장 `vm`과 DOM/IndexedDB 스텁으로 외부 스크립트 부팅, 악보 렌더, 에디터 저장 경로를 확인한다.
 - `test/test-browser-smoke.js`: Node.js 내장 http/WebSocket 및 CDP(Chrome DevTools Protocol)를 사용해 Headless Chrome/Edge 환경에서 실제 DOM 렌더링, 모달 인터랙션, 콘솔 에러 유무를 검증한다.
 
-페이지는 기존처럼 `index.html`을 직접 열거나 정적 웹 서버에서 실행할 수 있다. HTML은 `src/storage.js`, `src/notation.js`, `src/parser.js`, `src/score.js`, `src/audio.js`, `src/guide.js`, `src/ai-prompt.js`, `src/image-analysis.js`, `src/fretboard.js`, `src/editor.js`, `src/sheets.js`, `src/app.js` 순서로 classic script를 로드한다. 따라서 별도 빌드나 패키지 설치가 필요하지 않으며, 공유 함수는 `window` 전역 이름을 유지한다. 저장소 모듈은 DOM을 참조하지 않는다. 지판, 에디터, 시트 UI 이벤트는 앱 상태가 준비된 뒤 각각 `initFretboard()`, `initEditor()`, `initSheetSync()`에서 등록한다.
+페이지는 기존처럼 `index.html`을 직접 열거나 정적 웹 서버에서 실행할 수 있다. HTML은 `src/storage.js`, `src/notation.js`, `src/rhythm.js`, `src/parser.js`, `src/score.js`, `src/audio.js`, `src/guide.js`, `src/ai-prompt.js`, `src/image-analysis.js`, `src/fretboard.js`, `src/editor.js`, `src/sheets.js`, `src/app.js` 순서로 classic script를 로드한다. 따라서 별도 빌드나 패키지 설치가 필요하지 않으며, 공유 함수는 `window` 전역 이름을 유지한다. 저장소 모듈은 DOM을 참조하지 않는다. 지판, 에디터, 시트 UI 이벤트는 앱 상태가 준비된 뒤 각각 `initFretboard()`, `initEditor()`, `initSheetSync()`에서 등록한다.
 
 자동 베이스 반주 추가 기능은 없다. 악보에 `+`로 입력한 음은 모두 표시하고 재생한다.
 겹음에 베이스 역할이나 오른손 운지를 자동 지정해 표시하지 않는다.
 
 ## 악보 문법과 오류 처리
 
-마디는 줄바꿈 또는 `//`로 나누고, 박 안의 분할 음표는 공백 없이 붙여 쓴 `/`로 표기한다. 예를 들어 `2E3/0G3`는 한 박의 두 음이고, `//`는 다음 마디다. 가사는 `|` 뒤에 쓰며, 새 형식에서는 JSON 문자열로 직렬화해 `너 / 나`, 따옴표, URL과 `|`를 가사 그대로 보존한다. 오류가 있는 악보는 저장과 TSV 복사가 막히며, 짧은 마디 같은 경고는 표시한 뒤 저장할 수 있다. 구형 공백 슬래시 마디 구분과 구형 악보 변환은 지원하지 않는다.
+마디는 줄바꿈 또는 `//`로 나누고, 한 칸 안의 균등 분할은 공백 없이 붙여 쓴 `/`로 표기한다. 2·3·4분할을 지원한다. 예를 들어 `2E3/0G3`는 한 칸의 두 음이고, `//`는 다음 마디다. 가사는 `|` 뒤의 JSON 문자열로 직렬화해 `너 / 나`, 따옴표, URL과 `|`를 그대로 보존한다. 구형 공백 슬래시 마디 구분과 구형 악보 변환은 지원하지 않는다.
+
+- `r`: 쉼. 앞 음을 끝낸다. `R`도 허용한다.
+- `-`: 앞 음 또는 화음 전체를 다시 치지 않고 연장한다. 마디를 넘어 연결할 수 있다.
+- `+`: 구성음을 같은 시각에 같은 길이로 친다. 자동 굴려 치기나 주법 추론은 하지 않는다.
+- `C4/-/-/D4`: 앞 음은 3/4칸, 뒤 음은 1/4칸이다. `C4 - - D4`는 앞 음 3칸과 뒤 음 1칸이다.
+
+악보 시작이나 쉼 뒤의 `-`, 모호한 `.`, 부족하거나 초과한 칸, 지원하지 않는 분할은 오류로 안내하고 저장·TSV 복사를 막는다. 누락된 칸을 자동으로 채우지 않는다. 기존 개인 악보에 오류가 있으면 삭제하지 않고 편집을 허용하며 재생을 막는다.
+
+**한 클릭은 한 칸이며 BPM은 분당 칸 수**다. 6·9·12칸은 각각 6/8·9/8·12/8의 8분음표, 8칸은 4/4의 8분음표 단위다. 3/4 셋잇단은 3칸을 선택하고 각 칸을 `/`로 3분할한다. 인쇄된 악보의 템포 음표 단위와 앱의 한 칸이 다르면 환산해야 한다.
+
+독립된 성부별 음 길이, 화음 일부만의 붙임줄, 슬러·꾸밈음, 못갖춘마디·가변 박자·반복 기호 자동 해석은 지원하지 않는다. 이런 악보는 이미지 모드와 메트로놈을 사용한다. 구현 범위와 재생 계약은 [초보용 리듬 사양](Docs/beginner-rhythm.md)에 정리돼 있다.
 
 파서 회귀 테스트와 구문 검사는 프로젝트 루트에서 실행한다.
 
 ```powershell
 node test/test-parser.js
 node test/test-notation.js
+node test/test-rhythm.js
 node test/test-image-conversion.js
 node test/test-audio.js
 node test/test-guide.js
@@ -74,7 +88,7 @@ Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName }
 
 5. **6현 가로선 타브(TAB) 뷰어 & 박 내 서브토큰(8분·16분·점음표) 엔진**
    - 단축키 `T` 또는 상단 세그먼트로 카드 뷰 / 타브 뷰 즉시 전환.
-   - 1박 단위 고정 그리드 안에서 슬래시(`/`) 서브토큰을 이용해 8분음표 2분할, 셋잇단 3분할, 16분음표 4분할, 점4분음표(1.5박) 및 엇박 리듬 완벽 렌더링 및 가이드 음 재생.
+   - 고정 그리드에서 `/`로 2·3·4분할하고, `-`로 길이를 연결해 점음표와 엇박을 표현한다. 음 길이는 한 칸의 음표 단위를 기준으로 계산하며 가이드 음에도 반영한다.
    - 타브 셀 상단에 한글 계이름과 CDE 영문 음이름 병기, 프렛 알약 내 왼손 운지 번호 표기.
 
 ---
