@@ -13,6 +13,7 @@
 - `src/app.js`: 앱 상태, IndexedDB, 시트 동기화, 연습 화면과 앱 부팅을 관리한다.
 - `test/test-parser.js`: Node 내장 `assert`를 사용하는 의존성 없는 파서 테스트다.
 - `test/test-app-smoke.js`: Node 내장 `vm`과 DOM/IndexedDB 스텁으로 외부 스크립트 부팅, 악보 렌더, 에디터 저장 경로를 확인한다.
+- `test/test-browser-smoke.js`: Node.js 내장 http/WebSocket 및 CDP(Chrome DevTools Protocol)를 사용해 Headless Chrome/Edge 환경에서 실제 DOM 렌더링, 모달 인터랙션, 콘솔 에러 유무를 검증한다.
 
 페이지는 기존처럼 `index.html`을 직접 열거나 정적 웹 서버에서 실행할 수 있다. HTML은 `src/parser.js`, `src/score.js`, `src/audio.js`, `src/fretboard.js`, `src/editor.js`, `src/app.js` 순서로 classic script를 로드한다. 따라서 별도 빌드나 패키지 설치가 필요하지 않으며, 공유 함수는 `window` 전역 이름을 유지한다. 지판과 에디터 이벤트는 앱 상태가 준비된 뒤 각각 `initFretboard()`와 `initEditor()`에서 등록한다.
 
@@ -21,6 +22,7 @@
 ```powershell
 node test/test-parser.js
 node test/test-app-smoke.js
+node test/test-browser-smoke.js
 Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName }
 ```
 
