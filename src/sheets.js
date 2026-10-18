@@ -81,6 +81,11 @@
     });
   }
 
+  function hideSheetLoadStatus(){
+    $('#sheetLoadStatus').hidden = true;
+    $('#sheetLoadStatus').textContent = '';
+  }
+
   async function syncGoogleSheetSongs(rawUrl, silent){
     var info = extractSheetIdAndGid(rawUrl);
     if (!info){
@@ -149,6 +154,7 @@
       });
 
       sheetSongs = parsedSongs;
+      hideSheetLoadStatus();
       ls.set('gs.sheetUrl', rawUrl.trim());
       var nowStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
       $('#sheetSyncStatus').textContent = '연동 완료 (' + nowStr + ') · 총 ' + parsedSongs.length + '곡을 내 구글 시트에서 불러왔어요.';
@@ -156,9 +162,9 @@
       rebuildSongSelect(parsedSongs.length && !silent ? parsedSongs[0].id : appState.lastSongId);
       return true;
     } catch (err){
-      if (!silent){
-        $('#sheetSyncStatus').textContent = '불러오기 실패: ' + err.message;
-      }
+      $('#sheetSyncStatus').textContent = '불러오기 실패: ' + err.message;
+      $('#sheetLoadStatus').hidden = false;
+      $('#sheetLoadStatus').textContent = '구글 시트를 불러오지 못했어. ' + err.message + ' 시트를 확인한 뒤 구글 시트 연동에서 다시 불러와.';
       return false;
     }
   }
@@ -184,6 +190,7 @@
       $('#sheetUrlInput').value = '';
       $('#openSheetSyncBtn').textContent = '구글 시트 연동';
       $('#sheetSyncStatus').textContent = '구글 시트 연동이 해제되었어요.';
+      hideSheetLoadStatus();
       rebuildSongSelect((BUILTIN_SONGS[0] ? BUILTIN_SONGS[0].id : (allSongs[0] ? allSongs[0].id : null)));
     });
 

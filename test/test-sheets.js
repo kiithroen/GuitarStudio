@@ -133,6 +133,38 @@ await test('invalid sheet row preserves previous songs and settings', async func
   assert.match(h.elements.sheetSyncStatus.textContent, /1행/);
   assert.equal(h.context.rebuilt.at(-1), 'builtin-last');
 });
+await test('silent sync failure explains itself on the main screen and success clears it', async function(){
+  const url = 'https://docs.google.com/spreadsheets/d/sheet1234567890123456/edit';
+  const badRows = { table: { rows: [
+    { c: [{ v: 'Bad row' }, { v: '4' }, { v: '80' }, { v: 'badge' }, { v: '[C] C4 H4 - -' }] }
+  ] } };
+  const goodRows = { table: { rows: [
+    { c: [{ v: 'Good row' }, { v: '4' }, { v: '80' }, { v: 'badge' }, { v: '[C] C4 - - -' }] }
+  ] } };
+  async function syncSilent(rows){
+    const pending = h.context.syncGoogleSheetSongs(url, true);
+    h.context[callbackName(h.scripts.at(-1))](rows);
+    return pending;
+  }
+  assert.equal(await syncSilent(badRows), false);
+  assert.equal(h.elements.sheetLoadStatus.hidden, false);
+  assert.match(h.elements.sheetLoadStatus.textContent, /구글 시트를 불러오지 못했어/);
+  assert.match(h.elements.sheetLoadStatus.textContent, /1행/);
+  assert.match(h.elements.sheetSyncStatus.textContent, /불러오기 실패/);
+
+  assert.equal(await syncSilent(goodRows), true);
+  assert.equal(h.elements.sheetLoadStatus.hidden, true);
+  assert.equal(h.elements.sheetLoadStatus.textContent, '');
+
+  assert.equal(await syncSilent(badRows), false);
+  assert.equal(h.elements.sheetLoadStatus.hidden, false);
+  h.context.allSongs = [];
+  h.context.initSheetSync();
+  const clear = h.elements.clearSheetSyncBtn.listeners.find(function(l){ return l.type === 'click'; });
+  clear.fn();
+  assert.equal(h.elements.sheetLoadStatus.hidden, true);
+  assert.equal(h.elements.sheetLoadStatus.textContent, '');
+});
 await test('removed apoyando aliases and malformed right-hand suffixes block sheet imports', async function(){
   const previous = JSON.parse(JSON.stringify(h.context.sheetSongs));
   for (const token of ['C4>', 'C4^', 'C4:i!']){
