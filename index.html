@@ -493,7 +493,7 @@ body.practice-compact .fretboard{
 .form-row{display:flex;flex-direction:column;gap:5px}
 .form-row input,.form-row textarea,.form-row select{padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg)}
 .form-row textarea{min-height:96px;font-family:var(--font-num);font-size:13px}
-
+.key-kbd{display:inline-block;padding:2px 6px;border-radius:5px;border:1px solid var(--line);background:var(--bg);font-family:var(--font-num);font-size:11.5px;font-weight:700;color:var(--fg);box-shadow:0 1px 0 rgba(0,0,0,.15)}
 
 </style>
 </head>
@@ -510,6 +510,7 @@ body.practice-compact .fretboard{
       <button type="button" class="btn sm" id="audioOffsetOpenBtn">출력 지연 (<span id="audioOffsetBadge">0ms</span>)</button>
       <button type="button" class="btn sm" id="toneOpenBtn">음색 설정</button>
       <button type="button" class="btn sm" id="backupBtn">백업·복원</button>
+      <button type="button" class="btn sm" id="helpModalOpenBtn" title="단축키 및 사용 방법 안내 (단축키: ?)">단축키 안내</button>
     </div>
   </header>
 
@@ -808,6 +809,66 @@ body.practice-compact .fretboard{
       <p class="hint">다른 음을 칠 때 쉬고 있는 개방현이 함께 살짝 울리는 효과예요 (예: 4번줄 미를 치면 6번줄·1번줄 미가 따라 울림). 0%면 꺼져요.</p>
     </div>
     <button type="button" class="btn primary" id="tonePreviewBtn">미리 듣기</button>
+  </div>
+</div>
+
+<!-- 모달: 단축키 및 사용 안내 도움말 -->
+<div class="modal-backdrop" id="helpModal" hidden>
+  <div class="modal" role="dialog" aria-labelledby="helpTitle" style="max-width:540px">
+    <div class="panel-head">
+      <h2 id="helpTitle">단축키 및 사용 안내</h2>
+      <button type="button" class="btn sm" id="closeHelpBtn">닫기</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+      <div style="font-weight:700;color:var(--accent);font-size:14px;border-bottom:1px solid var(--line);padding-bottom:4px">
+        키보드 단축키
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tbody>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:7px 4px;font-weight:700"><kbd class="key-kbd">Space</kbd></td>
+            <td style="padding:7px 4px">연습 시작 / 정지</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:7px 4px;font-weight:700"><kbd class="key-kbd">Home</kbd></td>
+            <td style="padding:7px 4px">악보 맨 처음(1마디)으로 이동 및 스크롤 초기화</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:7px 4px;font-weight:700"><kbd class="key-kbd">G</kbd> (또는 <kbd class="key-kbd">ㅎ</kbd>)</td>
+            <td style="padding:7px 4px">기타 시뮬레이션 소리 켜기 / 끄기 (메트로놈 전용 전환)</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:7px 4px;font-weight:700"><kbd class="key-kbd">F</kbd> (또는 <kbd class="key-kbd">ㄹ</kbd>)</td>
+            <td style="padding:7px 4px">콘서트홀(공명·리버브 음향) / 드라이 톤 토글</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:7px 4px;font-weight:700"><kbd class="key-kbd">T</kbd> (또는 <kbd class="key-kbd">ㅅ</kbd>)</td>
+            <td style="padding:7px 4px">악보 모드 전환 (타브 악보 ↔ 박자 카드)</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:7px 4px;font-weight:700"><kbd class="key-kbd">P</kbd> (또는 <kbd class="key-kbd">ㅔ</kbd>)</td>
+            <td style="padding:7px 4px">콤팩트 집중 연습 뷰 토글</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:7px 4px;font-weight:700"><kbd class="key-kbd">Esc</kbd></td>
+            <td style="padding:7px 4px">열린 팝업 창 닫기 / 콤팩트 뷰 종료</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:7px 4px;font-weight:700"><kbd class="key-kbd">?</kbd></td>
+            <td style="padding:7px 4px">이 단축키 안내 팝업 열기</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="font-weight:700;color:var(--accent);font-size:14px;border-bottom:1px solid var(--line);padding-bottom:4px;margin-top:6px">
+        마우스 &amp; 악보 조작
+      </div>
+      <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;color:var(--fg);line-height:1.4">
+        <li><b>마디 클릭:</b> 해당 마디부터 연습 시작 위치 지정</li>
+        <li><b>Shift + 마디 클릭:</b> 구간 반복의 끝 마디 지정</li>
+        <li><b>박자(음표) 클릭:</b> 해당 박자의 기타 소리 미리 듣기 및 실시간 지판 운지 확인</li>
+      </ul>
+    </div>
   </div>
 </div>
 

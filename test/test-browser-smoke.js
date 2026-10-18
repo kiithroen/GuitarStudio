@@ -2327,6 +2327,26 @@ async function main() {
     assert.equal(notationToggleCheck.restoredMode, 'cde', 'notation mode restores to cde');
     assert.equal(notationToggleCheck.restoredTxt, '도레미 표기', 'button text restores to 도레미 표기');
 
+    // Verify help modal opens and closes
+    const helpModalOpen = await cdp.evaluate(`(function(){
+      var openBtn = document.getElementById('helpModalOpenBtn');
+      var modal = document.getElementById('helpModal');
+      if (!openBtn || !modal) return false;
+      openBtn.click();
+      return !modal.hidden;
+    })()`);
+    assert.equal(helpModalOpen, true, 'help modal opens correctly');
+    const helpShot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(__dirname, '..', 'test-artifacts', 'clean-score-ui', 'help-modal-desktop.png'), Buffer.from(helpShot.data, 'base64'));
+    const helpModalClose = await cdp.evaluate(`(function(){
+      var modal = document.getElementById('helpModal');
+      var closeBtn = document.getElementById('closeHelpBtn');
+      if (!closeBtn || !modal) return false;
+      closeBtn.click();
+      return modal.hidden;
+    })()`);
+    assert.equal(helpModalClose, true, 'help modal closes correctly');
+
     // 3. Verify youtube quick links query excludes [Lv..] tags
     const ytLinkText = await cdp.evaluate('document.querySelector("#ytQuickLinks a") ? document.querySelector("#ytQuickLinks a").textContent : ""');
     assert.ok(ytLinkText.length > 0, "youtube quick links rendered");

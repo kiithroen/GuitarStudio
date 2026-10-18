@@ -1748,7 +1748,7 @@ function curCapo(){
   window.addEventListener('keydown', function(e){
     var tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    if (!$('#audioOffsetModal').hidden || !$('#sheetSyncModal').hidden || !$('#backupModal').hidden || !$('#toneModal').hidden || !$('#blankScoreModal').hidden) return;
+    if (!$('#audioOffsetModal').hidden || !$('#sheetSyncModal').hidden || !$('#backupModal').hidden || !$('#toneModal').hidden || !$('#blankScoreModal').hidden || ($('#helpModal') && !$('#helpModal').hidden)) return;
 
     if (e.code === 'Space'){
       e.preventDefault();
@@ -1774,7 +1774,15 @@ function curCapo(){
     } else if (e.key === 'p' || e.key === 'P' || e.key === 'ㅔ'){
       e.preventDefault();
       setCompactPractice(!appState.isCompactPractice);
+    } else if (e.key === '?' || e.key === '/'){
+      e.preventDefault();
+      if ($('#helpModalOpenBtn')) $('#helpModalOpenBtn').click();
     } else if (e.key === 'Escape'){
+      if ($('#helpModal') && !$('#helpModal').hidden){
+        e.preventDefault();
+        $('#helpModal').hidden = true;
+        return;
+      }
       if (appState.isCompactPractice){
         e.preventDefault();
         setCompactPractice(false);
@@ -2275,6 +2283,23 @@ function curCapo(){
   // ---------- 백업 및 복원
   $('#backupBtn').addEventListener('click', function(){ $('#backupModal').hidden = false; });
   $('#closeBackupBtn').addEventListener('click', function(){ $('#backupModal').hidden = true; });
+
+  // ---------- 단축키 및 사용 안내 도움말 모달
+  if ($('#helpModalOpenBtn')){
+    $('#helpModalOpenBtn').addEventListener('click', function(){
+      if ($('#helpModal')) $('#helpModal').hidden = false;
+    });
+  }
+  if ($('#closeHelpBtn')){
+    $('#closeHelpBtn').addEventListener('click', function(){
+      if ($('#helpModal')) $('#helpModal').hidden = true;
+    });
+  }
+  if ($('#helpModal')){
+    $('#helpModal').addEventListener('click', function(e){
+      if (e.target === this) this.hidden = true;
+    });
+  }
 
   $('#exportJsonBtn').addEventListener('click', async function(){
     var songs;
