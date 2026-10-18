@@ -21,6 +21,7 @@ python -m http.server 8765 --bind 127.0.0.1
 - [개발 안내](Docs/development.md): 모듈 구성과 검증 명령
 - [내장곡 출처와 운지 제안](Docs/builtin-sources.md): 확인한 선율 출처와 앱 연습용 운지 제안의 구분
 - [리듬·오디오 계약](Docs/beginner-rhythm.md): 현재 파서와 재생의 유지보수 기준
+- [화면과 조작](Docs/ui.md): 툴바·음이름 표기·단축키·메트로놈 클릭 결정
 - [에이전트 지침](AGENTS.md): 변경 범위와 필수 검증 규칙
 
 ## 초보 연습에 맞춘 기능

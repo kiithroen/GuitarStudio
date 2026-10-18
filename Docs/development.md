@@ -1,8 +1,10 @@
 # 개발 안내
 
-Guitar Studio는 번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱이야. 저장소 루트에서 `index.html`을 제공하면 실행돼. 모듈은 classic script로 로드되며 HTML의 순서를 유지해야 해.
+번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱이야. 저장소 루트에서 `index.html`을 제공하면 실행돼.
 
 ## 모듈 구성
+
+`index.html`은 아래 표 순서대로 classic script를 로드해. 순서를 유지해.
 
 | 파일 | 역할 |
 |---|---|
@@ -11,7 +13,7 @@ Guitar Studio는 번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱
 | `src/rhythm.js` | 칸 길이와 쉼·유지 체인 분석 |
 | `src/parser.js` | `parseScore`, 음·화음·운지 파싱, 카포와 실음 계산 |
 | `src/score-drafts.js` | 곡별 메모리 임시 초안과 검증된 마디 편집 이력 |
-| `src/score.js` | 화면의 박자·음가 표시 |
+| `src/score.js` | 화면의 박자·음가·음이름 표시 |
 | `src/audio.js` | KS/classic 합성기와 재생음 수명 관리 |
 | `src/guide.js` | 구조화 악보의 재생 이벤트 생성·예약 |
 | `src/image-analysis.js` | 이미지의 마디 경계 후보 분석 |
@@ -21,31 +23,31 @@ Guitar Studio는 번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱
 | `src/score-editor.js` | 임시 악보 생성·편집 UI, 마디 작업과 초안 작업 흐름 |
 | `src/app.js` | 앱 상태, UI 부팅과 기능 연결 |
 
-`index.html`의 실제 순서는 `storage.js`, `notation.js`, `rhythm.js`, `parser.js`, `score-drafts.js`, `score.js`, `audio.js`, `guide.js`, `image-analysis.js`, `fretboard.js`, `score-ui.js`, `sheets.js`, `score-editor.js`, `app.js`야. 악보 초안은 원본 곡과 별도로 메모리에 보관해. 내장곡과 Google Sheets 원본은 수정하지 않고, 임시 악보는 새로고침하면 사라져. 텍스트 악보는 IndexedDB, localStorage, 백업에 저장하지 않아. 이미지·PDF 악보와 앱 설정의 영속화 흐름은 유지해. `app.js` 부팅 때 앱 모듈과 상태가 준비된 후 `initFretboard()`, `initScoreUi()`, `initSheetSync()`와 편집 UI가 이벤트를 등록해. 로컬 스크립트는 같은 v 쿼리 버전을 사용해. DOM 구조나 스크립트 구성이 바뀌면 버전을 함께 갱신해 캐시된 이전 코드와 섞이지 않게 해.
+`app.js` 부팅 때 앱 모듈과 상태가 준비된 뒤 `initFretboard()`, `initScoreUi()`, `initSheetSync()`와 편집 UI가 이벤트를 등록해. 로컬 스크립트는 모두 같은 `v` 쿼리 버전을 써. DOM 구조나 스크립트 구성이 바뀌면 버전을 같이 올려 캐시된 이전 코드와 섞이지 않게 해.
 
-## 데이터 흐름과 유지보수 계약
+화면·단축키 결정은 [화면과 조작](ui.md)에 있어.
 
-`parseScore`와 `GuitarNotation.validateScore`가 텍스트 악보의 파싱·검증 기준이야. `GuitarRhythm.annotate`는 파싱된 마디에 part 공통 칸 길이, 시작 위치와 유지 체인을 계산하고 `resolveHold`/`getSoundingNotes`는 연결된 원음 또는 화음 전체와 남은 공통 길이를 돌려줘. `guide.js`는 이 결과로 part의 `durationUnits`에 따른 재생 이벤트를 만들고 `audio.js`에 예약해. 오디오 수명은 악보 길이와 분리돼: 구조화 가이드는 기존 KS 버퍼 감쇠 또는 classic 공통 자연 감쇠 프로파일을 사용하고, 재탄현·전체 쉼·정지·곡 교체·가이드 끄기·곡/loop 끝에서 직접음을 정리해. 이 관계의 SSOT는 `rhythm.js`의 음가/유지 계산, `guide.js`의 이벤트와 복원 경로, `audio.js`의 `naturalDecay` 및 강제 정리야. 관련 회귀 근거는 `test/test-rhythm.js`, `test/test-guide.js`, `test/test-audio.js`에 둬. 사용 문법은 [악보 입력 형식](score-format.md), 세부 오디오 계약은 [리듬·오디오 계약](beginner-rhythm.md)을 따라.
+## 파싱과 재생 흐름
 
-`tok`와 원본 입력을 기준으로 파생 필드를 다시 계산해. `score-drafts.js`는 원본 악보의 편집본과 새 임시 악보를 곡별로 메모리에 유지하고, 편집은 전체 악보 검증이 성공한 경우에만 적용해. 한 번의 마디 편집은 한 단계 실행 취소 대상으로 관리하고, 초안 초기화는 해당 곡의 원본 복사본으로 되돌려. 편집 중에는 곡 전환·재생·복사와 다른 편집을 막아 미적용 내용을 잃지 않게 해. IndexedDB에는 이미지·PDF 악보가, localStorage에는 앱 설정과 곡별 최근 연습 BPM·구간 이어가기 상태가 저장돼. 과거에 저장된 구조화 악보 DB 레코드는 자동 삭제하지 않고 앱에서 노출하지 않아. 백업 포맷은 버전 1의 `customSongs` 키를 유지하며, 이 키는 이미지 전용 데이터를 담아. Google Sheets 연동은 읽기 전용이야. TSV 복사는 초안의 현재 악보를 5열 형식으로 내보내며 시트에 직접 쓰지 않아. `soundingMidi`는 `src/parser.js`의 공통 카포 실음 변환 함수야.
+`parseScore`와 `GuitarNotation.validateScore`가 텍스트 악보의 파싱·검증 기준이야. 파생 필드는 `tok`와 원본 입력에서 다시 계산해. `GuitarRhythm.annotate`가 칸 길이·시작 위치·유지 체인을 계산하고, `guide.js`가 그 결과로 재생 이벤트를 만들어 `audio.js`에 예약해. SSOT는 `rhythm.js`의 음가·유지 계산, `guide.js`의 이벤트와 복원 경로, `audio.js`의 `naturalDecay`와 강제 정리야. 세부 계약은 [리듬·오디오 계약](beginner-rhythm.md), 회귀 근거는 `test/test-rhythm.js`, `test/test-guide.js`, `test/test-audio.js`에 있어.
 
-마디 메모와 가사는 같은 `lyric` 필드로 파싱하고 JSON 문자열로 직렬화해.
+`soundingMidi`(`src/parser.js`)가 카포 실음 변환 공통 함수야. 마디 메모와 가사는 같은 `lyric` 필드로 파싱하고 JSON 문자열로 직렬화해.
 
-완료된 작업은 모듈 분리와 공통 파서·카포 경로, 단위·스모크 테스트 추가, 초보 리듬 입력과 재생 계약 정리야. alphaTab 재생은 `codex/alphatab-player` 실험 브랜치에 남아 있고 main 앱은 기존 엔진을 사용해.
+## 초안과 저장
 
-2026-10-19 결정: 메트로놈 클릭은 `appState.clickMode`(`all`/`countin`/`off`)로 고르고 localStorage 앱 설정에 저장해. 기본값은 기존 동작인 `all`이야. `off`는 카운트인 마디도 건너뛰어. 카운트인 동안 화면에 진행 표시가 없어서 소리 없는 한 마디 대기는 앱이 멈춘 것처럼 보이기 때문이야. 구간 반복으로 처음 마디에 돌아갈 때는 어느 모드든 카운트인을 다시 하지 않아.
+- 2026-10-19 결정: 텍스트 악보는 원본과 임시 작업을 분리해. 내장곡과 Google Sheets 원본은 바꾸지 않고, 새 악보와 수정 초안은 `score-drafts.js`가 곡별로 탭 메모리에만 둬서 새로고침하면 사라져. 텍스트 악보는 IndexedDB·localStorage·백업에 저장하지 않아. 이미지·PDF 악보와 앱 설정의 영속화는 그대로야.
+- 편집은 전체 악보 검증이 성공할 때만 적용해. 마디 편집 한 번이 실행 취소 한 단계고, 초안 초기화는 그 곡 원본 복사본으로 되돌려. 편집 중에는 곡 전환·재생·복사·다른 편집을 막아 미적용 내용을 잃지 않게 해.
+- IndexedDB에는 이미지·PDF 악보, localStorage에는 앱 설정과 곡별 최근 연습 BPM·구간 이어가기 상태가 있어. 과거에 저장된 구조화 악보 DB 레코드는 자동 삭제하지 않고 앱에서 노출하지도 않아.
+- 백업 포맷은 버전 1의 `customSongs` 키를 유지해. 이름과 달리 이미지 전용 데이터를 담아.
+- Google Sheets 연동은 읽기 전용이야. TSV 복사는 초안의 현재 악보를 5열 형식으로 내보내고 시트에 직접 쓰지 않아.
 
-2026-10-19 결정: 악보 스크롤 탐색 중 원클릭 또는 단축키(`Home`)로 첫 마디 및 상단 스크롤로 즉시 복귀하는 `resetToFirstMeasure` 함수와 `#rewindToFirstBtn`을 악보 툴바에 추가했어. 활성 커서를 1마디(0인덱스)로 초기화하고, 반복 구간 시작점이 1마디를 벗어나 있으면 전체 곡 기준으로 동기화하며, 구조화 악보(`#structuredScoreWrap`)와 이미지 악보(`#imgStageScroll`)의 스크롤을 맨 위로 부드럽게 초기화해.
+## 이력
 
-2026-10-19 결정: 텍스트 악보를 직접 편집할 때 원본과 임시 작업을 분리해. 내장곡과 시트 악보는 원본으로 남고, 새 악보와 수정 초안은 탭 메모리에서만 유지돼 새로고침 때 사라져. 이미지 악보 영속화 정책은 바꾸지 않아.
-
-2026-10-19 결정: 음별 길이 접미사는 악보 음가와 자연 여운을 혼동시키고 자동 생성 입력을 복잡하게 해 제거했어. 기존 part 공통 길이와 자연 감쇠 경로를 사용하며, 독립 성부 scheduler나 별도 음가 입력 문법은 추가하지 않았어.
-
-2026-10-19 결정: 일반 뷰 악보 툴바의 여러 줄 줄바꿈을 방지하기 위해 640px 이상 미디어 쿼리(`@media (min-width: 640px) { flex-wrap: nowrap }`)를 적용하고 `#scoreClickHint`를 숨겨 한 줄 고정 표시를 유지하도록 개선했어. 아울러 기본(클린) 상태에서 악보 바로 위에 불필요하게 한 줄을 차지하던 '원본 악보' 텍스트를 제거하고, 임시 편집 또는 수정 초안 상태가 아닐 때는 `#scoreDraftControls` 영역 전체를 숨겨 악보가 상단에 밀착되도록 처리했어.
+모듈 분리, 공통 파서·카포 경로, 단위·스모크 테스트, 초보 리듬 입력과 재생 계약 정리를 마쳤어. alphaTab 재생은 `codex/alphatab-player` 실험 브랜치에만 있고 main 앱은 기존 엔진을 써.
 
 ## 검증
 
-프로젝트에는 브라우저 밖에서 실행하는 테스트와 브라우저 스모크 테스트가 있어. 각 테스트는 해당 모듈, 저장, 시트 응답, 이미지 분석, 앱 부팅, 실제 DOM 흐름을 확인해.
+브라우저 밖에서 도는 모듈 테스트와 브라우저 스모크 테스트가 있어.
 
 ```powershell
 node test/test-score-drafts.js
@@ -64,21 +66,4 @@ node test/test-browser-smoke.js
 Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
 ```
 
-2026-10-19 결정: 음이름 표시는 `src/score.js`의 공통 formatter에서 음높이만 출력해. `!`·`~` 원문 주법 메타데이터와 재생 동작은 유지하지만, 음이름 뒤 기호나 주법 색으로 표시하면 시각 요소가 과밀해져 제거했어. `test/test-score.js`는 주법이 달라도 표기가 plain note name으로 같은지, formatter가 악보 객체를 바꾸지 않는지 확인해.
-
-2026-10-19 표시 계약: 지판 목표음은 개방현과 프렛 모두 같은 `target-note` 배지를 쓰고, TAB은 마지막 현 pill의 그림자까지 보이도록 하단 여백을 확보하면서 격자·현 이름·배경선 정렬을 유지해. 이 조정은 개방현 label의 색상 치환 불일치와 6현 하단 잘림을 막기 위한 거야.
-
-2026-10-19 결정: 화면 내 CDE 및 도레미 표기법이 혼재되던 문제를 해결하여 기본값을 CDE 표기법으로 통일하고, 상단 헤더에 `도레미 표기 / CDE 표기` 전환 버튼을 추가해 원클릭으로 전환할 수 있게 했어. 박자 및 음표 표시 문자열은 `src/score.js`의 `formatBeatPitchLabel`과 `getNoteDisplayName`을 단일 진실 공급원(SSOT)으로 삼아 일관되게 포맷팅해.
-
-2026-10-19 결정: 카드 뷰에서 다분할음이나 화음이 많을 때 글자가 카드 밖으로 넘치거나 잘리는 문제를 해결하기 위해, 분할 수(`maxSubParts`)에 따라 마디 카드의 최소 너비를 동적으로 확장하고 음이름 글자 수에 따라 폰트 크기 반응형 클래스(`b-ko-dense`, `b-ko-ultra`)를 부여하도록 조정했어. 또한 카드 내 공간을 절약하고 시인성을 높이기 위해 오른손 운지 라벨에서 불필요한 '오른손 ' 접두사를 제거해 간결한 핑거링 기호(`5줄 p + 1줄 a`, `i / m` 등)만 표시하며, 활성 박자(`active-beat`) 시 오른손 운지와 서브 표기의 대비와 두께를 보강해 재생 중 가독성을 높였어.
-
-2026-10-19 결정: 코드 지판(파란 점)에서 개방현(`fret === 0`)인 경우 글자색 변경 대신 프렛 셀과 동일한 원형 마커(`.fb-marker.chord-tone`)를 생성하여 '0'을 표시하도록 통일했어. 연주음(초록 마커)과 겹칠 때는 기존의 container 초기화 후 덮어쓰기 로직에 따라 연주음 마커가 우선 표시돼.
-
-2026-10-19 결정: 악보 바로 위 툴바(`scoreToolbar`)에 시작 버튼(`compactPlayBtn`)과 곡 선택 드롭다운(`compactSongSelect`)이 일반 뷰와 콤팩트 뷰에서 모두 일관되게 노출되도록 통일했어. 이에 따라 상단 패널의 중복 연습곡 선택 행은 숨김(`hidden`) 처리해 DOM·테스트 호환성을 유지하고, 콘솔 3번째 박스를 제거한 후 기타 시뮬레이션 토글 버튼(`guideSoundBtn`)을 1번째 박스(템포/BPM) 헤더의 콘서트홀 버튼 옆으로 이동해 `.fx-toggle` 스타일을 적용했어. 콘솔 그리드는 2열(`1.15fr 1fr`)로 정돈했으며, 기존 스모크 테스트 호환용 `playBtn`은 hidden 버튼으로 보존했어.
-
-2026-10-19 결정: 상단 헤더에 단축키 안내 버튼(`#helpModalOpenBtn`)과 `?` 단축키로 여닫을 수 있는 조작 안내 팝업 모달(`#helpModal`)을 추가했어. 연습 제어(Space, Home), 오디오/음색(G, F), 악보 모드(T, P), 팝업 닫기(Esc) 및 마우스 조작법(마디 클릭, 구간 반복, 박자 미리듣기)을 한눈에 확인할 수 있게 정리했어.
-
-브라우저 스모크는 Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 실행 파일을 지정할 수 있어. 임시 HTTP 서버와 임시 브라우저 프로필을 사용하며 Web Audio API 경로를 실제 실행해. 이 테스트는 Node의 내장 `fetch`와 `WebSocket` 전역이 있는 환경이 필요해. 실행 환경은 `node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`로 확인할 수 있어. 자동화 검사는 실제 기기에서의 오디오 청취 품질을 확인하지 않아. 스크린샷 검증은 `test-artifacts/`에 새 파일을 만들 수 있으므로 기존 개인 자료를 보존해.
-
-작업 범위와 필수 검증은 [AGENTS.md](../AGENTS.md)에 있어.
-
+브라우저 스모크는 Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 실행 파일을 지정할 수 있어. 임시 HTTP 서버와 임시 브라우저 프로필을 쓰며 Web Audio API 경로를 실제로 실행해. Node 내장 `fetch`와 `WebSocket` 전역이 필요하고 `node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`로 확인할 수 있어. 실제 기기에서의 청취 품질은 확인하지 않아. 스크린샷 검증은 `test-artifacts/`에 새 파일을 만들 수 있으니 기존 개인 자료를 보존해.
