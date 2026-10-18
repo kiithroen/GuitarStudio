@@ -202,32 +202,67 @@ async function testConcertHallOfflineRender(client){
       dryGainNode:window.dryGainNode, wetGainNode:window.wetGainNode, reverbNode:window.reverbNode,
       bodyModes:window.bodyModes, trackedGuideVoices:window.trackedGuideVoices, stringVoices:window.stringVoices,
       acousticFx:appState.acousticFx, bodyAmount:appState.bodyAmount, sympAmount:appState.sympAmount, synthEngine:appState.synthEngine };
-    async function renderAt(wet, dry){
-      appState.acousticFx = true; appState.bodyAmount = 0; appState.sympAmount = 0; appState.synthEngine = 'ks';
+    async function renderAt(engine, midi, duration, wet, dry, hardStopAt){
+      appState.acousticFx = wet > 0; appState.bodyAmount = 0; appState.sympAmount = 0; appState.synthEngine = engine;
       var rate = 48000, ctx = new OfflineAudioContext(2, rate * 3.2, rate), sourceStops = [];
       ctx.resume = function(){ return Promise.resolve(); };
-      var originalCreate = ctx.createBufferSource.bind(ctx);
-      ctx.createBufferSource = function(){ var source = originalCreate(); var stop = source.stop.bind(source);
+      var originalCreateBufferSource = ctx.createBufferSource.bind(ctx);
+      ctx.createBufferSource = function(){ var source = originalCreateBufferSource(); var stop = source.stop.bind(source);
+        source.stop = function(time){ sourceStops.push(time); return stop(time); }; return source; };
+      var originalCreateOscillator = ctx.createOscillator.bind(ctx);
+      ctx.createOscillator = function(){ var source = originalCreateOscillator(); var stop = source.stop.bind(source);
         source.stop = function(time){ sourceStops.push(time); return stop(time); }; return source; };
       window.actx = ctx; window.outGain = null; window.clickBus = null; window.guitarBus = null;
       window.dryGainNode = null; window.wetGainNode = null; window.reverbNode = null; window.bodyModes = [];
       window.trackedGuideVoices = []; window.stringVoices = {};
       ensureAudioCtx(); dryGainNode.gain.value = dry; wetGainNode.gain.value = wet;
-      playGuitarNote(64, 0.5, 0.1, 1, null, 1, { exactDuration:true });
+      playGuitarNote(midi, duration, 0.1, 1, null, 1, { exactDuration:true, hardStopAt:hardStopAt });
       var buffer = await ctx.startRendering(), left = buffer.getChannelData(0), right = buffer.getChannelData(1);
       function rms(start, end){ var sum = 0, count = 0;
         for(var i=Math.floor(start*rate); i<Math.floor(end*rate); i++){ var x=(left[i]+right[i])*0.5; sum+=x*x; count++; }
         return Math.sqrt(sum/count); }
       var peak=0; for(var i=0;i<left.length;i++) peak=Math.max(peak,Math.abs(left[i]),Math.abs(right[i]));
-      return { tailRms:rms(0.715,1.8), peak:peak, sourceStops:sourceStops };
+      return { tailRms:rms(1.01,1.8), lateRms:rms(0.516,1.0), earlyRms:rms(0.11,0.45), peak:peak, sourceStops:sourceStops };
     }
-    var result;
+    async function renderChord(engine, chord, wet, amount){
+      amount = amount == null ? 1 : amount;
+      appState.acousticFx=wet; appState.bodyAmount=amount; appState.sympAmount=amount; appState.synthEngine=engine;
+      var rate=48000, ctx=new OfflineAudioContext(2,rate*2.5,rate); ctx.resume=function(){ return Promise.resolve(); };
+      window.actx=ctx; window.outGain=null; window.clickBus=null; window.guitarBus=null;
+      window.dryGainNode=null; window.wetGainNode=null; window.reverbNode=null; window.bodyModes=[];
+      window.trackedGuideVoices=[]; window.stringVoices={}; ensureAudioCtx(); dryGainNode.gain.value=0.88; wetGainNode.gain.value=wet?CONCERT_HALL_WET_GAIN:0;
+      chord.forEach(function(midi,index){ playGuitarNote(midi,0.5,0.1,1,null,6-index,{exactDuration:true}); });
+      var buffer=await ctx.startRendering(), peak=0, sum=0, count=0;
+      for(var i=0;i<buffer.length;i++){
+        var left=buffer.getChannelData(0)[i], right=buffer.getChannelData(1)[i];
+        peak=Math.max(peak,Math.abs(left),Math.abs(right));
+        if(i>=Math.floor(0.1*rate)&&i<Math.floor(1.2*rate)){var mono=(left+right)*0.5;sum+=mono*mono;count++;}
+      }
+      return {engine:engine,chord:chord.join('-'),fx:wet,bodyAmount:amount,sympAmount:amount,peak:peak,activeRms:Math.sqrt(sum/count)};
+    }
+    var result, matrix=[];
     try {
-      var dry = await renderAt(0, 0.88);
-      var before = await renderAt(0.18, 0);
-      var fixed = await renderAt(CONCERT_HALL_WET_GAIN, 0);
-      result = { dry:dry, before:before, fixed:fixed, gain:CONCERT_HALL_WET_GAIN,
-        tailRatio:fixed.tailRms/before.tailRms };
+      for(var engine of ['ks','classic']) for(var duration of [0.125,0.5,1.5]) for(var wetMode of [false,true]){
+        var item=await renderAt(engine,64,duration,wetMode?CONCERT_HALL_WET_GAIN:0,wetMode?0:0.88);
+        matrix.push({engine:engine,duration:duration,fx:wetMode,peak:item.peak,earlyRms:item.earlyRms,tailRms:item.tailRms,sourceCount:item.sourceStops.length,
+          maxSourceStop:item.sourceStops.length?Math.max.apply(null,item.sourceStops):null,sourceStops:item.sourceStops});
+      }
+      var dry = await renderAt('ks',64,0.5,0,0.88);
+      var hall = await renderAt('ks',64,0.5,CONCERT_HALL_WET_GAIN,0);
+      var forced = await renderAt('ks',64,1.5,0,0.88,0.5);
+      var forcedClassic = await renderAt('classic',64,1.5,0,0.88,0.5);
+      result = { matrix:matrix, dry:dry, hall:hall, forced:forced, gain:CONCERT_HALL_WET_GAIN,
+        forcedClassic:forcedClassic,
+        tailRatio:hall.tailRms/(await renderAt('ks',64,0.5,0.18,0)).tailRms,
+        chords:[] };
+      for(var engine of ['ks','classic']) for(var chordWet of [false,true]){
+        result.chords.push(await renderChord(engine,[40,47,52,55,59,64],chordWet));
+        result.chords.push(await renderChord(engine,[41,48,53,57,60,65],chordWet));
+      }
+      for(var engine of ['ks','classic']){
+        result.chords.push(await renderChord(engine,[40,47,52,55,59,64],true,2));
+        result.chords.push(await renderChord(engine,[41,48,53,57,60,65],true,2));
+      }
     } finally {
       window.actx=saved.actx; window.outGain=saved.outGain; window.clickBus=saved.clickBus;
       window.guitarBus=saved.guitarBus; window.dryGainNode=saved.dryGainNode; window.wetGainNode=saved.wetGainNode;
@@ -243,16 +278,26 @@ async function testConcertHallOfflineRender(client){
   })()`);
   assert.equal(render.gain, 0.35, 'offline render uses the production wet gain');
   assert.equal(render.restored, true, 'offline measurement restores the live AudioContext graph and app settings');
-  assert.ok(render.dry.tailRms < 1e-8, 'dry KS render has no post-gate tail with body and sympathetic resonance disabled');
-  assert.ok(render.before.tailRms > 0, 'the old runtime-only wet gain produces a real convolver tail');
-  assert.ok(render.fixed.tailRms > render.before.tailRms, 'the production wet gain produces a larger real convolver tail');
-  assert.ok(Math.abs(render.tailRatio / (0.35 / 0.18) - 1) < 0.05, 'rendered tail RMS follows the wet-gain ratio within 5%');
-  assert.ok(render.fixed.peak < 1 && render.before.peak < 1 && render.dry.peak < 1, 'all rendered modes remain below full-scale peak');
-  [render.dry, render.before, render.fixed].forEach(function(result){
-    assert.equal(result.sourceStops.length, 1, 'each render creates one direct KS source');
-    assert.ok(Math.abs(result.sourceStops[0] - 0.615) < 1e-6, 'each direct KS source keeps the exact 15ms post-gate stop');
-  });
-  process.stdout.write('Browser checkpoint: OfflineAudioContext hall render passed (tail ratio ' + render.tailRatio.toFixed(4) + ')\n');
+  assert.ok(render.dry.tailRms < 1e-8, 'dry KS render is silent after the natural release bound');
+  assert.ok(render.hall.tailRms > 0, 'hall KS render has a real post-note-off convolver tail');
+  assert.ok(render.matrix.every(function(item){ return item.earlyRms > 0; }), 'KS and classic actual audio graphs render audible nonzero samples');
+  assert.ok(Math.abs(render.tailRatio / (0.35 / 0.18) - 1) < 0.05, 'isolated wet tail RMS follows the wet-gain ratio within 5%');
+  assert.ok(render.matrix.every(function(item){ return item.peak < 1 && item.maxSourceStop <= 0.1 + item.duration + 0.4 + 1e-6; }), 'KS/classic, hall/dry, and .125/.5/1.5s renders stay below full scale and natural release bound');
+  assert.ok(render.forced.sourceStops.length === 1 && Math.abs(render.forced.sourceStops[0] - 0.515) < 1e-6, 'hard loop boundary stops KS direct source within 15ms');
+  assert.ok(render.forced.lateRms < 1e-8, 'hard loop boundary render is silent after its 15ms cutoff');
+  assert.ok(render.forcedClassic.sourceStops.length === 3 && render.forcedClassic.sourceStops.every(function(stop){return Math.abs(stop - 0.515) < 1e-6;}), 'hard loop boundary stops all three classic oscillators within 15ms');
+  assert.ok(render.forcedClassic.lateRms < 1e-8, 'hard loop boundary render is silent for classic output after its 15ms cutoff');
+  assert.ok(render.chords.every(function(chord){ return chord.peak < 1 && chord.activeRms > 0; }), 'valid six-string Em/F chords render for KS/classic with dry/hall routing and body/sympathetic amount 1 or 2, without clipping');
+  const artifact = path.join(root, 'test-artifacts', 'audio-release-check-' + Date.now() + '.json');
+  fs.mkdirSync(path.dirname(artifact), { recursive:true });
+  fs.writeFileSync(artifact, JSON.stringify({ sampleRateHz:48000, peakDefinition:'max absolute sample across stereo channels',
+    rmsDefinition:'RMS of stereo channel average; natural tail window 1.01-1.8s after a note starting at 0.1s with 0.5s duration',
+    gain:render.gain, wetTailRatio:render.tailRatio, chords:render.chords, matrix:render.matrix,
+    dryTailRms:render.dry.tailRms, hallTailRms:render.hall.tailRms, forcedCutoffStopAt:render.forced.sourceStops[0],
+    forcedClassicStops:render.forcedClassic.sourceStops, forcedClassicLateRms:render.forcedClassic.lateRms,
+    forcedPostCutoffRms:render.forced.lateRms }, null, 2) + '\n');
+  process.stdout.write('Artifact: ' + artifact + '\n');
+  process.stdout.write('Browser checkpoint: OfflineAudioContext natural releases, KS/classic hard cutoff, 12 KS/classic duration/FX cases, isolated hall tail, and 12 valid six-string Em/F chord renders passed (wet tail ratio ' + render.tailRatio.toFixed(4) + ', max chord peak ' + Math.max.apply(null,render.chords.map(function(chord){return chord.peak;})).toFixed(4) + ')\n');
 }
 
 async function testPracticeSessionLifecycle(client) {

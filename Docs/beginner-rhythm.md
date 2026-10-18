@@ -24,9 +24,13 @@ note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}` 형�
 
 `maxDurationSlots`는 현재 칸 시작부터 재생·루프 끝까지 남은 칸 수야. 분할 위치를 고려해 이벤트를 루프 경계에서 잘라. `getSubdividedGuideEvents`와 `scheduleSubdividedGuide`는 `subStep`을 `slotDuration = subStep * subNotes.length`로 바꿔 공통 경로를 사용해. `getSubdividedGuideEvents` 반환값은 기존대로 note 이벤트만 포함해.
 
-`scheduleBeatGuide`는 실음 MIDI에 카포를 한 번 적용해. 구조화 악보 이벤트만 `playGuitarNote(..., {exactDuration:true})`를 사용하고 직접음은 지정 길이 뒤 최대 15ms 이내 해제 꼬리로 끝나. AudioWorklet, KS/classic 합성, 필터·공명·음색 설정은 유지해.
+`scheduleBeatGuide`는 실음 MIDI에 카포를 한 번 적용해. 구조화 악보 이벤트는 `playGuitarNote(..., {exactDuration:true})`를 사용해. 명시 음표 길이는 note-off 시작 시각이고, 자연 release는 콘서트홀에서 0.06초, 드라이에서 0.035초의 시간 상수로 감쇠하며 직접음은 note-off 뒤 0.4초 안에 끝나. classic 음원의 tone decay는 명시 note-off와 분리돼 기존 합성 음형을 유지해. 쉼, 사용자 정지, 곡 교체, 루프 끝 같은 강제 경계는 직접음을 최대 15ms 안에 정리해. AudioWorklet·KS 합성·공명·기존 사용자 설정은 유지해.
 
 콘서트홀의 wet gain은 `CONCERT_HALL_WET_GAIN` 단일 상수 `0.35`를 초기 ON 라우팅과 실시간 ON 전환에서 함께 사용해. OFF는 `0`, dry gain은 기존 `0.88`과 40ms 전환을 유지해. 이 값은 wet 잔향만 조절하며 음원·명시 길이·IR을 바꾸지 않아.
+
+공유 마스터 compressor의 threshold는 `-3dB`야. 여러 현이 동시에 날 때 생기는 순간 피크를 위한 여유를 두고, ratio·knee·attack·release와 각 버스 gain은 기존 설정을 유지해.
+
+classic 음원의 저음 명료도를 개선하려고 MIDI 55 미만에서만 필터 attack cutoff를 최소 1200Hz, decay cutoff를 최소 600Hz로 둬. 기존 주파수 배수 계산값이 이보다 높으면 그 값을 유지하며, 고음과 KS 음원은 바꾸지 않아.
 
 ## 재생음 정리와 시계
 

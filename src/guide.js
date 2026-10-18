@@ -76,13 +76,17 @@ function getBeatGuideEvents(beat, options){
 function scheduleBeatGuide(beat, options){
   options = options || {};
   var events = getBeatGuideEvents(beat, options);
+  var startTime = Number(options.startTime) || 0;
+  var slotDuration = Number(options.slotDuration) || 0;
+  var maxDurationSlots = Number(options.maxDurationSlots);
+  var hardStopAt = Number.isFinite(maxDurationSlots) ? startTime + maxDurationSlots * slotDuration : undefined;
   events.forEach(function(event){
     if (event.kind === 'rest'){
       stopGuitarNotes(event.when);
       return;
     }
     var midi = soundingMidi(event.note.midi, options.capo);
-    playGuitarNote(midi, event.duration, event.when, event.gain, event.articulation, event.str, { exactDuration:true });
+    playGuitarNote(midi, event.duration, event.when, event.gain, event.articulation, event.str, { exactDuration:true, hardStopAt:hardStopAt });
   });
   return events;
 }

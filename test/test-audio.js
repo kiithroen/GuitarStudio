@@ -11,11 +11,13 @@ const audioSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'audio.js'
 
 function makeContext(capo, acousticFx){
   const oscillators = [];
+  const filters = [];
+  const compressors = [];
   function param(initial){
-    return { value:initial || 0, setValueAtTime(value, time){ this.value = value; this.last = ['set', value, time]; },
-      linearRampToValueAtTime(value, time){ this.last = ['linear', value, time]; },
-      exponentialRampToValueAtTime(value, time){ this.last = ['exponential', value, time]; },
-      setTargetAtTime(value, time, constant){ this.last = ['target', value, time, constant]; },
+    return { value:initial || 0, events:[], setValueAtTime(value, time){ this.value = value; this.last = ['set', value, time]; this.events.push(this.last); },
+      linearRampToValueAtTime(value, time){ this.last = ['linear', value, time]; this.events.push(this.last); },
+      exponentialRampToValueAtTime(value, time){ this.last = ['exponential', value, time]; this.events.push(this.last); },
+      setTargetAtTime(value, time, constant){ this.last = ['target', value, time, constant]; this.events.push(this.last); },
       cancelScheduledValues(time){ this.cancelAt = time; } };
   }
   function source(){
@@ -52,11 +54,11 @@ function makeContext(capo, acousticFx){
         return oscillator;
       },
       createBufferSource: source,
-      createBiquadFilter(){ return { frequency:param(0), Q:param(0), type:'', connect(){} }; },
+      createBiquadFilter(){ const filter = { frequency:param(0), Q:param(0), type:'', connect(){} }; filters.push(filter); return filter; },
       createGain(){
         return { gain:param(0), connect(){} };
       },
-      createDynamicsCompressor(){ return { threshold:param(0), knee:param(0), ratio:param(0), attack:param(0), release:param(0), connect(){} }; },
+      createDynamicsCompressor(){ const compressor = { threshold:param(0), knee:param(0), ratio:param(0), attack:param(0), release:param(0), connect(){} }; compressors.push(compressor); return compressor; },
       createConvolver(){ return { buffer:null, connect(){} }; },
       createBuffer(channels, length){
         const data = Array.from({ length:channels }, () => new Float32Array(length));
@@ -75,8 +77,8 @@ function makeContext(capo, acousticFx){
     console
   };
   vm.createContext(context);
-  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
-  return { context, oscillators };
+  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, legacyToneDuration, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
+  return { context, oscillators, filters, compressors };
 }
 
 let checks = 0;
@@ -175,25 +177,73 @@ test('warm cache skips classic engine and keeps the 64-note limit', function(){
   assert.equal(calls.length, 64);
 });
 
-test('exact KS duration ends at the requested time with a short release tail', function(){
+test('exact KS note-off starts the natural release and source ends within the release bound', function(){
   const { context } = makeContext(0);
   context.__audioHooks.replaceGetKsBuffer(() => ({ duration:4 }));
   const voice = context.__audioHooks.buildKsVoice(60, 2, 0.125, 1, false, false, true, 2, true);
-  assert.equal(voice.stopAt, 2.14);
+  assert.equal(voice.stopAt, 2.525);
+  assert.ok(voice.stopAt <= 2.125 + 0.4);
+  assert.ok(voice.out.gain.events.some(event => event[0] === 'target' && event[2] === 2.125 && event[3] === 0.06), 'hall release starts at written note-off with the established tau');
+  const dryVoice = context.__audioHooks.buildKsVoice(60, 3, 0.125, 1, false, false, false, 2, true);
+  assert.ok(dryVoice.out.gain.events.some(event => event[0] === 'target' && event[2] === 3.125 && event[3] === 0.035), 'dry release starts at written note-off with the established tau');
 });
 
-test('exact classic duration ends at the requested time and regular gate remains separate', function(){
-  const { context } = makeContext(0);
+test('exact classic tone decay is preserved independently from the natural note-off release', function(){
+  const { context, filters } = makeContext(0);
   const exact = context.__audioHooks.buildClassicVoice(64, 1, 0.2, 1, false, false, false, false, true);
   const regular = context.__audioHooks.buildClassicVoice(64, 1, 0.2, 1, false, false, false, false, false);
-  assert.ok(Math.abs(exact.stopAt - 1.215) < 1e-9);
+  assert.ok(Math.abs(exact.toneDuration - 0.2) < 1e-9);
+  assert.ok(Math.abs(exact.stopAt - 1.23) < 1e-9);
   assert.ok(Math.abs(regular.stopAt - 1.23) < 1e-9);
+  assert.ok(exact.out.gain.events.some(event => event[0] === 'target' && event[2] === 1.2 && event[3] === 0.035));
+  assert.equal(filters[0].frequency.events.at(-1)[2], 1 + 0.2 * 0.85);
+});
+
+test('classic low bass cutoff floors apply only below midi 55 in hall and dry modes', function(){
+  [40, 41, 43].forEach(midi => {
+    [true, false].forEach(isFx => {
+      const { context, filters } = makeContext(0, isFx);
+      context.__audioHooks.buildClassicVoice(midi, 1, 0.5, 1, true, false, false, isFx, false);
+      const events = filters[0].frequency.events;
+      assert.ok(events[0][1] >= 1200, 'bass attack stays at or above 1200Hz for MIDI ' + midi);
+      assert.ok(events[1][1] >= 600, 'bass decay stays at or above 600Hz for MIDI ' + midi);
+    });
+  });
+  const { context, filters } = makeContext(0, false);
+  context.__audioHooks.buildClassicVoice(55, 1, 0.5, 1, false, false, false, false, false);
+  const expected = 440 * Math.pow(2, (55 - 69) / 12) * 3;
+  assert.ok(Math.abs(filters[0].frequency.events[1][1] - expected) < 1e-9, 'MIDI 55 retains its original dry decay cutoff');
+});
+
+test('short exact classic notes keep legacy tone span while hard stop closes damp within 15ms', function(){
+  const { context, filters } = makeContext(0, true);
+  const voice = context.__audioHooks.buildClassicVoice(40, 1, 0.125, 1, true, false, false, true, true, 1.2);
+  assert.equal(voice.toneDuration, 0.35, 'exact note uses the legacy minimum tone span');
+  assert.ok(voice.stopAt <= 1.215, 'hard source boundary is at most 15ms after hardStopAt');
+  assert.ok(filters[0].frequency.events[1][2] > 1.125, 'tone filter envelope continues beyond short written note-off');
+  context.appState.sympAmount = 0;
+  context.appState.synthEngine = 'classic';
+  context.playGuitarNote(40, 0.125, 1, 1, null, 6, { exactDuration:true, hardStopAt:1.2 });
+  const damp = context.trackedGuideVoices.at(-1).damp.gain.events;
+  assert.deepEqual(damp.slice(-2).map(event => event.slice(0, 3)), [['set', 1, 1.2], ['linear', 0, 1.21]]);
+});
+
+test('non-exact classic tone duration retains the legacy shared helper values', function(){
+  const { context } = makeContext(0);
+  assert.equal(context.__audioHooks.legacyToneDuration(0.2, true, false, true), 0.35);
+  assert.equal(context.__audioHooks.legacyToneDuration(0.2, false, true, true), 0.35);
+  assert.equal(context.__audioHooks.legacyToneDuration(0.2, false, false, false), 0.18);
 });
 
 test('concert hall wet gain initializes and toggles through the shared routing policy', function(){
   const enabled = makeContext(0, true);
   enabled.context.__audioHooks.ensureAudioCtx();
   const initial = enabled.context.__audioHooks.getFxNodes();
+  assert.equal(enabled.compressors[0].threshold.value, -3, 'shared master compressor uses the confirmed -3dB headroom target');
+  assert.equal(enabled.compressors[0].ratio.value, 20, 'compressor ratio stays unchanged');
+  assert.equal(enabled.compressors[0].knee.value, 0, 'compressor knee stays unchanged');
+  assert.equal(enabled.compressors[0].attack.value, 0.001, 'compressor attack stays unchanged');
+  assert.equal(enabled.compressors[0].release.value, 0.10, 'compressor release stays unchanged');
   assert.equal(initial.wetGainNode.gain.value, 0.35, 'enabled AudioContext starts at the concert hall wet level');
   assert.equal(initial.dryGainNode.gain.value, 0.88, 'enabled AudioContext keeps the existing dry level');
 
@@ -210,7 +260,7 @@ test('concert hall wet gain initializes and toggles through the shared routing p
   enabled.context.__audioHooks.replaceGetKsBuffer(() => ({ duration:4 }));
   enabled.context.playGuitarNote(64, 0.5, 1, 1, null, 1, { exactDuration:true });
   const direct = enabled.context.trackedGuideVoices[0];
-  assert.ok(Math.abs(direct.end - 1.515) < 1e-9, 'wet gain changes leave direct KS note gate and 15ms release unchanged');
+  assert.ok(Math.abs(direct.end - 1.9) < 1e-9, 'wet gain changes leave direct KS note-off and release bound unchanged');
 
   const disabled = makeContext(0, false);
   disabled.context.__audioHooks.ensureAudioCtx();

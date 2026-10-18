@@ -63,11 +63,13 @@ assert.equal(resumed[0].when, 8, 'resume starts at the hold position');
 assert.equal(resumed[0].duration, 0.75, 'resume duration clips at loop boundary');
 
 calls.length = 0;
-context.scheduleBeatGuide(restBeat, { startTime:5, slotDuration:0.9, capo:2 });
+context.scheduleBeatGuide(restBeat, { startTime:5, slotDuration:0.9, capo:2, maxDurationSlots:0.8333333333333333 });
 assert.deepEqual(calls.map(call => call[0]), ['note', 'stop', 'note'], 'rest cuts current sound and later note is scheduled afterward');
 assert.equal(calls[0][1], 62, 'capo is applied once at scheduling');
 assert.equal(calls[0][6], 2, 'physical string is preserved');
 assert.equal(calls[0][7].exactDuration, true, 'exact duration option is passed through');
+assert.ok(Math.abs(calls[0][7].hardStopAt - 5.75) < 1e-9, 'loop boundary is passed as the absolute per-voice hard stop');
+assert.ok(Math.abs(calls[2][7].hardStopAt - 5.75) < 1e-9, 'all scheduled notes share the same loop boundary');
 
 calls.length = 0;
 context.scheduleSubdividedGuide(restBeat, { startTime:1, subStep:0.1, capo:0 });
