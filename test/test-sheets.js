@@ -74,7 +74,7 @@ await test('JSONP error and timeout clean all pending resources', async function
   await assert.rejects(timed, /응답 시간 초과/);
   assert.equal(h.context[timedCb], undefined); assert.equal(timedScript.parentNode, null); assert.equal(h.timers.has(timedTimer), false);
 });
-await test('sync parses sheet rows and keeps spaced lyric slashes within one measure', async function(){
+await test('sync parses every sheet row without applying or changing legacy visibility and title keys', async function(){
   const ls = h.context.ls;
   ls.set('gs.hiddenSheetSongs', ['Hidden']);
   ls.set('gs.sheetTitleOverrides', { 'sheet-song-3': 'Override title' });
@@ -94,8 +94,9 @@ await test('sync parses sheet rows and keeps spaced lyric slashes within one mea
   assert.equal(h.context.sheetSongs[1].title, 'Hidden');
   assert.equal(h.context.sheetSongs[1].measures[0].lyric, 'lyric/slash');
   assert.equal(h.context.sheetSongs[1].measures.length, 1);
-  assert.equal(h.context.sheetSongs[2].title, 'Override title');
-  assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.hiddenSheetSongs', null))), []);
+  assert.equal(h.context.sheetSongs[2].title, 'Override me');
+  assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.hiddenSheetSongs', null))), ['Hidden']);
+  assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.sheetTitleOverrides', null))), { 'sheet-song-3': 'Override title' });
   assert.equal(h.context.rebuilt.at(-1), 'sheet-song-1');
 
   ls.set('gs.hiddenSheetSongs', ['Hidden']);
@@ -106,8 +107,9 @@ await test('sync parses sheet rows and keeps spaced lyric slashes within one mea
     { c: [{ v: 'Hidden' }, { v: '4' }, { v: '80' }, { v: 'badge' }, { v: '[G] G3 - - -' }] }
   ] } });
   assert.equal(await silent, true);
-  assert.equal(h.context.sheetSongs.length, 1);
+  assert.equal(h.context.sheetSongs.length, 2);
   assert.equal(h.context.sheetSongs[0].title, 'Visible');
+  assert.equal(h.context.sheetSongs[1].title, 'Hidden');
   assert.deepEqual(JSON.parse(JSON.stringify(ls.get('gs.hiddenSheetSongs', null))), ['Hidden']);
   assert.equal(h.context.rebuilt.at(-1), 'builtin-last');
 });

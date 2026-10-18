@@ -273,10 +273,7 @@ body.practice-compact #scoreTitle,
 body.practice-compact #scoreTypeBadge,
 body.practice-compact #renameScoreTitleBtn,
 body.practice-compact #scoreClickHint,
-body.practice-compact #editStructuredBtn,
 body.practice-compact #editBarMetaBtn,
-body.practice-compact #convertImgToScoreBtn,
-body.practice-compact .ref-img-details,
 body.practice-compact footer {
   display: none !important;
 }
@@ -454,31 +451,6 @@ body.practice-compact .fretboard{
 .form-row input,.form-row textarea,.form-row select{padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg)}
 .form-row textarea{min-height:96px;font-family:var(--font-num);font-size:13px}
 
-/* 악보 사진 -> 내 악보 변환 스튜디오 & 원클릭 계이름 패드 */
-.ocr-img-box{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#1a1a1a;text-align:center}
-.ocr-img-box img{max-width:100%;height:auto;display:block;margin:0 auto}
-.ocr-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line)}
-.note-pad-wrap{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:7px}
-.note-pad-rows{display:flex;flex-direction:column;gap:6px}
-.note-pad-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
-.np-row-tag{min-width:86px;font-size:11.5px;font-weight:700;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent);border-radius:6px;padding:4px 7px;text-align:center;white-space:nowrap}
-.np-btn{min-height:34px;padding:2px 9px;border-radius:8px;border:1px solid var(--line);background:var(--surface);display:inline-flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;cursor:pointer;transition:transform .06s,background-color .1s}
-.np-btn:hover{border-color:var(--accent);background:var(--accent-soft)}
-.np-btn:active{transform:scale(.95)}
-.np-btn b{font-size:13px;color:var(--fg)}
-.np-btn small{font-family:var(--font-num);font-size:10px;color:var(--muted)}
-.ve-bars{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;max-height:260px;overflow-y:auto;padding:4px 2px}
-.ve-bar{border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:8px;display:flex;flex-direction:column;gap:6px}
-.ve-bar-head{display:flex;align-items:center;justify-content:space-between;gap:4px}
-.ve-chord-sel{font-family:var(--font-num);font-size:12.5px;font-weight:700;padding:2px 6px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--accent)}
-.ve-beats{display:grid;grid-template-columns:repeat(var(--ve-bpb,4),1fr);gap:4px}
-.ve-cell{border:1.5px solid var(--line);border-radius:7px;background:var(--surface);padding:6px 2px;text-align:center;cursor:pointer;display:flex;flex-direction:column;gap:1px}
-.ve-cell.selected{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent-soft)}
-.ve-cell b{font-size:13px}
-.ve-cell small{font-family:var(--font-num);font-size:10px;color:var(--muted)}
-.ref-img-details{border:1px solid var(--line);border-radius:10px;background:var(--surface-2);padding:8px 12px}
-.ref-img-details summary{cursor:pointer;font-weight:600;font-size:13.5px;color:var(--accent)}
-.ref-img-details img{max-width:100%;max-height:280px;display:block;margin:8px auto 0;border-radius:8px;border:1px solid var(--line)}
 
 </style>
 </head>
@@ -506,7 +478,6 @@ body.practice-compact .fretboard{
       </div>
       <div class="top-actions">
         <button type="button" class="btn primary" id="uploadImgBtn">+ 교본 사진/PDF 악보 올리기</button>
-        <button type="button" class="btn" id="newTextSongBtn">+ 직접 악보 입력</button>
         <button type="button" class="btn" id="openSheetSyncBtn">구글 시트 연동</button>
         <button type="button" class="btn sm" id="renameSongBtn" hidden title="이 악보의 이름을 변경합니다">이름 변경</button>
         <button type="button" class="btn danger sm" id="deleteSongBtn" hidden>삭제</button>
@@ -611,8 +582,6 @@ body.practice-compact .fretboard{
       </div>
       <div class="score-toolbar-right">
         <span class="hint" id="scoreClickHint">마디 클릭: 시작 위치 / Shift+클릭: 끝 마디</span>
-        <button type="button" class="btn sm primary" id="convertImgToScoreBtn" hidden>이 사진을 내 악보(계이름·운지)로 변환</button>
-        <button type="button" class="btn sm" id="editStructuredBtn">악보 빠른 수정</button>
         <button type="button" class="btn sm" id="editBarMetaBtn" hidden>선택 마디 코드·메모 수정</button>
         <button type="button" class="btn sm" id="toggleCompactBtn" title="악보 2줄과 실시간 지판만 보는 콤팩트 집중 모드 전환 (단축키: P / Esc)">콤팩트 뷰</button>
       </div>
@@ -620,10 +589,6 @@ body.practice-compact .fretboard{
 
     <!-- A. 내장/텍스트 구조화 악보 뷰어 (계이름 + 타브 + 왼손/오른손 운지) -->
     <div id="structuredScoreWrap" class="tab-score-wrap">
-      <details class="ref-img-details" id="refImgDetails" hidden open>
-        <summary>원본 교본 사진 함께 보기 (클릭하여 접기/펼치기)</summary>
-        <img id="refScoreImg" alt="원본 교본 참고 이미지">
-      </details>
       <div class="measures-grid" id="measuresGrid"></div>
     </div>
 
@@ -735,7 +700,6 @@ body.practice-compact .fretboard{
 
 <!-- 숨김 파일 입력 (이미지 / PDF 업로드용) -->
 <input type="file" id="fileInput" accept="image/*,.pdf,application/pdf" hidden>
-<input type="file" id="ocrModalFileInput" accept="image/*" hidden>
 
 <!-- 모달: 음색 설정 (울림통 공명 · 공명현) -->
 <div class="modal-backdrop" id="toneModal" hidden>
@@ -791,93 +755,6 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<!-- 모달: 악보 입력 및 비주얼 에디터 -->
-<div class="modal-backdrop" id="newSongModal" hidden>
-  <div class="modal wide" role="dialog" aria-labelledby="newSongTitle">
-    <div class="panel-head">
-      <h2 id="newSongTitle">악보 입력 · AI 채팅 변환 &amp; 원클릭 계이름 편집기</h2>
-      <button type="button" class="btn sm" id="closeNewSongBtn">닫기</button>
-    </div>
-
-    <!-- 1. 기본 곡 정보 -->
-    <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">
-      <div class="form-row">
-        <label class="label" for="nsTitle">곡 제목</label>
-        <input type="text" id="nsTitle" placeholder="예: 나비야 (교본 12쪽)">
-      </div>
-      <div class="form-row">
-        <label class="label" for="nsBeats">박자</label>
-        <select id="nsBeats">
-          <option value="2">2/4 (2박자)</option>
-          <option value="3">3/4 (3박자)</option>
-          <option value="4" selected>4/4 (4박자)</option>
-          <option value="6">6/8 (6박자)</option>
-          <option value="8">4/4 (8분음표 8박 · 핑거스타일)</option>
-          <option value="9">9/8 (8분음표 9칸)</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label class="label" for="nsBpm">기본 BPM (1클릭=한 칸)</label>
-        <input type="number" id="nsBpm" value="64" min="30" max="180">
-      </div>
-    </div>
-
-    <!-- 2. AI 채팅 프롬프트 복사 & 참고 사진 미리보기 바 -->
-    <div class="ocr-bar">
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <button type="button" class="btn sm primary" id="copyAiPromptBtn">제미니/안티그래비티 질문용 프롬프트 복사</button>
-        <button type="button" class="btn sm" id="ocrPickImgBtn">교본 참고 사진 띄우기</button>
-      </div>
-      <span class="hint" id="ocrStatusTxt">프롬프트를 복사해 제미니/안티그래비티 채팅에 악보 사진과 함께 붙여넣거나, 아래 운지 숫자 버튼(0솔·2라·0시·1도·3레)을 눌러 입력해 보세요.</span>
-    </div>
-
-    <div class="ocr-img-box" id="ocrImgBox" hidden>
-      <img id="ocrPreviewImg" alt="변환할 원본 악보 이미지">
-    </div>
-
-    <!-- 3. 원클릭 클래식 기타 1포지션 계이름 입력 패드 -->
-    <div class="note-pad-wrap">
-      <div class="panel-head">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <div class="tab-seg" role="tablist" aria-label="입력 패드 배열 모드">
-            <button type="button" id="padModeStringBtn" role="tab" aria-selected="true">기타 줄별 (1~6번줄)</button>
-            <button type="button" id="padModeSolfegeBtn" role="tab" aria-selected="false">계이름 순서 (도레미파솔라시)</button>
-          </div>
-          <span class="label" id="veSelectedLabel">선택된 위치: 1마디 1박 · Space/0/r: 쉼, -: 앞 음 유지</span>
-        </div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button type="button" class="btn sm" id="veApoyandoBtn" title="선택된 박자 음에 ! (아포얀도 주선율 강조) 또는 ~ (티란도 여린 반주) 표기를 전환합니다">! 아포얀도(강조) 전환</button>
-          <button type="button" class="btn sm" id="veBassCombineBtn" title="켜 두거나 Shift+클릭하면 현재 칸의 음과 방금 누른 음을 + 기호(예: 0E2+4B4)로 한 박자에 묶어 줍니다">+ 겹음 묶기: 꺼짐</button>
-          <button type="button" class="btn sm" id="veAutoChordBtn" title="멜로디 구성음과 곡의 조성을 분석해 마디별 어울리는 반주 코드를 자동으로 추측해 채웁니다">코드 자동 추론 (자동)</button>
-          <button type="button" class="btn sm" id="veAddBarBtn">+ 마디 추가</button>
-          <button type="button" class="btn sm danger" id="veDelBarBtn">- 마지막 마디 삭제</button>
-        </div>
-      </div>
-      <div class="note-pad-rows" id="notePadRows"></div>
-    </div>
-
-    <!-- 4. 비주얼 마디·박자 타일 그리드 (클릭해서 즉시 수정) -->
-    <div class="ve-bars" id="veBarsGrid"></div>
-
-    <!-- 5. 텍스트 원본 (실시간 양방향 동기화) -->
-    <details open>
-      <summary class="label" style="cursor:pointer">제미니/안티그래비티 변환 텍스트 붙여넣기 &amp; 직접 편집 (표기법: <code>0E2+4B4</code> 동시탄현 · <code>r</code> 쉼 · <code>-</code> 앞 음 유지 · <code>!4B4</code>/<code>~0B3</code> 명시 주법 · <code>1C4@3</code> 줄지정)</summary>
-      <div class="form-row" style="margin-top:6px">
-        <textarea id="nsMeasuresTxt">[C] G4 E4 E4 - | 솔 미 미 -
-[G7] F4 D4 D4 - | 파 레 레 -
-[C] C4 D4 E4 F4 | 도 레 미 파
-[C] G4 G4 G4 - | 솔 솔 솔 -</textarea>
-      </div>
-    </details>
-    <div id="scoreValidationStatus" role="status" aria-live="polite" style="white-space:pre-line"></div>
-
-    <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
-      <button type="button" class="btn" id="copyVeRowTsvBtn" title="구글 스프레드시트 A열에 Ctrl+V로 바로 붙여넣을 수 있게 한 줄(TSV)로 복사합니다">구글 시트 한 줄(TSV)로 복사</button>
-      <button type="button" class="btn primary" id="saveNewSongBtn">이 내용으로 내 악보 저장 및 열기</button>
-    </div>
-  </div>
-</div>
-
 <!-- 모달: 마디 코드/메모 수정 (이미지 악보 마디 클릭 시) -->
 <div class="modal-backdrop" id="barEditModal" hidden>
   <div class="modal" role="dialog" aria-labelledby="barEditTitle">
@@ -907,12 +784,12 @@ body.practice-compact .fretboard{
 <div class="modal-backdrop" id="backupModal" hidden>
   <div class="modal" role="dialog" aria-labelledby="backupTitle">
     <div class="panel-head">
-      <h2 id="backupTitle">개인 악보·앱 설정 백업 · 복원</h2>
+      <h2 id="backupTitle">이미지·PDF 악보·앱 설정 백업 · 복원</h2>
       <button type="button" class="btn sm" id="closeBackupBtn">닫기</button>
     </div>
-    <p class="hint">개인 악보와 앱 설정은 현재 기기의 브라우저에 저장돼요. 다른 기기로 옮기려면 백업 파일을 내보내세요.</p>
+    <p class="hint">이미지·PDF 악보와 앱 설정을 백업·복원해요. 텍스트 악보는 내장곡과 Google Sheets에서 관리해요.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button type="button" class="btn primary" id="exportJsonBtn">개인 악보·앱 설정 파일로 내보내기 (.json)</button>
+      <button type="button" class="btn primary" id="exportJsonBtn">이미지·PDF 악보·앱 설정 파일로 내보내기 (.json)</button>
       <button type="button" class="btn" id="importJsonBtn">백업 파일 불러오기</button>
       <input type="file" id="importFileInput" accept=".json,application/json" hidden>
     </div>
@@ -957,18 +834,17 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js"></script>
-<script src="src/notation.js"></script>
-<script src="src/rhythm.js"></script>
-<script src="src/parser.js"></script>
-<script src="src/score.js"></script>
-<script src="src/audio.js"></script>
-<script src="src/guide.js"></script>
-<script src="src/ai-prompt.js"></script>
-<script src="src/image-analysis.js"></script>
-<script src="src/fretboard.js"></script>
-<script src="src/editor.js"></script>
-<script src="src/sheets.js"></script>
-<script src="src/app.js"></script>
+<script src="src/storage.js?v=image-library-1"></script>
+<script src="src/notation.js?v=image-library-1"></script>
+<script src="src/rhythm.js?v=image-library-1"></script>
+<script src="src/parser.js?v=image-library-1"></script>
+<script src="src/score.js?v=image-library-1"></script>
+<script src="src/audio.js?v=image-library-1"></script>
+<script src="src/guide.js?v=image-library-1"></script>
+<script src="src/image-analysis.js?v=image-library-1"></script>
+<script src="src/fretboard.js?v=image-library-1"></script>
+<script src="src/score-ui.js?v=image-library-1"></script>
+<script src="src/sheets.js?v=image-library-1"></script>
+<script src="src/app.js?v=image-library-1"></script>
 </body>
 </html>

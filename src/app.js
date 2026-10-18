@@ -14,27 +14,23 @@
       status.textContent = STORAGE_ERROR_MESSAGE;
       status.hidden = false;
     }
-    var newSongModal = $('#newSongModal');
-    var ocrStatus = $('#ocrStatusTxt');
-    if (newSongModal && !newSongModal.hidden && ocrStatus) ocrStatus.textContent = STORAGE_ERROR_MESSAGE;
   }
   function clearStorageError(){
     var status = $('#storageStatus');
     if (status) status.hidden = true;
-    var ocrStatus = $('#ocrStatusTxt');
-    if (ocrStatus && ocrStatus.textContent === STORAGE_ERROR_MESSAGE) ocrStatus.textContent = '';
   }
-  async function persistSong(song){
-    try { await dbSaveSong(song); return true; }
+  async function persistImageSong(song){
+    if (!song || song.type !== 'image'){ reportStorageError(); return false; }
+    try { await dbSaveImageSong(song); return true; }
     catch (error){ reportStorageError(error); return false; }
   }
-  async function removePersistedSong(id){
-    try { await dbDeleteSong(id); return true; }
+  async function removePersistedImageSong(id){
+    try { await dbDeleteImageSong(id); return true; }
     catch (error){ reportStorageError(error); return false; }
   }
 
   // ---------- 앱 전역 상태
-  var customSongs = [];
+  var imageSongs = [];
   var allSongs = [];
   var curSong = null;
   var curMeasureIdx = 0;
@@ -72,10 +68,6 @@ function curCapo(){
   return curSong ? getSongCapo(curSong) : 0;
 }
 
-function editorCapo(){
-  var el = document.getElementById('nsTitle');
-  return getSongCapo({ title: el ? el.value : '', capo: typeof veState !== 'undefined' ? veState.sourceCapo : 0 });
-}
 
   // 이미지 악보 편집 상태
   var imgEditMode = true;
@@ -110,21 +102,18 @@ function editorCapo(){
 
   function saveAppState(){
     if (curSong){
-      var invalidStructured = curSong.type === 'structured' && validateScore(serializeScoreMeasures(curSong.measures, '\n'), curSong.beats || appState.beats).errors.length > 0;
-      if (!invalidStructured){
-        curSong.lastBpm = appState.bpm;
-        curSong.lastLoopStart = appState.loopStart;
-        curSong.lastLoopEnd = appState.loopEnd;
-        curSong.lastPracticedAt = Date.now();
-        if (!curSong.builtin && !curSong.fromSheet) persistSong(curSong);
-        else ls.set('gs.builtinMeta.' + curSong.id, {
-          bpm: curSong.lastBpm,
-          loopStart: curSong.lastLoopStart,
-          loopEnd: curSong.lastLoopEnd,
-          ytUrl: curSong.ytUrl || '',
-          at: curSong.lastPracticedAt
-        });
-      }
+      curSong.lastBpm = appState.bpm;
+      curSong.lastLoopStart = appState.loopStart;
+      curSong.lastLoopEnd = appState.loopEnd;
+      curSong.lastPracticedAt = Date.now();
+      if (curSong.type === 'image') persistImageSong(curSong);
+      else ls.set('gs.builtinMeta.' + curSong.id, {
+        bpm: curSong.lastBpm,
+        loopStart: curSong.lastLoopStart,
+        loopEnd: curSong.lastLoopEnd,
+        ytUrl: curSong.ytUrl || '',
+        at: curSong.lastPracticedAt
+      });
     }
     ls.set('gs.state', appState);
   }
@@ -152,10 +141,10 @@ function editorCapo(){
     var songCapo = getSongCapo(curSong);
     var capoBadgeTxt = (songCapo > 0 && !/(?:capo|카포)\s*[:.]?\s*(?:fret\s*)?\d/i.test(curSong.badge || '')) ? (' · Capo ' + songCapo) : '';
     $('#scoreTitle').textContent = curSong.title;
-    $('#scoreTypeBadge').textContent = (curSong.badge || (curSong.type === 'image' ? '교본 사진/PDF 악보' : '직접 만든 악보')) + capoBadgeTxt;
-    var canRenameOrDelete = !curSong.builtin;
+    $('#scoreTypeBadge').textContent = (curSong.badge || (curSong.type === 'image' ? '교본 사진/PDF 악보' : '텍스트 악보')) + capoBadgeTxt;
+    var canRenameOrDelete = curSong.type === 'image';
     $('#deleteSongBtn').hidden = !canRenameOrDelete;
-    $('#deleteSongBtn').textContent = curSong.fromSheet ? '목록에서 삭제' : '삭제';
+    $('#deleteSongBtn').textContent = '삭제';
     if ($('#renameSongBtn')) $('#renameSongBtn').hidden = !canRenameOrDelete;
     if ($('#renameScoreTitleBtn')) $('#renameScoreTitleBtn').hidden = !canRenameOrDelete;
     if (canRenameOrDelete){
@@ -202,22 +191,12 @@ function editorCapo(){
     if (curSong.type === 'structured'){
       $('#structuredScoreWrap').hidden = false;
       $('#imageScoreWrap').hidden = true;
-      $('#convertImgToScoreBtn').hidden = true;
-      $('#editStructuredBtn').hidden = false;
       $('#editBarMetaBtn').hidden = true;
       syncScoreModeUI();
-      if (curSong.refImageDataUrl){
-        $('#refImgDetails').hidden = false;
-        $('#refScoreImg').src = curSong.refImageDataUrl;
-      } else {
-        $('#refImgDetails').hidden = true;
-      }
       renderStructuredMeasures();
     } else {
       $('#structuredScoreWrap').hidden = true;
       $('#imageScoreWrap').hidden = false;
-      $('#convertImgToScoreBtn').hidden = false;
-      $('#editStructuredBtn').hidden = true;
       $('#editBarMetaBtn').hidden = false;
       syncScoreModeUI();
       renderImageScore();
@@ -943,7 +922,7 @@ function editorCapo(){
     $('#loopEnd').max = total;
     $('#loopStart').value = 1;
     $('#loopEnd').value = total;
-    persistSong(curSong);
+    persistImageSong(curSong);
     renderImageSystemsOverlay();
   }
 
@@ -1086,7 +1065,7 @@ function editorCapo(){
     window.addEventListener('pointerup', function(){
       if (activeOp){
         activeOp = null;
-        persistSong(curSong);
+        persistImageSong(curSong);
         renderImageSystemsOverlay();
         return;
       }
@@ -1652,7 +1631,7 @@ function editorCapo(){
   window.addEventListener('keydown', function(e){
     var tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    if (!$('#newSongModal').hidden || !$('#audioOffsetModal').hidden || !$('#sheetSyncModal').hidden || !$('#backupModal').hidden || !$('#toneModal').hidden) return;
+    if (!$('#audioOffsetModal').hidden || !$('#sheetSyncModal').hidden || !$('#backupModal').hidden || !$('#toneModal').hidden) return;
 
     if (e.code === 'Space'){
       e.preventDefault();
@@ -1883,8 +1862,8 @@ function editorCapo(){
       systems: defaultSystems,
       ytUrl: ''
     };
-    if (!await persistSong(song)) return;
-    customSongs.push(song);
+    if (!await persistImageSong(song)) return;
+    imageSongs.push(song);
     clearStorageError();
     rebuildSongSelect(song.id);
   }
@@ -1908,19 +1887,25 @@ function editorCapo(){
     syncAfterImageGridChange();
   });
 
-  $('#pdfPrevBtn').addEventListener('click', function(){
+  $('#pdfPrevBtn').addEventListener('click', async function(){
     if (!curSong || !curSong.pdfPages || curSong.curPageIdx <= 0) return;
-    curSong.curPageIdx--;
-    curSong.imageDataUrl = curSong.pdfPages[curSong.curPageIdx];
-    persistSong(curSong);
+    var targetSong = curSong;
+    var nextIdx = targetSong.curPageIdx - 1;
+    var candidate = Object.assign({}, targetSong, { curPageIdx: nextIdx, imageDataUrl: targetSong.pdfPages[nextIdx] });
+    if (!await persistImageSong(candidate)) return;
+    Object.assign(targetSong, candidate);
+    if (curSong !== targetSong) return;
     renderImageScore();
   });
 
-  $('#pdfNextBtn').addEventListener('click', function(){
+  $('#pdfNextBtn').addEventListener('click', async function(){
     if (!curSong || !curSong.pdfPages || curSong.curPageIdx >= curSong.pdfPages.length - 1) return;
-    curSong.curPageIdx++;
-    curSong.imageDataUrl = curSong.pdfPages[curSong.curPageIdx];
-    persistSong(curSong);
+    var targetSong = curSong;
+    var nextIdx = targetSong.curPageIdx + 1;
+    var candidate = Object.assign({}, targetSong, { curPageIdx: nextIdx, imageDataUrl: targetSong.pdfPages[nextIdx] });
+    if (!await persistImageSong(candidate)) return;
+    Object.assign(targetSong, candidate);
+    if (curSong !== targetSong) return;
     renderImageScore();
   });
 
@@ -1951,10 +1936,10 @@ function editorCapo(){
     bar.chord = $('#beChord').value.trim();
     bar.note = $('#beNote').value.trim();
     bar.memo = $('#beMemo').value.trim();
-    if (!await persistSong(candidate)) return;
+    if (!await persistImageSong(candidate)) return;
     Object.assign(targetSong, candidate);
-    var customIdx = customSongs.findIndex(function(s){ return s.id === candidate.id; });
-    if (customIdx >= 0 && customSongs[customIdx] !== targetSong) Object.assign(customSongs[customIdx], candidate);
+    var customIdx = imageSongs.findIndex(function(s){ return s.id === candidate.id; });
+    if (customIdx >= 0 && imageSongs[customIdx] !== targetSong) Object.assign(imageSongs[customIdx], candidate);
     var allSong = allSongs.find(function(s){ return s.id === candidate.id; });
     if (allSong && allSong !== targetSong) Object.assign(allSong, candidate);
     clearStorageError();
@@ -2006,42 +1991,24 @@ function editorCapo(){
       alert('이미지 마디 영역을 분석하지 못했어요. 이미지와 줄 영역을 확인한 뒤 다시 시도해 주세요.');
     }
   });
-  // ---------- 원클릭 계이름 비주얼 에디터 (모드 전환: 1. 기타 줄별 / 2. 계이름 도레미파솔라시 순서)
-  // ---------- 곡 삭제 (IndexedDB 저장곡 & 구글 시트 연동곡 모두 지원)
+  // ---------- 이미지/PDF 악보 삭제
   $('#deleteSongBtn').addEventListener('click', async function(){
-    if (!curSong || curSong.builtin) return;
+    if (!curSong || curSong.type !== 'image') return;
     var targetId = curSong.id;
     var targetTitle = curSong.title;
 
-    if (curSong.fromSheet){
-      if (!confirm('"' + targetTitle + '" 곡을 목록에서 삭제(숨김)할까요?\n(다시 보려면 [구글 시트] -> [시트에서 다시 불러오기]를 누르면 복구됩니다.)')) return;
-      var hiddenList = ls.get('gs.hiddenSheetSongs', []);
-      if (hiddenList.indexOf(targetTitle) < 0) hiddenList.push(targetTitle);
-      // 혹시 이전에 IndexedDB에 중복 저장된 흔적이 있다면 함께 제거
-      if (!await removePersistedSong(targetId)) return;
-      ls.set('gs.hiddenSheetSongs', hiddenList);
-      sheetSongs = sheetSongs.filter(function(s){ return s.id !== targetId && s.title !== targetTitle; });
-      clearStorageError();
-      customSongs = customSongs.filter(function(s){ return s.id !== targetId; });
-      $('#openSheetSyncBtn').textContent = '구글 시트 (' + sheetSongs.length + '곡)';
-      rebuildSongSelect(sheetSongs.length ? sheetSongs[0].id : (BUILTIN_SONGS[0] ? BUILTIN_SONGS[0].id : (allSongs[0] ? allSongs[0].id : null)));
-      return;
-    }
 
     if (!confirm('"' + targetTitle + '" 악보를 이 기기(IndexedDB)에서 영구 삭제할까요?')) return;
-    if (!await removePersistedSong(targetId)) return;
+    if (!await removePersistedImageSong(targetId)) return;
     clearStorageError();
-    customSongs = customSongs.filter(function(s){ return s.id !== targetId; });
+    imageSongs = imageSongs.filter(function(s){ return s.id !== targetId; });
     rebuildSongSelect(sheetSongs.length ? sheetSongs[0].id : (BUILTIN_SONGS[0] ? BUILTIN_SONGS[0].id : (allSongs[0] ? allSongs[0].id : null)));
   });
 
-  // ---------- 악보 이름 변경 (직접 올린 교본 이미지/PDF, 직접 입력 악보, 구글 시트 연동곡)
+  // ---------- 이미지/PDF 악보 이름 변경
   async function renameCurrentSong(){
     var targetSong = curSong;
-    if (!targetSong || targetSong.builtin){
-      alert('내장 기본 악보는 이름을 변경할 수 없어요.');
-      return;
-    }
+    if (!targetSong || targetSong.type !== 'image') return;
     var oldTitle = targetSong.title || '';
     var newTitle = prompt('악보 이름을 변경해 주세요:', oldTitle);
     if (newTitle == null) return;
@@ -2052,20 +2019,11 @@ function editorCapo(){
     }
     if (newTitle === oldTitle) return;
 
-    if (targetSong.fromSheet){
-      targetSong.title = newTitle;
-      var titleOverrides = ls.get('gs.sheetTitleOverrides', {});
-      titleOverrides[targetSong.id] = newTitle;
-      ls.set('gs.sheetTitleOverrides', titleOverrides);
-      var ss = sheetSongs.find(function(s){ return s.id === targetSong.id; });
-      if (ss) ss.title = newTitle;
-    } else {
-      var renamedSong = Object.assign({}, targetSong, { title: newTitle });
-      if (!await persistSong(renamedSong)) return;
-      Object.assign(targetSong, renamedSong);
-      var cs = customSongs.find(function(s){ return s.id === targetSong.id; });
-      if (cs && cs !== targetSong) Object.assign(cs, renamedSong);
-    }
+    var renamedSong = Object.assign({}, targetSong, { title: newTitle });
+    if (!await persistImageSong(renamedSong)) return;
+    Object.assign(targetSong, renamedSong);
+    var cs = imageSongs.find(function(s){ return s.id === targetSong.id; });
+    if (cs && cs !== targetSong) Object.assign(cs, renamedSong);
 
     var allSong = allSongs.find(function(s){ return s.id === targetSong.id; });
     if (allSong && allSong !== targetSong) Object.assign(allSong, targetSong);
@@ -2077,7 +2035,7 @@ function editorCapo(){
   if ($('#renameSongBtn')) $('#renameSongBtn').addEventListener('click', renameCurrentSong);
   if ($('#renameScoreTitleBtn')) $('#renameScoreTitleBtn').addEventListener('click', renameCurrentSong);
   $('#scoreTitle').addEventListener('click', function(){
-    if (curSong && !curSong.builtin) renameCurrentSong();
+    if (curSong && curSong.type === 'image') renameCurrentSong();
   });
 
   // ---------- 음색 설정 모달 (울림통 공명 세기 · 공명현 세기)
@@ -2171,7 +2129,7 @@ function editorCapo(){
 
   $('#exportJsonBtn').addEventListener('click', async function(){
     var songs;
-    try { songs = await dbGetAllSongs(); }
+    try { songs = await dbGetImageSongs(); }
     catch (error){ reportStorageError(error); return; }
     var payload = {
       version: 1,
@@ -2204,7 +2162,7 @@ function editorCapo(){
       try {
         if (Array.isArray(data.customSongs)){
           for (var i = 0; i < data.customSongs.length; i++){
-            await dbSaveSong(data.customSongs[i]);
+            if (data.customSongs[i] && data.customSongs[i].type === 'image') await dbSaveImageSong(data.customSongs[i]);
           }
         }
         if (data.appState) ls.set('gs.state', stripRemovedAudioSettings(data.appState));
@@ -2245,10 +2203,10 @@ function editorCapo(){
       cSel.appendChild(grpSheet);
     }
 
-    if (customSongs.length){
+    if (imageSongs.length){
       var grp2 = document.createElement('optgroup');
-      grp2.label = '내 저장 악보';
-      customSongs.forEach(function(s){
+      grp2.label = '내 이미지·PDF 악보';
+      imageSongs.forEach(function(s){
         var opt = document.createElement('option');
         opt.value = s.id;
         opt.textContent = s.title;
@@ -2262,7 +2220,7 @@ function editorCapo(){
 
   function rebuildSongSelect(selectId){
     stopPractice();
-    allSongs = BUILTIN_SONGS.concat(sheetSongs).concat(customSongs);
+    allSongs = BUILTIN_SONGS.concat(sheetSongs).concat(imageSongs);
     var sel = $('#songSelect');
     sel.textContent = '';
 
@@ -2288,10 +2246,10 @@ function editorCapo(){
       sel.appendChild(grpSheet);
     }
 
-    if (customSongs.length){
+    if (imageSongs.length){
       var grp2 = document.createElement('optgroup');
-      grp2.label = '이 기기에 저장된 악보 (IndexedDB)';
-      customSongs.forEach(function(s){
+      grp2.label = '이 기기에 저장된 이미지·PDF 악보';
+      imageSongs.forEach(function(s){
         var opt = document.createElement('option');
         opt.value = s.id;
         opt.textContent = s.title;
@@ -2345,26 +2303,15 @@ function editorCapo(){
 
   // 앱 부팅: songs.json 로드 + IndexedDB 로드 + 구글 시트 자동 동기화
   initFretboard();
-  initEditor();
+  initScoreUi();
   initSheetSync();
   buildFretboard();
   setCompactPractice(false);
   Promise.all([
     loadExternalSongsJson(),
-    dbGetAllSongs().catch(function(error){ reportStorageError(error); return []; })
+    dbGetImageSongs().catch(function(error){ reportStorageError(error); return []; })
   ]).then(async function(results){
-    var rawDbSongs = results[1] || [];
-    var cleanCustom = [];
-    for (var i = 0; i < rawDbSongs.length; i++){
-      var s = rawDbSongs[i];
-      // 이전 버그로 인해 구글 시트 곡(sheet-song-*)이 IndexedDB에 중복 저장된 경우 자동 정리
-      if (s && (s.fromSheet || String(s.id).indexOf('sheet-song-') === 0)){
-        if (!await removePersistedSong(s.id)) continue;
-      } else if (s){
-        cleanCustom.push(s);
-      }
-    }
-    customSongs = cleanCustom;
+    imageSongs = results[1] || [];
     var savedSheetUrl = ls.get('gs.sheetUrl', '');
     if (savedSheetUrl){
       await syncGoogleSheetSongs(savedSheetUrl, true);
@@ -2372,6 +2319,6 @@ function editorCapo(){
     rebuildSongSelect(appState.lastSongId);
   }).catch(function(){
     reportStorageError();
-    customSongs = [];
+    imageSongs = [];
     rebuildSongSelect(appState.lastSongId);
   });

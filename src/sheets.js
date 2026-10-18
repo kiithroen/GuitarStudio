@@ -92,7 +92,6 @@
       var rows = await loadSheetViaJsonp(info.sheetId, info.gid);
       var parsedSongs = [];
 
-      var hiddenTitles = silent ? ls.get('gs.hiddenSheetSongs', []) : [];
 
       rows.forEach(function(cols, rIdx){
         var c0 = (cols[0] || '').trim();
@@ -133,15 +132,12 @@
           throw new Error('시트 ' + (rIdx + 1) + '행 ' + detail.measure + '마디' + (detail.beat ? ' ' + detail.beat + '박' : '') + ': ' + detail.message);
         }
         if (!lines.length) return;
-        if (hiddenTitles.indexOf(c0) >= 0) return;
 
         var songId = 'sheet-song-' + rIdx;
-        var titleOverrides = ls.get('gs.sheetTitleOverrides', {});
-        var finalTitle = titleOverrides[songId] || title;
 
         var song = buildStructuredSong({
           id: songId,
-          title: finalTitle,
+          title: title,
           badge: badge,
           builtin: false,
           bpm: bpm,
@@ -153,7 +149,6 @@
       });
 
       sheetSongs = parsedSongs;
-      if (!silent) ls.set('gs.hiddenSheetSongs', []);
       ls.set('gs.sheetUrl', rawUrl.trim());
       var nowStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
       $('#sheetSyncStatus').textContent = '연동 완료 (' + nowStr + ') · 총 ' + parsedSongs.length + '곡을 내 구글 시트에서 불러왔어요.';
@@ -200,10 +195,10 @@
         64,
         '교본 24쪽 · 2,3번줄 연습',
         [
-          '[G] B3 B3 B3 - | 종 소 리 - (0시 0시 0시)',
-          '[G] B3 B3 B3 - | 울 려 라 - (0시 0시 0시)',
-          '[G] B3 D4 G3 A3 | 종 소 리 울 (0시 3레 0솔 2라)',
-          '[G] B3 - - - | 려 - - - (0시 4박)'
+          '[G] B3 B3 B3 - | 0시 0시 0시',
+          '[G] B3 B3 B3 - | 0시 0시 0시',
+          '[G] B3 D4 G3 A3 | 0시 3레 0솔 2라',
+          '[G] B3 - - - | 0시 4박 유지'
         ]
       );
       var tsv = header + '\n' + sample1;

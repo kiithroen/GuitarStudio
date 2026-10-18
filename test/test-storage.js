@@ -74,21 +74,44 @@ async function createPending(storage, opens, method, arg){
 }
 
 async function main(){
-  const beforeRequire = ['openDB', 'dbGetAllSongs', 'dbSaveSong', 'dbDeleteSong', 'ls'].map(key => Object.prototype.hasOwnProperty.call(global, key));
+  const beforeRequire = ['openDB', 'dbGetImageSongs', 'dbSaveImageSong', 'dbDeleteImageSong', 'ls'].map(key => Object.prototype.hasOwnProperty.call(global, key));
   delete require.cache[require.resolve('../src/storage.js')];
   require('../src/storage.js');
-  for (const key of ['openDB', 'dbGetAllSongs', 'dbSaveSong', 'dbDeleteSong', 'ls']){
-    assert.strictEqual(Object.prototype.hasOwnProperty.call(global, key), beforeRequire[['openDB', 'dbGetAllSongs', 'dbSaveSong', 'dbDeleteSong', 'ls'].indexOf(key)], 'CommonJS must not add ' + key + ' to Node globalThis');
+  for (const key of ['openDB', 'dbGetImageSongs', 'dbSaveImageSong', 'dbDeleteImageSong', 'ls']){
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(global, key), beforeRequire[['openDB', 'dbGetImageSongs', 'dbSaveImageSong', 'dbDeleteImageSong', 'ls'].indexOf(key)], 'CommonJS must not add ' + key + ' to Node globalThis');
   }
   delete require.cache[require.resolve('../src/storage.js')];
-  for (const [method, arg] of [['dbSaveSong', { id: 'x' }], ['dbDeleteSong', 'x'], ['dbGetAllSongs', undefined]]){
+  for (const [method, arg] of [['dbSaveImageSong', { id: 'x', type: 'image' }], ['dbDeleteImageSong', 'x'], ['dbGetImageSongs', undefined]]){
     const { storage, opens } = setup();
     const { tx, promise } = await createPending(storage, opens, method, arg);
-    tx.request.result = method === 'dbGetAllSongs' ? [{ id: 'x' }] : undefined;
+    tx.request.result = method === 'dbGetImageSongs' ? [{ id: 'x', type: 'image' }] : undefined;
     tx.request.onsuccess({ target: tx.request });
     tx.oncomplete({ target: tx });
     const done = await settle(promise, 'resolve');
-    if (method === 'dbGetAllSongs') assert.deepStrictEqual(done.value, [{ id: 'x' }]);
+    if (method === 'dbGetImageSongs') assert.deepStrictEqual(done.value, [{ id: 'x', type: 'image' }]);
+  }
+
+  {
+    const { storage, opens } = setup();
+    await assert.rejects(storage.dbSaveImageSong({ id: 'structured', type: 'structured' }), /Only image scores can be saved/);
+    assert.strictEqual(opens.length, 0, 'non-image save is rejected before opening IndexedDB');
+  }
+  {
+    const { storage, opens } = setup();
+    const db = makeDB();
+    const promise = storage.dbGetImageSongs();
+    succeedOpen(opens[0], db);
+    await nextTurn();
+    const tx = db.transactionCalls[0];
+    tx.request.result = [
+      { id: 'image', type: 'image', imageDataUrl: 'data:image/png;base64,AA==', pdfPages: ['data:image/png;base64,AA==', 'data:image/png;base64,AQ=='], curPageIdx: 1, systems: [{ bars: [{ chord: 'Am', note: 'E4', memo: 'keep', w: 1 }] }] },
+      { id: 'legacy-structured', type: 'structured', measures: [] },
+      { id: 'unknown', type: 'text' }, null
+    ];
+    tx.request.onsuccess({ target: tx.request });
+    tx.oncomplete({ target: tx });
+    const result = await promise;
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(result)), [{ id: 'image', type: 'image', imageDataUrl: 'data:image/png;base64,AA==', pdfPages: ['data:image/png;base64,AA==', 'data:image/png;base64,AQ=='], curPageIdx: 1, systems: [{ bars: [{ chord: 'Am', note: 'E4', memo: 'keep', w: 1 }] }] }], 'mixed records expose only images and preserve PDF pages and bar metadata');
   }
 
   for (const event of ['request-error', 'transaction-error', 'abort', 'success-then-abort', 'sync-transaction', 'sync-store']){
@@ -96,7 +119,7 @@ async function main(){
     const db = makeDB();
     if (event === 'sync-transaction') db.transaction = function(){ throw new Error('transaction threw'); };
     if (event === 'sync-store') db.transaction = function(){ return { objectStore(){ throw new Error('store threw'); } }; };
-    const promise = storage.dbSaveSong({ id: 'x' });
+    const promise = storage.dbSaveImageSong({ id: 'x', type: 'image' });
     promise.catch(function(){});
     succeedOpen(opens[0], db);
     await nextTurn();
@@ -160,7 +183,7 @@ async function main(){
     succeedOpen(opens[1], db2);
     assert.strictEqual(await second, db2);
   }
-  console.log('test-storage: 13 scenarios passed');
+  console.log('test-storage: 15 scenarios passed');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

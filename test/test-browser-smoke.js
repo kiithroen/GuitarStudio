@@ -499,8 +499,9 @@ async function testCaptureRemovalAndAudioOffset(client) {
 
 async function importLegacyBackup(client) {
   await client.evaluate(`(function(){
-    var song = buildStructuredSong({ id:'browser-legacy-backup-song', title:'Legacy backup song', badge:'Custom', capo:3, bpm:84, beats:4, lines:['[C] C4 - - -'] });
-    var backup = { version:1, exportedAt:'2026-10-19T00:00:00.000Z', customSongs:[song], history:[{ sentinel:'old-backup-score' }], calib:{ lat:0.123, calibrated:true }, appState:{ bpm:84, audioOffsetMs:180, micScoring:true, micDeviceId:'removed-device', guideSound:true } };
+    var textSong = buildStructuredSong({ id:'browser-legacy-backup-text', title:'Legacy text song', badge:'Custom', capo:3, bpm:84, beats:4, lines:['[C] C4 - - -'] });
+    var imageSong = { id:'browser-legacy-backup-image', title:'Legacy image song', type:'image', imageDataUrl:'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=', pdfPages:['data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='], curPageIdx:0, systems:[{ x:0.1,y:0.1,w:0.8,h:0.2,bars:[{ chord:'C',note:'C4',memo:'legacy image',w:1 }] }] };
+    var backup = { version:1, exportedAt:'2026-10-19T00:00:00.000Z', customSongs:[textSong,imageSong], history:[{ sentinel:'old-backup-score' }], calib:{ lat:0.123, calibrated:true }, appState:{ bpm:84, audioOffsetMs:180, micScoring:true, micDeviceId:'removed-device', guideSound:true } };
     var file = new File([JSON.stringify(backup)], 'legacy-backup.json', { type:'application/json' });
     var transfer = new DataTransfer(); transfer.items.add(file);
     var input = document.getElementById('importFileInput'); input.files = transfer.files;
@@ -508,9 +509,15 @@ async function importLegacyBackup(client) {
     return true;
   })()`);
 }
-
 async function testBackupExport(client) {
   const result = await client.evaluate(`(async function(){
+    var db = await openDB();
+    await new Promise(function(resolve,reject){
+      var tx = db.transaction('songs', 'readwrite');
+      tx.objectStore('songs').put({ id:'browser-hidden-legacy-text', title:'legacy text', type:'structured', measures:[] });
+      tx.oncomplete = resolve; tx.onerror = tx.onabort = function(){ reject(tx.error || new Error('fixture seed failed')); };
+    });
+    await dbSaveImageSong({ id:'browser-backup-image', title:'backup image', type:'image', imageDataUrl:'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=', pdfPages:['data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='], curPageIdx:0, systems:[] });
     var original = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
     var captured = null;
     var timeoutId = null;
@@ -523,7 +530,8 @@ async function testBackupExport(client) {
       await Promise.race([blobCreated, blobTimeout]);
       var payload = JSON.parse(await captured.text());
       return { keys:Object.keys(payload).sort(), version:payload.version, exportedAt:payload.exportedAt,
-        appStateKeys:Object.keys(payload.appState || {}), songs:Array.isArray(payload.customSongs) };
+        appStateKeys:Object.keys(payload.appState || {}), songs:Array.isArray(payload.customSongs), songTypes:(payload.customSongs || []).map(function(song){return song.type;}),
+        hasImage:(payload.customSongs || []).some(function(song){return song.id==='browser-backup-image';}), hasLegacyText:(payload.customSongs || []).some(function(song){return song.id==='browser-hidden-legacy-text';}) };
     } finally {
       if (timeoutId !== null) clearTimeout(timeoutId);
       if (original) Object.defineProperty(URL, 'createObjectURL', original);
@@ -534,8 +542,11 @@ async function testBackupExport(client) {
   assert.equal(result.version, 1, 'backup format version remains 1');
   assert.ok(result.exportedAt, 'backup export retains its exportedAt timestamp');
   assert.equal(result.songs, true, 'backup export retains customSongs');
+  assert.ok(result.songTypes.length >= 1 && result.songTypes.every(type => type === 'image'), 'backup export includes only image records from mixed IndexedDB');
+  assert.equal(result.hasImage, true, 'backup export includes image and PDF metadata records');
+  assert.equal(result.hasLegacyText, false, 'backup export omits legacy structured IndexedDB rows');
   assert.ok(!result.appStateKeys.includes('micScoring') && !result.appStateKeys.includes('micDeviceId'), 'removed microphone settings are not re-exported');
-  process.stdout.write('Checks: legacy-compatible backup export shape 5\n');
+  process.stdout.write('Checks: legacy-compatible backup export shape 8\n');
 }
 
 async function testSubdividedGuide(client) {
@@ -772,33 +783,6 @@ async function testSubdividedGuide(client) {
       updateActiveCursor(0, 3, false);
       check(document.getElementById('guideLhTxt').textContent.indexOf('3줄 0 + 2줄 1번') >= 0 && document.getElementById('guideRhTxt').textContent === '-', 'pair fretboard guide shows each explicit LH component and no RH estimate');
 
-      openConverterEditorModal({ title:'explicit LH editor', beats:4, rawText:explicitHandText });
-      var explicitEditorCells = Array.prototype.slice.call(document.querySelectorAll('#veBarsGrid .ve-cell')).slice(0, 4).map(function(cell){ return cell.querySelector('b').textContent; });
-      check(explicitEditorCells.join(',') === '1도,4레,0미,0솔+1도', 'visual editor displays source LH digits only for explicit notes');
-      document.getElementById('padModeStringBtn').click();
-      var padButtonText = document.querySelector('#notePadRows .np-btn b').textContent;
-      check(padButtonText === '미4', 'note pad labels show pitch and octave without inferred LH digits');
-      document.getElementById('nsTitle').value = 'Explicit LH round trip';
-      document.getElementById('saveNewSongBtn').click();
-      for (var waitIndex = 0; waitIndex < 50 && !window.curSong.title.includes('Explicit LH round trip'); waitIndex++){
-        await new Promise(function(resolve){ original.setTimeout.call(window, resolve, 20); });
-      }
-      check(window.curSong.title === 'Explicit LH round trip', 'explicit LH score saves through the editor flow');
-      document.getElementById('editStructuredBtn').click();
-      var firstEditorCell = document.querySelector('#veBarsGrid .ve-cell');
-      firstEditorCell.click();
-      document.getElementById('veApoyandoBtn').click();
-      document.getElementById('saveNewSongBtn').click();
-      var secondSaveButton = document.getElementById('saveNewSongBtn');
-      for (var saveWaitIndex = 0; saveWaitIndex < 50 && secondSaveButton.disabled; saveWaitIndex++){
-        await new Promise(function(resolve){ original.setTimeout.call(window, resolve, 20); });
-      }
-      check(!secondSaveButton.disabled, 'edited explicit LH score completes its second save');
-      document.getElementById('editStructuredBtn').click();
-      var reopenedText = document.getElementById('nsMeasuresTxt').value;
-      check(reopenedText.indexOf('!1C4') >= 0 && reopenedText.indexOf('4D4@2') >= 0 && reopenedText.indexOf('0E4') >= 0 && reopenedText.indexOf('0G3@3+1C4@2') >= 0, 'edited score reopens with explicit LH prefixes, including default-position fingers, intact');
-      document.getElementById('closeNewSongBtn').click();
-
       window.curSong = sourceSong;
       renderSong();
       updateActiveCursor(0, 1, false);
@@ -808,15 +792,6 @@ async function testSubdividedGuide(client) {
       renderSong();
       var pairCard = document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="1"]');
       check(pairCard.querySelector('.b-ko-main').textContent === '솔·도' && pairCard.querySelector('.b-note-sub').textContent === 'G3+C4', 'beat card shows both pair solfege and octave names');
-      openConverterEditorModal({ title:'pair editor', beats:3, rawText:sourceText });
-      var editorPairCell = document.querySelectorAll('#veBarsGrid .ve-cell')[1];
-      check(editorPairCell.textContent.indexOf('솔+도') >= 0 && editorPairCell.textContent.indexOf('p솔') < 0, 'visual editor shows both pair notes without a bass prefix');
-      var editorChordSelect = document.querySelector('#veBarsGrid .ve-chord-sel');
-      editorChordSelect.value = 'G';
-      editorChordSelect.dispatchEvent(new Event('change', { bubbles:true }));
-      var generatedEditorText = document.getElementById('nsMeasuresTxt').value;
-      check(generatedEditorText.indexOf('솔+도') >= 0 && generatedEditorText.indexOf('p솔') < 0, 'generated editor lyrics list every chord note without a bass prefix');
-      document.getElementById('closeNewSongBtn').click();
       emitted = [];
       window.actx.currentTime = 12;
       updateActiveCursor(0, 1, true);
@@ -859,78 +834,64 @@ async function testSubdividedGuide(client) {
 
 async function testStorageFailureRecovery(client) {
   const result = await client.evaluate(`(async function(){
-    var originalSaveSong = window.dbSaveSong;
-    var originalDeleteSong = window.dbDeleteSong;
-    var originalSong = window.curSong;
-    var originalCustomSongs = window.customSongs.slice();
-    var assertions = [];
-    function check(ok, message){ if (!ok) throw new Error(message); assertions.push(message); }
-    try {
-      var openSheet = document.getElementById('openSheetSyncBtn');
-      openSheet.click();
-      check(!document.getElementById('sheetSyncModal').hidden, 'sheet sync modal opens through module wiring');
-      document.getElementById('closeSheetSyncBtn').click();
-      check(document.getElementById('sheetSyncModal').hidden, 'sheet sync modal closes through module wiring');
-
-      window.openConverterEditorModal({ title: 'browser storage failure', beats: 4, rawText: '[C] C4 - - -' });
-      document.getElementById('nsTitle').value = 'browser storage failure';
-      window.dbSaveSong = function(){ return Promise.reject(new Error('Injected storage failure')); };
-      await document.getElementById('saveNewSongBtn').click();
-      for (var failureWait = 0; failureWait < 100 && document.getElementById('saveNewSongBtn').disabled; failureWait++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
-      check(!document.getElementById('newSongModal').hidden, 'failed save keeps editor modal open');
-      check(!document.getElementById('storageStatus').hidden && document.getElementById('storageStatus').textContent.length > 0, 'failed save displays storage guidance');
-      check(document.getElementById('ocrStatusTxt').textContent.indexOf('저장하지 못했어요') >= 0, 'failed save displays guidance inside the editor');
-      check(!document.getElementById('saveNewSongBtn').disabled, 'failed save restores button enabled state');
-      check(window.curSong.id === originalSong.id, 'failed save preserves selected song');
-      check(window.customSongs.length === originalCustomSongs.length, 'failed save preserves custom song list');
-      window.dbSaveSong = originalSaveSong;
-      await document.getElementById('saveNewSongBtn').click();
-      for (var retryWait = 0; retryWait < 100 && !document.getElementById('newSongModal').hidden; retryWait++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
-      check(document.getElementById('newSongModal').hidden, 'retry success closes editor modal');
-      check(window.customSongs.some(function(song){ return song.title === 'browser storage failure'; }), 'retry success adds the custom song');
-      check((await dbGetAllSongs()).some(function(song){ return song.title === 'browser storage failure'; }), 'retry success persists the custom song in IndexedDB');
-      check(document.getElementById('storageStatus').hidden, 'retry success clears storage guidance');
-      check(document.getElementById('ocrStatusTxt').textContent === '', 'retry success clears editor guidance');
-      return assertions;
-    } finally {
-      window.dbSaveSong = originalSaveSong;
-      window.dbDeleteSong = originalDeleteSong;
-      window.curSong = originalSong;
-      if (document.getElementById('newSongModal') && !document.getElementById('newSongModal').hidden) document.getElementById('closeNewSongBtn').click();
-    }
+    var openSheet = document.getElementById('openSheetSyncBtn');
+    openSheet.click();
+    var opened = !document.getElementById('sheetSyncModal').hidden;
+    document.getElementById('closeSheetSyncBtn').click();
+    var closed = document.getElementById('sheetSyncModal').hidden;
+    var song = imageSongs[0];
+    if (!song) throw new Error('expected image uploaded in prior lifecycle test');
+    var oldSave = window.dbSaveImageSong;
+    var originalChord = song.systems[0].bars[0].chord;
+    changeSongById(song.id);
+    window.selectedImgBar = { sysIdx:0, barIdx:0, globalIdx:0 };
+    document.getElementById('editBarMetaBtn').click();
+    document.getElementById('beChord').value = 'G';
+    window.dbSaveImageSong = function(){ return Promise.reject(new Error('Injected image storage failure')); };
+    document.getElementById('saveBarEditBtn').click();
+    await new Promise(function(resolve){ setTimeout(resolve, 30); });
+    var failedPreserves = song.systems[0].bars[0].chord === originalChord && !document.getElementById('barEditModal').hidden && !document.getElementById('storageStatus').hidden;
+    window.dbSaveImageSong = oldSave;
+    document.getElementById('saveBarEditBtn').click();
+    for (var i=0; i<100 && song.systems[0].bars[0].chord !== 'G'; i++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
+    var retrySaved = song.systems[0].bars[0].chord === 'G' && document.getElementById('barEditModal').hidden;
+    changeSongById(song.id);
+    window.confirm = function(){ return true; };
+    document.getElementById('deleteSongBtn').click();
+    for (var deleteWait=0; deleteWait<100 && imageSongs.some(function(item){ return item.id === song.id; }); deleteWait++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
+    var deleted = !imageSongs.some(function(item){ return item.id === song.id; });
+    window.dbSaveImageSong = oldSave;
+    return { opened:opened, closed:closed, failedPreserves:failedPreserves, retrySaved:retrySaved, deleted:deleted };
   })()`);
-  assert.ok(Array.isArray(result) && result.length >= 11, 'storage failure recovery and sheet module wiring pass');
-  process.stdout.write('Checks: storage recovery and sheet wiring ' + result.length + '\n');
+  assert.deepEqual(result, { opened:true, closed:true, failedPreserves:true, retrySaved:true, deleted:true }, 'image save failure preserves edits for retry, delete works, and Sheets modal wiring remains live');
+  process.stdout.write('Checks: image storage recovery, delete, and sheet wiring 5\n');
 }
-
 async function testInvalidStructuredPersistence(client) {
   const result = await client.evaluate(`(async function(){
     var originalSong = window.curSong;
     var originalSongs = window.allSongs.slice();
-    var originalCustomSongs = window.customSongs.slice();
-    var originalSave = window.dbSaveSong;
     var originalState = { bpm: appState.bpm, loopStart: appState.loopStart, loopEnd: appState.loopEnd };
     var originalPlaying = window.isPlaying;
     var originalSession = window.playSession;
+    var oldSave = window.dbSaveImageSong;
     var writes = [];
     try {
-      var invalid = { id:'browser-invalid-personal', title:'Invalid personal', type:'structured', beats:4, measures:parseScore('[C] C4', 4).measures };
-      window.customSongs.push(invalid);
+      var invalid = { id:'browser-invalid-readonly', title:'Invalid read-only', type:'structured', beats:4, measures:parseScore('[C] C4', 4).measures, fromSheet:true };
+      var sourceToken = invalid.measures[0].beats[0].tok;
       window.allSongs.push(invalid);
-      window.dbSaveSong = function(song){ writes.push(song.id); return Promise.resolve(true); };
+      window.dbSaveImageSong = function(song){ writes.push(song.id); return Promise.resolve(true); };
       changeSongById(invalid.id);
       await startPractice();
-      var invalidPlaybackBlocked = window.isPlaying === false && window.playSession == null && /재생할 수 없는 악보/.test(document.getElementById('phaseTxt').textContent);
+      var blocked = window.isPlaying === false && window.playSession == null && /재생할 수 없는 악보/.test(document.getElementById('phaseTxt').textContent);
       saveAppState();
       appState.bpm = 88;
       saveAppState();
       window.isPlaying = true;
       window.playSession = {};
       stopPractice();
-      return { writes:writes.slice(), source:invalid.measures[0].beats[0].tok, invalidPlaybackBlocked:invalidPlaybackBlocked, appStateSaved:JSON.parse(localStorage.getItem('gs.state')).bpm === 88, songMetadataUntouched:invalid.lastBpm === undefined && invalid.lastPracticedAt === undefined };
+      return { writes:writes, blocked:blocked, textMetadata:JSON.parse(localStorage.getItem('gs.state')).bpm === 88, sourcePreserved:invalid.measures[0].beats[0].tok === sourceToken };
     } finally {
-      window.dbSaveSong = originalSave;
-      window.customSongs.splice(0, window.customSongs.length, ...originalCustomSongs);
+      window.dbSaveImageSong = oldSave;
       window.allSongs = originalSongs;
       window.curSong = originalSong;
       Object.keys(originalState).forEach(function(key){ appState[key] = originalState[key]; });
@@ -939,15 +900,17 @@ async function testInvalidStructuredPersistence(client) {
       renderSong();
     }
   })()`);
-  assert.deepEqual(result.writes, [], 'invalid personal score selection, app-state save, BPM change, and stop do not overwrite IndexedDB');
-  assert.equal(result.source, 'C4', 'invalid personal score source remains unchanged');
-  assert.equal(result.invalidPlaybackBlocked, true, 'invalid structured score cannot start playback and reports its location');
-  assert.equal(result.appStateSaved, true, 'app settings still save while invalid song persistence is skipped');
-  assert.equal(result.songMetadataUntouched, true, 'invalid song metadata is not mutated during app-state save');
-  process.stdout.write('Checks: invalid structured persistence guard 5\n');
+  assert.deepEqual(result.writes, [], 'invalid read-only text selection and practice settings never write IndexedDB');
+  assert.equal(result.blocked, true, 'invalid read-only score playback remains blocked');
+  assert.equal(result.textMetadata, true, 'app settings remain in local storage');
+  assert.equal(result.sourcePreserved, true, 'invalid read-only score source remains unchanged');
+  process.stdout.write('Checks: invalid read-only playback guard 4\n');
 }
-
 async function main() {
+  const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
+  assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js'], 'app classic scripts keep the required order');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=image-library-1')), 'all app scripts use the image-library revision');
   const browserBin = findBrowserBinary();
   if (!browserBin) {
     process.stdout.write('SKIP: No Chrome or Edge binary found for browser test\n');
@@ -1045,6 +1008,19 @@ async function main() {
 
     const bassButtonAbsent = await cdp.evaluate('document.getElementById("toggleAutoBassBtn") === null');
     assert.equal(bassButtonAbsent, true, 'automatic bass accompaniment toggle is removed');
+    const fretboardPreview = await cdp.evaluate(`(function(){
+      var originalPlay = window.playGuitarNote;
+      var beforeSong = curSong.id;
+      var beforeToken = curSong.measures && curSong.measures[0] && curSong.measures[0].beats[0] && curSong.measures[0].beats[0].tok;
+      var calls = 0;
+      window.playGuitarNote = function(){ calls++; };
+      var target = document.querySelector('#fretboard .fb-open[data-str="1"]') || document.querySelector('#fretboard .fb-cell[data-str="1"][data-fret="1"]');
+      if (target) target.click();
+      window.playGuitarNote = originalPlay;
+      var afterToken = curSong.measures && curSong.measures[0] && curSong.measures[0].beats[0] && curSong.measures[0].beats[0].tok;
+      return { calls:calls, sameSong:curSong.id===beforeSong, sameToken:beforeToken===afterToken };
+    })()`);
+    assert.deepEqual(fretboardPreview, { calls:1, sameSong:true, sameToken:true }, 'fretboard click previews a note without creating or changing a score');
     process.stdout.write('Browser checkpoint: boot and initial DOM passed\n');
 
     const canonicalTsv = await cdp.evaluate(`window.formatSongToSheetTsv('slash lyric', 4, 90, 'badge', [
@@ -1058,125 +1034,114 @@ async function main() {
     assert.ok(canonicalColumns[4].includes('| "너 / 나"'), 'slash lyric is JSON quoted and preserved');
     assert.ok(canonicalColumns[4].includes('"https://example.test/a|b"'), 'URL and pipe lyric characters are preserved');
 
-    const notationUi = await cdp.evaluate(`(function(){
-      var textarea = document.getElementById('nsMeasuresTxt');
-      var status = document.getElementById('scoreValidationStatus');
-      var raw = '[C] C4 D4 E4 F4 G4 | "overflow"';
-      openConverterEditorModal({ title: 'overflow', beats: 4, rawText: raw });
-      var preserved = textarea.value === raw && document.getElementById('veBarsGrid').children.length === 0;
-      var overflowDiagnostic = status.textContent;
-      var beatSelect = document.getElementById('nsBeats');
-      beatSelect.value = '6';
-      beatSelect.dispatchEvent(new Event('change', { bubbles: true }));
-      var underfillPreserved = textarea.value === raw && veState.beats === 6 && veState.bars.length === 0 && /박/.test(status.textContent);
-      var matchingRaw = '[C] C4 D4 E4 F4 G4 A4 | "matching"';
-      textarea.value = matchingRaw;
-      textarea.dispatchEvent(new Event('input', { bubbles: true }));
-      var beatRecovery = textarea.value === matchingRaw && veState.bars.length === 1 && veState.bars[0].notes.length === 6;
-      openConverterEditorModal({ title: 'invalid save', beats: 4, rawText: raw });
-      var before = customSongs.length;
-      document.getElementById('saveNewSongBtn').click();
-      var invalidSaveBlocked = customSongs.length === before && textarea.value === raw;
-      document.getElementById('closeNewSongBtn').click();
-      var invalidInputs = ['[C] - C4 r r', '[C] C4', '[C] C4 . r r'];
-      var originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
-      var originalPrompt = window.prompt;
-      var clipboardCalls = 0;
-      var promptCalls = 0;
-      var invalidExportsBlocked = false;
-      try {
-        Object.defineProperty(navigator, 'clipboard', { configurable:true, value:{ writeText:function(){ clipboardCalls++; return Promise.resolve(); } } });
-        window.prompt = function(){ promptCalls++; };
-        invalidExportsBlocked = invalidInputs.every(function(sourceText){
-          openConverterEditorModal({ title:'invalid export', beats:4, rawText:sourceText });
-          var countBefore = customSongs.length;
-          var validation = validateScore(sourceText, 4);
-          document.getElementById('saveNewSongBtn').click();
-          document.getElementById('copyVeRowTsvBtn').click();
-          var blocked = validation.errors.length > 0 && customSongs.length === countBefore && textarea.value === sourceText;
-          document.getElementById('closeNewSongBtn').click();
-          return blocked;
-        });
-      } finally {
-        if (originalClipboardDescriptor) Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor);
-        else delete navigator.clipboard;
-        window.prompt = originalPrompt;
-      }
-      invalidExportsBlocked = invalidExportsBlocked && clipboardCalls === 0 && promptCalls === 0;
+    const literalTextSafety = await cdp.evaluate(`(function(){
       var originalSong = curSong;
-      var specialLyric = 'slash // pipe | quote " and /';
-      var source = buildStructuredSong({ id:'browser-lyric-roundtrip', title:'lyric', beats:4, lines:['[C] C4 - - -'] });
-      source.measures[0].lyric = specialLyric;
-      curSong = source;
-      document.getElementById('editStructuredBtn').click();
-      var lyricRoundTrip = decodeMeasureLine(document.getElementById('nsMeasuresTxt').value).lyric === specialLyric;
-      document.getElementById('closeNewSongBtn').click();
-      curSong = originalSong;
-      return { preserved:preserved, overflowDiagnostic:overflowDiagnostic, underfillPreserved:underfillPreserved, beatRecovery:beatRecovery, invalidSaveBlocked:invalidSaveBlocked, invalidExportsBlocked:invalidExportsBlocked, lyricRoundTrip:lyricRoundTrip };
+      var originalView = appState.scoreView;
+      window.__gsInjected = 0;
+      var fixture = buildStructuredSong({ id:'readonly-literal-fixture', title:'Read only literal fixture', badge:'Sheet', beats:4, lines:['[C] C4 - - - | "<img/src=x/onerror=window.__gsInjected=1>"'] });
+      fixture.fromSheet = true;
+      curSong = fixture;
+      function inspect(view){ appState.scoreView = view; renderSong(); return { literal:document.getElementById('measuresGrid').textContent.includes('<img/src=x/onerror=window.__gsInjected=1>'), images:document.querySelectorAll('#measuresGrid img').length, injected:window.__gsInjected }; }
+      var tab = inspect('tab');
+      var card = inspect('card');
+      curSong = originalSong; appState.scoreView = originalView; renderSong();
+      return { tab:tab, card:card };
     })()`);
-    assert.equal(notationUi.preserved, true, 'overflow input remains intact and is not projected');
-    assert.match(notationUi.overflowDiagnostic, /5박/, 'overflow input reports its excess beat');
-    assert.equal(notationUi.underfillPreserved, true, 'changing meter preserves the source and does not fill missing slots');
-    assert.equal(notationUi.beatRecovery, true, 'a complete six-slot source safely restores projection');
-    assert.equal(notationUi.invalidSaveBlocked, true, 'invalid score cannot be saved');
-    assert.equal(notationUi.invalidExportsBlocked, true, 'orphan hold, missing slots, and ambiguous dot cannot be saved or exported as TSV');
-    assert.equal(notationUi.lyricRoundTrip, true, 'structured edit opening preserves JSON lyric delimiters');
-    process.stdout.write('Browser checkpoint: notation UI passed\n');
+    assert.deepEqual(literalTextSafety, { tab:{ literal:true, images:0, injected:0 }, card:{ literal:true, images:0, injected:0 } }, 'read-only TAB and card score rendering keeps markup literal without DOM injection');
 
-    const imageUi = await cdp.evaluate(`(async function(){
+    const removedTextUi = await cdp.evaluate(`({
+      editorApi:typeof window.openConverterEditorModal,
+      editorInit:typeof window.initEditor,
+      promptApi:typeof window.buildAiPromptText,
+      textEditor:!!document.getElementById('newSongModal'),
+      imageConversion:!!document.getElementById('convertImgToScoreBtn'),
+      imageUpload:!!document.getElementById('uploadImgBtn'),
+      barEditor:!!document.getElementById('barEditModal')
+    })`);
+    assert.deepEqual(removedTextUi, { editorApi:'undefined', editorInit:'undefined', promptApi:'undefined', textEditor:false, imageConversion:false, imageUpload:true, barEditor:true }, 'text editor and AI prompt are absent while image bar editing remains');
+
+    const imageScanSafety = await cdp.evaluate(`(async function(){
       var savedSong = curSong;
-      var savedBpm = appState.bpm;
       var savedScanner = window.scanImageBarlines;
       var savedAlert = window.alert;
       var alerts = [];
-      var target = { id:'browser-image-convert', title:'Image source', type:'image', badge:'Source badge', beats:4, bpm:77, imageDataUrl:'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=', systems:[{x:0.1,y:0.1,w:0.8,h:0.3,bars:[{chord:'C',note:'C4',memo:'keep',w:1,custom:'keep'}]}] };
+      var target = { id:'browser-image-scan-safety', title:'Image scan safety', type:'image', badge:'Source badge', bpm:77, imageDataUrl:'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=', systems:[{x:0.1,y:0.1,w:0.8,h:0.3,bars:[{chord:'C',note:'C4',memo:'keep',w:1,custom:'keep'}]}] };
       try {
         window.alert = function(message){ alerts.push(String(message)); };
-        appState.bpm = 91;
-        curSong = target;
-        document.getElementById('convertImgToScoreBtn').click();
-        var defaultText = document.getElementById('nsMeasuresTxt').value;
-        var defaultOk = defaultText === '[-] r r r r';
-        var metadataOk = document.getElementById('nsBpm').value === '91' && veState.sourceBadge === 'Source badge' && veState.refImageDataUrl === target.imageDataUrl;
-        document.getElementById('closeNewSongBtn').click();
-
+        curSong = target; renderSong();
         var resolveScan;
         window.scanImageBarlines = function(){ return new Promise(function(resolve){ resolveScan = resolve; }); };
         document.getElementById('autoDetectBarsBtn').click();
         await new Promise(function(resolve){ setTimeout(resolve, 0); });
-        var switched = Object.assign({}, target, { id:'browser-image-switched', systems:[{x:0.2,y:0.2,w:0.5,h:0.2,bars:[]}] });
+        var switched = { id:'browser-image-scan-switched', title:'Switched', type:'image', imageDataUrl:target.imageDataUrl, systems:[{x:0.2,y:0.2,w:0.5,h:0.2,bars:[]}] };
         curSong = switched;
-        resolveScan([0.1, 0.3, 0.5]);
+        resolveScan([0.1,0.3,0.5]);
         await new Promise(function(resolve){ setTimeout(resolve, 20); });
         var staleIgnored = target.systems[0].bars.length === 1 && switched.systems[0].bars.length === 0;
-
-        curSong = target;
-        window.scanImageBarlines = function(){ return Promise.resolve([0.1, 0.3]); };
+        curSong = target; renderSong();
+        window.scanImageBarlines = function(){ return Promise.resolve([0.1,0.9]); };
         document.getElementById('autoDetectBarsBtn').click();
         await new Promise(function(resolve){ setTimeout(resolve, 20); });
         var metadataPreserved = target.systems[0].bars.length === 1 && target.systems[0].bars[0].chord === 'C' && target.systems[0].bars[0].note === 'C4' && target.systems[0].bars[0].memo === 'keep' && target.systems[0].bars[0].custom === 'keep';
-        window.scanImageBarlines = function(){ return Promise.resolve([0.1, 0.2, 0.3]); };
+        window.scanImageBarlines = function(){ return Promise.resolve([0.1,0.3,0.6,0.9]); };
         document.getElementById('autoDetectBarsBtn').click();
         await new Promise(function(resolve){ setTimeout(resolve, 20); });
         var countMismatchProtected = target.systems[0].bars.length === 1 && target.systems[0].bars[0].chord === 'C' && target.systems[0].bars[0].note === 'C4' && target.systems[0].bars[0].memo === 'keep' && target.systems[0].bars[0].custom === 'keep';
-        return {defaultOk:defaultOk, metadataOk:metadataOk, staleIgnored:staleIgnored, metadataPreserved:metadataPreserved, countMismatchProtected:countMismatchProtected, sameCountAlert:alerts.some(function(message){ return message.indexOf('마디 영역만 추정') >= 0; }), mismatchAlert:alerts.some(function(message){ return message.indexOf('기존 음표·코드') >= 0; })};
-      } finally {
-        curSong = savedSong;
-        appState.bpm = savedBpm;
-        window.scanImageBarlines = savedScanner;
-        window.alert = savedAlert;
-        renderSong();
-      }
+        return { staleIgnored:staleIgnored, metadataPreserved:metadataPreserved, countMismatchProtected:countMismatchProtected,
+          sameCountAlert:alerts.some(function(message){return message.indexOf('마디 영역만 추정')>=0;}), mismatchAlert:alerts.some(function(message){return message.indexOf('기존 음표·코드')>=0;}) };
+      } finally { curSong = savedSong; window.scanImageBarlines = savedScanner; window.alert = savedAlert; renderSong(); }
     })()`);
-    assert.equal(imageUi.defaultOk, true, 'image conversion begins with the blank score template');
-    assert.equal(imageUi.metadataOk, true, 'image conversion carries selected BPM, source badge, and image');
-    assert.equal(imageUi.staleIgnored, true, 'late image analysis cannot mutate after song switch');
-    assert.equal(imageUi.metadataPreserved, true, 'auto-detection preserves existing bar metadata');
-    assert.equal(imageUi.countMismatchProtected, true, 'bar-count change refuses to overwrite manual bar metadata');
-    assert.equal(imageUi.sameCountAlert, true, 'same-count auto-detection reports successful boundary estimation');
-    assert.equal(imageUi.mismatchAlert, true, 'manual-data bar-count mismatch reports that it was preserved');
-    process.stdout.write('Browser checkpoint: image conversion safeguards passed\n');
+    assert.deepEqual(imageScanSafety, { staleIgnored:true, metadataPreserved:true, countMismatchProtected:true, sameCountAlert:true, mismatchAlert:true }, 'image barline scan ignores stale results and preserves manual metadata');
 
+    const imageLifecycle = await cdp.evaluate(`(async function(){
+      var oldPrompt = window.prompt;
+      var oldSave = window.dbSaveImageSong;
+      var uploadInput = document.getElementById('fileInput');
+      var bytes = Uint8Array.from(atob('R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='), function(c){ return c.charCodeAt(0); });
+      var file = new File([bytes], 'browser-score.gif', { type:'image/gif' });
+      var transfer = new DataTransfer(); transfer.items.add(file);
+      window.prompt = function(){ return 'Browser uploaded image'; };
+      uploadInput.files = transfer.files;
+      uploadInput.dispatchEvent(new Event('change', { bubbles:true }));
+      for (var i=0; i<100 && !imageSongs.some(function(song){ return song.title === 'Browser uploaded image'; }); i++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
+      var song = imageSongs.find(function(item){ return item.title === 'Browser uploaded image'; });
+      if (!song) throw new Error('image upload did not persist');
+      changeSongById(song.id);
+      window.selectedImgBar = { sysIdx:0, barIdx:0, globalIdx:0 };
+      document.getElementById('editBarMetaBtn').click();
+      document.getElementById('beChord').value = 'Am';
+      document.getElementById('beNote').value = 'E4';
+      document.getElementById('beMemo').value = 'browser memo';
+      document.getElementById('saveBarEditBtn').click();
+      for (var barWait=0; barWait<100 && song.systems[0].bars[0].chord !== 'Am'; barWait++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
+      var barSaved = song.systems[0].bars[0].chord === 'Am' && song.systems[0].bars[0].note === 'E4' && song.systems[0].bars[0].memo === 'browser memo';
+
+      window.prompt = function(){ return 'Browser renamed image'; };
+      document.getElementById('renameSongBtn').click();
+      for (var renameWait=0; renameWait<100 && song.title !== 'Browser renamed image'; renameWait++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
+      var renamed = song.title === 'Browser renamed image';
+
+      song.pdfPages = [song.imageDataUrl, 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='];
+      song.curPageIdx = 0;
+      await oldSave(song);
+      renderImageScore();
+      var finishSave;
+      window.dbSaveImageSong = function(candidate){ return new Promise(function(resolve,reject){ finishSave = function(){ oldSave(candidate).then(resolve,reject); }; }); };
+      var pagePending = document.getElementById('pdfNextBtn').click();
+      for (var wait=0; wait<50 && !finishSave; wait++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
+      if (!finishSave) throw new Error('PDF page save did not start');
+      changeSongById('builtin-lv1-butterfly');
+      var selectedId = curSong.id;
+      finishSave();
+      for (var pageWait=0; pageWait<100 && song.curPageIdx !== 1; pageWait++) await new Promise(function(resolve){ setTimeout(resolve, 10); });
+      await pagePending;
+      var storedPage = (await dbGetImageSongs()).find(function(item){ return item.id === song.id; });
+      var pageRaceSafe = song.curPageIdx === 1 && song.imageDataUrl === song.pdfPages[1] && storedPage && storedPage.curPageIdx === 1 && curSong.id === selectedId;
+      window.dbSaveImageSong = oldSave;
+      return { uploaded:!!song, barSaved:barSaved, renamed:renamed, pageRaceSafe:pageRaceSafe };
+    })()`);
+    assert.deepEqual(imageLifecycle, { uploaded:true, barSaved:true, renamed:true, pageRaceSafe:true }, 'image upload, bar metadata, rename, and PDF page race pass');
+    process.stdout.write('Browser checkpoint: read-only text scores and image library lifecycle passed\n');
     await testPracticeSessionLifecycle(cdp);
     process.stdout.write('Browser checkpoint: practice session passed\n');
     await testCaptureRemovalAndAudioOffset(cdp);
@@ -1186,13 +1151,20 @@ async function main() {
     await testInvalidStructuredPersistence(cdp);
 
     await importLegacyBackup(cdp);
-    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.customSongs.some(function(song){ return song.id === "browser-legacy-backup-song"; }) && appState.audioOffsetMs === 180', 8000);
-    const legacyBackup = await cdp.evaluate(`({ imported:customSongs.some(function(song){return song.id==='browser-legacy-backup-song';}),
-      offset:appState.audioOffsetMs, micScoring:Object.prototype.hasOwnProperty.call(appState,'micScoring'),
-      micDeviceId:Object.prototype.hasOwnProperty.call(appState,'micDeviceId'), captureAudit:window.__gsCaptureAudit,
-      savedState:JSON.parse(localStorage.getItem('gs.state')||'{}'),
-      rawHistory:localStorage.getItem('gs.history'), rawCalibration:localStorage.getItem('gs.calib') })`);
-    assert.equal(legacyBackup.imported, true, 'legacy backup import restores customSongs');
+    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.imageSongs.some(function(song){ return song.id === "browser-legacy-backup-image"; }) && appState.audioOffsetMs === 180', 8000);
+    const legacyBackup = await cdp.evaluate(`(async function(){
+      var db = await openDB();
+      var raw = await new Promise(function(resolve,reject){ var tx=db.transaction('songs','readonly'); var req=tx.objectStore('songs').getAll(); req.onsuccess=function(){resolve(req.result);}; req.onerror=function(){reject(req.error);}; });
+      return { importedImage:imageSongs.some(function(song){return song.id==='browser-legacy-backup-image';}),
+        importedText:allSongs.some(function(song){return song.id==='browser-legacy-backup-text';}), offset:appState.audioOffsetMs,
+        micScoring:Object.prototype.hasOwnProperty.call(appState,'micScoring'), micDeviceId:Object.prototype.hasOwnProperty.call(appState,'micDeviceId'),
+        captureAudit:window.__gsCaptureAudit, savedState:JSON.parse(localStorage.getItem('gs.state')||'{}'),
+        rawHistory:localStorage.getItem('gs.history'), rawCalibration:localStorage.getItem('gs.calib'),
+        legacyTextPreserved:raw.some(function(song){return song.id==='browser-hidden-legacy-text' && song.type==='structured';}),
+        importedTextNotWritten:!raw.some(function(song){return song.id==='browser-legacy-backup-text';}) };
+    })()`);
+    assert.equal(legacyBackup.importedImage, true, 'mixed legacy backup restores image scores');
+    assert.equal(legacyBackup.importedText, false, 'mixed legacy backup ignores structured text scores');
     assert.equal(legacyBackup.offset, 180, 'legacy backup import preserves the manual output offset');
     assert.equal(legacyBackup.micScoring, false, 'legacy backup import does not restore removed scoring state');
     assert.equal(legacyBackup.micDeviceId, false, 'legacy backup import does not restore removed device selection');
@@ -1200,30 +1172,14 @@ async function main() {
     assert.equal(Object.prototype.hasOwnProperty.call(legacyBackup.savedState, 'micDeviceId'), false, 'cleaned appState does not persist the removed device selection');
     assert.equal(legacyBackup.rawHistory, 'legacy-history-marker', 'legacy raw history storage is left untouched');
     assert.equal(legacyBackup.rawCalibration, 'legacy-calibration-marker', 'legacy raw calibration storage is left untouched');
+    assert.equal(legacyBackup.legacyTextPreserved, true, 'legacy structured IndexedDB rows remain physically untouched');
+    assert.equal(legacyBackup.importedTextNotWritten, true, 'mixed backup import does not write structured text rows');
     assert.deepEqual(legacyBackup.captureAudit, { capture:0, devices:0, worklet:0 }, 'capture APIs and AudioWorklet remain unused through backup import and reload');
-    process.stdout.write('Browser checkpoint: legacy backup import cleanup and capture-free reload passed\n');
+    process.stdout.write('Browser checkpoint: image-only backup import cleanup and capture-free reload passed\n');
 
-    // Test editor modal interaction in browser
-    await cdp.evaluate('window.openConverterEditorModal({ title: "browser-test-song", beats: 4, rawText: "[C] C4 -/D4 - - | browser test" })');
-    const modalVisible = await cdp.evaluate('!document.getElementById("newSongModal").hidden');
-    assert.equal(modalVisible, true, 'editor modal opened');
-
-    const editorBars = await cdp.evaluate('document.getElementById("veBarsGrid").children.length');
-    assert.ok(editorBars > 0, 'editor bars grid rendered in DOM');
-
-    // Close modal
-    await cdp.evaluate('document.getElementById("closeNewSongBtn").click()');
-    const modalHidden = await cdp.evaluate('document.getElementById("newSongModal").hidden');
-    assert.equal(modalHidden, true, 'editor modal closed cleanly');
-
-    await cdp.evaluate('window.__gsInjected = 0; window.openConverterEditorModal({ beats: 4, rawText: "[-] <img/src=x/onerror=window.__gsInjected=1>/C4 - - -" });');
-    const editorTokenSafety = await cdp.evaluate('({ images: document.querySelectorAll("#veBarsGrid img").length, raw: document.getElementById("nsMeasuresTxt").value, diagnostic: document.getElementById("scoreValidationStatus").textContent, injected: window.__gsInjected })');
-    assert.equal(editorTokenSafety.images, 0, 'invalid editor token does not create preview image elements');
-    assert.ok(editorTokenSafety.raw.includes('<img'), 'invalid editor source remains literal in the textarea');
-    assert.match(editorTokenSafety.diagnostic, /알 수 없는 음표 토큰/, 'invalid editor token receives a validation error');
-    assert.notEqual(editorTokenSafety.injected, 1, 'editor token cannot execute injected markup');
-    await cdp.evaluate('document.getElementById("closeNewSongBtn").click()');
-
+    const removedApis = await cdp.evaluate(`({ editor:typeof window.openConverterEditorModal, initEditor:typeof window.initEditor, aiPrompt:typeof window.buildAiPromptText,
+      editorDom:!!document.getElementById('newSongModal'), converter:!!document.getElementById('convertImgToScoreBtn') })`);
+    assert.deepEqual(removedApis, { editor:'undefined', initEditor:'undefined', aiPrompt:'undefined', editorDom:false, converter:false }, 'removed text editor and image-to-text UI stay absent after import/reload');
     // 1. Verify TAB mode does not render Korean solfege and renders English pitch names (CDE)
     const tabSolfegeCount = await cdp.evaluate('document.querySelectorAll(".tab-cell-solfege").length');
     assert.equal(tabSolfegeCount, 0, "tab mode does not render Korean solfege elements");
@@ -1246,7 +1202,7 @@ async function main() {
     assert.equal(ytLinkText.includes("[Lv"), false, "youtube search query excludes [Lv..] tags");
 
     await cdp.send('Page.reload', { ignoreCache: true });
-    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.BUILTIN_SONGS.length === 14 && window.customSongs.some(function(song){ return song.title === "browser storage failure"; })', 8000);
+    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.BUILTIN_SONGS.length === 14 && window.imageSongs.some(function(song){ return song.id === "browser-backup-image"; })', 8000);
     const screenshotDir = path.join(__dirname, '..', 'test-artifacts');
     let screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review.png');
     if (fs.existsSync(screenshotTarget)) screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review-' + Date.now() + '.png');
@@ -1274,7 +1230,7 @@ async function main() {
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');
 
-    process.stdout.write('Result: browser Headless Chrome smoke passed (clean boot, songs loaded, DOM rendered, modal interaction, 0 console errors)\n');
+    process.stdout.write('Result: browser Headless Chrome smoke passed (clean boot, songs loaded, read-only rendering, image library, Web Audio, 0 console errors)\n');
   } finally {
     if (cdp) cdp.close();
     chromeProc.kill();

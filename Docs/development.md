@@ -13,20 +13,19 @@ Guitar Studio는 번들러와 트랜스파일러가 없는 정적 Vanilla JS 앱
 | `src/score.js` | 화면의 박자·음가 표시 |
 | `src/audio.js` | KS/classic 합성기와 재생음 수명 관리 |
 | `src/guide.js` | 구조화 악보의 재생 이벤트 생성·예약 |
-| `src/ai-prompt.js` | 외부 변환용 프롬프트 작성 |
 | `src/image-analysis.js` | 이미지의 마디 경계 후보 분석 |
-| `src/fretboard.js` | 지판과 코드 카드 표시·입력 |
-| `src/editor.js` | 악보 편집 UI와 TSV 복사 |
+| `src/fretboard.js` | 지판 미리듣기와 코드 카드 표시 |
+| `src/score-ui.js` | 악보 보기 전환과 `formatSongToSheetTsv` 공통 함수 |
 | `src/sheets.js` | Google Sheets 읽기 연동 |
 | `src/app.js` | 앱 상태, UI 부팅과 기능 연결 |
 
-`index.html`의 실제 순서는 `storage.js`, `notation.js`, `rhythm.js`, `parser.js`, `score.js`, `audio.js`, `guide.js`, `ai-prompt.js`, `image-analysis.js`, `fretboard.js`, `editor.js`, `sheets.js`, `app.js`야. `app.js` 부팅 때 앱 모듈과 상태가 준비된 후 `initFretboard()`, `initEditor()`, `initSheetSync()`가 UI 이벤트를 등록해.
+`index.html`의 실제 순서는 `storage.js`, `notation.js`, `rhythm.js`, `parser.js`, `score.js`, `audio.js`, `guide.js`, `image-analysis.js`, `fretboard.js`, `score-ui.js`, `sheets.js`, `app.js`야. 앱은 내장곡과 Google Sheets의 읽기 전용 텍스트 악보를 표시하고 이미지·PDF 악보를 편집해. `app.js` 부팅 때 앱 모듈과 상태가 준비된 후 `initFretboard()`, `initScoreUi()`, `initSheetSync()`가 UI 이벤트를 등록해. 로컬 스크립트는 같은 v 쿼리 버전을 사용해. DOM 구조나 스크립트 구성이 바뀌면 버전을 함께 갱신해 캐시된 이전 코드와 섞이지 않게 해.
 
 ## 데이터 흐름과 유지보수 계약
 
 `parseScore`와 `GuitarNotation.validateScore`가 텍스트 악보의 파싱·검증 기준이야. `GuitarRhythm.annotate`는 파싱된 마디에 칸 길이, 시작 위치와 유지 체인을 계산하고 `resolveHold`는 유지의 원음 참조를 돌려줘. `guide.js`는 이 결과로 재생 이벤트를 만들고 `audio.js`에 예약해. 사용 문법은 [악보 입력 형식](score-format.md), 세부 오디오 계약은 [리듬·오디오 계약](beginner-rhythm.md)을 따라.
 
-`tok`와 원본 입력을 기준으로 파생 필드를 다시 계산해. IndexedDB에는 개인 악보가, localStorage에는 앱 설정과 곡별 최근 연습 BPM·구간 이어가기 상태가 저장돼. Google Sheets 연동은 읽기 전용이야. `soundingMidi`는 `src/parser.js`의 공통 카포 실음 변환 함수야.
+`tok`와 원본 입력을 기준으로 파생 필드를 다시 계산해. IndexedDB에는 이미지·PDF 악보가, localStorage에는 앱 설정과 곡별 최근 연습 BPM·구간 이어가기 상태가 저장돼. 이전 구조화 악보 데이터베이스 레코드는 자동 삭제하지 않고 앱에서 노출하지 않아. 백업 포맷은 버전 1의 `customSongs` 키를 유지하며, 이 키는 이미지 전용 데이터를 담아. Google Sheets 연동은 읽기 전용이야. `soundingMidi`는 `src/parser.js`의 공통 카포 실음 변환 함수야.
 
 마디 메모와 가사는 같은 `lyric` 필드로 파싱하고 JSON 문자열로 직렬화해.
 

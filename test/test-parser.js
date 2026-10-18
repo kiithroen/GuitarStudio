@@ -116,22 +116,19 @@ test('explicit, inferred, and absent chords retain their modes', function(){
   assert.equal(none.needsInfer, false);
 });
 
-test('editor projection matches the common parser and retains original beat tokens', function(){
+test('generic score parsing retains original beat tokens through serialization', function(){
   const raw = '[C] 4D4 -/!3G4 0E2+4B4 - | line a/b';
-  const bars = parser.parseTextToVeBars(raw, 4);
-  const measure = parse(raw, 4).measures[0];
-  assert.deepEqual(bars[0].notes, measure.beats.map(b => b.tok));
-  assert.equal(bars[0].notes[0], '4D4');
-  assert.equal(bars[0].notes[1], '-/!3G4');
-  assert.equal(bars[0].notes[2], '0E2+4B4');
-  assert.equal(bars[0].lyric, 'line a/b');
-  assert.equal(parser.parseTextToVeBars('', 4)[0].notes[0], 'C4');
-  const preserved = parser.parseTextToVeBars('[C] 1E4@2 !C4 ~D4 R . -', 6)[0].notes;
-  assert.deepEqual(preserved, ['1E4@2', '!C4', '~D4', 'R', '.', '-']);
-  const paren = parser.parseTextToVeBars('[C] (C4 D4) C4,D4 - -', 4)[0].notes;
-  assert.deepEqual(paren.slice(0, 2), ['(C4 D4)', 'C4,D4']);
-  const roundTrip = parse('[C] ' + paren.join(' '), 4).measures[0];
-  assert.deepEqual(roundTrip.beats.slice(0, 2).map(beat => beat.subNotes.map(note => note.midi)), [[60, 62], [60, 62]]);
+  const parsed = parse(raw, 4);
+  const measure = parsed.measures[0];
+  assert.deepEqual(measure.beats.slice(0, 3).map(b => b.tok), ['4D4', '-/!3G4', '0E2+4B4']);
+  assert.equal(measure.lyric, 'line a/b');
+  const roundTripText = parser.serializeScoreMeasures(parsed.measures, '\n');
+  const roundTrip = parse(roundTripText, 4);
+  assert.equal(roundTrip.errors.length, 0);
+  assert.deepEqual(roundTrip.measures[0].beats.map(b => b.tok), measure.beats.map(b => b.tok));
+  assert.equal(roundTrip.measures[0].lyric, 'line a/b');
+  assert.equal(roundTrip.measures[0].beats[2].chordNotes.length, 2);
+  assert.deepEqual(roundTrip.measures[0].beats[2].chordNotes.map(note => note.midi), [40, 71]);
 });
 
 test('capo offsets clamp to twelve and title/badge metadata takes precedence', function(){

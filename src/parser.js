@@ -584,17 +584,6 @@
     };
   }
 
-  function projectScoreToEditorBars(raw, beats){
-    var lines = splitScoreMeasures(raw);
-    if (!lines.length) lines = ['[C] C4 - - - |'];
-    var score = parseScore(lines, beats);
-    return score.measures.map(function(measure){
-      return { chord: measure.chord || '-', autoChord: !!measure.autoChord,
-        notes: measure.beats.map(function(beat){ return beat.tok || '-'; }), lyric: measure.lyric };
-    });
-  }
-
-  function parseTextToVeBars(raw, beats){ return projectScoreToEditorBars(raw, beats); }
 
   var api = {
     NOTE_EN: NOTE_EN, NOTE_KO: NOTE_KO, STRINGS: STRINGS, FIRST_POS: FIRST_POS,
@@ -607,8 +596,7 @@
     decodeMeasureLine: GuitarNotation.decodeMeasureLine, serializeScoreMeasures: serializeScoreMeasures, validateScore: validateScore,
     getSongCapo: getSongCapo, soundingMidi: soundingMidi, splitScoreMeasures: splitScoreMeasures,
     getExplicitBass: getExplicitBass,
-    parseScore: parseScore, buildStructuredSong: buildStructuredSong,
-    projectScoreToEditorBars: projectScoreToEditorBars, parseTextToVeBars: parseTextToVeBars
+    parseScore: parseScore, buildStructuredSong: buildStructuredSong
   };
   if (typeof window !== 'undefined'){
     Object.keys(api).forEach(function(key){ window[key] = api[key]; });

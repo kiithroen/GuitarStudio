@@ -214,7 +214,7 @@ async function testUnavailableIndexedDbBoot(html){
   unavailableSandbox.window = unavailableSandbox;
   unavailableSandbox.self = unavailableSandbox;
   const unavailableContext = vm.createContext(unavailableSandbox);
-  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
+  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1].split('?')[0]);
   for (const script of scripts){
     vm.runInContext(fs.readFileSync(path.join(root, script), 'utf8'), unavailableContext, { filename: script });
   }
@@ -236,206 +236,116 @@ async function testUnavailableIndexedDbBoot(html){
 async function main(){
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   document.querySelector('#storageStatus');
-  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
-  assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/ai-prompt.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/editor.js', 'src/sheets.js', 'src/app.js']);
+  const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
+  const scripts = scriptTags.map(src => src.split('?')[0]);
+  assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/app.js']);
+  assert.ok(scriptTags.every(src => src.endsWith('?v=image-library-1')), 'every app script uses the shared image-library revision');
+  assert.doesNotMatch(html, /newTextSongBtn|editStructuredBtn|convertImgToScoreBtn|ocrModalFileInput|refImgDetails|refScoreImg|newSongModal|veBarsGrid/);
   for (const script of scripts){
     const source = fs.readFileSync(path.join(root, script), 'utf8');
     vm.runInContext(source, context, { filename: script });
   }
   await waitFor(() => context.allSongs.length === 14 && context.curSong != null);
   await testUnavailableIndexedDbBoot(html);
-  assert.equal(context.allSongs.length, 14, 'songs.json loads through the app boot path');
-  assert.equal(context.curSong.id, 'builtin-lv1-butterfly', 'saved/default song is selected');
-  assert.match(html, /<p id="storageStatus" class="hint" role="status" aria-live="polite" hidden><\/p>/, 'storage failure status is accessible');
-  assert.equal(elements.get('fretboard').children.length, 7, 'fretboard initializes six strings and one header');
+  assert.equal(context.allSongs.length, 14, 'songs.json loads through app boot');
+  assert.equal(context.curSong.id, 'builtin-lv1-butterfly', 'saved/default built-in song is selected');
+  assert.equal(elements.get('fretboard').children.length, 7, 'fretboard renders six strings and one header');
   assert.ok(elements.get('measuresGrid').children.length > 0, 'selected score renders measures');
-  assert.equal(typeof context.parseScore, 'function', 'parser API is available to app scripts');
-  assert.equal(typeof context.getExplicitBass, 'function', 'parser exports the common explicit bass-note helper');
-  const explicitBassBeat = context.parseScore('[C] G3@3+C4@2 - -', 3).measures[0].beats[0];
-  const explicitBass = context.getExplicitBass(explicitBassBeat);
-  assert.equal(explicitBass.midi, 55, 'common bass helper returns only the explicitly written lower note');
-  assert.equal(context.getExplicitBass(context.parseScore('[C] C4 - -', 3).measures[0].beats[0]), null, 'common bass helper does not infer a note from a chord');
+  assert.equal(typeof context.parseScore, 'function', 'parser API remains available to built-in and sheet scores');
+  assert.equal(typeof context.initEditor, 'undefined', 'removed editor bootstrap is absent');
+  assert.equal(typeof context.openConverterEditorModal, 'undefined', 'removed text editor API is absent');
+  assert.equal(typeof context.buildAiPromptText, 'undefined', 'removed AI prompt API is absent');
 
-  await elements.get('copyAiPromptBtn').dispatch('click');
-  assert.match(copiedText, /E4@1\/F4@1/, 'AI prompt example uses a slash without spaces inside a beat');
-  assert.doesNotMatch(copiedText, /E4@1 \/ F4@1/, 'AI prompt has no spaced slash subdivision examples');
-  assert.match(copiedText, /마디는 줄바꿈 또는 `\/\/`로만 나눠/, 'AI prompt explains the canonical bar separator');
-  const promptExample = context.parseScore('[C] E4@1/F4@1 r r r | ""\n[C] C4@2 - - - | ""', 4);
-  assert.equal(promptExample.measures.length, 2, 'the prompt sample parses as two measures');
-  assert.equal(promptExample.measures[0].beats[0].subNotes.length, 2, 'the prompt subdivision sample parses as two subnotes');
+  const scoreMode = elements.get('scoreModeSeg');
+  assert.equal(scoreMode.hidden, false, 'score view controls are available for structured songs');
+  await elements.get('scoreModeCardBtn').click();
+  assert.equal(context.appState.scoreView, 'card', 'card view updates saved app settings');
+  await elements.get('scoreModeTabBtn').click();
+  assert.equal(context.appState.scoreView, 'tab', 'TAB view remains selectable');
 
-  context.openConverterEditorModal({ title: 'smoke', beats: 4, capo: 4, ytUrl: 'https://youtu.be/original', rawText: '[C] C4 -/D4 - - | a/b' });
-  assert.equal(context.veState.bars.length, 1, 'editor projection makes one bar');
-  assert.equal(context.veState.bars[0].notes[1], '-/D4', 'editor keeps the subdivision token');
-  assert.equal(context.veState.sourceCapo, 4, 'modal stores the source effective capo');
-  assert.equal(context.veState.sourceYtUrl, 'https://youtu.be/original', 'modal stores the source YouTube URL');
-  assert.equal(context.editorCapo(), 4, 'editor preview uses the stored source capo');
-  elements.get('nsTitle').value = 'smoke (Capo 2)';
-  assert.equal(context.editorCapo(), 2, 'title capo overrides the source capo in editor preview');
-  elements.get('nsTitle').value = 'smoke saved';
-  assert.equal(elements.get('newSongModal').hidden, false, 'editor modal opens');
-  assert.ok(elements.get('veBarsGrid').children.length > 0, 'editor grid renders');
-
-  await elements.get('saveNewSongBtn').dispatch('click');
-  assert.ok(context.customSongs.some(song => song.title === 'smoke saved'), 'save handler builds and stores a structured song');
-  assert.ok(songStore.has(context.customSongs.find(song => song.title === 'smoke saved').id), 'save handler reaches IndexedDB');
-
-  const invalidRaw = '[C] C4 D4 E4 F4 G4 | "oversized"';
-  context.openConverterEditorModal({ title: 'oversized', beats: 4, rawText: invalidRaw });
-  assert.equal(elements.get('nsMeasuresTxt').value, invalidRaw, 'overflow score source stays intact');
-  assert.equal(elements.get('veBarsGrid').children.length, 0, 'overflow score is not truncated into the visual editor');
-  assert.match(elements.get('scoreValidationStatus').textContent, /1마디 5박/, 'overflow score reports the extra beat');
-  await elements.get('saveNewSongBtn').dispatch('click');
-  assert.equal(context.customSongs.some(song => song.title === 'oversized'), false, 'invalid score cannot be saved');
-
-  const beforeFailedSave = context.customSongs.slice();
-  const selectedBeforeFailedSave = context.curSong.id;
-  const originalDbSaveSong = context.dbSaveSong;
-  context.openConverterEditorModal({ title: 'save retry', beats: 4, rawText: '[C] C4 - - -' });
-  elements.get('nsTitle').value = 'save retry';
-  context.dbSaveSong = async () => { throw new Error('Injected save failure'); };
-  await elements.get('saveNewSongBtn').dispatch('click');
-  assert.equal(elements.get('newSongModal').hidden, false, 'failed save keeps editor modal open');
-  assert.equal(elements.get('saveNewSongBtn').disabled, false, 'failed save re-enables save button');
-  assert.equal(elements.get('storageStatus').hidden, false, 'failed save announces storage error');
-  assert.ok(elements.get('ocrStatusTxt').textContent.includes('저장하지 못했어요'), 'failed save also shows storage guidance inside the editor');
-  assert.deepEqual(context.customSongs.map(song => song.id), beforeFailedSave.map(song => song.id), 'failed save leaves custom songs unchanged');
-  assert.equal(context.curSong.id, selectedBeforeFailedSave, 'failed save preserves selected song');
-  context.dbSaveSong = originalDbSaveSong;
-  await elements.get('saveNewSongBtn').dispatch('click');
-  const retriedSong = context.customSongs.find(song => song.title === 'save retry');
-  assert.ok(retriedSong && songStore.has(retriedSong.id), 'retry persists the song after transaction completion');
-  assert.ok((await context.dbGetAllSongs()).some(song => song.id === retriedSong.id && song.title === 'save retry'), 'completed write is visible to a later read transaction');
-  assert.equal(elements.get('newSongModal').hidden, true, 'successful retry closes the editor modal');
-  assert.equal(elements.get('storageStatus').hidden, true, 'successful retry clears storage error status');
-  assert.equal(elements.get('ocrStatusTxt').textContent, '', 'successful retry clears editor storage guidance');
-
-  await elements.get('openSheetSyncBtn').click();
-  assert.equal(elements.get('sheetSyncModal').hidden, false, 'sheet sync opens through extracted module');
-  await elements.get('copySheetTemplateBtn').click();
-  await new Promise(resolve => setTimeout(resolve, 0));
-  assert.match(copiedText, /곡 제목\t박자\tBPM/, 'sheet template copy is wired through extracted module');
-  await elements.get('closeSheetSyncBtn').click();
-  assert.equal(elements.get('sheetSyncModal').hidden, true, 'sheet sync closes through extracted module');
-
-  const existing = context.buildStructuredSong({ id: 'custom-edit-source', title: 'Existing song', badge: 'Custom', capo: 4, ytUrl: 'https://youtu.be/keep-me', bpm: 72, beats: 4, lines: ['[C] C4 - - -'] });
-  existing.measures[0].lyric = 'slash // pipe | quote " and /';
-  context.customSongs.push(existing);
-  context.curSong = existing;
-  await elements.get('editStructuredBtn').dispatch('click');
-  assert.equal(context.decodeMeasureLine(elements.get('nsMeasuresTxt').value).lyric, existing.measures[0].lyric, 'structured edit opening round trips JSON-quoted lyric delimiters');
-  assert.equal(context.veState.sourceCapo, 4, 'editing a custom song captures its effective capo');
-  assert.equal(context.veState.sourceYtUrl, 'https://youtu.be/keep-me', 'editing a custom song captures its YouTube URL');
-  assert.equal(context.editorCapo(), 4, 'custom song edit preview uses source capo');
-  elements.get('nsTitle').value = 'Existing song updated';
-  await elements.get('saveNewSongBtn').dispatch('click');
-  const edited = context.customSongs.find(song => song.id === existing.id);
-  assert.equal(edited.capo, 4, 'editing preserves custom song capo');
-  assert.equal(edited.ytUrl, 'https://youtu.be/keep-me', 'editing preserves custom song YouTube URL');
-  assert.equal(songStore.get(existing.id).capo, 4, 'IndexedDB record preserves custom song capo');
-  assert.equal(songStore.get(existing.id).ytUrl, 'https://youtu.be/keep-me', 'IndexedDB record preserves custom song YouTube URL');
-  assert.equal(edited.fromSheet, undefined, 'custom edit does not copy source-only metadata');
-  assert.equal(edited.builtin, false, 'custom edit stays a custom song');
-
-  const originalTitle = edited.title;
-  const originalSelected = context.curSong.id;
-  promptResponse = 'Existing song renamed';
-  const originalDbDeleteSong = context.dbDeleteSong;
-  context.dbSaveSong = async () => { throw new Error('Injected rename failure'); };
-  await elements.get('renameSongBtn').click();
-  promptResponse = '';
-  assert.equal(context.customSongs.find(song => song.id === existing.id).title, originalTitle, 'failed rename leaves custom song unchanged');
-  assert.equal(context.curSong.id, originalSelected, 'failed rename preserves selected song');
-  context.dbSaveSong = originalDbSaveSong;
-
-  let finishRename;
-  context.dbSaveSong = () => new Promise(resolve => { finishRename = resolve; });
-  promptResponse = 'Existing song renamed';
-  const pendingRename = elements.get('renameSongBtn').click();
-  await new Promise(resolve => setTimeout(resolve, 0));
-  context.changeSongById('builtin-lv1-butterfly');
-  finishRename();
-  await pendingRename;
-  promptResponse = '';
-  context.dbSaveSong = originalDbSaveSong;
-  assert.equal(context.curSong.id, 'builtin-lv1-butterfly', 'completed rename does not replace a song selected during the save');
-  assert.equal(context.customSongs.find(song => song.id === existing.id).title, 'Existing song renamed', 'completed rename updates its original song');
-
-  context.changeSongById(existing.id);
-  const selectedBeforeFailedDelete = context.curSong.id;
-  context.dbDeleteSong = async () => { throw new Error('Injected delete failure'); };
-  await elements.get('deleteSongBtn').click();
-  context.dbDeleteSong = originalDbDeleteSong;
-  assert.ok(context.customSongs.some(song => song.id === existing.id), 'failed delete leaves custom song in memory');
-  assert.equal(context.curSong.id, selectedBeforeFailedDelete, 'failed delete preserves selected song');
-
-  const imageSong = { id: 'image-bar-edit', title: 'Image bar edit', type: 'image', systems: [{ bars: [{ chord: 'C', note: 'C4', memo: 'old' }] }] };
+  const image = { id:'vm-image', title:'VM image', type:'image', imageDataUrl:'data:image/png;base64,AA==', pdfPages:['data:image/png;base64,AA==','data:image/png;base64,AQ=='], curPageIdx:0, systems:[{ x:0.1,y:0.1,w:0.8,h:0.2,bars:[{ chord:'C',note:'C4',memo:'old',w:1 }] }] };
+  const originalImageSave = context.dbSaveImageSong;
+  const originalImageDelete = context.dbDeleteImageSong;
+  context.imageSongs = [image];
+  context.allSongs.push(image);
+  context.curSong = image;
   const originalUpdateActiveCursor = context.updateActiveCursor;
   context.updateActiveCursor = function(){};
-  context.customSongs.push(imageSong);
-  context.allSongs.push(imageSong);
-  context.curSong = imageSong;
-  context.selectedImgBar = { sysIdx: 0, barIdx: 0, globalIdx: 0 };
+  context.selectedImgBar = { sysIdx:0, barIdx:0, globalIdx:0 };
   await elements.get('editBarMetaBtn').click();
-  assert.equal(elements.get('barEditModal').hidden, false, 'image bar edit modal opens');
-  elements.get('beChord').value = 'G';
-  elements.get('beNote').value = 'D4';
+  elements.get('beChord').value = 'Am';
+  elements.get('beNote').value = 'E4';
   elements.get('beMemo').value = 'new';
-  context.dbSaveSong = async () => { throw new Error('Injected image bar failure'); };
+  context.dbSaveImageSong = async () => { throw new Error('Injected image save failure'); };
   await elements.get('saveBarEditBtn').click();
-  assert.equal(elements.get('barEditModal').hidden, false, 'failed image bar save keeps modal open');
-  assert.equal(imageSong.systems[0].bars[0].chord, 'C', 'failed image bar save preserves original chord');
-  assert.equal(imageSong.systems[0].bars[0].memo, 'old', 'failed image bar save preserves original memo');
-  context.dbSaveSong = originalDbSaveSong;
+  assert.equal(elements.get('barEditModal').hidden, false, 'failed image metadata save leaves the edit modal open');
+  assert.equal(image.systems[0].bars[0].chord, 'C', 'failed image metadata save preserves the original bar');
+  context.dbSaveImageSong = originalImageSave;
   await elements.get('saveBarEditBtn').click();
-  assert.equal(imageSong.systems[0].bars[0].chord, 'G', 'successful image bar save updates existing object');
+  assert.equal(image.systems[0].bars[0].memo, 'new', 'retry persists and applies image bar metadata');
+
   elements.get('beMemo').value = 'race update';
   let finishBarSave;
-  context.dbSaveSong = () => new Promise(resolve => { finishBarSave = resolve; });
+  context.dbSaveImageSong = candidate => new Promise(resolve => { finishBarSave = () => originalImageSave(candidate).then(resolve); });
   const pendingBarSave = elements.get('saveBarEditBtn').click();
   await new Promise(resolve => setTimeout(resolve, 0));
   context.changeSongById('builtin-lv1-butterfly');
   finishBarSave();
   await pendingBarSave;
-  context.dbSaveSong = originalDbSaveSong;
-  assert.equal(context.curSong.id, 'builtin-lv1-butterfly', 'completed bar save does not replace a song selected during the save');
-  assert.equal(imageSong.systems[0].bars[0].memo, 'race update', 'completed bar save updates the originally edited image song');
+  assert.equal(context.curSong.id, 'builtin-lv1-butterfly', 'late image metadata save does not replace a newly selected score');
+  assert.equal(image.systems[0].bars[0].memo, 'race update', 'late image metadata save updates the originally edited image');
+
+  context.changeSongById(image.id);
+  let promptResponse = 'VM renamed image';
+  const oldPrompt = context.prompt;
+  context.prompt = () => promptResponse;
+  context.dbSaveImageSong = async () => { throw new Error('Injected image rename failure'); };
+  await elements.get('renameSongBtn').click();
+  assert.equal(image.title, 'VM image', 'failed image rename preserves its original title');
+  context.dbSaveImageSong = originalImageSave;
+  let finishRename;
+  context.dbSaveImageSong = candidate => new Promise(resolve => { finishRename = () => originalImageSave(candidate).then(resolve); });
+  const pendingRename = elements.get('renameSongBtn').click();
+  await new Promise(resolve => setTimeout(resolve, 0));
   context.changeSongById('builtin-lv1-butterfly');
-  context.changeSongById(imageSong.id);
-  assert.equal(context.curSong.systems[0].bars[0].memo, 'race update', 'image bar edits survive switching away and back');
+  finishRename();
+  await pendingRename;
+  assert.equal(context.curSong.id, 'builtin-lv1-butterfly', 'late rename does not switch away from a newly selected score');
+  assert.equal(image.title, 'VM renamed image', 'late rename updates its original image record');
+  context.dbSaveImageSong = originalImageSave;
+  context.prompt = oldPrompt;
+
+  context.changeSongById(image.id);
+  context.dbDeleteImageSong = async () => { throw new Error('Injected image delete failure'); };
+  await elements.get('deleteSongBtn').click();
+  assert.ok(context.imageSongs.some(song => song.id === image.id), 'failed image delete preserves the record');
+  context.dbDeleteImageSong = originalImageDelete;
+  await elements.get('deleteSongBtn').click();
+  assert.equal(context.imageSongs.some(song => song.id === image.id), false, 'successful image delete removes the record');
+  context.dbSaveImageSong = originalImageSave;
+  context.dbDeleteImageSong = originalImageDelete;
   context.updateActiveCursor = originalUpdateActiveCursor;
+  context.curSong = context.allSongs.find(song => song.id === 'builtin-lv1-butterfly');
+  await context.persistImageSong(image);
+  assert.ok(songStore.has(image.id), 'image score save reaches IndexedDB');
+  await assert.rejects(context.dbSaveImageSong({ id:'vm-text', type:'structured' }), /Only image scores can be saved/);
+  assert.equal(songStore.has('vm-text'), false, 'structured score is rejected without a database write');
+  context.imageSongs = [image];
+  context.allSongs.push(image);
+  context.curSong = context.allSongs.find(song => song.id === 'builtin-lv1-butterfly');
+  context.saveAppState();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(songStore.has('vm-image'), true, 'built-in practice settings do not remove or rewrite image records');
 
-  for (const source of [
-    { ...context.buildStructuredSong({ id: 'builtin-copy-source', title: 'Builtin source', badge: '', capo: 3, ytUrl: 'https://youtu.be/builtin', bpm: 64, beats: 4, lines: ['[G] G3 - - -'] }), builtin: true },
-    { ...context.buildStructuredSong({ id: 'sheet-copy-source', title: 'Sheet source', badge: '', capo: 5, ytUrl: 'https://youtu.be/sheet', bpm: 64, beats: 4, lines: ['[G] G3 - - -'] }), fromSheet: true }
-  ]){
-    context.curSong = source;
-    await elements.get('editStructuredBtn').dispatch('click');
-    assert.equal(context.veState.sourceCapo, source.capo, 'read-only source edit captures effective capo');
-    assert.equal(context.veState.sourceYtUrl, source.ytUrl, 'read-only source edit captures YouTube URL');
-    elements.get('nsTitle').value = source.title + ' (내 버전)';
-    await elements.get('saveNewSongBtn').dispatch('click');
-    const copy = context.customSongs.find(song => song.title === source.title + ' (내 버전)');
-    assert.ok(copy, 'read-only source saves as a new version');
-    assert.equal(copy.capo, source.capo, 'read-only source version preserves capo');
-    assert.equal(copy.ytUrl, source.ytUrl, 'read-only source version preserves YouTube URL');
-    assert.equal(copy.builtin, false, 'read-only source version is not marked builtin');
-    assert.equal(copy.fromSheet, undefined, 'read-only source version does not copy fromSheet flag');
-  }
+  await elements.get('openSheetSyncBtn').click();
+  assert.equal(elements.get('sheetSyncModal').hidden, false, 'Google Sheets modal opens');
+  await elements.get('copyCurSongTsvBtn').click();
+  assert.match(copiedText, /\t4\t/, 'selected built-in score copies through the read-only TSV path');
+  await elements.get('closeSheetSyncBtn').click();
 
-  context.openConverterEditorModal({ title: '', beats: 4 });
-  assert.equal(context.veState.sourceCapo, 0, 'new modal clears previous capo');
-  assert.equal(context.veState.sourceYtUrl, '', 'new modal clears previous YouTube URL');
-  assert.equal(context.editorCapo(), 0, 'new modal preview starts without a capo');
-
-  const htmlPayload = '<img/src=x/onerror=alert(1)>';
-  const unsafeRaw = '[-] ' + htmlPayload + '/C4 - - -';
-  context.openConverterEditorModal({ title: 'unsafe token', beats: 4, rawText: unsafeRaw });
-  assert.equal(elements.get('nsMeasuresTxt').value, unsafeRaw, 'invalid input remains untouched in the source textarea');
-  assert.equal(elements.get('veBarsGrid').children.length, 0, 'invalid input is not projected into a misleading visual preview');
-  assert.match(elements.get('scoreValidationStatus').textContent, /알 수 없는 음표 토큰/, 'invalid source text receives a validation diagnostic');
-
-  process.stdout.write('Result: app VM smoke passed (script loading, songs.json, fretboard, score render, editor projection/grid, save handler)\n');
+  const hasImageUi = html.includes('id="uploadImgBtn"') && html.includes('id="fileInput"') && html.includes('id="barEditModal"') && html.includes('id="renameSongBtn"') && html.includes('id="deleteSongBtn"');
+  assert.equal(hasImageUi, true, 'image/PDF upload, bar metadata, rename, and delete controls remain');
+  process.stdout.write('Result: app VM smoke passed (versioned script loading, read-only score flows, image-only persistence, fallback boot)\n');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

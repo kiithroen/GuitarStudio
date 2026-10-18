@@ -21,7 +21,6 @@
         req.onupgradeneeded = function(e){
           var db = e.target.result;
           if (!db.objectStoreNames.contains('songs')) db.createObjectStore('songs', { keyPath: 'id' });
-          if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv', { keyPath: 'k' });
         };
         req.onblocked = function(){
           if (settled) return;
@@ -92,13 +91,16 @@
     });
   }
 
-  function dbGetAllSongs(){
-    return runTransaction('songs', 'readonly', function(store){ return store.getAll(); }).then(function(result){ return result || []; });
+  function dbGetImageSongs(){
+    return runTransaction('songs', 'readonly', function(store){ return store.getAll(); }).then(function(result){
+      return (result || []).filter(function(song){ return song && song.type === 'image'; });
+    });
   }
-  function dbSaveSong(song){
+  function dbSaveImageSong(song){
+    if (!song || song.type !== 'image') return Promise.reject(new Error('Only image scores can be saved'));
     return runTransaction('songs', 'readwrite', function(store){ return store.put(song); });
   }
-  function dbDeleteSong(id){
+  function dbDeleteImageSong(id){
     return runTransaction('songs', 'readwrite', function(store){ return store.delete(id); });
   }
 
@@ -109,12 +111,12 @@
 
   if (typeof window !== 'undefined'){
     root.openDB = openDB;
-    root.dbGetAllSongs = dbGetAllSongs;
-    root.dbSaveSong = dbSaveSong;
-    root.dbDeleteSong = dbDeleteSong;
+    root.dbGetImageSongs = dbGetImageSongs;
+    root.dbSaveImageSong = dbSaveImageSong;
+    root.dbDeleteImageSong = dbDeleteImageSong;
     root.ls = ls;
   }
   if (typeof module !== 'undefined' && module.exports){
-    module.exports = { openDB: openDB, dbGetAllSongs: dbGetAllSongs, dbSaveSong: dbSaveSong, dbDeleteSong: dbDeleteSong, ls: ls };
+    module.exports = { openDB: openDB, dbGetImageSongs: dbGetImageSongs, dbSaveImageSong: dbSaveImageSong, dbDeleteImageSong: dbDeleteImageSong, ls: ls };
   }
 })(typeof window !== 'undefined' ? window : globalThis);
