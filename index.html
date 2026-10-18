@@ -3273,7 +3273,8 @@ registerProcessor('onset', OnsetProc);
       if (span === 1) return { isRest: false, svg: NOTE_DUR_SVGS.eighth, label: '8분', durName: '8분음표' };
       if (span === 2) return { isRest: false, svg: NOTE_DUR_SVGS.quarter, label: '4분', durName: '4분음표' };
       if (span === 3) return { isRest: false, svg: NOTE_DUR_SVGS.quarterDot, label: '점4분', durName: '점4분음표 (1박)' };
-      if (span >= 6) return { isRest: false, svg: NOTE_DUR_SVGS.halfDot, label: '점2분', durName: '점2분음표 (2박)' };
+      if (span === 4 || span === 5) return { isRest: false, svg: NOTE_DUR_SVGS.half, label: '2분', durName: '2분음표 (2박)' };
+      if (span >= 6) return { isRest: false, svg: NOTE_DUR_SVGS.halfDot, label: '점2분', durName: '점2분음표' };
       return { isRest: false, svg: '', label: span + '박', durName: span + '박' };
     }
     if (span === 1) return { isRest: false, svg: NOTE_DUR_SVGS.quarter, label: '4분', durName: '4분음표 (1박)' };
