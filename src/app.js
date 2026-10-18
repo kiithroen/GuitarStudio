@@ -43,6 +43,7 @@
     delete clean.micDeviceId;
     return clean;
   }
+  var CLICK_MODES = ['all', 'countin', 'off']; // 메트로놈 클릭: 'all' 카운트인+재생 내내 / 'countin' 시작 전 한 마디만 / 'off' 카운트인 없이 바로 시작
   var appState = stripRemovedAudioSettings(ls.get('gs.state', {
     lastSongId: 'builtin-lv1-butterfly',
     bpm: 64,
@@ -62,6 +63,7 @@
   if (typeof appState.bodyAmount !== 'number') appState.bodyAmount = 1.0; // 울림통 공명 세기 (0~2, 1이 기본)
   if (typeof appState.sympAmount !== 'number') appState.sympAmount = 1.0; // 공명현 세기 (0~2, 0이면 꺼짐)
   if (appState.scoreView !== 'card') appState.scoreView = 'tab'; // 악보 보기 모드: 'tab' 6현 타브(기본) / 'card' 박자 카드
+  if (CLICK_MODES.indexOf(appState.clickMode) < 0) appState.clickMode = 'all';
   appState.isCompactPractice = false;
 
 
@@ -1295,13 +1297,14 @@ function curCapo(){
       curBeatIdx = Math.max(0, Math.min(bpb - 1, curBeatIdx || 0));
     }
 
+    var countIn = appState.clickMode !== 'off';
     playSession = {
       startTime: actx.currentTime + 0.15,
-      measureStartTime: actx.currentTime + 0.15 + bpb * spb,
+      measureStartTime: actx.currentTime + 0.15 + (countIn ? bpb * spb : 0),
       nextBeatTime: actx.currentTime + 0.15,
       spb: spb,
       bpb: bpb,
-      inCountIn: true,
+      inCountIn: countIn,
       countInBeat: 0,
       mIdx: curMeasureIdx,
       bIdx: curBeatIdx,
@@ -1375,7 +1378,9 @@ function curCapo(){
     while (!s.endScheduled && s.nextBeatTime < now + 0.08){
       var t = s.nextBeatTime;
       if (s.inCountIn){
-        scheduleMetronomeClick(t, s.countInBeat === 0, s.bpb === 9 && s.countInBeat % 3 !== 0);
+        if (appState.clickMode !== 'off'){
+          scheduleMetronomeClick(t, s.countInBeat === 0, s.bpb === 9 && s.countInBeat % 3 !== 0);
+        }
         s.countInBeat++;
         s.nextBeatTime += s.spb;
         if (s.countInBeat >= s.bpb){
@@ -1385,7 +1390,9 @@ function curCapo(){
       } else {
         var isFirstBeat = s.bIdx === 0;
         var isTripletSub = (s.bpb === 9 && s.bIdx % 3 !== 0);
-        scheduleMetronomeClick(t, isFirstBeat, isTripletSub);
+        if (appState.clickMode === 'all'){
+          scheduleMetronomeClick(t, isFirstBeat, isTripletSub);
+        }
         var m = curSong.type === 'structured' ? curSong.measures[s.mIdx] : null;
 
         // 구조화 악보의 명시 리듬과 음표 길이를 공통 가이드 스케줄러로 처리
@@ -1528,6 +1535,7 @@ function curCapo(){
     }
     $('#beatsSelect').value = String(appState.beats);
     $('#volRange').value = Math.round(appState.vol * 100);
+    $('#clickModeSelect').value = appState.clickMode;
     $('#loopEnable').checked = appState.loopEnable;
     $('#speedTrainerChk').checked = appState.speedTrainer;
     $('#guideSoundBtn').setAttribute('aria-pressed', String(appState.guideSound));
@@ -1585,6 +1593,11 @@ function curCapo(){
 
   $('#volRange').addEventListener('input', function(e){
     appState.vol = Number(e.target.value) / 100;
+    saveAppState();
+  });
+
+  $('#clickModeSelect').addEventListener('change', function(e){
+    appState.clickMode = CLICK_MODES.indexOf(e.target.value) >= 0 ? e.target.value : 'all';
     saveAppState();
   });
 

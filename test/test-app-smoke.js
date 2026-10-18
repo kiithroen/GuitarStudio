@@ -262,7 +262,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-editor.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=temp-score-editor-1')), 'every app script uses the temporary score editor revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=click-mode-1')), 'every app script uses the click mode revision');
   for (const id of ['addBlankScoreBtn', 'blankScoreModal', 'undoScoreEditBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
     assert.match(html, new RegExp('id="' + id + '"'), 'temporary score UI includes #' + id);
   }
@@ -279,6 +279,7 @@ async function main(){
   assert.ok(elements.get('measuresGrid').children.length > 0, 'selected score renders measures');
   assert.equal(typeof context.parseScore, 'function', 'parser API remains available to built-in and sheet scores');
   assert.equal(typeof context.scoreEditorHooks, 'object', 'temporary score editor integration hooks are available');
+  assert.equal(context.appState.clickMode, 'all', 'click mode defaults to all on a clean boot');
   assert.equal(typeof context.initEditor, 'undefined', 'removed editor bootstrap is absent');
   assert.equal(typeof context.openConverterEditorModal, 'undefined', 'removed text editor API is absent');
   assert.equal(typeof context.buildAiPromptText, 'undefined', 'removed AI prompt API is absent');

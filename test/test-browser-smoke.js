@@ -855,7 +855,7 @@ async function testPracticeSessionLifecycle(client) {
       highlightFretboard: window.highlightFretboard,
       ensureAudioCtx: window.ensureAudioCtx,
       warmKsCache: window.warmKsCache,
-      state: { guideSound: appState.guideSound, loopEnable: appState.loopEnable, loopStart: appState.loopStart, loopEnd: appState.loopEnd, bpm: appState.bpm },
+      state: { guideSound: appState.guideSound, loopEnable: appState.loopEnable, loopStart: appState.loopStart, loopEnd: appState.loopEnd, bpm: appState.bpm, clickMode: appState.clickMode },
       isPlaying: window.isPlaying,
       playSession: window.playSession,
       song: window.curSong,
@@ -962,6 +962,44 @@ async function testPracticeSessionLifecycle(client) {
       var spaceStop = new KeyboardEvent('keydown', { key: ' ', code:'Space', bubbles: true, cancelable: true });
       window.dispatchEvent(spaceStop);
       check(window.isPlaying === false && window.playSession == null, 'Space keyboard shortcut stops practice');
+
+      var clickSelect = document.getElementById('clickModeSelect');
+      var clickOptionValues = Array.prototype.map.call(clickSelect.options, function(option){ return option.value; }).join(',');
+      check(clickOptionValues === 'all,countin,off', 'click mode select offers all, count-in only, and off in order');
+      check(clickSelect.value === appState.clickMode, 'click mode select shows the current click mode');
+      var originalClickMode = appState.clickMode;
+      clickSelect.value = 'countin';
+      clickSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      check(appState.clickMode === 'countin' && ls.get('gs.state', {}).clickMode === 'countin', 'click mode change updates app state and saved settings');
+      clickSelect.value = originalClickMode;
+      clickSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      check(appState.clickMode === originalClickMode && ls.get('gs.state', {}).clickMode === originalClickMode, 'click mode restore updates app state and saved settings');
+
+      appState.guideSound = false;
+      ['all', 'countin', 'off'].forEach(function(mode){
+        appState.clickMode = mode;
+        clicks = [];
+        window.actx = { currentTime: 0, outputLatency: 0.02, baseLatency: 0.01 };
+        startPractice();
+        var session = window.playSession;
+        check(session && session.inCountIn === (mode !== 'off'), 'click mode ' + mode + ': count-in is ' + (mode !== 'off' ? 'scheduled' : 'skipped'));
+        var countInTicks = mode === 'off' ? 0 : session.bpb;
+        var startTime = session.startTime;
+        if (mode === 'off') check(Math.abs(session.nextBeatTime - startTime) < 1e-9, 'click mode off: first playback beat is scheduled at the start time');
+        var executedTicks = 0;
+        for (var tickIdx = 0; tickIdx < countInTicks + session.bpb; tickIdx++){
+          if (session.endScheduled) break;
+          window.actx.currentTime = session.nextBeatTime - 0.01;
+          schedulerTick();
+          executedTicks++;
+          if (mode === 'off' && tickIdx === 0) check(session.inCountIn === false, 'click mode off: first tick plays a playback beat, not a count-in beat');
+        }
+        var playbackBeats = executedTicks - countInTicks;
+        var expectedClicks = mode === 'all' ? countInTicks + playbackBeats : (mode === 'countin' ? countInTicks : 0);
+        check(playbackBeats > 0, 'click mode ' + mode + ': playback beats were scheduled after the count-in');
+        check(clicks.length === expectedClicks, 'click mode ' + mode + ': click count matches the mode');
+        stopPractice();
+      });
       return assertions;
     } finally {
       window.setTimeout = original.setTimeout;
@@ -977,6 +1015,7 @@ async function testPracticeSessionLifecycle(client) {
       window.curSong = original.song;
       window.curMeasureIdx = original.measure;
       window.curBeatIdx = original.beat;
+      document.getElementById('clickModeSelect').value = appState.clickMode;
       syncCompactPlayButtons();
     }
   })()`);
@@ -1886,7 +1925,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=temp-score-editor-1')), 'all app scripts use the shared temporary score editor revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=click-mode-1')), 'all app scripts use the shared click mode revision');
   const htmlIds = ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'temporary score UI includes #'+id);});
   assert.doesNotMatch(fs.readFileSync(path.join(root,'index.html'),'utf8'),/\.beat-cell\.arp-(?:melody|sub)\b/,'obsolete articulation color rules are removed from the score stylesheet');

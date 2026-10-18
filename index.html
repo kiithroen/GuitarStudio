@@ -553,6 +553,13 @@ body.practice-compact .fretboard{
           <label class="ctrl-item" title="메트로놈 클릭 볼륨 (0으로 내리면 메트로놈 소리만 끄고 기타 소리만 감상할 수 있습니다)">클릭음
             <input type="range" id="volRange" min="0" max="100" step="5" value="55" style="width:68px">
           </label>
+          <label class="ctrl-item" title="메트로놈 클릭: 전부(카운트인과 재생 내내) / 카운트인만(시작 전 한 마디) / 끄기(카운트인 없이 바로 시작)">클릭 모드
+            <select id="clickModeSelect">
+              <option value="all">전부</option>
+              <option value="countin">카운트인만</option>
+              <option value="off">끄기</option>
+            </select>
+          </label>
         </div>
       </div>
 
@@ -886,19 +893,19 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=temp-score-editor-1"></script>
-<script src="src/notation.js?v=temp-score-editor-1"></script>
-<script src="src/rhythm.js?v=temp-score-editor-1"></script>
-<script src="src/parser.js?v=temp-score-editor-1"></script>
-<script src="src/score-drafts.js?v=temp-score-editor-1"></script>
-<script src="src/score.js?v=temp-score-editor-1"></script>
-<script src="src/audio.js?v=temp-score-editor-1"></script>
-<script src="src/guide.js?v=temp-score-editor-1"></script>
-<script src="src/image-analysis.js?v=temp-score-editor-1"></script>
-<script src="src/fretboard.js?v=temp-score-editor-1"></script>
-<script src="src/score-ui.js?v=temp-score-editor-1"></script>
-<script src="src/sheets.js?v=temp-score-editor-1"></script>
-<script src="src/score-editor.js?v=temp-score-editor-1"></script>
-<script src="src/app.js?v=temp-score-editor-1"></script>
+<script src="src/storage.js?v=click-mode-1"></script>
+<script src="src/notation.js?v=click-mode-1"></script>
+<script src="src/rhythm.js?v=click-mode-1"></script>
+<script src="src/parser.js?v=click-mode-1"></script>
+<script src="src/score-drafts.js?v=click-mode-1"></script>
+<script src="src/score.js?v=click-mode-1"></script>
+<script src="src/audio.js?v=click-mode-1"></script>
+<script src="src/guide.js?v=click-mode-1"></script>
+<script src="src/image-analysis.js?v=click-mode-1"></script>
+<script src="src/fretboard.js?v=click-mode-1"></script>
+<script src="src/score-ui.js?v=click-mode-1"></script>
+<script src="src/sheets.js?v=click-mode-1"></script>
+<script src="src/score-editor.js?v=click-mode-1"></script>
+<script src="src/app.js?v=click-mode-1"></script>
 </body>
 </html>
