@@ -14,7 +14,7 @@ function buildLines(recipe, midiBuffer) {
   const opt = recipe.options;
   const result = converter.convertMidi(converter.parseMidi(midiBuffer), {
     cells: opt.cells, pickup: opt.pickup, grace: opt.grace, transpose: opt.transpose,
-    trackTranspose: opt.trackTranspose || {}, lowestOnly: opt.lowestOnly || [], downbeatOnly: opt.downbeatOnly || [], edits: recipe.edits || []
+    trackTranspose: opt.trackTranspose || {}, lowestOnly: opt.lowestOnly || [], downbeatOnly: opt.downbeatOnly || [], measureRange: opt.measureRange || null, edits: recipe.edits || []
   });
   let lines = result.measures.slice();
   (recipe.lineOverrides || []).forEach(function (ov) {

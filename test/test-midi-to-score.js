@@ -296,5 +296,99 @@ function body(line){
   pass('--track-transpose 는 지정한 트랙만 옮기고 --downbeat-only 는 마디 시작 틱 음만, --lowest-only 는 같은 틱 시작 음 중 가장 낮은 음만 남긴다');
 }
 
+// 10. 마디 구간 자르기(measureRange, --measures)
+{
+  // 4/4, 한 칸 96틱. 마디 1: C4 | - | - | E4(288~480, 마디 2 첫 칸까지 이어짐), G3 는 0~768 로 마디 2 끝까지 울림
+  const spec = { timeSig: [4, 2], tempoUs: 500000, notes: [
+    note(0, 96, 60), note(0, 768, 55), note(288, 192, 64),
+    note(480, 96, 65), note(672, 96, 69),
+    note(768, 384, 71)
+  ] };
+  const full = convert(spec);
+  assert.equal(full.measureCount, 3);
+  assert.equal(body(full.measures[1]), '- F4 - A4');
+  assert.equal(body(full.measures[2]), 'B4 - - -');
+  // 구간 [2,3]: 첫 칸의 유지(-)가 그 시점에 울리던 G3, E4 를 다시 적은 칸으로 바뀐다
+  const cut = convert(spec, { measureRange: [2, 3] });
+  assert.equal(cut.measureCount, 2);
+  assert.equal(cut.totalMeasureCount, 3);
+  assert.equal(cut.measures.length, 2);
+  assert.equal(body(cut.measures[0]), 'G3+E4 F4 - A4');
+  assert.equal(cut.measures[1], full.measures[2]);
+  assert.deepEqual(cut.options.measureRange, [2, 3]);
+  // 구간의 음역과 음 수는 구간 안에서 울리는 음만 센다 (마디 1 의 C4 는 빠진다)
+  assert.equal(full.minMidi, 55);
+  assert.equal(convert(spec, { measureRange: [3, 3] }).minMidi, 71);
+  assert.equal(convert(spec, { measureRange: [3, 3] }).noteCount, 1);
+  // 첫 칸이 새 음으로 시작하면 그대로, 전체 구간은 전체 변환과 같다
+  assert.equal(convert(spec, { measureRange: [3, 3] }).measures[0], full.measures[2]);
+  assert.deepEqual(convert(spec, { measureRange: [1, 3] }).measures, full.measures);
+  assert.deepEqual(convert(spec, { measureRange: [1, 1] }).measures, [full.measures[0]]);
+  // 잘못된 구간은 오류
+  assert.throws(function(){ convert(spec, { measureRange: [2, 4] }); }, /exceeds converted measure count/);
+  assert.throws(function(){ convert(spec, { measureRange: [3, 2] }); }, /measureRange must be/);
+  assert.throws(function(){ convert(spec, { measureRange: [0, 2] }); }, /measureRange must be/);
+  // 못갖춘마디 pickup 과 같이 쓰면 채운 첫 줄이 1
+  const pick = convert({ timeSig: [4, 2], tempoUs: 500000, notes: [note(0, 96, 60), note(96, 384, 62), note(480, 96, 64)] }, { pickup: 96, measureRange: [2, 2] });
+  assert.equal(pick.measures.length, 1);
+  assert.equal(body(pick.measures[0]), 'D4 - - -');
+  // 마지막 마디 뒤를 r 로 채우는 처리는 구간 끝이 마지막 마디일 때도 같다
+  const tail = convert({ timeSig: [4, 2], tempoUs: 500000, notes: [note(0, 96, 60), note(384, 96, 62)] }, { measureRange: [2, 2] });
+  assert.equal(body(tail.measures[0]), 'D4 r r r');
+  // CLI --measures
+  const mid = path.join(tmpDir, 'range.mid');
+  fs.writeFileSync(mid, buildSmf(spec));
+  const cli = spawnSync(process.execPath, [path.join('tools', 'midi-to-score.js'), mid, '--cells', '4', '--measures', '2-3'], { cwd: root, encoding: 'utf8' });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.deepEqual(JSON.parse(cli.stdout).measures, cut.measures);
+  const bad = spawnSync(process.execPath, [path.join('tools', 'midi-to-score.js'), mid, '--cells', '4', '--measures', '2:3'], { cwd: root, encoding: 'utf8' });
+  assert.notEqual(bad.status, 0);
+  // 레시피의 measureRange 도 rebuild-builtins 로 넘어간다
+  assert.match(fs.readFileSync(path.join(root, 'tools', 'rebuild-builtins.js'), 'utf8'), /measureRange: opt.measureRange/);
+  pass('measureRange 는 마디 줄 일부만 남기고 이어진 유지 칸은 울리던 음으로 다시 적으며 음역·음 수는 구간 기준이다');
+}
+
+// 11. 편집 연산 cut: 구간에 시작하는 음을 버리고 뒤를 당긴다
+{
+  // 4/4, 한 칸 96틱. A3 는 0~200 으로 구간 시작(96)을 넘어 울린다
+  const spec = { timeSig: [4, 2], tempoUs: 500000, notes: [
+    note(0, 96, 60), note(0, 200, 57), note(96, 96, 62), note(192, 96, 64),
+    note(288, 96, 65), note(384, 96, 67), note(480, 96, 69)
+  ] };
+  const edits = [{ op: 'cut', from: 96, to: 288 }];
+  const r = convert(spec, { edits: edits });
+  // D4(96), E4(192) 버림, F4(288)부터 192틱 앞으로, A3 끝은 96 으로 잘림
+  assert.equal(body(r.measures[0]), 'A3+C4 F4 G4 A4');
+  assert.equal(r.measureCount, 1);
+  assert.deepEqual(r.editsApplied, [{ op: 'cut', from: 96, to: 288, dropped: 2, pulled: 3, clipped: 1 }]);
+  assert.equal(r.noteCount, 5);
+  // 자른 뒤 틱 기준으로 이어지는 편집이 적용된다 (편집 목록 순서대로)
+  const r2 = convert(spec, { edits: edits.concat([{ op: 'drop', start: 96, pitch: 65 }]) });
+  assert.equal(body(r2.measures[0]), 'A3+C4 r G4 A4');
+  // 입력 MIDI 객체는 바뀌지 않는다
+  const smf = converter.parseMidi(buildSmf(spec));
+  converter.convertMidi(smf, { cells: 4, edits: edits });
+  assert.equal(converter.convertMidi(smf, { cells: 4 }).measures.length, 2);
+  // 구간이 잘못되면 오류
+  assert.throws(function(){ convert(spec, { edits: [{ op: 'cut', from: 96, to: 96 }] }); }, /bad cut edit/);
+  assert.throws(function(){ convert(spec, { edits: [{ op: 'cut', from: 288, to: 96 }] }); }, /bad cut edit/);
+  assert.throws(function(){ convert(spec, { edits: [{ op: 'cut', from: 96 }] }); }, /bad cut edit/);
+  pass('편집 cut 은 [from,to) 에 시작하는 음을 버리고 뒤의 음을 당기며 from 을 넘어 울리는 음은 from 에서 끊는다');
+}
+
+// 12. 편집 연산 setPitch
+{
+  const spec = { timeSig: [4, 2], tempoUs: 500000, notes: [note(0, 96, 60), note(96, 96, 77), note(192, 96, 88), note(288, 96, 62)] };
+  const r = convert(spec, { edits: [{ op: 'setPitch', start: 96, pitch: 77, to: 65 }, { op: 'setPitch', start: 192, pitch: 88, to: 76 }] });
+  assert.equal(body(r.measures[0]), 'C4 F4 E5 D4');
+  assert.equal(r.maxMidi, 76);
+  assert.deepEqual(r.editsApplied.map(function(e){ return [e.op, e.start, e.pitch, e.to]; }), [['setPitch', 96, 77, 65], ['setPitch', 192, 88, 76]]);
+  // 값은 transpose 전 원본 음높이로 적는다
+  assert.equal(body(convert(spec, { transpose: -12, edits: [{ op: 'setPitch', start: 96, pitch: 77, to: 65 }] }).measures[0]), 'C3 F3 E5 D3');
+  assert.throws(function(){ convert(spec, { edits: [{ op: 'setPitch', start: 96, pitch: 70, to: 58 }] }); }, /does not match exactly one note/);
+  assert.throws(function(){ convert(spec, { edits: [{ op: 'setPitch', start: 96, pitch: 77 }] }); }, /setPitch needs integer/);
+  pass('편집 setPitch 는 시작 틱과 원래 음으로 찾은 음 하나의 음높이를 바꾼다');
+}
+
 fs.rmSync(tmpDir, { recursive: true, force: true });
 process.stdout.write('1..' + checks + '\n');

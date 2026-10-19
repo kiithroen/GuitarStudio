@@ -1,15 +1,16 @@
 'use strict';
 
 // 표준 MIDI 파일(SMF)을 칸 격자 악보 줄로 바꾸는 도구.
-// 사용: node tools/midi-to-score.js <파일.mid> [--cells N] [--pickup T] [--grace R] [--transpose N] [--track-transpose "트랙:반음,…"] [--lowest-only 트랙,…] [--downbeat-only 트랙,…] [--edits 파일.json] [--fix-strings]
+// 사용: node tools/midi-to-score.js <파일.mid> [--cells N] [--pickup T] [--grace R] [--transpose N] [--track-transpose "트랙:반음,…"] [--lowest-only 트랙,…] [--downbeat-only 트랙,…] [--edits 파일.json] [--measures 시작-끝] [--fix-strings]
 // 트랙은 이름(MIDI 트랙 이름) 또는 0부터 세는 번호로 고른다. --track-transpose 는 --transpose 에 더해지고, --lowest-only 는 그 트랙에서 같은 틱에 시작하는 음 중 가장 낮은 음 하나만 남긴다.
 // --downbeat-only 는 그 트랙에서 마디 시작 틱(--pickup 을 반영한 마디 경계)에 시작하지 않는 음을 버린다. 편집 뒤 --lowest-only 앞에 적용되므로 둘을 같이 쓰면 마디 첫 박 음 중 최저음 하나가 남는다.
+// --measures 는 변환 결과의 마디 줄 중 시작~끝(1부터, 양끝 포함, --pickup 으로 채운 첫 줄이 1)만 남긴다. 잘라낸 첫 칸이 `-` 로 시작하면 그 시점에 울리고 있던 음을 다시 적는다.
 // --cells 를 생략하면 MIDI 정보만 출력한다. 결과는 표준 출력 JSON.
 const fs = require('node:fs');
 const parser = require('../src/parser.js');
 
 function parseArgs(argv) {
-  var o = { file: null, cells: 0, pickup: 0, grace: 0.125, transpose: 0, trackTranspose: {}, lowestOnly: [], downbeatOnly: [], edits: null, fixStrings: false };
+  var o = { file: null, cells: 0, pickup: 0, grace: 0.125, transpose: 0, trackTranspose: {}, lowestOnly: [], downbeatOnly: [], edits: null, measureRange: null, fixStrings: false };
   for (var i = 0; i < argv.length; i++) {
     var a = argv[i];
     if (a === '--cells') o.cells = parseInt(argv[++i], 10);
@@ -26,6 +27,11 @@ function parseArgs(argv) {
     else if (a === '--lowest-only') o.lowestOnly = o.lowestOnly.concat(argv[++i].split(','));
     else if (a === '--downbeat-only') o.downbeatOnly = o.downbeatOnly.concat(argv[++i].split(','));
     else if (a === '--edits') o.edits = argv[++i];
+    else if (a === '--measures') {
+      var mm = String(argv[++i]).match(/^([0-9]+)-([0-9]+)$/);
+      if (!mm) throw new Error('bad --measures (expected 시작-끝): ' + argv[i]);
+      o.measureRange = [parseInt(mm[1], 10), parseInt(mm[2], 10)];
+    }
     else if (a === '--fix-strings') o.fixStrings = true;
     else if (!o.file) o.file = a;
     else throw new Error('unknown arg ' + a);
@@ -120,9 +126,9 @@ function resolveTrack(midi, sel) {
   throw new Error('no such track: ' + sel);
 }
 
-// options: { cells, pickup, grace, transpose, trackTranspose: {트랙: 반음}, lowestOnly: [트랙], downbeatOnly: [트랙], edits: [{op, start, pitch, ...}] }
+// options: { cells, pickup, grace, transpose, trackTranspose: {트랙: 반음}, lowestOnly: [트랙], downbeatOnly: [트랙], measureRange: [시작, 끝], edits: [{op, start, pitch, ...}] }
 function convertMidi(midi, options) {
-  var o = Object.assign({ cells: 0, pickup: 0, grace: 0.125, transpose: 0, trackTranspose: {}, lowestOnly: [], downbeatOnly: [], edits: [] }, options);
+  var o = Object.assign({ cells: 0, pickup: 0, grace: 0.125, transpose: 0, trackTranspose: {}, lowestOnly: [], downbeatOnly: [], edits: [], measureRange: null }, options);
   if (!o.cells) throw new Error('cells is required');
   var ts = midi.timeSigs[0] || { num: 4, den: 4 };
   var ks = midi.keySigs[0] || { sf: 0, minor: 0 };
@@ -135,6 +141,21 @@ function convertMidi(midi, options) {
   var editsApplied = [];
   if (o.edits && o.edits.length) {
     o.edits.forEach(function (e) {
+      if (e.op === 'cut') {
+        // 구간 [from, to) 에 시작하는 음을 버리고, to 이후에 시작하는 음을 (to-from) 만큼 앞으로 당긴다. from 전에 시작해 from 뒤까지 울리는 음은 끝을 from 으로 자른다.
+        if (!Number.isInteger(e.from) || !Number.isInteger(e.to) || e.from < 0 || e.to <= e.from) throw new Error('bad cut edit: ' + JSON.stringify(e));
+        var gap = e.to - e.from, dropped = 0, pulled = 0, clipped = 0;
+        notes = notes.filter(function (n) {
+          if (n.start >= e.from && n.start < e.to) { dropped++; return false; }
+          return true;
+        });
+        notes.forEach(function (n) {
+          if (n.start >= e.to) { n.start -= gap; n.end -= gap; pulled++; }
+          else if (n.start < e.from && n.end > e.from) { n.end = e.from; clipped++; }
+        });
+        editsApplied.push({ op: 'cut', from: e.from, to: e.to, dropped: dropped, pulled: pulled, clipped: clipped });
+        return;
+      }
       var hits = notes.filter(function (n) { return n.start === e.start && n.pitch === e.pitch; });
       if (hits.length !== 1) throw new Error('edit does not match exactly one note: ' + JSON.stringify(e) + ' hits=' + hits.length);
       var n = hits[0];
@@ -142,6 +163,10 @@ function convertMidi(midi, options) {
       var rec = { op: e.op, measureByRawTick: mi, start: e.start, pitch: e.pitch, name: noteName(e.pitch + o.transpose, ks.sf < 0), dur: n.end - n.start };
       if (e.op === 'drop') { notes.splice(notes.indexOf(n), 1); }
       else if (e.op === 'setStart') { rec.to = e.to; n.start = e.to; }
+      else if (e.op === 'setPitch') {
+        if (!Number.isInteger(e.to)) throw new Error('setPitch needs integer "to": ' + JSON.stringify(e));
+        rec.to = e.to; n.pitch = e.to;
+      }
       else if (e.op === 'setEnd') { rec.to = e.to; n.end = e.to; }
       else if (e.op === 'split') { rec.at = e.at; var tail = { start: e.at, end: n.end, pitch: n.pitch, ch: n.ch, vel: n.vel, track: n.track }; n.end = e.at; notes.push(tail); }
       else throw new Error('unknown edit op ' + e.op);
@@ -201,8 +226,22 @@ function convertMidi(midi, options) {
   if (nMeas < 1) nMeas = 1;
   var totalCells = nMeas * o.cells;
 
+  // 마디 구간: 1부터 세는 양끝 포함 [시작, 끝]. 없으면 전체.
+  var range = o.measureRange;
+  var firstCell = 0, lastCell = totalCells;   // [firstCell, lastCell) 칸만 남긴다
+  if (range) {
+    if (!Array.isArray(range) || range.length !== 2 || !Number.isInteger(range[0]) || !Number.isInteger(range[1]) || range[0] < 1 || range[1] < range[0]) {
+      throw new Error('measureRange must be [start, end] with 1 <= start <= end');
+    }
+    if (range[1] > nMeas) throw new Error('measureRange end ' + range[1] + ' exceeds converted measure count ' + nMeas);
+    firstCell = (range[0] - 1) * o.cells;
+    lastCell = range[1] * o.cells;
+  }
+  var inRange = function (n) { return !range || (n.end > firstCell * cellLen && n.start < lastCell * cellLen); };
+
   var minM = Infinity, maxM = -Infinity;
-  ns.forEach(function (n) { minM = Math.min(minM, n.pitch); maxM = Math.max(maxM, n.pitch); });
+  var noteCountInRange = 0;
+  ns.forEach(function (n) { if (!inRange(n)) return; noteCountInRange++; minM = Math.min(minM, n.pitch); maxM = Math.max(maxM, n.pitch); });
   if (minM < 40 || maxM > 76) warnings.push('out of app range 40..76: min ' + minM + ' max ' + maxM);
 
   // 칸별 onset 묶기
@@ -230,7 +269,7 @@ function convertMidi(midi, options) {
       });
       if (fit) { chosen = d; ok = true; break; }
     }
-    if (!ok) warnings.push('off-grid ' + (Math.floor(ci / o.cells) + 1) + ':' + ((ci % o.cells) + 1));
+    if (!ok && ci >= firstCell && ci < lastCell) warnings.push('off-grid ' + (Math.floor(ci / o.cells) + 1) + ':' + ((ci % o.cells) + 1));
     var pieces = [];
     for (var j = 0; j < chosen; j++) pieces.push([]);
     list.forEach(function (e) {
@@ -250,14 +289,21 @@ function convertMidi(midi, options) {
         everStarted = true;
       } else {
         var ringing = ns.some(function (n) { return n.start < pStart - tol && n.end > pStart + tol; });
-        toks.push(ringing && everStarted ? '-' : 'r');
+        var cont = ringing && everStarted;
+        // 잘라낸 구간의 첫 조각이 앞 마디에서 이어지는 유지면 그 시점에 울리던 음을 다시 적는다
+        if (cont && range && ci === firstCell && j2 === 0) {
+          var again = [];
+          ns.forEach(function (n) { if (n.start < pStart - tol && n.end > pStart + tol && again.indexOf(n.pitch) < 0) again.push(n.pitch); });
+          again.sort(function (a, b) { return a - b; });
+          toks.push(again.map(function (m) { return noteName(m, flats); }).join('+'));
+        } else toks.push(cont ? '-' : 'r');
       }
     }
     tokens.push(toks.join('/'));
   }
 
   var measures = [];
-  for (var m = 0; m < nMeas; m++) {
+  for (var m = firstCell / o.cells; m < lastCell / o.cells; m++) {
     measures.push('[-] ' + tokens.slice(m * o.cells, (m + 1) * o.cells).join(' ') + ' | ""');
   }
 
@@ -273,8 +319,8 @@ function convertMidi(midi, options) {
     minMidi: minM, maxMidi: maxM, ppq: ppq,
     timeSig: ts.num + '/' + ts.den, keySig: { sf: ks.sf, minor: ks.minor },
     tempoBpmQuarter: tempoQ, bpmRaw: bpmRaw,
-    options: { cells: o.cells, pickup: o.pickup, grace: o.grace, transpose: o.transpose, trackTranspose: o.trackTranspose, lowestOnly: o.lowestOnly, downbeatOnly: o.downbeatOnly },
-    measureCount: nMeas, noteCount: ns.length, firstNoteTick: info.firstNoteTick, endTick: info.endTick,
+    options: { cells: o.cells, pickup: o.pickup, grace: o.grace, transpose: o.transpose, trackTranspose: o.trackTranspose, lowestOnly: o.lowestOnly, downbeatOnly: o.downbeatOnly, measureRange: o.measureRange },
+    measureCount: measures.length, totalMeasureCount: nMeas, noteCount: range ? noteCountInRange : ns.length, firstNoteTick: info.firstNoteTick, endTick: info.endTick,
     graceDropped: graceDropped, editsApplied: editsApplied, warnings: warnings
   };
 }
@@ -326,11 +372,11 @@ function fixStringCollisions(lines, beats) {
 
 function main() {
   var o = parseArgs(process.argv.slice(2));
-  if (!o.file) throw new Error('usage: node tools/midi-to-score.js <file.mid> [--cells N] [--pickup T] [--grace R] [--transpose N] [--track-transpose "track:semitones,..."] [--lowest-only track,...] [--downbeat-only track,...] [--edits file.json] [--fix-strings]');
+  if (!o.file) throw new Error('usage: node tools/midi-to-score.js <file.mid> [--cells N] [--pickup T] [--grace R] [--transpose N] [--track-transpose "track:semitones,..."] [--lowest-only track,...] [--downbeat-only track,...] [--edits file.json] [--measures start-end] [--fix-strings]');
   var midi = parseMidi(fs.readFileSync(o.file));
   if (!o.cells) { console.log(JSON.stringify(midiInfo(midi), null, 1)); return; }
   var edits = o.edits ? JSON.parse(fs.readFileSync(o.edits, 'utf8')) : [];
-  var result = convertMidi(midi, { cells: o.cells, pickup: o.pickup, grace: o.grace, transpose: o.transpose, trackTranspose: o.trackTranspose, lowestOnly: o.lowestOnly, downbeatOnly: o.downbeatOnly, edits: edits });
+  var result = convertMidi(midi, { cells: o.cells, pickup: o.pickup, grace: o.grace, transpose: o.transpose, trackTranspose: o.trackTranspose, lowestOnly: o.lowestOnly, downbeatOnly: o.downbeatOnly, measureRange: o.measureRange, edits: edits });
   var stops = [];
   if (o.fixStrings) {
     var fixed = fixStringCollisions(result.measures, o.cells);

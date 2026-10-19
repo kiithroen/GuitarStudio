@@ -200,5 +200,78 @@
     },
     "edits": [],
     "lineOverrides": []
+  },
+  {
+    "id": "builtin-bach-minuet-g",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/BachJS/BWVAnh114/anna-magdalena-04-guitar/anna-magdalena-04-guitar.mid",
+    "file": "anna-magdalena-04-guitar.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-romance-part2",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/Anonymous/spanish-romance/spanish-romance.mid",
+    "file": "spanish-romance.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "measureRange": [
+        17,
+        32
+      ],
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-beethoven-fur-elise",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/BeethovenLv/WoO59/fur-elise-guitar-duo/fur-elise-guitar-duo.mid",
+    "file": "fur-elise-guitar-duo.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 192,
+      "grace": 0.125,
+      "transpose": 0,
+      "measureRange": [
+        1,
+        23
+      ],
+      "fixStrings": true
+    },
+    "edits": [
+      {
+        "op": "setPitch",
+        "start": 5568,
+        "pitch": 77,
+        "to": 65
+      },
+      {
+        "op": "setPitch",
+        "start": 7680,
+        "pitch": 88,
+        "to": 76
+      },
+      {
+        "op": "cut",
+        "from": 12672,
+        "to": 13248
+      },
+      {
+        "op": "cut",
+        "from": 4224,
+        "to": 4608
+      }
+    ],
+    "lineOverrides": []
   }
 ]
