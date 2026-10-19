@@ -23,6 +23,7 @@ python -m http.server 8765 --bind 127.0.0.1
 - [리듬·오디오 계약](Docs/beginner-rhythm.md): 현재 파서와 재생의 유지보수 기준
 - [화면과 조작](Docs/ui.md): 툴바·음이름 표기·단축키·메트로놈 클릭 결정
 - [악보 입력](Docs/tab-input.md): 타브를 찍어 텍스트 악보를 만드는 화면
+- [오선 미리보기](Docs/staff-notation.md): 텍스트 악보를 기타 오선보로 그리는 규칙
 - [에이전트 지침](AGENTS.md): 변경 범위와 필수 검증 규칙
 
 ## 초보 연습에 맞춘 기능

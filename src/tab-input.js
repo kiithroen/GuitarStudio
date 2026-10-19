@@ -14,6 +14,8 @@
   var BPM_MIN = 30;
   var BPM_MAX = 240;
   var MAX_DIVISION = 4;
+  var KEY_MIN = -5;
+  var KEY_MAX = 5;
   var RH_VALUES = ['p', 'i', 'm', 'a'];
   var ART_VALUES = ['!', '~'];
 
@@ -53,6 +55,7 @@
       bpm: o.bpm == null ? DEFAULT_BPM : o.bpm,
       description: o.description == null ? '' : o.description,
       accidentals: o.accidentals == null ? 'sharp' : o.accidentals,
+      key: o.key == null ? 0 : o.key,
       measures: [createMeasure(beats)]
     };
   }
@@ -72,6 +75,8 @@
     return null;
   }
 
+  function isValidKey(key){ return isInt(key) && key >= KEY_MIN && key <= KEY_MAX; }
+
   function normalizeDoc(raw){
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: '문서가 객체가 아니야.' };
     if (raw.version !== 1) return { error: '지원하지 않는 문서 버전이야: ' + raw.version };
@@ -80,6 +85,7 @@
     if (typeof raw.title !== 'string') return { error: '제목이 문자열이 아니야.' };
     if (typeof raw.description !== 'string') return { error: '설명이 문자열이 아니야.' };
     if (raw.accidentals !== 'sharp' && raw.accidentals !== 'flat') return { error: '변화표는 sharp 또는 flat이어야 해: ' + raw.accidentals };
+    if (raw.key !== undefined && !isValidKey(raw.key)) return { error: '조표는 ' + KEY_MIN + '~' + KEY_MAX + '의 정수여야 해: ' + raw.key };
     if (!Array.isArray(raw.measures) || !raw.measures.length) return { error: '마디가 하나 이상 있어야 해.' };
     for (var m = 0; m < raw.measures.length; m++){
       var measure = raw.measures[m];
@@ -110,7 +116,9 @@
         }
       }
     }
-    return { doc: cloneDoc(raw) };
+    var doc = cloneDoc(raw);
+    if (doc.key === undefined) doc.key = 0;
+    return { doc: doc };
   }
 
   function slotHasContent(slot){
@@ -296,6 +304,12 @@
     return cell.slots.filter(slotHasContent).length;
   }
 
+  function setKey(doc, key){
+    if (!isValidKey(key)) throw new Error('조표는 ' + KEY_MIN + '~' + KEY_MAX + '의 정수여야 해: ' + key);
+    doc.key = key;
+    return { ok: true };
+  }
+
   function setBeats(doc, beats){
     if (!isAllowedBeats(beats)) throw new Error('칸 수는 ' + beatsListText() + ' 중 하나여야 해: ' + beats);
     var lost = 0;
@@ -416,7 +430,9 @@
   }
 
   function noteLabel(doc, str, fret){
-    return GuitarParser.noteNameForMidi(noteMidi(str, fret), doc.accidentals === 'flat');
+    var key = isInt(doc.key) ? doc.key : 0;
+    var preferFlats = key < 0 || (key === 0 && doc.accidentals === 'flat');
+    return GuitarParser.noteNameForMidi(noteMidi(str, fret), preferFlats);
   }
 
   function noteToken(doc, str, note){
@@ -589,6 +605,7 @@
         bpm: s.bpm == null ? DEFAULT_BPM : s.bpm,
         description: s.description == null ? '' : s.description,
         accidentals: flags.flat && !flags.sharp ? 'flat' : 'sharp',
+        key: 0,
         measures: measures
       }
     };
@@ -639,7 +656,7 @@
     getSlot: getSlot, isValidPos: isValidPos, firstPos: firstPos, nextPos: nextPos, prevPos: prevPos, clampPos: clampPos,
     setNote: setNote, removeNote: removeNote, toggleNote: toggleNote, setNoteAttrs: setNoteAttrs,
     setRest: setRest, setRestUncertain: setRestUncertain, clearSlot: clearSlot,
-    setDivision: setDivision, setBeats: setBeats, setMeasureChord: setMeasureChord, setMeasureMemo: setMeasureMemo,
+    setDivision: setDivision, setBeats: setBeats, setKey: setKey, setMeasureChord: setMeasureChord, setMeasureMemo: setMeasureMemo,
     insertEmptyMeasure: insertEmptyMeasure, duplicateRange: duplicateRange, deleteRange: deleteRange,
     clearRange: clearRange, copyRange: copyRange, pasteAfter: pasteAfter,
     createHistory: createHistory,

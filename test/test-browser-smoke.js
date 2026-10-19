@@ -2045,13 +2045,14 @@ async function testInvalidStructuredPersistence(client) {
 async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
-  assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/tab-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=tab-input-1')), 'score-input.html scripts use the shared revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=tab-input-1">/, 'score-input.html loads the shared base stylesheet');
-  ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoInfo', 'tiAccSharp', 'tiAccFlat', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
+  assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=staff-preview-1')), 'score-input.html scripts use the shared revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=staff-preview-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
+  ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoInfo', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
     'tiResultPanel', 'tiDiagnostics', 'tiScoreText', 'tiCopyTextBtn', 'tiCopyTsvBtn', 'tiOpenPracticeBtn', 'tiResultStatus', 'tiDock', 'tiCursorLabel', 'tiPrevBtn', 'tiNextBtn',
-    'tiRestBtn', 'tiClearSlotBtn', 'tiDiv1', 'tiDiv2', 'tiDiv3', 'tiDiv4', 'tiPlaySlotBtn', 'tiAutoAdvance', 'tiSoundToggle', 'tiDockToggle', 'tiFretboard', 'tiAttrs', 'tiUncertainBtn',
+    'tiRestBtn', 'tiClearSlotBtn', 'tiDiv1', 'tiDiv2', 'tiDiv3', 'tiDiv4', 'tiPlaySlotBtn', 'tiAutoAdvance', 'tiSoundToggle', 'tiStaffToggle', 'tiDockToggle', 'tiFretboard', 'tiAttrs', 'tiUncertainBtn',
     'tiImportDialog', 'tiImportText', 'tiImportError', 'tiImportApplyBtn', 'tiImportCancelBtn', 'backToPracticeLink'
   ].forEach(id => assert.match(inputHtml, new RegExp('id="' + id + '"'), 'score-input.html includes #' + id));
 
@@ -2106,7 +2107,8 @@ async function testScoreInputScreen(client, httpPort) {
   await client.evaluate(`__tiTest.id('tiUncertainBtn').click(); true`);
   assert.equal(await firstLine(), '[-] E2@6/1E4@1:i? G2@6 E3@6 r | ""', 'the check mark attaches to the cursor note');
   assert.equal(await client.evaluate(`!!document.querySelector('.ti-slot[data-m="0"][data-c="0"][data-s="1"] .ti-pos[data-str="1"].is-uncertain')`), true, 'a checked note is marked in the tab');
-  assert.equal(await client.evaluate(`document.querySelector('.ti-slot[data-m="0"][data-c="0"][data-s="1"] .ti-pos[data-str="1"]').textContent`), '0(1)i', 'tab text shows fret, left hand in parentheses, and right hand');
+  assert.equal(await client.evaluate(`document.querySelector('.ti-slot[data-m="0"][data-c="0"][data-s="1"] .ti-pos[data-str="1"]').textContent`), '01i', 'tab text shows the fret, then the left hand and right hand as small figures');
+  assert.deepEqual(await client.evaluate(`(function(){ var pos = document.querySelector('.ti-slot[data-m="0"][data-c="0"][data-s="1"] .ti-pos[data-str="1"]'); return [pos.querySelector('sup.ti-lh').textContent, pos.querySelector('sub.ti-rh').textContent, pos.querySelectorAll('.ti-fing').length]; })()`), ['1', 'i', 1], 'left hand is a superscript and right hand a subscript sharing one column');
 
   // 4. 되돌리기와 다시 하기
   await client.evaluate(`__tiTest.key('z','KeyZ',{ctrlKey:true}); true`);
@@ -2255,6 +2257,161 @@ async function testScoreInputScreen(client, httpPort) {
   await client.evaluate(`(function(){ ['gs.tabInput.doc', 'gs.tabInput.ui'].forEach(function(key){ localStorage.removeItem(key); }); return true; })()`);
   client.dialogHandler = null;
   process.stdout.write('Browser checkpoint: score input screen typing, undo, measure operations, auto advance, reload, import, layout, and practice handoff passed\n');
+}
+
+// 악보 입력 화면의 오선 미리보기(src/staff-svg.js를 화면에 연결한 부분): 그려지는지, 조표, 켜고 끄기, 머리 클릭, 타브와 가로 정렬, 내장곡, 스크린샷.
+async function testScoreInputStaff(client, httpPort) {
+  client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
+  const inputUrl = `http://127.0.0.1:${httpPort}/score-input.html`;
+  const inputReady = 'document.readyState === "complete" && document.querySelectorAll("#tiMeasures .ti-measure").length >= 1';
+  async function loadPage(action) {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await action();
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, inputReady, 8000);
+  }
+  async function installHelpers() {
+    await client.evaluate(`window.__tiTest = {
+      pos: function(m, c, s, str){ return document.querySelector('.ti-slot[data-m="'+m+'"][data-c="'+c+'"][data-s="'+s+'"] .ti-pos[data-str="'+str+'"]'); },
+      fret: function(str, fret){ return document.querySelector('.ti-fret[data-str="'+str+'"][data-fret="'+fret+'"]'); },
+      text: function(){ return document.getElementById('tiScoreText').value; },
+      setKey: function(value){ var select = document.getElementById('tiKeySelect'); select.value = value; select.dispatchEvent(new Event('change', { bubbles:true })); },
+      heads: function(m){ return document.querySelectorAll('#tiMeasures .ti-measure:nth-child('+(m + 1)+') .ti-staff-wrap svg .st-head').length; },
+      acc: function(m){ return document.querySelectorAll('#tiMeasures .ti-measure:nth-child('+(m + 1)+') .ti-staff-wrap svg .st-acc').length; },
+      keys: function(m){ return document.querySelectorAll('#tiMeasures .ti-measure:nth-child('+(m + 1)+') .ti-staff-wrap svg .st-key').length; },
+      click: function(node){ node.dispatchEvent(new MouseEvent('click', { bubbles:true })); }
+    }; true`);
+  }
+  const firstLine = async () => (await client.evaluate('window.__tiTest.text()')).split('\n')[0];
+  const clearStorage = `(function(){ Object.keys(localStorage).filter(function(key){ return key.indexOf('gs.tabInput.') === 0; }).forEach(function(key){ localStorage.removeItem(key); }); return true; })()`;
+
+  // 깨끗한 상태로 열고 음 셋을 넣는다: 1칸 1번 줄 0프렛(E4), 2칸 1번 줄 2프렛, 3칸 3번 줄 0프렛(G3).
+  await client.evaluate(clearStorage);
+  const errorsBefore = client.consoleErrors.length;
+  await loadPage(() => client.send('Page.navigate', { url: inputUrl }));
+  await installHelpers();
+  assert.equal(await client.evaluate('document.getElementById("tiKeySelect").value'), '0s', 'a clean start has no key signature, written with sharps');
+  assert.equal(await client.evaluate('document.querySelectorAll("#tiMeasures .ti-measure .ti-staff-wrap svg").length'), 1, 'an empty measure already shows a staff');
+  await client.evaluate(`(function(){ var t = __tiTest; t.pos(0,0,0,1).click(); t.fret(1,0).click(); t.pos(0,1,0,1).click(); t.fret(1,2).click(); t.pos(0,2,0,3).click(); t.fret(3,0).click(); return true; })()`);
+
+  // (1) 오선이 그려지고 음 머리 수가 넣은 음 수와 같다
+  assert.equal(await client.evaluate('window.__tiTest.heads(0)'), 3, 'staff note heads match the typed notes');
+  assert.equal(await client.evaluate('document.querySelectorAll("#tiMeasures .ti-measure:first-child .ti-staff-wrap svg .st-clef").length'), 1, 'the first measure shows the clef');
+
+  // (2) 조표: ♭으로 적기면 Gb4, ♯ 1개면 F#4(조표에 든 음이라 임시표 없음), ♯로 적기면 임시표 하나
+  await client.evaluate(`__tiTest.setKey('0f'); true`);
+  assert.ok((await firstLine()).startsWith('[-] E4@1 Gb4@1 G3@3'), 'flat spelling writes Gb4');
+  assert.equal(await client.evaluate('window.__tiTest.acc(0)'), 1, 'a flat note outside the key signature gets a flat sign');
+  await client.evaluate(`__tiTest.setKey('1'); true`);
+  assert.ok((await firstLine()).startsWith('[-] E4@1 F#4@1 G3@3'), 'one-sharp key writes F#4');
+  assert.equal(await client.evaluate('window.__tiTest.acc(0)'), 0, 'F# inside the key signature draws no accidental');
+  assert.equal(await client.evaluate('window.__tiTest.keys(0)'), 1, 'the key signature shows one sharp');
+  await client.evaluate(`__tiTest.setKey('0s'); true`);
+  assert.ok((await firstLine()).startsWith('[-] E4@1 F#4@1 G3@3'), 'no key signature with sharp spelling writes F#4');
+  assert.equal(await client.evaluate('window.__tiTest.acc(0)'), 1, 'F# without a key signature gets a sharp sign');
+  assert.equal(await client.evaluate('document.getElementById("tiKeySelect").value'), '0s', 'the key list shows sharp spelling');
+  await client.evaluate(`__tiTest.setKey('-2'); true`);
+  assert.equal(await client.evaluate('window.__tiTest.keys(0)'), 2, 'a two-flat key shows two flats');
+  await client.evaluate(`__tiTest.setKey('0s'); true`);
+
+  // (5) 첫 마디 오선 첫 음 머리와 타브 첫 조각의 가운데 x가 맞는다(위아래 정렬)
+  const align = await client.evaluate(`(function(){
+    var head = document.querySelector('#tiMeasures .ti-measure:first-child .st-head').getBoundingClientRect();
+    var slot = document.querySelector('#tiMeasures .ti-measure:first-child .ti-slot').getBoundingClientRect();
+    return { head: head.left + head.width / 2, slot: slot.left + slot.width / 2 };
+  })()`);
+  assert.ok(Math.abs(align.head - align.slot) <= 2, 'the first note head is centered over the first tab slot (' + JSON.stringify(align) + ')');
+
+  // (4) 음 머리를 누르면 커서가 그 조각과 줄로 간다
+  await client.evaluate(`(function(){ var heads = document.querySelectorAll('#tiMeasures .ti-measure:first-child .st-head'); __tiTest.click(Array.prototype.filter.call(heads, function(h){ return h.dataset.str === '3'; })[0]); return true; })()`);
+  assert.equal(await client.evaluate('document.getElementById("tiCursorLabel").textContent'), '1마디 · 3칸 · 3번 줄', 'clicking a note head moves the cursor to its slot and string');
+  await client.evaluate(`(function(){ var heads = document.querySelectorAll('#tiMeasures .ti-measure:first-child .st-head'); __tiTest.click(Array.prototype.filter.call(heads, function(h){ return h.dataset.str === '1'; })[1]); return true; })()`);
+  assert.equal(await client.evaluate('document.getElementById("tiCursorLabel").textContent'), '1마디 · 2칸 · 1번 줄', 'clicking another note head moves the cursor again');
+  const band = await client.evaluate(`(function(){
+    var band = document.querySelector('#tiMeasures .ti-measure:first-child .ti-staff-cursor'), slot = document.querySelector('.ti-slot.is-cursor-slot');
+    var b = band.getBoundingClientRect(), s = slot.getBoundingClientRect();
+    return { hidden: band.hidden, dx: Math.abs(b.left - s.left), dw: Math.abs(b.width - s.width), visibleBands: document.querySelectorAll('.ti-staff-cursor:not([hidden])').length };
+  })()`);
+  assert.deepEqual([band.hidden, band.visibleBands], [false, 1], 'one cursor band is shown above the staff');
+  assert.ok(band.dx <= 1 && band.dw <= 1, 'the staff cursor band covers the cursor slot (' + JSON.stringify(band) + ')');
+
+  // (3) 오선 보기 끄기·켜기와 새로고침 뒤 유지
+  async function staffShown() { return client.evaluate('getComputedStyle(document.querySelector("#tiMeasures .ti-staff-wrap")).display !== "none"'); }
+  assert.equal(await staffShown(), true, 'the staff is shown by default');
+  assert.equal(await client.evaluate('document.getElementById("tiStaffToggle").getAttribute("aria-pressed")'), 'true', 'the staff toggle starts pressed');
+  await client.evaluate('document.getElementById("tiStaffToggle").click(); true');
+  assert.equal(await staffShown(), false, 'the staff toggle hides the staff');
+  assert.equal(await client.evaluate('document.getElementById("tiStaffToggle").getAttribute("aria-pressed")'), 'false', 'the pressed state follows');
+  await loadPage(() => client.send('Page.reload', { ignoreCache: true }));
+  await installHelpers();
+  assert.equal(await staffShown(), false, 'the hidden staff stays hidden after a reload');
+  assert.equal(await client.evaluate('document.getElementById("tiStaffToggle").getAttribute("aria-pressed")'), 'false', 'the pressed state survives a reload');
+  await client.evaluate('document.getElementById("tiStaffToggle").click(); true');
+  assert.equal(await staffShown(), true, 'the staff toggle shows the staff again');
+  assert.equal(await client.evaluate('window.__tiTest.heads(0)'), 3, 'the staff is drawn again with every note');
+  assert.equal(await client.evaluate('JSON.parse(localStorage.getItem("gs.tabInput.ui")).staffOn'), true, 'the setting is saved in gs.tabInput.ui');
+
+  // (6) 내장곡 로망스(셋잇단·화음·붙임줄)를 불러와도 콘솔 오류가 없고 셋잇단 숫자가 그려진다
+  const song = builtinSongsJson.find(item => item.id === 'builtin-lv6-romance-full');
+  assert.ok(song, 'builtin-lv6-romance-full exists');
+  const imported = await client.evaluate(`(function(){
+    var song = ${JSON.stringify({ title: song.title, beats: song.beats, bpm: song.bpm, badge: song.badge, lines: song.lines })};
+    var tsv = formatSongToSheetTsv(song.title, song.beats, song.bpm, song.badge || '', song.lines);
+    window.confirm = function(){ return true; };
+    document.getElementById('tiImportBtn').click();
+    document.getElementById('tiImportText').value = tsv;
+    document.getElementById('tiImportApplyBtn').click();
+    return { measures: document.querySelectorAll('#tiMeasures .ti-measure').length, svgs: document.querySelectorAll('#tiMeasures .ti-staff-wrap svg').length,
+      tuplets: document.querySelectorAll('.st-tuplet').length, heads: document.querySelectorAll('.st-head').length, diagnostics: document.getElementById('tiDiagnostics').textContent };
+  })()`);
+  assert.ok(imported.diagnostics.includes('오류 없음'), 'the imported song passes validation');
+  assert.equal(imported.svgs, imported.measures, 'every imported measure has a staff');
+  assert.ok(imported.tuplets >= 1, 'triplet numbers are drawn for the imported song (' + imported.tuplets + ')');
+  assert.ok(imported.heads > imported.measures, 'note heads are drawn for the imported song');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the staff preview runs without console errors');
+
+  // 운지가 붙은 프렛 글자가 조각보다 넓어도 칸이 넓어져서 데스크톱 카드에 가로 스크롤이 생기지 않고, 오선 머리가 타브 조각과 계속 맞는다
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false });
+  const widths = await client.evaluate(`(function(){
+    return Array.prototype.slice.call(document.querySelectorAll('#tiMeasures .ti-staff-scroll')).slice(0, 3).map(function(scroll, index){
+      var card = scroll.closest('.ti-measure');
+      var head = card.querySelector('.st-head').getBoundingClientRect(), slot = card.querySelector('.ti-slot').getBoundingClientRect();
+      return { scroll: scroll.scrollWidth, client: scroll.clientWidth, dx: Math.abs((head.left + head.width / 2) - (slot.left + slot.width / 2)) };
+    });
+  })()`);
+  assert.equal(widths.length, 3, 'the first three imported measures are checked');
+  widths.forEach((item, index) => {
+    assert.ok(item.scroll <= item.client, 'imported measure ' + (index + 1) + ' has no horizontal scrollbar at 1024px (' + JSON.stringify(item) + ')');
+    assert.ok(item.dx <= 2, 'imported measure ' + (index + 1) + ' keeps the first note head over its tab slot (' + JSON.stringify(item) + ')');
+  });
+
+  const secondCard = await client.evaluate(`document.querySelectorAll('#tiMeasures .ti-measure')[1].getBoundingClientRect().width`);
+  assert.ok(secondCard <= 360, 'the second imported measure card is at most 360px wide at 1024px (is ' + secondCard + ')');
+
+  // (7) 스크린샷과 휴대폰 폭 가로 넘침
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  async function staffShot(name, width, height, mobile) {
+    await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
+    await client.evaluate('window.scrollTo(0, 0); true');
+    const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    const target = path.join(root, 'test-artifacts', name);
+    fs.writeFileSync(target, Buffer.from(shot.data, 'base64'));
+    const header = fs.readFileSync(target).subarray(0, 24);
+    assert.equal(header.readUInt32BE(16), width, name + ' width');
+    assert.equal(header.readUInt32BE(20), height, name + ' height');
+    process.stdout.write('Artifact: ' + target + '\n');
+    return client.evaluate('({ scroll:document.documentElement.scrollWidth, inner:window.innerWidth })');
+  }
+  const desktop = await staffShot('score-input-staff.png', 1280, 900, false);
+  assert.ok(desktop.scroll <= desktop.inner, 'the desktop page with a staff does not overflow horizontally');
+  const firstRow = await client.evaluate(`(function(){ var cards = Array.prototype.slice.call(document.querySelectorAll('#tiMeasures .ti-measure')); return cards.filter(function(card){ return card.offsetTop === cards[0].offsetTop; }).length; })()`);
+  assert.ok(firstRow >= 2, 'at least two imported measure cards share the first row at 1280px (is ' + firstRow + ')');
+  const phone = await staffShot('score-input-staff-mobile.png', 375, 812, true);
+  assert.ok(phone.scroll <= phone.inner, 'the 375px page with a staff does not overflow horizontally (scrollWidth ' + phone.scroll + ' > ' + phone.inner + ')');
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  await client.evaluate(clearStorage);
+  client.dialogHandler = null;
+  process.stdout.write('Browser checkpoint: staff preview drawing, key signature, toggle, head click, tab alignment, built-in song, and screenshots passed\n');
 }
 
 async function main() {
@@ -2739,6 +2896,7 @@ async function main() {
     process.stdout.write('Browser checkpoint: tab-input link, handoff open, and stale handoff ignored passed\n');
 
     await testScoreInputScreen(cdp, httpPort);
+    await testScoreInputStaff(cdp, httpPort);
 
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');

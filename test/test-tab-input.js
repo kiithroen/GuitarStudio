@@ -476,4 +476,43 @@ test('handoff fields and capo from the description', function(){
   assert.equal(ti.createDoc().bpm, ti.DEFAULT_BPM);
 });
 
+test('key signature: accidental spelling follows the key, normalizeDoc fills and validates it', function(){
+  function tokenAt33(options){
+    const doc = fresh(options);
+    ti.setNote(doc, pos(0), 3, 3);
+    return ti.docToMeasureObjects(doc)[0].notes[0];
+  }
+  assert.equal(tokenAt33({ key: 1 }), 'A#3@3');
+  assert.equal(tokenAt33({ key: -1 }), 'Bb3@3');
+  assert.equal(tokenAt33({ key: 0, accidentals: 'flat' }), 'Bb3@3');
+  assert.equal(tokenAt33({ key: 0, accidentals: 'sharp' }), 'A#3@3');
+  assert.equal(tokenAt33({ key: 2, accidentals: 'flat' }), 'A#3@3');
+  assert.equal(tokenAt33({ key: -2, accidentals: 'sharp' }), 'Bb3@3');
+  assert.equal(fresh().key, 0);
+  const doc = fresh();
+  assert.deepEqual(ti.setKey(doc, -5), { ok: true });
+  assert.equal(doc.key, -5);
+  ti.setKey(doc, 5);
+  assert.equal(doc.key, 5);
+  [6, -6, 1.5, '1', null].forEach(function(bad){
+    assert.throws(function(){ ti.setKey(doc, bad); }, /조표는 -5~5의 정수여야 해/);
+  });
+  assert.equal(doc.key, 5);
+  const legacy = JSON.parse(JSON.stringify(fresh()));
+  delete legacy.key;
+  const normalized = ti.normalizeDoc(legacy);
+  assert.equal(normalized.error, undefined);
+  assert.equal(normalized.doc.key, 0);
+  const keyed = fresh({ key: -3 });
+  assert.equal(ti.normalizeDoc(keyed).doc.key, -3);
+  [6, -6, 1.5].forEach(function(bad){
+    const raw = JSON.parse(JSON.stringify(fresh()));
+    raw.key = bad;
+    assert.match(ti.normalizeDoc(raw).error, /조표는 -5~5의 정수여야 해/);
+  });
+  assert.equal(ti.scoreToDoc({ beats: 4, raw: 'E4 - - -' }).doc.key, 0);
+  assert.equal(ti.parseImportText('E4 - - -').doc.key, 0);
+  assert.equal(ti.buildHandoff(keyed, 1).key, undefined);
+});
+
 process.stdout.write('1..' + checks + '\n');

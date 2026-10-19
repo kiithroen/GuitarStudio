@@ -80,6 +80,8 @@ node test/test-score-prompt.js
 node test/test-check-score.js
 node test/test-midi-to-score.js
 node test/test-tab-input.js
+node test/test-staff-layout.js
+node test/test-staff-svg.js
 node test/test-audio.js
 node test/test-guide.js
 node test/test-storage.js

@@ -3,12 +3,16 @@
   // 악보 입력 화면(score-input.html)의 그리기·입력·저장. 모델은 src/tab-input.js, 설계와 결정은 Docs/tab-input.md.
   var T = window.GuitarTabInput;
   var N = window.GuitarNotation;
+  var Staff = window.GuitarStaffLayout;
+  var StaffSvg = window.GuitarStaffSvg;
 
   var DOC_KEY = 'gs.tabInput.doc';
   var UI_KEY = 'gs.tabInput.ui';
   var HANDOFF_KEY = 'gs.tabInput.handoff';
   var STRING_LETTERS = ['E', 'B', 'G', 'D', 'A', 'E'];
   var BEATS_LABELS = { 2: '2/4', 3: '3/4', 4: '4/4', 6: '6/8', 8: '4/4 (8박 핑거스타일)', 9: '9/8 (8분음표 9칸)' };
+  var CELL_SLOT_MIN = 26;   // score-input.html의 .ti-cell 기본 조각 폭과 같다
+  var CELL_SLOT_PAD = 6;
   var TEN_WINDOW_MS = 700;
   var SAVE_DEBOUNCE_MS = 300;
   var CONFIRM_REPLACE = '지금 작업을 지우고 바꿀까? 되돌리기로 돌아올 수 있어.';
@@ -20,10 +24,11 @@
   var sel = null;          // {a, b} 마디 선택(a <= b)
   var selAnchor = null;    // Shift 범위의 기준 마디
   var clip = null;         // 복사한 마디들
-  var ui = { autoAdvance: false, sound: true, dockCollapsed: false, attrsOpen: false };
+  var ui = { autoAdvance: false, sound: true, dockCollapsed: false, attrsOpen: false, staffOn: true };
   var textSnapshot = null; // 글자 칸 입력 전의 문서
   var saveTimer = null;
   var pending = null;      // 방금 누른 숫자 1: {t, m, c, s, str, timer}
+  var staffLayout = null;  // 지금 오선 배치(layoutScore 결과). 오류거나 오선을 끄면 null
   var fretButtons = [];
   var attrButtons = [];
 
@@ -190,10 +195,6 @@
 
   // ---------- 그리기: 마디 카드
 
-  function noteText(note){
-    return (note.art || '') + String(note.fret) + (note.lh == null ? '' : '(' + note.lh + ')');
-  }
-
   function noteTitle(str, note){
     var parts = [str + '번 줄 ' + note.fret + '프렛 · ' + T.noteLabel(doc, str, note.fret)];
     if (note.lh != null) parts.push('왼손 ' + note.lh);
@@ -210,8 +211,16 @@
     pos.classList.add('has-note');
     if (note.uncertain) pos.classList.add('is-uncertain');
     pos.title = noteTitle(str, note);
-    var label = el('span', 'ti-pos-label', noteText(note));
-    if (note.rh) label.appendChild(el('sub', 'ti-rh', note.rh));
+    // 주법은 프렛 왼쪽 작은 글자, 왼손 운지는 오른쪽 위, 오른손은 오른쪽 아래. 위·아래 첨자는 같은 가로 자리에 쌓아 폭이 하나만큼만 는다.
+    var label = el('span', 'ti-pos-label');
+    if (note.art) label.appendChild(el('span', 'ti-art', note.art));
+    label.appendChild(document.createTextNode(String(note.fret)));
+    if (note.lh != null || note.rh){
+      var fing = el('span', 'ti-fing');
+      if (note.lh != null) fing.appendChild(el('sup', 'ti-lh', String(note.lh)));
+      if (note.rh) fing.appendChild(el('sub', 'ti-rh', note.rh));
+      label.appendChild(fing);
+    }
     pos.appendChild(label);
     return pos;
   }
@@ -251,6 +260,13 @@
     card.appendChild(head);
 
     var scroll = el('div', 'ti-staff-scroll');
+    var staffWrap = el('div', 'ti-staff-wrap');
+    staffWrap.style.height = StaffSvg.STAFF_HEIGHT + 'px';
+    var staffCursor = el('div', 'ti-staff-cursor');
+    staffCursor.hidden = true;
+    staffWrap.appendChild(staffCursor);
+    staffWrap.appendChild(el('div', 'ti-staff-draw'));
+    scroll.appendChild(staffWrap);
     var staff = el('div', 'ti-staff');
     var names = el('div', 'ti-names');
     names.appendChild(el('div', 'ti-names-head'));
@@ -328,6 +344,8 @@
       list.appendChild(el('li', 'is-warn', '경고 · ' + (warning.measure ? '마디 ' + warning.measure + ' · ' : '') + warning.message));
     });
     $('tiScoreText').value = lines.join('\n');
+    fitCellWidths();
+    refreshStaff(lines);
     var blocked = diag.errors.length > 0;
     $('tiCopyTextBtn').disabled = blocked;
     $('tiCopyTsvBtn').disabled = blocked;
@@ -351,8 +369,7 @@
     setValue($('tiBeats'), doc.beats);
     setValue($('tiBpm'), doc.bpm);
     setValue($('tiDescription'), doc.description);
-    $('tiAccSharp').setAttribute('aria-pressed', String(doc.accidentals === 'sharp'));
-    $('tiAccFlat').setAttribute('aria-pressed', String(doc.accidentals === 'flat'));
+    setValue($('tiKeySelect'), keyOptionValue());
     refreshCapoInfo();
   }
 
@@ -401,6 +418,8 @@
       if (scroll && slotEl.scrollIntoView) slotEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
 
+    placeStaffCursor(slotEl);
+
     var slot = T.getSlot(doc, cursor);
     var division = doc.measures[cursor.m].cells[cursor.c].slots.length;
     var label = (cursor.m + 1) + '마디 · ' + (cursor.c + 1) + '칸';
@@ -413,6 +432,7 @@
     for (var d = 1; d <= 4; d++) $('tiDiv' + d).setAttribute('aria-pressed', String(division === d));
     $('tiAutoAdvance').setAttribute('aria-pressed', String(ui.autoAdvance));
     $('tiSoundToggle').setAttribute('aria-pressed', String(ui.sound));
+    $('tiStaffToggle').setAttribute('aria-pressed', String(ui.staffOn));
 
     fretButtons.forEach(function(btn){
       var str = Number(btn.dataset.str);
@@ -436,6 +456,150 @@
     var uncertain = $('tiUncertainBtn');
     uncertain.disabled = !(cursorNote || slot.rest);
     uncertain.setAttribute('aria-pressed', String(cursorNote ? cursorNote.uncertain : (slot.rest ? slot.restUncertain : false)));
+  }
+
+  // ---------- 오선 미리보기 (배치 src/staff-layout.js, 그리기 src/staff-svg.js, 규칙 Docs/staff-notation.md)
+
+  function keyOptionValue(){
+    if (doc.key !== 0) return String(doc.key);
+    return doc.accidentals === 'flat' ? '0f' : '0s';
+  }
+
+  // 카드의 타브 칸 격자 위치를 재서 칸 c, 칸 안 위치 unit(0~11)의 가운데 x를 돌려주는 함수를 만든다.
+  function measureCardGeometry(card){
+    var staffEl = card.querySelector('.ti-staff');
+    var base = staffEl.getBoundingClientRect();
+    var cells = Array.prototype.map.call(card.querySelectorAll('.ti-cell'), function(cellEl){
+      var cellRect = cellEl.getBoundingClientRect();
+      return {
+        left: cellRect.left - base.left,
+        width: cellRect.width,
+        slots: Array.prototype.map.call(cellEl.querySelectorAll('.ti-slot'), function(slotEl){
+          var rect = slotEl.getBoundingClientRect();
+          return rect.left - base.left + rect.width / 2;
+        })
+      };
+    });
+    return {
+      width: base.width,
+      leftPad: card.querySelector('.ti-names').getBoundingClientRect().width,
+      xAt: function(cell, unit){
+        var info = cells[cell];
+        if (!info) return 0;
+        var d = info.slots.length;
+        for (var s = 0; s < d; s++) if (s * 12 / d === unit) return info.slots[s];
+        return info.left + info.width * unit / 12;
+      }
+    };
+  }
+
+  // 칸의 조각 폭 = max(26px, 그 칸 조각들의 프렛 글자 최대 폭 + 6px). 운지가 붙은 글자가 조각보다 넓어 가로 스크롤이 생기는 걸 막는다.
+  // 글자 폭은 그린 뒤 DOM에서 재서 --sw로 넣는다(칸 너비 = max(48px, 나눈 수 × 조각 폭)). 오선 xAt은 이 뒤에 재니 넓어진 위치를 따른다.
+  function fitCellWidths(){
+    var cells = $('tiMeasures').querySelectorAll('.ti-cell');
+    var widths = [];
+    var i;
+    for (i = 0; i < cells.length; i++){
+      var max = 0;
+      var labels = cells[i].querySelectorAll('.ti-pos-label');
+      for (var j = 0; j < labels.length; j++){
+        var range = document.createRange();
+        range.selectNodeContents(labels[j]);
+        max = Math.max(max, range.getBoundingClientRect().width);
+      }
+      widths.push(Math.max(CELL_SLOT_MIN, Math.ceil(max + CELL_SLOT_PAD)));
+    }
+    for (i = 0; i < cells.length; i++){
+      if (widths[i] === CELL_SLOT_MIN) cells[i].style.removeProperty('--sw');
+      else cells[i].style.setProperty('--sw', widths[i] + 'px');
+    }
+  }
+
+  function refreshStaff(lines){
+    var box = $('tiMeasures');
+    box.classList.toggle('staff-off', !ui.staffOn);
+    if (!ui.staffOn){ staffLayout = null; return; }
+    var cards = box.children;
+    var result = Staff.layoutScore(lines.join('\n'), doc.beats, doc.key);
+    staffLayout = !result.error && result.measures.length === cards.length ? result : null;
+    var header = staffLayout ? { key: staffLayout.key, time: staffLayout.time } : null;
+    var i;
+    // 쓰기: 첫 마디 줄 이름 열을 머리 폭만큼 넓힌다(타브와 오선이 같이 밀려 칸이 위아래로 맞는다)
+    for (i = 0; i < cards.length; i++) cards[i].style.removeProperty('--ti-names-w');
+    var headerPx = header ? StaffSvg.headerWidth(header) : 0;
+    if (cards.length && headerPx){
+      var baseNames = cards[0].querySelector('.ti-names').getBoundingClientRect().width;
+      cards[0].style.setProperty('--ti-names-w', (baseNames + headerPx) + 'px');
+    }
+    // 읽기: 모든 카드의 칸 위치
+    var geos = [];
+    for (i = 0; i < cards.length; i++) geos.push(staffLayout ? measureCardGeometry(cards[i]) : null);
+    // 쓰기: SVG
+    for (i = 0; i < cards.length; i++){
+      var wrap = cards[i].querySelector('.ti-staff-wrap');
+      var draw = wrap.querySelector('.ti-staff-draw');
+      var svg = '';
+      if (staffLayout){
+        var geo = geos[i];
+        geo.header = i === 0 ? header : null;
+        wrap.style.width = geo.width + 'px';
+        try {
+          svg = StaffSvg.renderMeasure(staffLayout.measures[i], geo);
+        } catch (error) {
+          svg = '';   // 한 마디를 못 그려도 나머지 화면은 계속 갱신한다
+        }
+      }
+      if (draw.__svg !== svg){
+        draw.innerHTML = svg;
+        draw.__svg = svg;
+      }
+    }
+  }
+
+  // 커서 조각 자리의 옅은 띠: 오선 위
+  function placeStaffCursor(slotEl){
+    var box = $('tiMeasures');
+    Array.prototype.forEach.call(box.querySelectorAll('.ti-staff-cursor'), function(band){ band.hidden = true; });
+    if (!slotEl || !ui.staffOn) return;
+    var wrap = slotEl.closest('.ti-measure').querySelector('.ti-staff-wrap');
+    var band = wrap.querySelector('.ti-staff-cursor');
+    var slotRect = slotEl.getBoundingClientRect();
+    var wrapRect = wrap.getBoundingClientRect();
+    band.style.left = (slotRect.left - wrapRect.left) + 'px';
+    band.style.width = slotRect.width + 'px';
+    band.hidden = false;
+  }
+
+  // 오선 음 머리가 가리키는 타브 조각. 붙임줄로 이어진 뒷토막이면 앞쪽 첫 토막의 자리.
+  function staffHeadPos(m, itemIndex){
+    if (!staffLayout) return null;
+    var mm = m;
+    var ii = itemIndex;
+    var item = staffLayout.measures[mm].items[ii];
+    while (item && item.tieFromPrev){
+      if (ii > 0) ii--;
+      else {
+        mm--;
+        if (mm < 0) return null;
+        ii = staffLayout.measures[mm].items.length - 1;
+      }
+      item = staffLayout.measures[mm].items[ii];
+    }
+    if (!item || item.type !== 'chord') return null;
+    var division = doc.measures[mm].cells[item.cell].slots.length;
+    return { m: mm, c: item.cell, s: Math.min(division - 1, Math.floor(item.unit * division / 12)) };
+  }
+
+  function staffHeadClick(headEl, m){
+    var chordEl = headEl.closest('.st-chord');
+    if (!chordEl) return;
+    var pos = staffHeadPos(m, Number(chordEl.dataset.item));
+    var str = Number(headEl.dataset.str);
+    if (!pos || !(str >= 1 && str <= T.STRING_COUNT)) return;
+    pos.str = str;
+    setCursor(pos, false);
+    var note = T.getSlot(doc, pos).notes[str - 1];
+    if (note) playNotes([{ str: str, note: note }]);
   }
 
   function refreshDock(){
@@ -795,12 +959,19 @@
       if (result && result.lost > 0) setStatus(lostText(result.lost));
     });
 
-    ['sharp', 'flat'].forEach(function(kind){
-      $(kind === 'sharp' ? 'tiAccSharp' : 'tiAccFlat').addEventListener('click', function(){
-        if (doc.accidentals === kind) return;
-        apply(function(d){ d.accidentals = kind; return { ok: true }; }, { all: true });
-        refreshFretLabels();
-      });
+    $('tiKeySelect').addEventListener('change', function(){
+      var value = $('tiKeySelect').value;
+      if (value === keyOptionValue()) return;
+      apply(function(d){
+        if (value === '0s' || value === '0f'){
+          T.setKey(d, 0);
+          d.accidentals = value === '0f' ? 'flat' : 'sharp';
+        } else {
+          T.setKey(d, Number(value));
+        }
+        return { ok: true };
+      }, { all: true });
+      refreshFretLabels();
     });
 
     $('tiNewBtn').addEventListener('click', newScore);
@@ -831,6 +1002,8 @@
       var m = Number(card.dataset.m);
       var num = target.closest('.ti-measure-num');
       if (num){ selectMeasure(m, event.shiftKey); return; }
+      var staffHead = target.closest('.st-head');
+      if (staffHead){ staffHeadClick(staffHead, m); return; }
       var head = target.closest('.ti-cell-head');
       if (head){ setCursor({ m: m, c: Number(head.dataset.c), s: 0 }, false); return; }
       var posEl = target.closest('.ti-pos');
@@ -899,6 +1072,12 @@
     $('tiSoundToggle').addEventListener('click', function(){
       ui.sound = !ui.sound;
       saveUi();
+      refreshCursorUI(false);
+    });
+    $('tiStaffToggle').addEventListener('click', function(){
+      ui.staffOn = !ui.staffOn;
+      saveUi();
+      refreshStaff(T.docToScoreLines(doc));
       refreshCursorUI(false);
     });
     $('tiAttrsToggle').addEventListener('click', function(){
@@ -1013,6 +1192,14 @@
         if (btn) btn.blur();
       }
     }, true);
+    // 숫자 글꼴이 늦게 뜨면 글자 폭이 바뀌니 칸 폭과 오선 위치를 다시 잰다
+    if (document.fonts && document.fonts.addEventListener){
+      document.fonts.addEventListener('loadingdone', function(){
+        fitCellWidths();
+        refreshStaff(T.docToScoreLines(doc));
+        refreshCursorUI(false);
+      });
+    }
     window.addEventListener('pagehide', flushSave);
     window.addEventListener('beforeunload', flushSave);
   }
@@ -1026,6 +1213,7 @@
       if (typeof stored.sound === 'boolean') ui.sound = stored.sound;
       if (typeof stored.dockCollapsed === 'boolean') ui.dockCollapsed = stored.dockCollapsed;
       if (typeof stored.attrsOpen === 'boolean') ui.attrsOpen = stored.attrsOpen;
+      if (typeof stored.staffOn === 'boolean') ui.staffOn = stored.staffOn;
     }
   }
 
