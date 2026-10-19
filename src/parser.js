@@ -4,7 +4,13 @@
   var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./rhythm.js') : global.GuitarRhythm;
   // ---------- 음악 이론 & 클래식 기타 1포지션 매핑 사전
   var NOTE_EN = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  var NOTE_FLAT = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
   var NOTE_KO = ['도', '도#', '레', '레#', '미', '파', '파#', '솔', '솔#', '라', '라#', '시'];
+
+  // 음이름 옥타브 표기의 SSOT. 변화표 설정(preferFlats)에 따라 #·b 중 하나로 쓴다.
+  function noteNameForMidi(midi, preferFlats){
+    return (preferFlats ? NOTE_FLAT : NOTE_EN)[midi % 12] + (Math.floor(midi / 12) - 1);
+  }
 
   // 클래식 기타 6현 개방현 MIDI: 1번줄(E4=64), 2번줄(B3=59), 3번줄(G3=55), 4번줄(D3=50), 5번줄(A2=45), 6번줄(E2=40)
   var STRINGS = [
@@ -221,7 +227,7 @@
 
   function midiInfo(m){
     if (m == null) return null;
-    var en = NOTE_EN[m % 12] + (Math.floor(m / 12) - 1);
+    var en = noteNameForMidi(m, false);
     var ko = NOTE_KO[m % 12];
     var pos = FIRST_POS[m] ? { str:FIRST_POS[m].str, fret:FIRST_POS[m].fret } : null;
     if (!pos){
@@ -567,7 +573,7 @@
 
 
   var api = {
-    NOTE_EN: NOTE_EN, NOTE_KO: NOTE_KO, STRINGS: STRINGS, FIRST_POS: FIRST_POS,
+    NOTE_EN: NOTE_EN, NOTE_FLAT: NOTE_FLAT, NOTE_KO: NOTE_KO, noteNameForMidi: noteNameForMidi, STRINGS: STRINGS, FIRST_POS: FIRST_POS,
     CHORD_DB: CHORD_DB,
     cleanChordToken: cleanChordToken, lookupChord: lookupChord, midiInfo: midiInfo,
     inferChordsForMeasures: inferChordsForMeasures,

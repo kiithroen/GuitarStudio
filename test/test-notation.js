@@ -190,4 +190,7 @@ test('score parsing returns diagnostics and structured save rejects invalid scor
   assert.equal(parser.buildStructuredSong({id:'ok',lines:['[-] C4 - - - | "lyric"'],beats:4}).notationVersion,2);
   assert.ok(parser.validateScore('[C#maj13] C4 - - -',4).warnings.some(e=>e.code==='UNSUPPORTED_CHORD'));
 });
+test('sheet beat counts list is the single shared allowed list', function(){
+  assert.deepEqual(notation.SHEET_BEAT_COUNTS, [2,3,4,6,8,9]);
+});
 process.stdout.write('1..'+checks+'\n');

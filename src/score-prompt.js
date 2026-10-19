@@ -272,6 +272,7 @@
     PROJECT_PROMPT_LINES: PROJECT_PROMPT_LINES,
     buildScoreImagePrompt: buildScoreImagePrompt,
     buildProjectPrompt: buildProjectPrompt,
+    copyText: copyText,
     initScorePromptButton: initScorePromptButton
   };
 });

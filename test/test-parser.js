@@ -364,4 +364,15 @@ test('removed legacy notations are rejected and modern equivalents pass', functi
   assert.notEqual(parser.lookupChord('Am'), null);
 });
 
+test('noteNameForMidi gives octave names in sharp or flat spelling', function(){
+  assert.equal(parser.noteNameForMidi(60, false), 'C4');
+  assert.equal(parser.noteNameForMidi(40, false), 'E2');
+  assert.equal(parser.noteNameForMidi(76, false), 'E5');
+  assert.equal(parser.noteNameForMidi(70, false), 'A#4');
+  assert.equal(parser.noteNameForMidi(70, true), 'Bb4');
+  assert.equal(parser.noteNameForMidi(61, false), 'C#4');
+  assert.equal(parser.noteNameForMidi(61, true), 'Db4');
+  assert.equal(parser.midiInfo(70).en, 'A#4');
+});
+
 process.stdout.write('1..' + checks + '\n');

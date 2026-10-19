@@ -31,7 +31,7 @@ test('CommonJS API and unknown status are available without global writes', func
   assert.equal(typeof createScoreDraftStore, 'function');
   assert.equal(global.GuitarParser, undefined);
   const store = createScoreDraftStore();
-  assert.deepEqual(store.status('missing'), {dirty:false,temporary:false,canUndo:false});
+  assert.deepEqual(store.status('missing'), {dirty:false,temporary:false,canUndo:false,origin:null});
   assert.equal(store.get('missing'), null);
 });
 
@@ -46,7 +46,7 @@ test('structured sources are cloned, empty originals stay unchanged, and image s
   assert.notStrictEqual(listed[0], original);
   assert.strictEqual(listed[1], image);
   assert.equal(listed[0].measures.length, 0);
-  assert.deepEqual(store.status('empty'), {dirty:false,temporary:false,canUndo:false});
+  assert.deepEqual(store.status('empty'), {dirty:false,temporary:false,canUndo:false,origin:null});
   original.title = '입력 변경';
   assert.equal(store.get('empty').title, '빈 악보');
   const blank = store.createBlank({title:'쉼표 시작',beats:3});
@@ -65,7 +65,7 @@ test('blank drafts use parser-valid rest bars and retain temporary metadata', fu
   assert.equal(blank.beats, 3);
   assert.equal(blank.bpm, 80);
   assert.deepEqual(blank.measures[0].beats.map(beat=>beat.tok), ['r','r','r']);
-  assert.deepEqual(store.status(blank.id), {dirty:false,temporary:true,canUndo:false});
+  assert.deepEqual(store.status(blank.id), {dirty:false,temporary:true,canUndo:false,origin:null});
   assert.throws(()=>store.createBlank({beats:0}), error=>error.errors.some(item=>item.code === 'INVALID_BEATS'));
 });
 
@@ -206,6 +206,33 @@ test('dirty drafts and blank drafts remain visible when sources disappear', func
   assert.deepEqual(results.map(item=>item.id),['persist',blank.id]);
   assert.equal(store.get('clean').title,'사라질 clean');
   assert.equal(store.status(blank.id).temporary,true);
+});
+
+test('createFromScore builds a temporary structured song with origin and rejects invalid text', function(){
+  const store = createScoreDraftStore();
+  const lines = ['[-] E4@1 - G4@1 - | ""', '[Am] A2@5+E4@1 r r r | "끝"'];
+  const made = store.createFromScore({title:'넘김 시험',beats:4,bpm:72,badge:'시험 · Capo 2',lines:lines,origin:'tab-input'});
+  assert.match(made.id, /^temp-score-\d+$/);
+  assert.equal(made.type, 'structured');
+  assert.equal(made.builtin, false);
+  assert.equal(made.measures.length, 2);
+  assert.equal(made.title, '넘김 시험');
+  assert.equal(made.bpm, 72);
+  assert.equal(made.badge, '시험 · Capo 2');
+  const status = store.status(made.id);
+  assert.equal(status.dirty, false);
+  assert.equal(status.temporary, true);
+  assert.equal(status.origin, 'tab-input');
+  assert.equal(store.get(made.id), made);
+  const fromText = store.createFromScore({title:'문자열',beats:4,bpm:64,lines:lines.join('\n')});
+  assert.equal(fromText.badge, '임시 악보', 'badge defaults to the temporary score label');
+  assert.equal(fromText.measures.length, 2);
+  assert.equal(store.status(fromText.id).origin, null);
+  assert.notEqual(fromText.id, made.id);
+  store.apply(made.id, 1, '[Am] A2@5+E4@1 r r r | "고침"', false);
+  assert.equal(store.status(made.id).dirty, true, 'editing marks the created score dirty');
+  assert.equal(store.status(made.id).origin, 'tab-input');
+  captureFailure(function(){ store.createFromScore({title:'틀림',beats:4,bpm:64,lines:['[-] Q9 r r r']}); });
 });
 
 test('browser global export works in a VM without DOM or storage globals', function(){

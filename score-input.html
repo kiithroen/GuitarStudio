@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#eceee9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121614" media="(prefers-color-scheme: dark)">
+<title>악보 입력 · 기타 스튜디오</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&display=swap">
+<link rel="stylesheet" href="src/base.css?v=tab-input-1">
+<style>
+/* 악보 입력 화면 전용. 색은 base.css 토큰만 쓴다. */
+body{padding-bottom:var(--ti-dock-h,0px)}
+.btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.ti-input{height:36px;width:100%;min-width:0;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:14px}
+textarea.ti-input{height:auto;padding:8px 10px;font-family:var(--font-num);font-size:12.5px;line-height:1.5;resize:vertical}
+
+/* 곡 정보 */
+.ti-info-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,2fr);gap:10px}
+.ti-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ti-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#tiSaveStatus{margin-left:6px}
+#tiSaveStatus.is-warn{color:var(--off);font-weight:600}
+
+/* 선택 막대 */
+#tiSelectionBar{position:sticky;top:8px;z-index:20;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;background:var(--surface);border:1px solid var(--accent);border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+#tiSelectionLabel{font-weight:700;font-size:13.5px;margin-right:6px}
+
+/* 마디 카드 */
+#tiMeasures{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
+.ti-measure{flex:0 1 auto;min-width:0;max-width:100%;display:flex;flex-direction:column;gap:6px;padding:8px 10px 10px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.ti-measure.is-selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.ti-measure-head{display:flex;align-items:center;gap:6px;min-width:0}
+.ti-measure-num{min-width:32px;height:28px;padding:0 6px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);font-family:var(--font-num);font-weight:700;font-size:13px}
+.ti-measure-num[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.ti-chord,.ti-memo{height:28px;min-width:0;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:13px}
+.ti-chord{flex:1 1 0;width:0;min-width:64px}
+.ti-memo{display:block;width:0;min-width:100%}
+.ti-line{display:block;width:0;min-width:100%;font-family:var(--font-num);font-size:11.5px;line-height:1.45;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
+.ti-measure-error{display:block;width:0;min-width:100%;font-size:12px;font-weight:600;line-height:1.4;color:var(--off);overflow-wrap:anywhere}
+
+/* 타브 */
+.ti-staff-scroll{max-width:100%;overflow-x:auto;padding-bottom:2px}
+.ti-staff{display:flex;width:max-content}
+.ti-names{flex:none;width:30px}
+.ti-names-head{height:18px}
+.ti-name{height:24px;line-height:24px;padding-right:4px;text-align:right;font-family:var(--font-num);font-size:10.5px;color:var(--muted)}
+.ti-cells{display:flex;border-left:2px solid var(--fg);border-right:2px solid var(--fg)}
+.ti-cell{flex:none;width:max(48px,calc(var(--d,1) * 26px))}
+.ti-cell + .ti-cell{border-left:1px solid var(--line)}
+.ti-cell-head{height:18px;line-height:18px;text-align:center;font-family:var(--font-num);font-size:10.5px;color:var(--muted);cursor:pointer;user-select:none}
+.ti-cell-head:hover{color:var(--accent)}
+.ti-slots{display:flex}
+.ti-slot{flex:1 1 0;min-width:0;position:relative;display:flex;flex-direction:column;scroll-margin:calc(var(--ti-sel-h,0px) + 16px) 0 calc(var(--ti-dock-h,0px) + 16px)}
+.ti-slot + .ti-slot{border-left:1px dashed var(--line)}
+.ti-slot.is-cursor-slot{--ti-bg:color-mix(in srgb,var(--accent) 14%,var(--surface));background:var(--ti-bg)}
+.ti-pos{position:relative;height:24px;display:flex;align-items:center;justify-content:center;font-family:var(--font-num);font-size:13px;line-height:1;cursor:pointer;user-select:none}
+.ti-pos::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--muted);opacity:.55}
+.ti-pos-label{position:relative;padding:0 2px;background:var(--ti-bg,var(--surface));font-weight:600;white-space:nowrap}
+.ti-pos.is-uncertain .ti-pos-label{--ti-bg:color-mix(in srgb,var(--off) 18%,var(--surface));color:var(--off)}
+.ti-pos.is-cursor{outline:2px solid var(--accent);outline-offset:-2px;border-radius:4px}
+.ti-rh{font-size:9px;font-weight:600;margin-left:1px;color:var(--muted)}
+.ti-slot.is-rest::after{content:attr(data-rest);position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;font-family:var(--font-num);font-size:20px;font-style:italic;color:var(--muted);opacity:.6;pointer-events:none}
+.ti-slot.is-rest.is-uncertain::after{color:var(--off);opacity:1}
+
+/* 결과 */
+.ti-diag{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.ti-diag .is-error{color:var(--off);font-weight:600}
+.ti-diag .is-warn{color:var(--near)}
+.ti-diag .is-ok{color:var(--ok);font-weight:600}
+
+/* 입력판 */
+#tiDock{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -4px 16px rgba(0,0,0,.1);padding-bottom:env(safe-area-inset-bottom,0px)}
+.ti-dock-inner{position:relative;max-width:1080px;margin:0 auto;padding:6px 16px;display:flex;flex-direction:column;gap:4px}
+.ti-dock-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#tiDock .btn.sm{min-height:28px}
+#tiAttrsToggle{display:none}
+#tiCursorLabel{font-weight:700;font-size:13.5px;margin-right:4px;white-space:nowrap}
+.ti-div-group{display:inline-flex;align-items:center;gap:4px}
+.ti-div-group .btn{min-width:32px;padding:0 8px}
+#tiDockBody{display:flex;flex-direction:column;gap:4px}
+.ti-fb-scroll{overflow-x:auto}
+.ti-fb{display:grid;grid-template-columns:22px repeat(13,minmax(32px,1fr));gap:1px 2px;min-width:480px}
+.ti-fb-row{display:contents}
+.ti-fb-head{height:14px;line-height:14px;text-align:center;font-family:var(--font-num);font-size:10.5px;color:var(--muted)}
+.ti-fb-str{display:flex;align-items:center;justify-content:center;font-family:var(--font-num);font-size:10.5px;color:var(--muted)}
+.ti-fret{height:26px;padding:0;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--muted);font-family:var(--font-num);font-size:10.5px}
+.ti-fret.is-cursor-row{background:var(--accent-soft)}
+.ti-fret.is-on{background:var(--accent);border-color:transparent;color:var(--accent-ink);font-weight:700}
+#tiAttrs{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
+.ti-attr-group,.ti-attr-row{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px}
+.ti-attr-row{gap:4px 14px}
+#tiAttrs .btn{min-height:26px;padding:0 7px;font-size:12px}
+.ti-dock-hint{margin:0;font-size:11px;white-space:nowrap}
+
+/* 불러오기 */
+dialog{width:calc(100% - 32px);max-width:560px;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--fg)}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+.ti-dialog-body{display:flex;flex-direction:column;gap:10px}
+#tiImportError{margin:0;font-size:12.5px;font-weight:600;color:var(--off)}
+
+@media (min-width:640px){
+  .ti-fret{height:22px}
+  #tiDockBody{flex-direction:row;align-items:flex-start;gap:12px}
+  #tiDockBody .ti-fb-scroll{flex:1 1 0;min-width:0}
+  #tiAttrs{flex:none;width:272px;flex-direction:column;align-items:flex-start;gap:4px;padding-bottom:34px}
+  .ti-attr-group,.ti-attr-row{flex-wrap:nowrap}
+  .ti-attr-row{gap:4px 8px}
+}
+@media (min-width:900px){
+  #tiDock:not(.is-collapsed) .ti-dock-hint{position:absolute;right:16px;bottom:6px;width:272px;white-space:normal;word-break:keep-all;line-height:1.35}
+}
+@media (max-width:899.98px){
+  .ti-dock-hint{display:none}
+}
+@media (max-width:639.98px){
+  .ti-info-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ti-info-grid .ti-field:first-child,.ti-info-grid .ti-field:last-child{grid-column:span 2}
+  .ti-measure{flex:1 1 100%}
+  .ti-dock-inner{padding:6px 12px}
+  .ti-dock-row{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}
+  .ti-dock-row > *{flex:none}
+  #tiAttrsToggle{display:inline-flex}
+  #tiDock:not(.attrs-open) #tiAttrs{display:none}
+  .ti-dock-hint{display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div class="brand">
+      <h1>악보 입력</h1>
+      <span class="sub">타브를 찍어 텍스트 악보로 바꿔</span>
+    </div>
+    <div class="top-actions">
+      <a id="backToPracticeLink" class="btn sm" href="index.html">연습 화면으로</a>
+    </div>
+  </header>
+
+  <section id="tiInfoPanel" class="panel" aria-label="곡 정보">
+    <div class="ti-info-grid">
+      <label class="ti-field"><span class="label">제목</span><input id="tiTitle" class="ti-input" type="text" autocomplete="off"></label>
+      <label class="ti-field"><span class="label">칸 수</span><select id="tiBeats" class="ti-input"></select></label>
+      <label class="ti-field"><span class="label">BPM</span><input id="tiBpm" class="ti-input" type="number" min="30" max="240" step="1" inputmode="numeric"></label>
+      <label class="ti-field"><span class="label">설명</span><input id="tiDescription" class="ti-input" type="text" autocomplete="off" placeholder="설명 (카포는 Capo 2처럼)"></label>
+    </div>
+    <div class="ti-row">
+      <span id="tiCapoInfo" class="badge accent" hidden></span>
+      <span class="label">변화표</span>
+      <button id="tiAccSharp" class="btn sm" type="button" aria-pressed="true">♯ 올림</button>
+      <button id="tiAccFlat" class="btn sm" type="button" aria-pressed="false">♭ 내림</button>
+      <button id="tiNewBtn" class="btn sm" type="button">새 악보</button>
+      <button id="tiImportBtn" class="btn sm" type="button">불러오기</button>
+      <button id="tiUndoBtn" class="btn sm" type="button">되돌리기</button>
+      <button id="tiRedoBtn" class="btn sm" type="button">다시 하기</button>
+      <span id="tiSaveStatus" class="hint" role="status"></span>
+      <span id="tiStatus" class="hint" role="status"></span>
+    </div>
+  </section>
+
+  <div id="tiSelectionBar" hidden>
+    <span id="tiSelectionLabel"></span>
+    <button id="tiCopyBtn" class="btn sm" type="button">복사</button>
+    <button id="tiPasteBtn" class="btn sm" type="button">붙여넣기</button>
+    <button id="tiDuplicateBtn" class="btn sm" type="button">복제</button>
+    <button id="tiClearBtn" class="btn sm" type="button">비우기</button>
+    <button id="tiDeleteBtn" class="btn sm danger" type="button">삭제</button>
+    <button id="tiInsertBtn" class="btn sm" type="button">뒤에 빈 마디</button>
+    <button id="tiDeselectBtn" class="btn sm" type="button">선택 해제</button>
+  </div>
+
+  <div id="tiMeasures"></div>
+  <div class="ti-row"><button id="tiAddMeasureBtn" class="btn" type="button">+ 마디 추가</button></div>
+
+  <section id="tiResultPanel" class="panel" aria-label="결과">
+    <div class="panel-head"><h2>결과</h2></div>
+    <ul id="tiDiagnostics" class="ti-diag"></ul>
+    <textarea id="tiScoreText" class="ti-input" readonly rows="6" spellcheck="false" aria-label="변환된 악보 텍스트"></textarea>
+    <div class="ti-row">
+      <button id="tiCopyTextBtn" class="btn" type="button">악보 텍스트 복사</button>
+      <button id="tiCopyTsvBtn" class="btn" type="button">시트용 TSV 복사</button>
+      <button id="tiOpenPracticeBtn" class="btn primary" type="button">연습 화면에서 열기</button>
+    </div>
+    <span id="tiResultStatus" class="hint" role="status"></span>
+  </section>
+</div>
+
+<div id="tiDock" role="region" aria-label="입력판">
+  <div class="ti-dock-inner">
+    <div class="ti-dock-row">
+      <span id="tiCursorLabel"></span>
+      <button id="tiPrevBtn" class="btn sm" type="button" aria-label="앞 조각">◀</button>
+      <button id="tiNextBtn" class="btn sm" type="button" aria-label="뒤 조각">▶</button>
+      <button id="tiRestBtn" class="btn sm" type="button" aria-pressed="false">쉼표</button>
+      <button id="tiClearSlotBtn" class="btn sm" type="button">칸 비우기</button>
+      <span class="ti-div-group">
+        <span class="label">나누기</span>
+        <button id="tiDiv1" class="btn sm" type="button" aria-pressed="true" aria-label="나누지 않음">1</button>
+        <button id="tiDiv2" class="btn sm" type="button" aria-pressed="false" aria-label="2개로 나누기">2</button>
+        <button id="tiDiv3" class="btn sm" type="button" aria-pressed="false" aria-label="3개로 나누기">3</button>
+        <button id="tiDiv4" class="btn sm" type="button" aria-pressed="false" aria-label="4개로 나누기">4</button>
+      </span>
+      <button id="tiPlaySlotBtn" class="btn sm" type="button">들어보기</button>
+      <button id="tiAutoAdvance" class="btn sm" type="button" aria-pressed="false">입력하면 다음 칸으로</button>
+      <button id="tiSoundToggle" class="btn sm" type="button" aria-pressed="true">소리</button>
+      <button id="tiAttrsToggle" class="btn sm" type="button" aria-pressed="false">운지</button>
+      <button id="tiDockToggle" class="btn sm" type="button">입력판 접기</button>
+    </div>
+    <div id="tiDockBody">
+      <div class="ti-fb-scroll"><div id="tiFretboard" class="ti-fb"></div></div>
+      <div id="tiAttrs">
+        <span class="ti-attr-group"><span class="label">왼손</span>
+          <button class="btn" type="button" data-attr="lh" data-value="">없음</button>
+          <button class="btn" type="button" data-attr="lh" data-value="0">0</button>
+          <button class="btn" type="button" data-attr="lh" data-value="1">1</button>
+          <button class="btn" type="button" data-attr="lh" data-value="2">2</button>
+          <button class="btn" type="button" data-attr="lh" data-value="3">3</button>
+          <button class="btn" type="button" data-attr="lh" data-value="4">4</button>
+        </span>
+        <span class="ti-attr-group"><span class="label">오른손</span>
+          <button class="btn" type="button" data-attr="rh" data-value="">없음</button>
+          <button class="btn" type="button" data-attr="rh" data-value="p">p</button>
+          <button class="btn" type="button" data-attr="rh" data-value="i">i</button>
+          <button class="btn" type="button" data-attr="rh" data-value="m">m</button>
+          <button class="btn" type="button" data-attr="rh" data-value="a">a</button>
+        </span>
+        <span class="ti-attr-row">
+          <span class="ti-attr-group"><span class="label">주법</span>
+            <button class="btn" type="button" data-attr="art" data-value="">없음</button>
+            <button class="btn" type="button" data-attr="art" data-value="!">! 아포얀도</button>
+            <button class="btn" type="button" data-attr="art" data-value="~">~ 티란도</button>
+          </span>
+          <button id="tiUncertainBtn" class="btn" type="button" aria-pressed="false">? 확인</button>
+        </span>
+      </div>
+    </div>
+    <p class="hint ti-dock-hint">숫자키 프렛 · 방향키 이동 · R 쉼표 · Del 지우기 · Space 들어보기 · Ctrl+Z 되돌리기 · 오른쪽 클릭 지우기</p>
+  </div>
+</div>
+
+<dialog id="tiImportDialog" aria-labelledby="tiImportHeading">
+  <div class="ti-dialog-body">
+    <h2 id="tiImportHeading">불러오기</h2>
+    <textarea id="tiImportText" class="ti-input" rows="8" spellcheck="false" placeholder="시트 한 행(탭 5열)이나 악보 텍스트를 붙여 넣어"></textarea>
+    <p id="tiImportError" role="alert" hidden></p>
+    <div class="ti-row">
+      <button id="tiImportApplyBtn" class="btn primary" type="button">불러오기</button>
+      <button id="tiImportCancelBtn" class="btn" type="button">취소</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="src/storage.js?v=tab-input-1"></script>
+<script src="src/app-state.js?v=tab-input-1"></script>
+<script src="src/notation.js?v=tab-input-1"></script>
+<script src="src/rhythm.js?v=tab-input-1"></script>
+<script src="src/parser.js?v=tab-input-1"></script>
+<script src="src/score-ui.js?v=tab-input-1"></script>
+<script src="src/score-prompt.js?v=tab-input-1"></script>
+<script src="src/audio.js?v=tab-input-1"></script>
+<script src="src/tab-input.js?v=tab-input-1"></script>
+<script src="src/tab-input-ui.js?v=tab-input-1"></script>
+</body>
+</html>

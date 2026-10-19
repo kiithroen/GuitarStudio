@@ -1,6 +1,6 @@
 # 악보 문법
 
-내장곡, Google Sheets, 임시 악보 초안이 함께 쓰는 텍스트 악보 문법이야. 이 문서는 문법만 다뤄. 사용 흐름은 [사용 안내](usage.md), 재생 계약은 [리듬·오디오 계약](beginner-rhythm.md), 화면 표시는 [화면과 조작](ui.md)에 있어.
+내장곡, Google Sheets, 임시 악보 초안, 악보 입력 화면이 함께 쓰는 텍스트 악보 문법이야. 이 문서는 문법만 다뤄. 사용 흐름은 [사용 안내](usage.md), 재생 계약은 [리듬·오디오 계약](beginner-rhythm.md), 화면 표시는 [화면과 조작](ui.md)에 있어.
 
 파싱·검증 기준은 `src/notation.js`(마디·칸 구조)와 `src/parser.js`(음·코드 토큰), `src/rhythm.js`(유지 체인)야. 사진 변환 프롬프트(`src/score-prompt.js`)는 이 문법을 앱을 모르는 AI용으로 옮긴 거라, 문법을 바꾸면 프롬프트도 같이 고쳐.
 

@@ -9,6 +9,7 @@
 | 파일 | 역할 |
 |---|---|
 | `src/storage.js` | DOM과 분리된 IndexedDB 저장소 |
+| `src/app-state.js` | 앱 설정 상태(`appState`)와 오디오 런타임 전역. 악보 입력 화면도 같이 불러 |
 | `src/notation.js` | 입력 줄 토큰화, 마디 메모·가사·코드 머리표, 직렬화와 구조 검증 |
 | `src/rhythm.js` | 칸 길이와 쉼·유지 체인 분석 |
 | `src/parser.js` | `parseScore`, 음·화음·운지 파싱, 카포와 실음 계산 |
@@ -28,6 +29,8 @@
 
 화면·단축키 결정은 [화면과 조작](ui.md)에 있어.
 
+악보 입력 화면 `score-input.html`은 `app.js` 없이 따로 스크립트를 불러. 구성과 결정은 [악보 입력](tab-input.md)에 있어. 2026-10-19 결정: 두 화면이 같이 쓰는 색 토큰과 기본 컨트롤 스타일(`:root`, `.btn`, `.panel`, `.badge` 등)을 `index.html` 인라인 스타일에서 `src/base.css`로 옮겼어. `index.html`은 `<style>` 앞에서 불러 캐스케이드 순서를 지켜. 같은 날 `app.js` 맨 위의 설정 상태와 오디오 런타임 전역도 `src/app-state.js`로 옮겼어. 입력 화면이 `audio.js`로 음을 들려주려면 이 전역이 있어야 하는데, 복사하면 마스터 음량 같은 값이 두 군데가 돼서야.
+
 ## 파싱과 재생 흐름
 
 `parseScore`와 `GuitarNotation.validateScore`가 텍스트 악보의 파싱·검증 기준이야. 파생 필드는 `tok`와 원본 입력에서 다시 계산해. `GuitarRhythm.annotate`가 칸 길이·시작 위치·유지 체인을 계산하고, `guide.js`가 그 결과로 재생 이벤트를 만들어 `audio.js`에 예약해. SSOT는 `rhythm.js`의 음가·유지 계산, `guide.js`의 이벤트와 복원 경로, `audio.js`의 `naturalDecay`와 강제 정리야. 세부 계약은 [리듬·오디오 계약](beginner-rhythm.md), 회귀 근거는 `test/test-rhythm.js`, `test/test-guide.js`, `test/test-audio.js`에 있어.
@@ -36,7 +39,8 @@
 
 ## 초안과 저장
 
-- 2026-10-19 결정: 텍스트 악보는 원본과 임시 작업을 분리해. 내장곡과 Google Sheets 원본은 바꾸지 않고, 새 악보와 수정 초안은 `score-drafts.js`가 곡별로 탭 메모리에만 둬서 새로고침하면 사라져. 텍스트 악보는 IndexedDB·localStorage·백업에 저장하지 않아. 이미지·PDF 악보와 앱 설정의 영속화는 그대로야.
+- 2026-10-19 결정: 텍스트 악보는 원본과 임시 작업을 분리해. 내장곡과 Google Sheets 원본은 바꾸지 않고, 새 악보와 수정 초안은 `score-drafts.js`가 곡별로 탭 메모리에만 둬서 새로고침하면 사라져. 텍스트 악보는 IndexedDB·localStorage·백업에 저장하지 않아. 이미지·PDF 악보와 앱 설정의 영속화는 그대로야. 예외는 악보 입력 화면의 작업 중인 악보 하나야(localStorage, 이유는 [악보 입력](tab-input.md)의 저장과 넘기기).
+- 2026-10-19 결정: 악보 입력 화면이 `gs.tabInput.handoff`에 넘긴 악보는 부팅 때 `scoreEditorHooks.consumeTabInputHandoff`가 읽어 `scoreDrafts.createFromScore`로 임시 악보를 만들어(출처 `tab-input`). 연습 화면에서 고치지 않은 이 임시 악보는 떠날 때 경고하지 않아.
 - 편집은 전체 악보 검증이 성공할 때만 적용해. 마디 편집 한 번이 실행 취소 한 단계고, 초안 초기화는 그 곡 원본 복사본으로 되돌려. 편집 중에는 곡 전환·재생·복사·다른 편집을 막아 미적용 내용을 잃지 않게 해.
 - IndexedDB에는 이미지·PDF 악보, localStorage에는 앱 설정과 곡별 최근 연습 BPM·구간 이어가기 상태가 있어. 과거에 저장된 구조화 악보 DB 레코드는 자동 삭제하지 않고 앱에서 노출하지도 않아.
 - 백업 포맷은 버전 1의 `customSongs` 키를 유지해. 이름과 달리 이미지 전용 데이터를 담아.
@@ -75,6 +79,7 @@ node test/test-image-conversion.js
 node test/test-score-prompt.js
 node test/test-check-score.js
 node test/test-midi-to-score.js
+node test/test-tab-input.js
 node test/test-audio.js
 node test/test-guide.js
 node test/test-storage.js

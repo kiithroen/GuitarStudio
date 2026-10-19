@@ -88,10 +88,8 @@ function parseMidi(buf) {
   return { format: format, ppq: ppq, notes: notes, tempos: tempos, timeSigs: timeSigs, keySigs: keySigs, tracks: trackInfo };
 }
 
-var SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-var FLAT = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 function noteName(m, flats) {
-  return (flats ? FLAT : SHARP)[m % 12] + (Math.floor(m / 12) - 1);
+  return parser.noteNameForMidi(m, flats);
 }
 
 function sortNotes(notes) {

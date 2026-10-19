@@ -29,7 +29,7 @@ function makeDB(){
   return db;
 }
 
-function setup(){
+function setup(localStorageStub){
   const opens = [];
   const context = {
     indexedDB: {
@@ -41,7 +41,7 @@ function setup(){
       return req;
     }
     },
-    localStorage: { getItem(){ return null; }, setItem(){} },
+    localStorage: localStorageStub || { getItem(){ return null; }, setItem(){} },
     module: { exports: {} },
     setTimeout,
     clearTimeout
@@ -183,7 +183,26 @@ async function main(){
     succeedOpen(opens[1], db2);
     assert.strictEqual(await second, db2);
   }
-  console.log('test-storage: 15 scenarios passed');
+  {
+    const data = new Map();
+    const { storage } = setup({
+      getItem(k){ return data.has(k) ? data.get(k) : null; },
+      setItem(k, v){ data.set(k, String(v)); },
+      removeItem(k){ data.delete(k); }
+    });
+    assert.strictEqual(storage.ls.set('k', { a: 1 }), true, 'ls.set returns true on success');
+    assert.strictEqual(JSON.stringify(storage.ls.get('k', null)), '{"a":1}');
+    assert.strictEqual(storage.ls.remove('k'), true, 'ls.remove returns true on success');
+    assert.strictEqual(storage.ls.get('k', 'gone'), 'gone', 'ls.remove deletes the key');
+    const failing = setup({
+      getItem(){ throw new Error('blocked'); },
+      setItem(){ throw new Error('quota'); },
+      removeItem(){ throw new Error('blocked'); }
+    }).storage;
+    assert.strictEqual(failing.ls.set('k', 1), false, 'ls.set returns false when storage throws');
+    assert.strictEqual(failing.ls.remove('k'), false, 'ls.remove returns false when storage throws');
+  }
+  console.log('test-storage: 16 scenarios passed');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

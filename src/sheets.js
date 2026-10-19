@@ -120,8 +120,8 @@
           var bpmText = (cols[2] || '').trim();
           var beatValue = beatText ? Number(beatText) : 4;
           var bpmValue = bpmText ? Number(bpmText) : 64;
-          if (!Number.isFinite(beatValue) || Math.floor(beatValue) !== beatValue || [2,3,4,6,8,9].indexOf(beatValue) < 0){
-            throw new Error('시트 ' + (rIdx + 1) + '행: 박자는 2, 3, 4, 6, 8, 9 중 하나여야 해.');
+          if (!Number.isFinite(beatValue) || Math.floor(beatValue) !== beatValue || GuitarNotation.SHEET_BEAT_COUNTS.indexOf(beatValue) < 0){
+            throw new Error('시트 ' + (rIdx + 1) + '행: 박자는 ' + GuitarNotation.SHEET_BEAT_COUNTS.join(', ') + ' 중 하나여야 해.');
           }
           if (!Number.isFinite(bpmValue) || Math.floor(bpmValue) !== bpmValue || bpmValue < 1){
             throw new Error('시트 ' + (rIdx + 1) + '행: BPM은 1 이상의 정수여야 해.');

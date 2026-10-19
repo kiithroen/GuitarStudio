@@ -89,7 +89,7 @@ var scoreEditorHooks = (function(){
 
   function refreshStatus(){
     var structured = !!(curSong && curSong.type === 'structured');
-    var status = structured ? scoreDrafts.status(curSong.id) : {dirty:false,temporary:false,canUndo:false};
+    var status = structured ? scoreDrafts.status(curSong.id) : {dirty:false,temporary:false,canUndo:false,origin:null};
     var controls = document.getElementById('scoreDraftControls');
     var node = statusNode();
     var undo = document.getElementById('undoScoreEditBtn');
@@ -98,7 +98,9 @@ var scoreEditorHooks = (function(){
       if (structured){
         var msg = pendingEdit && pendingEdit.songId === curSong.id
           ? (pendingEdit.kind === 'edit' ? (pendingEdit.index + 1) + '마디 편집 중 · 적용하거나 취소해줘.' : (pendingEdit.index + 2) + '마디 추가 초안 · 적용하거나 취소해줘.')
-          : (status.temporary
+          : (status.temporary && status.origin === 'tab-input' && !status.dirty
+            ? '악보 입력에서 연 임시 악보야. 고치려면 악보 입력으로 돌아가.'
+            : status.temporary
             ? '임시 악보 · 새로고침하면 사라져. 보관하려면 악보 복사해.'
             : (status.dirty ? '임시 수정됨 · 새로고침하면 사라져. 보관하려면 악보 복사해.' : ''));
         node.textContent = msg;
@@ -391,13 +393,51 @@ var scoreEditorHooks = (function(){
       var hasDraft = !!pendingEdit || allSongs.some(function(song){
         if (!song || song.type !== 'structured') return false;
         var state = scoreDrafts.status(song.id);
-        return state.dirty || state.temporary;
+        return state.dirty || (state.temporary && state.origin !== 'tab-input');
       });
       if (!hasDraft) return;
       event.preventDefault();
       event.returnValue = '';
     });
     refreshStatus();
+  }
+
+  var TAB_INPUT_HANDOFF_KEY = 'gs.tabInput.handoff';
+  var TAB_INPUT_HANDOFF_MAX_AGE_MS = 600000;
+  var TAB_INPUT_HANDOFF_MAX_FUTURE_MS = 60000;
+
+  function reportTabInputHandoffFailure(message){
+    var node = document.getElementById('storageStatus');
+    if (!node) return;
+    node.textContent = '악보 입력에서 넘긴 악보를 열지 못했어: ' + message;
+    node.hidden = false;
+  }
+
+  function consumeTabInputHandoff(){
+    var handoff = ls.get(TAB_INPUT_HANDOFF_KEY, null);
+    if (!handoff) return null;
+    ls.remove(TAB_INPUT_HANDOFF_KEY);
+    var age = typeof handoff === 'object' && typeof handoff.savedAt === 'number' ? Date.now() - handoff.savedAt : NaN;
+    if (!isFinite(age) || age > TAB_INPUT_HANDOFF_MAX_AGE_MS || age < -TAB_INPUT_HANDOFF_MAX_FUTURE_MS) return null;
+    var validLines = Array.isArray(handoff.lines) && handoff.lines.every(function(line){ return typeof line === 'string'; });
+    if (typeof handoff.title !== 'string' || !handoff.title || !validLines){
+      reportTabInputHandoffFailure('넘긴 내용의 모양이 틀렸어.');
+      return null;
+    }
+    try {
+      var song = scoreDrafts.createFromScore({
+        title:handoff.title,
+        beats:Number(handoff.beats),
+        bpm:Math.max(30, Math.min(240, Math.round(Number(handoff.bpm) || 64))),
+        badge:handoff.badge,
+        lines:handoff.lines,
+        origin:'tab-input'
+      });
+      return song.id;
+    } catch (error){
+      reportTabInputHandoffFailure(error && error.message ? error.message : String(error));
+      return null;
+    }
   }
 
   return {
@@ -409,6 +449,7 @@ var scoreEditorHooks = (function(){
     isEditingMeasure:isEditingMeasure,
     renderInlineEditor:renderInlineEditor,
     appendInsertDraftCard:appendInsertDraftCard,
-    refreshStatus:refreshStatus
+    refreshStatus:refreshStatus,
+    consumeTabInputHandoff:consumeTabInputHandoff
   };
 })();

@@ -1,6 +1,6 @@
 # Guitar Studio 에이전트 지침
 
-세션마다 통째로 읽히는 파일이라 규칙과 함정만 둔다. 내용과 결정은 문서에 있다: [사용](Docs/usage.md) · [악보 문법](Docs/score-format.md) · [모듈·저장·검증](Docs/development.md) · [리듬·오디오](Docs/beginner-rhythm.md) · [화면·조작](Docs/ui.md) · [내장곡 출처](Docs/builtin-sources.md). 일하기 전에 해당 문서만 읽는다.
+세션마다 통째로 읽히는 파일이라 규칙과 함정만 둔다. 내용과 결정은 문서에 있다: [사용](Docs/usage.md) · [악보 문법](Docs/score-format.md) · [모듈·저장·검증](Docs/development.md) · [리듬·오디오](Docs/beginner-rhythm.md) · [화면·조작](Docs/ui.md) · [악보 입력](Docs/tab-input.md) · [내장곡 출처](Docs/builtin-sources.md). 일하기 전에 해당 문서만 읽는다.
 
 ## 문서
 - 결정은 그 시스템 문서에 날짜(`YYYY-MM-DD`)와 이유를 달아 적는다. 화면·조작은 `ui.md`, 리듬·재생은 `beginner-rhythm.md`, 모듈·저장·검증은 `development.md`.
@@ -11,6 +11,7 @@
 - 무빌드 정적 앱(Vanilla JS classic script, Web Audio)이다. 번들러·트랜스파일러·빌드 단계를 넣지 않는다.
 - 파싱·음악 이론·오디오 합성은 공통 함수 하나만 둔다(SSOT). 복사하지 않는다. 커진 로직은 독립 모듈로 뺀다.
 - 카포처럼 전역 피치에 영향을 주는 값은 TAB·코드 카드·지판·가이드음 모든 경로에 같이 반영한다.
+- 악보 입력 화면(`score-input.html`)은 `app.js`를 불러오지 않는다. 두 화면이 같이 쓰는 전역은 `src/app-state.js`, 스타일은 `src/base.css`에 둔다. 칸 수 목록은 `GuitarNotation.SHEET_BEAT_COUNTS`, 음이름은 `noteNameForMidi`만 쓴다.
 
 ## 악보·재생
 - 마디 구분은 `//`와 줄바꿈, 칸 안 분할은 붙여 쓴 `/`(2·3·4분할)다. 구형 공백 슬래시, 구형 악보 변환, 옛 호환 표기(한글 음이름, 괄호·쉼표 분할, 뒤 주법, 따옴표 없는 메모, 코드 별칭, `R`)는 받지 않는다. 되살리지 않는다.
@@ -25,7 +26,7 @@
 
 ## 검증 (명령은 `Docs/development.md` 검증 절)
 - 커밋 전 모든 `src/*.js`, `test/*.js`, `tools/*.js`가 `node --check`를 통과해야 한다.
-- 파서 정규식·악보 구조·카포: `test-parser`. 음가·쉼·유지·재생: `test-rhythm`, `test-guide`, `test-audio`. 부팅·상태 저장: `test-app-smoke`. DOM·인터랙션·콘솔 에러: `test-browser-smoke`.
+- 파서 정규식·악보 구조·카포: `test-parser`. 음가·쉼·유지·재생: `test-rhythm`, `test-guide`, `test-audio`. 부팅·상태 저장: `test-app-smoke`. DOM·인터랙션·콘솔 에러: `test-browser-smoke`. 타브 입력 모델·변환: `test-tab-input`.
 
 ## 커밋
 - 메인 세션이 diff 검수와 필수 검증을 마치고 commit과 push까지 해야 완료다. 따로 묻지 않는다. 사용자가 보류나 로컬 작업만 말하면 따른다.

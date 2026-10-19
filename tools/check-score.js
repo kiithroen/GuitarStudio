@@ -2,11 +2,12 @@
 
 // 시트 한 행(TSV) 형식의 악보 파일을 검사하는 CLI. 문법 검사는 parser.validateScore 하나로만 한다.
 const fs = require('node:fs');
+const notation = require('../src/notation.js');
 const parser = require('../src/parser.js');
 const score = require('../src/score.js');
 
 // src/sheets.js 시트 행 검사와 같은 목록
-const ALLOWED_BEATS = [2, 3, 4, 6, 8, 9];
+const ALLOWED_BEATS = notation.SHEET_BEAT_COUNTS;
 // src/app.js 곡 적용부가 자르는 범위
 const BPM_MIN = 30;
 const BPM_MAX = 240;
@@ -22,7 +23,7 @@ function checkRowShape(cols){
   if (!cols[0].trim()) return { code: 'ROW_TITLE', message: '제목이 비어 있어.' };
   const beatsText = cols[1].trim();
   if (!isIntegerText(beatsText) || ALLOWED_BEATS.indexOf(Number(beatsText)) < 0){
-    return { code: 'ROW_BEATS', message: '칸 수는 2, 3, 4, 6, 8, 9 중 하나여야 해: ' + beatsText };
+    return { code: 'ROW_BEATS', message: '칸 수는 ' + ALLOWED_BEATS.join(', ') + ' 중 하나여야 해: ' + beatsText };
   }
   const bpmText = cols[2].trim();
   if (!isIntegerText(bpmText) || Number(bpmText) < BPM_MIN || Number(bpmText) > BPM_MAX){

@@ -6,6 +6,9 @@
 })(typeof window !== 'undefined' ? window : globalThis, function(){
   'use strict';
 
+  // 시트 행·검사 도구·타브 입력 화면이 같이 쓰는 허용 칸 수 목록
+  var SHEET_BEAT_COUNTS = [2, 3, 4, 6, 8, 9];
+
   function scan(text, splitBars){
     var out = [];
     var start = 0;
@@ -288,6 +291,7 @@
     serializeScoreMeasures:serializeScoreMeasures,
     isRestToken:isRestToken,
     hasUncertainMark:hasUncertainMark,
-    validateScore:validateScore
+    validateScore:validateScore,
+    SHEET_BEAT_COUNTS:SHEET_BEAT_COUNTS
   };
 });

@@ -71,7 +71,8 @@
         original:cloneValue(song),
         originalCanonical:canonicalScore(song),
         undoSnapshot:null,
-        temporary:false
+        temporary:false,
+        origin:null
       };
     }
 
@@ -79,8 +80,8 @@
 
     function status(id){
       var state = entries.get(id);
-      if (!state) return {dirty:false,temporary:false,canUndo:false};
-      return {dirty:isDirty(state),temporary:state.temporary,canUndo:!!state.undoSnapshot};
+      if (!state) return {dirty:false,temporary:false,canUndo:false,origin:null};
+      return {dirty:isDirty(state),temporary:state.temporary,canUndo:!!state.undoSnapshot,origin:state.origin};
     }
 
     function get(id){
@@ -141,6 +142,33 @@
       };
       var state = stateFor(song);
       state.temporary = true;
+      entries.set(id, state);
+      return state.song;
+    }
+
+    function createFromScore(spec){
+      spec = spec || {};
+      var text = Array.isArray(spec.lines) ? spec.lines.join('\n') : String(spec.lines == null ? '' : spec.lines);
+      var parsed = parser.parseScore(text, spec.beats);
+      if (parsed.errors.length) throw draftError(parsed.errors);
+      var id;
+      do { id = 'temp-score-' + nextTemporaryId++; }
+      while (entries.has(id));
+      var song = {
+        id:id,
+        title:spec.title,
+        badge:spec.badge || '임시 악보',
+        type:'structured',
+        builtin:false,
+        capo:0,
+        beats:parsed.beats,
+        bpm:spec.bpm,
+        measures:cloneValue(parsed.measures),
+        notationVersion:2
+      };
+      var state = stateFor(song);
+      state.temporary = true;
+      state.origin = spec.origin || null;
       entries.set(id, state);
       return state.song;
     }
@@ -209,7 +237,7 @@
       return state.song;
     }
 
-    return {list:list,get:get,status:status,createBlank:createBlank,apply:apply,remove:remove,undo:undo,reset:reset};
+    return {list:list,get:get,status:status,createBlank:createBlank,createFromScore:createFromScore,apply:apply,remove:remove,undo:undo,reset:reset};
   }
 
   return createScoreDraftStore;
