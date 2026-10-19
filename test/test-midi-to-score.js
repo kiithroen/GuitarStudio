@@ -232,5 +232,69 @@ function body(line){
   pass('CLI 가 JSON 을 내고 rebuild-builtins 는 원본이 없으면 원본 없음, 다르면 불일치로 알린다');
 }
 
+// 9. 트랙별 옮김(--track-transpose)과 트랙의 시점별 최저음만(--lowest-only)
+{
+  // 2트랙 SMF: 트랙 'mel'(C5 D5 E5 F5 4분음표)과 트랙 'low'(같은 틱에 시작하는 화음 둘)
+  function trackBytes(name, notes, withMeta){
+    const events = [];
+    if (withMeta){
+      events.push({ tick: 0, order: 0, bytes: [0xff, 0x58, 0x04, 4, 2, 24, 8] });
+      events.push({ tick: 0, order: 0, bytes: [0xff, 0x51, 0x03, 0x07, 0xa1, 0x20] });
+    }
+    const nameBytes = Array.from(Buffer.from(name, 'latin1'));
+    events.push({ tick: 0, order: 0, bytes: [0xff, 0x03, nameBytes.length].concat(nameBytes) });
+    notes.forEach(function(n){
+      events.push({ tick: n.start, order: 2, bytes: [0x90, n.pitch, 64] });
+      events.push({ tick: n.end, order: 1, bytes: [0x80, n.pitch, 0] });
+    });
+    events.sort(function(a, b){ return a.tick - b.tick || a.order - b.order; });
+    const out = [];
+    let last = 0;
+    events.forEach(function(e){ out.push.apply(out, vlq(e.tick - last)); out.push.apply(out, e.bytes); last = e.tick; });
+    out.push(0x00, 0xff, 0x2f, 0x00);
+    const len = out.length;
+    return Buffer.from([0x4d, 0x54, 0x72, 0x6b, (len >>> 24) & 0xff, (len >>> 16) & 0xff, (len >>> 8) & 0xff, len & 0xff].concat(out));
+  }
+  const mel = [note(0, 96, 72), note(96, 96, 74), note(192, 96, 76), note(288, 96, 77)];
+  const low = [note(0, 192, 55), note(0, 192, 48), note(0, 192, 52), note(192, 192, 47), note(192, 192, 43)];
+  const head = Buffer.from([0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, 2, (PPQ >> 8) & 0xff, PPQ & 0xff]);
+  const midi = converter.parseMidi(Buffer.concat([head, trackBytes('mel', mel, true), trackBytes('low', low, false)]));
+  const run = function(options){ return converter.convertMidi(midi, Object.assign({ cells: 4 }, options)); };
+  assert.deepEqual(midi.tracks.map(function(t){ return t.name; }), ['mel', 'low']);
+  assert.equal(body(run().measures[0]), 'C3+E3+G3+C5 D5 G2+B2+E5 F5');
+  // 최저음만: 트랙 이름으로도 번호로도 고르고, 다른 트랙은 그대로 둔다
+  assert.equal(body(run({ lowestOnly: ['low'] }).measures[0]), 'C3+C5 D5 G2+E5 F5');
+  assert.equal(body(run({ lowestOnly: ['1'] }).measures[0]), 'C3+C5 D5 G2+E5 F5');
+  assert.equal(body(run({ lowestOnly: ['mel'] }).measures[0]), 'C3+E3+G3+C5 D5 G2+B2+E5 F5');
+  // 트랙별 옮김: 지정한 트랙만 움직이고 전체 transpose 에 더해진다
+  assert.equal(body(run({ trackTranspose: { mel: -12 } }).measures[0]), 'C3+E3+G3+C4 D4 G2+B2+E4 F4');
+  assert.equal(body(run({ trackTranspose: { mel: -12 }, lowestOnly: ['low'] }).measures[0]), 'C3+C4 D4 G2+E4 F4');
+  assert.equal(body(run({ transpose: 12, trackTranspose: { low: -12 }, lowestOnly: ['low'] }).measures[0]), 'C3+C6 D6 G2+E6 F6');
+  assert.equal(run({ trackTranspose: { mel: -12 }, lowestOnly: ['low'] }).minMidi, 43);
+  // 마디 첫 박만: 마디 시작 틱에 시작하지 않는 음을 버리고, 최저음만과 같이 쓰면 첫 박 음 중 최저음 하나가 남는다
+  assert.equal(body(run({ downbeatOnly: ['low'] }).measures[0]), 'C3+E3+G3+C5 D5 E5 F5');
+  assert.equal(body(run({ downbeatOnly: ['low'], lowestOnly: ['low'] }).measures[0]), 'C3+C5 D5 E5 F5');
+  assert.equal(body(run({ downbeatOnly: ['mel'] }).measures[0]), 'C3+E3+G3+C5 - G2+B2 -');
+  // 못갖춘마디: 마디 경계는 pickup 을 반영한다
+  const low2 = [note(96, 96, 50), note(96, 96, 45), note(192, 96, 40)];
+  const midi2 = converter.parseMidi(Buffer.concat([head, trackBytes('mel', mel, true), trackBytes('low', low2, false)]));
+  const run2 = function(options){ return converter.convertMidi(midi2, Object.assign({ cells: 4, pickup: 96 }, options)); };
+  const withBeat = run2({ downbeatOnly: ['low'], lowestOnly: ['low'] });
+  assert.equal(withBeat.minMidi, 45);
+  assert.equal(withBeat.noteCount, 5);
+  assert.equal(run2({ lowestOnly: ['low'] }).minMidi, 40);
+  assert.equal(run2({ lowestOnly: ['low'] }).noteCount, 6);
+  // 없는 트랙과 겹치는 이름은 오류
+  assert.throws(function(){ run({ lowestOnly: ['nope'] }); }, /no such track/);
+  assert.throws(function(){ run({ trackTranspose: { 7: 1 } }); }, /no such track/);
+  // CLI: 같은 뜻의 옵션
+  const mid = path.join(tmpDir, 'two-track.mid');
+  fs.writeFileSync(mid, Buffer.concat([head, trackBytes('mel', mel, true), trackBytes('low', low, false)]));
+  const cli = spawnSync(process.execPath, [path.join('tools', 'midi-to-score.js'), mid, '--cells', '4', '--track-transpose', 'mel:-12', '--lowest-only', 'low', '--downbeat-only', 'low'], { cwd: root, encoding: 'utf8' });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.equal(JSON.parse(cli.stdout).measures[0], '[-] C3+C4 D4 E4 F4 | ""');
+  pass('--track-transpose 는 지정한 트랙만 옮기고 --downbeat-only 는 마디 시작 틱 음만, --lowest-only 는 같은 틱 시작 음 중 가장 낮은 음만 남긴다');
+}
+
 fs.rmSync(tmpDir, { recursive: true, force: true });
 process.stdout.write('1..' + checks + '\n');

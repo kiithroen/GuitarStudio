@@ -177,5 +177,28 @@
       }
     ],
     "lineOverrides": []
+  },
+  {
+    "id": "builtin-greensleeves-bass",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/Traditional/GreensleevesAcc/GreensleevesAcc.mid",
+    "file": "GreensleevesAcc.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 384,
+      "grace": 0.125,
+      "transpose": 0,
+      "trackTranspose": {
+        "treble": -12
+      },
+      "lowestOnly": [
+        "bass"
+      ],
+      "downbeatOnly": [
+        "bass"
+      ],
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
   }
 ]

@@ -18,7 +18,7 @@ const melodyPracticeIds = [
 const convertedIds = [
   'builtin-mary-lamb', 'builtin-sor-op60-01', 'builtin-carulli-op241-01', 'builtin-carulli-op241-05',
   'builtin-giuliani-op50-01', 'builtin-carcassi-op60-03', 'builtin-carcassi-op60-07',
-  'builtin-sor-op35-22', 'builtin-tarrega-adelita'
+  'builtin-sor-op35-22', 'builtin-tarrega-adelita', 'builtin-greensleeves-bass'
 ];
 
 assert.ok(songs.length > 0, 'catalog is not empty');

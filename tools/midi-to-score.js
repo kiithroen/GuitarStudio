@@ -1,19 +1,30 @@
 'use strict';
 
 // 표준 MIDI 파일(SMF)을 칸 격자 악보 줄로 바꾸는 도구.
-// 사용: node tools/midi-to-score.js <파일.mid> [--cells N] [--pickup T] [--grace R] [--transpose N] [--edits 파일.json] [--fix-strings]
+// 사용: node tools/midi-to-score.js <파일.mid> [--cells N] [--pickup T] [--grace R] [--transpose N] [--track-transpose "트랙:반음,…"] [--lowest-only 트랙,…] [--downbeat-only 트랙,…] [--edits 파일.json] [--fix-strings]
+// 트랙은 이름(MIDI 트랙 이름) 또는 0부터 세는 번호로 고른다. --track-transpose 는 --transpose 에 더해지고, --lowest-only 는 그 트랙에서 같은 틱에 시작하는 음 중 가장 낮은 음 하나만 남긴다.
+// --downbeat-only 는 그 트랙에서 마디 시작 틱(--pickup 을 반영한 마디 경계)에 시작하지 않는 음을 버린다. 편집 뒤 --lowest-only 앞에 적용되므로 둘을 같이 쓰면 마디 첫 박 음 중 최저음 하나가 남는다.
 // --cells 를 생략하면 MIDI 정보만 출력한다. 결과는 표준 출력 JSON.
 const fs = require('node:fs');
 const parser = require('../src/parser.js');
 
 function parseArgs(argv) {
-  var o = { file: null, cells: 0, pickup: 0, grace: 0.125, transpose: 0, edits: null, fixStrings: false };
+  var o = { file: null, cells: 0, pickup: 0, grace: 0.125, transpose: 0, trackTranspose: {}, lowestOnly: [], downbeatOnly: [], edits: null, fixStrings: false };
   for (var i = 0; i < argv.length; i++) {
     var a = argv[i];
     if (a === '--cells') o.cells = parseInt(argv[++i], 10);
     else if (a === '--pickup') o.pickup = parseInt(argv[++i], 10);
     else if (a === '--grace') o.grace = parseFloat(argv[++i]);
     else if (a === '--transpose') o.transpose = parseInt(argv[++i], 10);
+    else if (a === '--track-transpose') {
+      argv[++i].split(',').forEach(function (pair) {
+        var cut = pair.lastIndexOf(':');
+        if (cut <= 0) throw new Error('bad --track-transpose entry ' + pair);
+        o.trackTranspose[pair.slice(0, cut)] = parseInt(pair.slice(cut + 1), 10);
+      });
+    }
+    else if (a === '--lowest-only') o.lowestOnly = o.lowestOnly.concat(argv[++i].split(','));
+    else if (a === '--downbeat-only') o.downbeatOnly = o.downbeatOnly.concat(argv[++i].split(','));
     else if (a === '--edits') o.edits = argv[++i];
     else if (a === '--fix-strings') o.fixStrings = true;
     else if (!o.file) o.file = a;
@@ -57,7 +68,7 @@ function parseMidi(buf) {
       if (hi !== 0xc0 && hi !== 0xd0) d2 = buf[p++];
       if (hi === 0x90 && d2 > 0) {
         var key = ch + ':' + d1;
-        (open[key] = open[key] || []).push({ start: tick, pitch: d1, ch: ch, vel: d2 });
+        (open[key] = open[key] || []).push({ start: tick, pitch: d1, ch: ch, vel: d2, track: t });
       } else if (hi === 0x80 || (hi === 0x90 && d2 === 0)) {
         var k2 = ch + ':' + d1;
         var q = open[k2];
@@ -99,9 +110,19 @@ function midiInfo(midi) {
   };
 }
 
-// options: { cells, pickup, grace, transpose, edits: [{op, start, pitch, ...}] }
+// 트랙 지정(이름 또는 번호)을 트랙 번호로 바꾼다. 이름이 하나뿐일 때만 이름으로 찾고, 아니면 번호로 읽는다.
+function resolveTrack(midi, sel) {
+  var byName = [];
+  midi.tracks.forEach(function (t, i) { if (t.name === String(sel)) byName.push(i); });
+  if (byName.length === 1) return byName[0];
+  if (byName.length > 1) throw new Error('track name is ambiguous: ' + sel);
+  if (/^[0-9]+$/.test(String(sel)) && Number(sel) < midi.tracks.length) return Number(sel);
+  throw new Error('no such track: ' + sel);
+}
+
+// options: { cells, pickup, grace, transpose, trackTranspose: {트랙: 반음}, lowestOnly: [트랙], downbeatOnly: [트랙], edits: [{op, start, pitch, ...}] }
 function convertMidi(midi, options) {
-  var o = Object.assign({ cells: 0, pickup: 0, grace: 0.125, transpose: 0, edits: [] }, options);
+  var o = Object.assign({ cells: 0, pickup: 0, grace: 0.125, transpose: 0, trackTranspose: {}, lowestOnly: [], downbeatOnly: [], edits: [] }, options);
   if (!o.cells) throw new Error('cells is required');
   var ts = midi.timeSigs[0] || { num: 4, den: 4 };
   var ks = midi.keySigs[0] || { sf: 0, minor: 0 };
@@ -122,12 +143,27 @@ function convertMidi(midi, options) {
       if (e.op === 'drop') { notes.splice(notes.indexOf(n), 1); }
       else if (e.op === 'setStart') { rec.to = e.to; n.start = e.to; }
       else if (e.op === 'setEnd') { rec.to = e.to; n.end = e.to; }
-      else if (e.op === 'split') { rec.at = e.at; var tail = { start: e.at, end: n.end, pitch: n.pitch, ch: n.ch, vel: n.vel }; n.end = e.at; notes.push(tail); }
+      else if (e.op === 'split') { rec.at = e.at; var tail = { start: e.at, end: n.end, pitch: n.pitch, ch: n.ch, vel: n.vel, track: n.track }; n.end = e.at; notes.push(tail); }
       else throw new Error('unknown edit op ' + e.op);
       editsApplied.push(rec);
     });
     sortNotes(notes);
   }
+  // 트랙별 옮김과 시점별 최저음: 편집 뒤, 음 목록을 만들기 전에 적용한다
+  var trackShift = {};
+  Object.keys(o.trackTranspose || {}).forEach(function (sel) { trackShift[resolveTrack(midi, sel)] = o.trackTranspose[sel]; });
+  (o.downbeatOnly || []).forEach(function (sel) {
+    var ti = resolveTrack(midi, sel);
+    var bar = ppq * 4 * ts.num / ts.den;
+    var lead = o.pickup > 0 ? (bar - o.pickup) : 0;
+    notes = notes.filter(function (n) { return n.track !== ti || (n.start + lead) % bar === 0; });
+  });
+  (o.lowestOnly || []).forEach(function (sel) {
+    var ti = resolveTrack(midi, sel);
+    var lowest = {};
+    notes.forEach(function (n) { if (n.track === ti && (lowest[n.start] === undefined || n.pitch < lowest[n.start])) lowest[n.start] = n.pitch; });
+    notes = notes.filter(function (n) { return n.track !== ti || n.pitch === lowest[n.start]; });
+  });
   var uniqTs = {}; midi.timeSigs.forEach(function (t) { uniqTs[t.num + '/' + t.den] = 1; });
   if (Object.keys(uniqTs).length > 1) warnings.push('multiple time signatures: ' + Object.keys(uniqTs).join(','));
   var uniqT = {}; midi.tempos.forEach(function (t) { uniqT[t.uspq] = 1; });
@@ -141,7 +177,7 @@ function convertMidi(midi, options) {
   var flats = ks.sf < 0;
 
   // 음 목록 (이동 반영)
-  var ns = notes.map(function (n) { return { start: n.start + shift, end: n.end + shift, pitch: n.pitch + o.transpose }; });
+  var ns = notes.map(function (n) { return { start: n.start + shift, end: n.end + shift, pitch: n.pitch + o.transpose + (trackShift[n.track] || 0) }; });
 
   // 꾸밈음 판정: 길이 < grace*cellLen 이고 끝이 다음 onset(이 음보다 늦은 가장 가까운 onset)에 붙은 음
   var onsets = Array.from(new Set(ns.map(function (n) { return n.start; }))).sort(function (a, b) { return a - b; });
@@ -237,7 +273,7 @@ function convertMidi(midi, options) {
     minMidi: minM, maxMidi: maxM, ppq: ppq,
     timeSig: ts.num + '/' + ts.den, keySig: { sf: ks.sf, minor: ks.minor },
     tempoBpmQuarter: tempoQ, bpmRaw: bpmRaw,
-    options: { cells: o.cells, pickup: o.pickup, grace: o.grace, transpose: o.transpose },
+    options: { cells: o.cells, pickup: o.pickup, grace: o.grace, transpose: o.transpose, trackTranspose: o.trackTranspose, lowestOnly: o.lowestOnly, downbeatOnly: o.downbeatOnly },
     measureCount: nMeas, noteCount: ns.length, firstNoteTick: info.firstNoteTick, endTick: info.endTick,
     graceDropped: graceDropped, editsApplied: editsApplied, warnings: warnings
   };
@@ -290,11 +326,11 @@ function fixStringCollisions(lines, beats) {
 
 function main() {
   var o = parseArgs(process.argv.slice(2));
-  if (!o.file) throw new Error('usage: node tools/midi-to-score.js <file.mid> [--cells N] [--pickup T] [--grace R] [--transpose N] [--edits file.json] [--fix-strings]');
+  if (!o.file) throw new Error('usage: node tools/midi-to-score.js <file.mid> [--cells N] [--pickup T] [--grace R] [--transpose N] [--track-transpose "track:semitones,..."] [--lowest-only track,...] [--downbeat-only track,...] [--edits file.json] [--fix-strings]');
   var midi = parseMidi(fs.readFileSync(o.file));
   if (!o.cells) { console.log(JSON.stringify(midiInfo(midi), null, 1)); return; }
   var edits = o.edits ? JSON.parse(fs.readFileSync(o.edits, 'utf8')) : [];
-  var result = convertMidi(midi, { cells: o.cells, pickup: o.pickup, grace: o.grace, transpose: o.transpose, edits: edits });
+  var result = convertMidi(midi, { cells: o.cells, pickup: o.pickup, grace: o.grace, transpose: o.transpose, trackTranspose: o.trackTranspose, lowestOnly: o.lowestOnly, downbeatOnly: o.downbeatOnly, edits: edits });
   var stops = [];
   if (o.fixStrings) {
     var fixed = fixStringCollisions(result.measures, o.cells);
