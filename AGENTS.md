@@ -20,6 +20,7 @@
 - 한 클릭이 한 칸, BPM은 분당 칸 수다. 9칸을 3/4 셋잇단으로 쓰지 않는다. `+` 화음은 동시에 치고, 적히지 않은 롤·주법을 추론하지 않는다.
 - KS/classic 음색과 TAB·명시 운지 화면을 보존한다.
 - 음 끝 확인 표시 `?`는 오류·음높이·재생에 영향을 주지 않는다. 쉼 판별은 `GuitarNotation.isRestToken`(`r?`, 단독 `?` 포함) 하나로 한다. `/^[rR]$/`를 새로 쓰지 않는다.
+- 원본 MIDI에서 옮긴 내장곡(`tools/builtin-recipes.json`에 있는 곡)은 `songs.json`의 `lines`를 손으로 고치지 않는다. 레시피(`edits`, `lineOverrides`)를 고치고 `node tools/rebuild-builtins.js <원본 폴더>`로 일치를 확인한다.
 - 악보 문법을 바꾸면 `src/score-prompt.js`의 사진 변환 프롬프트 규칙과 예시도 같이 고치고 `test-score-prompt`를 돌린다.
 
 ## 검증 (명령은 `Docs/development.md` 검증 절)

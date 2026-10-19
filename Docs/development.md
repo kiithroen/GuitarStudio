@@ -74,6 +74,7 @@ node test/test-rhythm.js
 node test/test-image-conversion.js
 node test/test-score-prompt.js
 node test/test-check-score.js
+node test/test-midi-to-score.js
 node test/test-audio.js
 node test/test-guide.js
 node test/test-storage.js

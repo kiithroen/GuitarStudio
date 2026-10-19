@@ -1,0 +1,181 @@
+[
+  {
+    "id": "builtin-mary-lamb",
+    "sourceUrl": "https://www.flutetunes.com/tunes/mary-had-a-little-lamb.mid",
+    "file": "mary-had-a-little-lamb.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op60-01",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O60/sor_op60-01/sor_op60-01.mid",
+    "file": "sor_op60-01.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-carulli-op241-01",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/CarulliF/guitar-skole-no-01/guitar-skole-no-01.mid",
+    "file": "guitar-skole-no-01.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-carulli-op241-05",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/CarulliF/guitar-skole-no-08/guitar-skole-no-08.mid",
+    "file": "guitar-skole-no-08.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": [
+      {
+        "measure": 16,
+        "cell": 2,
+        "from": "G2",
+        "to": "G2/r"
+      }
+    ]
+  },
+  {
+    "id": "builtin-giuliani-op50-01",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n01/giuliani-op50n01.mid",
+    "file": "giuliani-op50n01.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-carcassi-op60-03",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/CarcassiM/O60/carcassi-op60-03/carcassi-op60-03.mid",
+    "file": "carcassi-op60-03.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-carcassi-op60-07",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/CarcassiM/O60/carcassi-op60-07/carcassi-op60-07.mid",
+    "file": "carcassi-op60-07.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op35-22",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O35/sorf_op35_no22/sorf_op35_no22.mid",
+    "file": "sorf_op35_no22.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-tarrega-adelita",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/TarregaF/adelita/adelita.mid",
+    "file": "adelita.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": true
+    },
+    "edits": [
+      {
+        "op": "setEnd",
+        "start": 3072,
+        "pitch": 67,
+        "to": 3456
+      },
+      {
+        "op": "setStart",
+        "start": 3406,
+        "pitch": 66,
+        "to": 3456
+      },
+      {
+        "op": "drop",
+        "start": 12263,
+        "pitch": 76
+      },
+      {
+        "op": "split",
+        "start": 12096,
+        "pitch": 75,
+        "at": 12288
+      },
+      {
+        "op": "drop",
+        "start": 12647,
+        "pitch": 75
+      },
+      {
+        "op": "split",
+        "start": 12480,
+        "pitch": 73,
+        "at": 12672
+      },
+      {
+        "op": "setStart",
+        "start": 15694,
+        "pitch": 64,
+        "to": 15744
+      },
+      {
+        "op": "drop",
+        "start": 15719,
+        "pitch": 66
+      }
+    ],
+    "lineOverrides": []
+  }
+]
