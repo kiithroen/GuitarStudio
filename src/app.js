@@ -5,6 +5,7 @@
 
   // ---------- 기본 내장 클래식 기타 동요 / 교본 명곡 (songs.json 단일 소스에서 로드)
   var BUILTIN_SONGS = [];
+  var BUILTIN_LEVEL_NAMES = { 1: '입문', 2: '초급', 3: '초중급', 4: '중급', 5: '중상급' };
 
   // ---------- 저장 오류 안내
   var STORAGE_ERROR_MESSAGE = '이 기기에 저장하지 못했어요. 저장 공간과 브라우저 설정을 확인한 뒤 다시 시도해 주세요.';
@@ -2363,21 +2364,38 @@ function curCapo(){
     return allSongs.filter(function(song){ return song && song.type === 'structured' && !sourceIds.has(song.id); });
   }
 
+  function appendBuiltinSongGroups(selectEl){
+    var levels = [];
+    BUILTIN_SONGS.forEach(function(source){
+      if (source.level != null && levels.indexOf(source.level) < 0) levels.push(source.level);
+    });
+    levels.sort(function(a, b){ return a - b; });
+    var groups = levels.map(function(level){
+      return { label: 'Lv.' + level + (BUILTIN_LEVEL_NAMES[level] ? ' ' + BUILTIN_LEVEL_NAMES[level] : ''),
+        sources: BUILTIN_SONGS.filter(function(source){ return source.level === level; }) };
+    });
+    var unleveled = BUILTIN_SONGS.filter(function(source){ return source.level == null; });
+    if (unleveled.length) groups.push({ label: '내장 악보', sources: unleveled });
+    groups.forEach(function(group){
+      var optgroup = document.createElement('optgroup');
+      optgroup.label = group.label;
+      group.sources.forEach(function(source){
+        var s = allSongs.find(function(song){ return song.id === source.id; }) || source;
+        var opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = s.title;
+        optgroup.appendChild(opt);
+      });
+      selectEl.appendChild(optgroup);
+    });
+  }
+
   function syncCompactSongSelectOptions(){
     var cSel = $('#compactSongSelect');
     if (!cSel) return;
     cSel.textContent = '';
 
-    var grp1 = document.createElement('optgroup');
-    grp1.label = '내장 악보';
-    BUILTIN_SONGS.forEach(function(source){
-      var s = allSongs.find(function(song){ return song.id === source.id; }) || source;
-      var opt = document.createElement('option');
-      opt.value = s.id;
-      opt.textContent = s.title;
-      grp1.appendChild(opt);
-    });
-    cSel.appendChild(grp1);
+    appendBuiltinSongGroups(cSel);
 
     if (sheetSongs.length){
       var grpSheet = document.createElement('optgroup');
@@ -2434,16 +2452,7 @@ function curCapo(){
     var sel = $('#songSelect');
     sel.textContent = '';
 
-    var grp1 = document.createElement('optgroup');
-    grp1.label = '내장 악보 (songs.json · 저작권 무료 동요/교본)';
-    BUILTIN_SONGS.forEach(function(source){
-      var s = allSongs.find(function(song){ return song.id === source.id; }) || source;
-      var opt = document.createElement('option');
-      opt.value = s.id;
-      opt.textContent = s.title;
-      grp1.appendChild(opt);
-    });
-    sel.appendChild(grp1);
+    appendBuiltinSongGroups(sel);
 
     if (sheetSongs.length){
       var grpSheet = document.createElement('optgroup');

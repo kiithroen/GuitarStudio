@@ -2,12 +2,29 @@
 
 **출처 대조일: 2026-10-19.** 내장 악보는 기타 연습용 편집판이야. 출처에서 확인한 선율과 앱이 작성한 현·왼손·오른손 운지 제안을 구분해 기록해. 앱의 운지 표기를 출처 악보의 운지로 설명하지 않아.
 
+## 레벨
+
+곡 선택 목록은 `songs.json`의 `level`로 내장곡을 묶어 보여 줘. 레벨 이름은 `src/app.js`의 `BUILTIN_LEVEL_NAMES` 한 곳에만 있어.
+
+| 레벨 | 이름 | 기준 |
+|---|---|---|
+| 1 | 입문 | 1포지션, 1~3번 줄 단선율, 4분·2분음표 |
+| 2 | 초급 | 1포지션 전체 줄, 8분·점음표, 간단한 저음 |
+| 3 | 초중급 | 선율과 저음 두 성부, 3/4·6/8, 쉬운 아르페지오 |
+| 4 | 중급 | 아르페지오 연습곡, 셋잇단, 5프렛 안쪽 이동 |
+| 5 | 중상급 | 명곡, 바레, 높은 포지션 |
+
+기준은 곡을 넣을 때 고르는 길잡이야. 곡마다 기준을 모두 맞춘다는 뜻은 아니야.
+
+2026-10-19 결정: 레벨이 제목 앞 `[Lv.N 이름]` 글자에만 있고 Lv.3에 초중급과 중급이 섞여 있어서, `level` 필드로 옮기고 5단계로 정리했어. 제목과 배지의 레벨 글자는 지웠어. 로망스 선율·베이스판은 Lv.4, 셋잇단 아르페지오판은 Lv.5야. 곡 `id`의 `lv` 숫자는 예전 레벨이 남은 것이고 바꾸지 않아. 사용자 브라우저에 곡별 BPM·구간 상태가 `id`로 저장되기 때문이야.
+
+2026-10-19 결정: 학교종을 뺐어. 김메리(1904~2005) 작곡이라 저작권이 2075년까지 남아 있고, 원악보와 대조도 하지 못했어.
+
 전통곡은 확인한 전통 선율만 대조했어. 현대 발행자의 편곡·반주를 복제하거나 그 전체가 퍼블릭 도메인이라고 주장하지 않아. 원악보와 대조를 마치지 못한 곡은 그 한계를 적었어. 코드 머리표는 앱의 연습용 화성 표기이며 출처 악보의 화성 편곡을 전사한 것이 아니야.
 
 | 내장곡 ID | 선율 출처 | 대조 범위와 앱 편집 |
 |---|---|---|
 | `builtin-lv1-butterfly` | [Lightly Row, fluteTunes 악보](https://www.flutetunes.com/tunes.php?id=116), [PDF](https://www.flutetunes.com/tunes/lightly-row.pdf), [MIDI](https://www.flutetunes.com/tunes/lightly-row.mid) | 독일 전통 선율, C장조. 2/2 원자료를 앱의 네 칸으로 옮기고 한 옥타브 낮췄어. m8 E4, m16 C4는 각 2박 유지 후 2박 쉼으로 대조 결과를 반영했어. 출처의 staccato 점은 앱에서 지원하지 않아 생략했어. |
-| `builtin-lv1-schoolbell` | [한국민족문화대백과사전, 학교종](https://encykorea.aks.ac.kr/Article/E0081228) | 작곡 배경 참고 자료만 확인했어. 음표를 대조할 원악보는 확인하지 못해 현재 선율을 원악보와 일치한다고 주장하지 않아. |
 | `builtin-lv1-twinkle` | [Twinkle Twinkle Little Star, fluteTunes 악보](https://www.flutetunes.com/tunes.php?id=18), [PDF](https://www.flutetunes.com/tunes/twinkle-twinkle-little-star.pdf) | C장조 선율 12마디를 대조했고 한 옥타브 낮췄어. 피아노 반주는 쓰지 않았고 선율 음은 수정하지 않았어. |
 | `builtin-lv2-london` | [London Bridge is Falling Down, mfiles PDF](https://www.mfiles.co.uk/scores/london-bridge-is-falling-down.pdf) | C장조 2/4 첫 8마디 선율만 대조했어. 피아노 반주는 쓰지 않았어. 점8분음표와 16분음표를 현재 칸 문법으로 적었고, 기존 마디 재생 시간을 유지하도록 2/4·34 BPM을 앱 연습값으로 정했어. |
 | `builtin-lv2-jinglebells` | [Jingle Bells, fluteTunes 악보](https://www.flutetunes.com/tunes.php?id=239), [PDF](https://www.flutetunes.com/tunes/jingle-bells.pdf) | 플루트 선율과 2쪽 후렴 m13~20을 대조했어. C장조 E5에서 앱 실음 G장조 B3로 옮겼어. 후렴의 점 리듬과 재탄현을 반영하고, 출처의 8마디 후렴을 리듬이 두 배 길어진 16마디 앱판으로 펼쳤어. 앞 절과 피아노 반주는 쓰지 않았어. 발행자가 1857년 판과 현재 후렴이 다르다고 설명하므로 원곡 그대로라고 하지 않아. BPM 68은 앱 편집값이야. |

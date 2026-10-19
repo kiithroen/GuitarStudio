@@ -8,15 +8,23 @@ const rhythm = require('../src/rhythm.js');
 const songs = JSON.parse(fs.readFileSync(path.join(__dirname, '../songs.json'), 'utf8'));
 const songById = new Map(songs.map(song => [song.id, song]));
 const melodyPracticeIds = [
-  'builtin-lv1-butterfly', 'builtin-lv1-schoolbell', 'builtin-lv1-twinkle',
+  'builtin-lv1-butterfly', 'builtin-lv1-twinkle',
   'builtin-lv2-london', 'builtin-lv2-jinglebells', 'builtin-lv2-odetojoy',
   'builtin-lv3-clementine', 'builtin-lv3-brahms',
   'builtin-lv4-amazinggrace', 'builtin-lv4-greensleeves'
 ];
 
-assert.equal(songs.length, 13, 'catalog contains thirteen built-in scores');
+assert.ok(songs.length > 0, 'catalog is not empty');
 assert.equal(new Set(songs.map(song => song.id)).size, songs.length, 'built-in ids are unique');
 assert.equal(songById.has('builtin-lv3-arirang'), false, 'Arirang is absent from the built-in catalog');
+assert.equal(songById.has('builtin-lv1-schoolbell'), false, 'School Bell is absent from the built-in catalog (copyright)');
+for (const song of songs){
+  assert.ok(Number.isInteger(song.level) && song.level >= 1, `${song.id} has an integer level of at least 1`);
+  assert.ok(!song.title.startsWith('[Lv'), `${song.id} title has no level prefix`);
+  assert.ok(!/^Lv\.\d/.test(song.badge), `${song.id} badge has no level prefix`);
+}
+const usedLevels = Array.from(new Set(songs.map(song => song.level))).sort((a, b) => a - b);
+assert.deepEqual(usedLevels, usedLevels.map((level, index) => index + 1), 'used levels run from 1 without gaps');
 
 for (const song of songs){
   assert.ok(Array.isArray(song.lines) && song.lines.length > 0, `${song.id} has score lines`);
@@ -233,8 +241,8 @@ assert.equal(rhythm.resolveHold(parsedGrace.measures,graceCarry[0]).midi,62,'Ama
 assert.deepEqual(parsedGrace.measures[16].beats.map(beat=>beat.kind),['hold','hold','rest'],'Amazing Grace final measure holds twice then rests');
 
 const canon = songById.get('builtin-lv4-canon');
-assert.equal(canon.title, '[Lv.4 중급] 캐논 화성 연습 (C장조 · 17마디 앱 편곡)');
-assert.equal(canon.badge, 'Lv.4 중급 · 4/4의 8분음표 칸 · 운지·주법은 앱 연습용 제안');
+assert.equal(canon.title, '캐논 화성 연습 (C장조 · 17마디 앱 편곡)');
+assert.equal(canon.badge, '4/4의 8분음표 칸 · 운지·주법은 앱 연습용 제안');
 assert.match(canon.lines.at(-1), /^\[C\] 3C3@5:p\+2E3@4:i\+0G3@3:m\+1C4@2:a - - - - - - - \| "C코드 동시 탄현 · p\/i\/m\/a, 전체 4박 유지"$/);
 for (const [index, line] of canon.lines.entries()){
   const memo = line.split('|')[1] || '';

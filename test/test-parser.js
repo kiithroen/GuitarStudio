@@ -242,7 +242,7 @@ test('capo offsets clamp to twelve and title/badge metadata takes precedence', f
 
 test('all songs.json entries parse into the expected number of beats per measure', function(){
   const songs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'songs.json'), 'utf8'));
-  assert.equal(songs.length, 13);
+  assert.equal(new Set(songs.map(song => song.id)).size, songs.length);
   for (const song of songs){
     const structured = parser.buildStructuredSong(song);
     assert.equal(structured.id, song.id);

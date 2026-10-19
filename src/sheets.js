@@ -12,7 +12,7 @@
       var arr = await res.json();
       if (!Array.isArray(arr) || !arr.length) return;
       BUILTIN_SONGS = arr.map(function(spec, idx){
-        return buildStructuredSong({
+        var song = buildStructuredSong({
           id: spec.id || ('builtin-json-' + idx),
           title: spec.title || ('내장곡 ' + (idx + 1)),
           badge: spec.badge || 'songs.json 내장 악보',
@@ -22,6 +22,9 @@
           ytUrl: spec.ytUrl || '',
           lines: Array.isArray(spec.lines) ? spec.lines : []
         });
+        var level = Number(spec.level);
+        song.level = (Number.isInteger(level) && level >= 1) ? level : null;
+        return song;
       });
     } catch (e){
       // 로컬 file:// 환경 등에서 fetch 차단 시 코드 내장 BUILTIN_SONGS 폴백 사용

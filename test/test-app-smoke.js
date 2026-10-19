@@ -79,6 +79,7 @@ class MockElement {
 }
 
 const root = process.cwd();
+const songCount = JSON.parse(fs.readFileSync(path.join(root, 'songs.json'), 'utf8')).length;
 const elements = new Map();
 const makeElement = (tag, id) => new MockElement(tag, id);
 function queryTree(node, selector){
@@ -245,9 +246,9 @@ async function testUnavailableIndexedDbBoot(html){
   const onUnhandled = reason => unhandled.push(reason);
   process.on('unhandledRejection', onUnhandled);
   try {
-    await waitFor(() => unavailableContext.allSongs.length === 13 && unavailableContext.curSong != null);
+    await waitFor(() => unavailableContext.allSongs.length === songCount && unavailableContext.curSong != null);
     await new Promise(resolve => setTimeout(resolve, 50));
-    assert.equal(unavailableContext.allSongs.length, 13, 'built-in songs render when IndexedDB is unavailable');
+    assert.equal(unavailableContext.allSongs.length, songCount, 'built-in songs render when IndexedDB is unavailable');
     assert.ok(unavailableElements.get('measuresGrid').children.length > 0, 'built-in score renders when IndexedDB is unavailable');
     assert.equal(unavailableElements.get('storageStatus').hidden, false, 'unavailable IndexedDB displays storage guidance');
     assert.equal(unhandled.length, 0, 'unavailable IndexedDB causes no unhandled rejection');
@@ -262,7 +263,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=project-prompt-1')), 'every app script uses the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=builtin-levels-1')), 'every app script uses the shared revision');
   for (const id of ['addBlankScoreBtn', 'blankScoreModal', 'undoScoreEditBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
     assert.match(html, new RegExp('id="' + id + '"'), 'temporary score UI includes #' + id);
   }
@@ -271,9 +272,9 @@ async function main(){
     const source = fs.readFileSync(path.join(root, script), 'utf8');
     vm.runInContext(source, context, { filename: script });
   }
-  await waitFor(() => context.allSongs.length === 13 && context.curSong != null);
+  await waitFor(() => context.allSongs.length === songCount && context.curSong != null);
   await testUnavailableIndexedDbBoot(html);
-  assert.equal(context.allSongs.length, 13, 'songs.json loads through app boot');
+  assert.equal(context.allSongs.length, songCount, 'songs.json loads through app boot');
   assert.equal(context.curSong.id, 'builtin-lv1-butterfly', 'saved/default built-in song is selected');
   assert.equal(elements.get('fretboard').children.length, 7, 'fretboard renders six strings and one header');
   assert.ok(elements.get('measuresGrid').children.length > 0, 'selected score renders measures');

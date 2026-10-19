@@ -6,6 +6,8 @@ const os = require('node:os');
 const { spawn } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
+const builtinSongsJson = JSON.parse(fs.readFileSync(path.join(root, 'songs.json'), 'utf8'));
+const builtinSongCount = builtinSongsJson.length;
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -188,7 +190,7 @@ async function testTemporaryScoreEditor(client){
     document.getElementById('cancelBlankScoreBtn').click();
     return {defaults:defaults,hidden:document.getElementById('blankScoreModal').hidden,count:allSongs.length};
   })()`);
-  assert.deepEqual(initial, { defaults:['빈 악보 1','4','64'], hidden:true, count:13 }, 'blank modal cancel preserves the song list and shows configured defaults');
+  assert.deepEqual(initial, { defaults:['빈 악보 1','4','64'], hidden:true, count:builtinSongCount }, 'blank modal cancel preserves the song list and shows configured defaults');
 
   const editFlow = await client.evaluate(`(async function(){
     function selectSong(id){var select=document.getElementById('songSelect');select.value=id;select.dispatchEvent(new Event('change',{bubbles:true}));}
@@ -530,7 +532,7 @@ async function testTemporaryScoreEditor(client){
   const previousLoadCount=client.events.filter(event=>event.method==='Page.loadEventFired').length;
   await client.send('Page.reload',{ignoreCache:true});
   await waitForPageLoadAfter(client,previousLoadCount);
-  await waitForCondition(client,'document.readyState === "complete" && window.allSongs && window.allSongs.length === 13 && window.curSong',8000);
+  await waitForCondition(client,'document.readyState === "complete" && window.allSongs && window.allSongs.length === '+builtinSongCount+' && window.curSong',8000);
   client.dialogHandler=null;
   assert.equal(beforeUnloadDialogs,1,'dirty temporary draft raises the native beforeunload confirmation');
   const reloadState=await client.evaluate(`({tempCount:allSongs.filter(function(song){return String(song.id).startsWith('temp-score-');}).length,
@@ -1752,7 +1754,7 @@ async function testBuiltinScores(client, browserBin){
   })()`);
   try {
     const review = await client.evaluate(`(function(){
-      if(!Array.isArray(window.BUILTIN_SONGS)||window.BUILTIN_SONGS.length!==13) throw new Error('Expected the 13-song built-in catalog');
+      if(!Array.isArray(window.BUILTIN_SONGS)||window.BUILTIN_SONGS.length!==${builtinSongCount}) throw new Error('Expected the built-in catalog from songs.json');
       if(window.BUILTIN_SONGS.some(function(song){return /arirang|아리랑/i.test(song.id+' '+song.title+' '+song.badge);})) throw new Error('Arirang must not be present in built-in song options');
       var results=[];
       window.BUILTIN_SONGS.forEach(function(builtin){
@@ -1883,8 +1885,8 @@ async function testBuiltinScores(client, browserBin){
         guideEvents:events.map(function(event){return {midi:event.note.midi,when:event.when,gain:event.gain,
           articulation:event.articulation,str:event.str,duration:event.duration};})}};
     })()`);
-    assert.equal(review.catalogCount, 13, 'all built-in scores are reviewed');
-    assert.equal(review.rendered.length, 26, 'each built-in score renders in tab and card views');
+    assert.equal(review.catalogCount, builtinSongCount, 'all built-in scores are reviewed');
+    assert.equal(review.rendered.length, builtinSongCount * 2, 'each built-in score renders in tab and card views');
     assert.ok(review.rendered.every(function(item){return item.measures>0&&item.hasNotes&&item.errors===0;}), 'built-in score DOM and validation are clean');
     assert.equal(review.lv5Card.hasOldArpClass,false,'Lv.5 card has no old melodic-blue or sub-voice class');
     assert.equal(review.lv5Card.inactiveBackground,review.lv5Card.plainBackground,'inactive Lv.5 card uses the plain card background');
@@ -1915,7 +1917,7 @@ async function testBuiltinScores(client, browserBin){
     assert.equal(review.romance.sourceContainsArticulationTokens,true,'source score keeps its written ! and ~ articulation metadata');
     assert.equal(review.romance.guidePreserved, true, 'TAB/card rendering leaves pitch, time, duration, and articulation guide events unchanged');
     assert.equal(review.romance.guideEvents.length, 10, 'first measure produces 10 guide note events');
-    process.stdout.write('Browser checkpoint: all 13 built-in scores render in TAB/card; Lv.6 Romance first measure has explicit p/a/m/i and 10 timed guide notes\n');
+    process.stdout.write('Browser checkpoint: all built-in scores render in TAB/card; Lv.6 Romance first measure has explicit p/a/m/i and 10 timed guide notes\n');
     await captureBuiltinRomanceScreenshots(client,browserBin);
     // Capture Romance measure 3 card view for visual verification
     const cardScreenshotDir = path.join(__dirname, '..', 'test-artifacts', 'clean-score-ui');
@@ -2043,7 +2045,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=project-prompt-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=builtin-levels-1')), 'all app scripts use the shared revision');
   const htmlIds = ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'temporary score UI includes #'+id);});
   assert.doesNotMatch(fs.readFileSync(path.join(root,'index.html'),'utf8'),/\.beat-cell\.arp-(?:melody|sub)\b/,'obsolete articulation color rules are removed from the score stylesheet');
@@ -2104,14 +2106,35 @@ async function main() {
     await cdp.send('Page.navigate', { url: appUrl });
 
     // Wait until boot completes
-    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.allSongs.length === 13 && window.curSong != null', 8000);
+    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.allSongs.length === ' + builtinSongCount + ' && window.curSong != null', 8000);
 
     // Assert initial app state in real browser
     const songCount = await cdp.evaluate('window.allSongs.length');
-    assert.equal(songCount, 13, 'browser loaded 13 songs from songs.json');
+    assert.equal(songCount, builtinSongCount, 'browser loaded every song from songs.json');
 
     const curSongId = await cdp.evaluate('window.curSong.id');
     assert.equal(curSongId, 'builtin-lv1-butterfly', 'default song selected in browser');
+
+    const levelGroups = await cdp.evaluate(`(function(){
+      var result={names:window.BUILTIN_LEVEL_NAMES};
+      ['compactSongSelect','songSelect'].forEach(function(id){
+        result[id]=Array.prototype.slice.call(document.getElementById(id).querySelectorAll('optgroup')).filter(function(group){
+          return group.label.indexOf('Lv.')===0;
+        }).map(function(group){
+          return {label:group.label,values:Array.prototype.slice.call(group.querySelectorAll('option')).map(function(option){return option.value;})};
+        });
+      });
+      return result;
+    })()`);
+    const expectedLevels = Array.from(new Set(builtinSongsJson.map(song => song.level))).sort((a, b) => a - b);
+    const expectedLevelGroups = expectedLevels.map(level => ({
+      label: 'Lv.' + level + (levelGroups.names[level] ? ' ' + levelGroups.names[level] : ''),
+      values: builtinSongsJson.filter(song => song.level === level).map(song => song.id)
+    }));
+    for (const selectId of ['compactSongSelect', 'songSelect']){
+      assert.deepEqual(levelGroups[selectId].map(group => group.label), expectedLevelGroups.map(group => group.label), `${selectId} has one optgroup per level in ascending order`);
+      assert.deepEqual(levelGroups[selectId].map(group => group.values), expectedLevelGroups.map(group => group.values), `${selectId} lists each level's songs in songs.json order`);
+    }
 
     const fretboardChildren = await cdp.evaluate('document.getElementById("fretboard").children.length');
     assert.equal(fretboardChildren, 7, 'fretboard DOM elements rendered (6 strings + header)');
@@ -2403,7 +2426,7 @@ async function main() {
     const previousLoadCount=cdp.events.filter(event=>event.method==='Page.loadEventFired').length;
     await cdp.send('Page.reload', { ignoreCache: true });
     await waitForPageLoadAfter(cdp,previousLoadCount);
-    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.BUILTIN_SONGS.length === 13 && window.imageSongs.some(function(song){ return song.id === "browser-backup-image"; })', 8000);
+    await waitForCondition(cdp, 'document.readyState === "complete" && window.allSongs && window.BUILTIN_SONGS.length === ' + builtinSongCount + ' && window.imageSongs.some(function(song){ return song.id === "browser-backup-image"; })', 8000);
     const screenshotDir = path.join(__dirname, '..', 'test-artifacts', 'clean-score-ui');
     let screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review.png');
     if (fs.existsSync(screenshotTarget)) screenshotTarget = path.join(screenshotDir, 'beginner-rhythm-review-' + Date.now() + '.png');
