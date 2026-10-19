@@ -269,10 +269,78 @@ function curCapo(){
     return '고음';
   }
 
+  // ---------- 오선 층 (보기 '둘 다'·'오선'): 규칙은 Docs/staff-notation.md 의 연습 화면 절
+  var staffView = { layout:null, key:0, observer:null, timer:null };
+
+  function isStaffViewOn(){
+    return (appState.scoreView === 'both' || appState.scoreView === 'staff') && typeof GuitarStaffLayout !== 'undefined' && typeof GuitarStaffSvg !== 'undefined';
+  }
+
+  // 곡마다 한 번. 오류면 null(오선 층만 그리지 않고 TAB은 그대로)
+  function computeStaffLayout(){
+    if (!curSong || curSong.type !== 'structured' || !Array.isArray(curSong.measures)) return null;
+    var key = Number.isInteger(curSong.key) && curSong.key >= -5 && curSong.key <= 5 ? curSong.key : 0;
+    var result = GuitarStaffLayout.layoutScore(serializeScoreMeasures(curSong.measures, '\n'), curSong.beats, key);
+    if (!result || result.error || !result.measures || result.measures.length !== curSong.measures.length) return null;
+    staffView.key = key;
+    return result;
+  }
+
+  function staffHeaderFor(mIdx){
+    return { key:staffView.key, time:mIdx === 0 ? staffView.layout.time : null };
+  }
+
+  // x = (칸 + unit/12 + 1/(2d)) × 칸 폭. d 는 그 칸의 나눈 수, unit 이 d 분할의 조각 시작이 아니면 그 시작인 가장 작은 나눈 수로 바꾼다.
+  function staffXAt(measure, cellWidth){
+    return function(cell, unit){
+      var beat = measure.beats[cell];
+      var d = beat && beat.isSubdivided && beat.subNotes && beat.subNotes.length > 1 ? beat.subNotes.length : 1;
+      if ((unit * d) % 12 !== 0){
+        for (d = 1; d < 12 && (unit * d) % 12 !== 0; d++);
+      }
+      return (cell + unit / 12 + 1 / (2 * d)) * cellWidth;
+    };
+  }
+
+  // 카드가 붙은 뒤 실제 폭을 재서 오선 층만 그린다. 폭이 그대로면 다시 그리지 않는다.
+  function drawStaffLayers(){
+    if (!staffView.layout) return;
+    var layers = $$('#measuresGrid .tab-staff-layer');
+    var widths = layers.map(function(layer){ return layer.getBoundingClientRect().width; });
+    layers.forEach(function(layer, index){
+      var width = widths[index];
+      if (!(width > 0) || layer.__drawnWidth === width) return;
+      var mIdx = Number(layer.dataset.m);
+      var measure = curSong.measures[mIdx];
+      var layout = staffView.layout.measures[mIdx];
+      if (!measure || !layout) return;
+      var svg = '';
+      try {
+        svg = GuitarStaffSvg.renderMeasure(layout, {
+          width:width, leftPad:0, header:null, xAt:staffXAt(measure, width / curSong.beats)
+        });
+      } catch (error) {
+        svg = '';
+      }
+      layer.innerHTML = svg;
+      layer.__drawnWidth = width;
+    });
+  }
+
+  function watchStaffResize(grid){
+    if (staffView.observer || typeof ResizeObserver === 'undefined') return;
+    staffView.observer = new ResizeObserver(function(){
+      clearTimeout(staffView.timer);
+      staffView.timer = setTimeout(drawStaffLayers, 120);
+    });
+    staffView.observer.observe(grid);
+  }
+
   function renderStructuredMeasures(){
     var grid = $('#measuresGrid');
     grid.textContent = '';
     var isTab = (appState.scoreView !== 'card');
+    staffView.layout = (isTab && isStaffViewOn()) ? computeStaffLayout() : null;
     if (curSong && curSong.beats >= 9){
       grid.style.gridTemplateColumns = isTab ? 'repeat(auto-fill, minmax(560px, 1fr))' : 'repeat(auto-fill, minmax(560px, 1fr))';
     } else if (curSong && curSong.beats >= 8){
@@ -304,6 +372,11 @@ function curCapo(){
 
       var card = document.createElement('div');
       card.className = 'measure-card' + (isTab ? ' tab-mode' : '');
+      if (isTab && staffView.layout){
+        card.classList.add('staff-on');
+        if (appState.scoreView === 'staff') card.classList.add('tab-off');
+        card.style.setProperty('--staff-h', GuitarStaffSvg.STAFF_HEIGHT + 'px');
+      }
       card.dataset.m = mIdx;
       var inLoop = (mIdx + 1) >= appState.loopStart && (mIdx + 1) <= appState.loopEnd;
       card.classList.toggle('in-loop', inLoop);
@@ -349,12 +422,26 @@ function curCapo(){
           sn.style.top = (idx * 20) + '%';
           strNames.appendChild(sn);
         });
+        if (staffView.layout){
+          var staffHeader = staffHeaderFor(mIdx);
+          var headerBox = document.createElement('div');
+          headerBox.className = 'tab-staff-head';
+          headerBox.innerHTML = GuitarStaffSvg.renderHeader(staffHeader);
+          side.appendChild(headerBox);
+          side.style.width = Math.max(36, GuitarStaffSvg.headerWidth(staffHeader)) + 'px';
+        }
         side.appendChild(sideTitle);
         side.appendChild(strNames);
         staveWrap.appendChild(side);
 
         var body = document.createElement('div');
         body.className = 'tab-stave-body';
+        if (staffView.layout){
+          var staffLayer = document.createElement('div');
+          staffLayer.className = 'tab-staff-layer';
+          staffLayer.dataset.m = mIdx;
+          body.appendChild(staffLayer);
+        }
 
         var linesBg = document.createElement('div');
         linesBg.className = 'tab-lines-bg';
@@ -777,6 +864,10 @@ function curCapo(){
     });
 
     renderChordCards(chordsSet);
+    if (staffView.layout){
+      watchStaffResize(grid);
+      drawStaffLayers();
+    }
   }
 
   // ---------- 악보 렌더링: 2) 이미지 / PDF 악보 + 마디 그리드 매퍼 (B안 주력)
@@ -1718,7 +1809,7 @@ function curCapo(){
     });
   }
 
-  // 메인 화면 키보드 단축키 (Space: 연습 시작/정지, G: 소리 토글, F: 특수효과 토글, T: 타브/박자카드 토글, P: 집중연습뷰, Home: 처음으로, Esc: 전체화면)
+  // 메인 화면 키보드 단축키 (Space: 연습 시작/정지, G: 소리 토글, F: 특수효과 토글, T: 타브 → 둘 다 → 오선 → 카드 보기 순환, P: 집중연습뷰, Home: 처음으로, Esc: 전체화면)
   window.addEventListener('keydown', function(e){
     var tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -1739,11 +1830,9 @@ function curCapo(){
     } else if (e.key === 't' || e.key === 'T' || e.key === 'ㅅ'){
       e.preventDefault();
       if (curSong && curSong.type === 'structured'){
-        if (appState.scoreView === 'card'){
-          if ($('#scoreModeTabBtn')) $('#scoreModeTabBtn').click();
-        } else {
-          if ($('#scoreModeCardBtn')) $('#scoreModeCardBtn').click();
-        }
+        var viewIndex = SCORE_VIEW_BUTTONS.findIndex(function(entry){ return entry.view === appState.scoreView; });
+        var nextView = SCORE_VIEW_BUTTONS[(viewIndex + 1) % SCORE_VIEW_BUTTONS.length];
+        if ($(nextView.id)) $(nextView.id).click();
       }
     } else if (e.key === 'p' || e.key === 'P' || e.key === 'ㅔ'){
       e.preventDefault();

@@ -2414,11 +2414,238 @@ async function testScoreInputStaff(client, httpPort) {
   process.stdout.write('Browser checkpoint: staff preview drawing, key signature, toggle, head click, tab alignment, built-in song, and screenshots passed\n');
 }
 
+// 연습 화면의 오선 보기(타브·둘 다·오선·카드). 규칙은 Docs/staff-notation.md 의 연습 화면 절.
+async function testPracticeStaffView(client) {
+  client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
+  const errorsBefore = client.consoleErrors.length;
+  const READY = 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= ' + builtinSongCount + ' && window.curSong != null';
+  async function reload(){
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await client.send('Page.reload', { ignoreCache: true });
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, READY, 8000);
+  }
+  const allLayersDrawn = '(function(){ var cards = document.querySelectorAll("#measuresGrid .measure-card"); return cards.length > 0 && cards.length === document.querySelectorAll("#measuresGrid .tab-staff-layer svg").length; })()';
+
+  // (1) 기본은 타브이고 오선 층이 없다
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate(`(function(){ var state = JSON.parse(localStorage.getItem('gs.state') || '{}'); delete state.scoreView; localStorage.setItem('gs.state', JSON.stringify(state)); return true; })()`);
+  await reload();
+  const initial = await client.evaluate(`({
+    view: appState.scoreView,
+    labels: Array.prototype.map.call(document.querySelectorAll('#scoreModeSeg button'), function(button){ return button.textContent.trim() + ':' + button.id + ':' + button.getAttribute('role') + ':' + button.getAttribute('aria-selected'); }),
+    svgs: document.querySelectorAll('#measuresGrid .tab-staff-layer svg').length,
+    staffCards: document.querySelectorAll('#measuresGrid .measure-card.staff-on').length,
+    cards: document.querySelectorAll('#measuresGrid .measure-card').length
+  })`);
+  assert.equal(initial.view, 'tab', 'the default score view is the TAB view');
+  assert.deepEqual(initial.labels, ['타브:scoreModeTabBtn:tab:true', '둘 다:scoreModeBothBtn:tab:false', '오선:scoreModeStaffBtn:tab:false', '카드:scoreModeCardBtn:tab:false'], 'four view buttons in order');
+  assert.equal(initial.svgs, 0, 'the TAB view draws no staff layer');
+  assert.equal(initial.staffCards, 0, 'no card is staff-on in the TAB view');
+  assert.ok(initial.cards > 1, 'the default song has several cards');
+
+  // (2) 둘 다: 모든 카드에 오선 층, 첫 카드 왼쪽 열에 음자리표와 박자표, 둘째 카드에는 음자리표만
+  await client.evaluate(`document.getElementById('scoreModeBothBtn').click(); true`);
+  await waitForCondition(client, allLayersDrawn, 5000);
+  const both = await client.evaluate(`(function(){
+    var cards = document.querySelectorAll('#measuresGrid .measure-card');
+    function count(card, selector){ return card.querySelectorAll('.tab-stave-side ' + selector).length; }
+    var layout = GuitarStaffLayout.layoutScore(serializeScoreMeasures(curSong.measures, '\\n'), curSong.beats, 0);
+    var expected = 0;
+    layout.measures.forEach(function(measure){ measure.items.forEach(function(item){ if (item.type === 'chord') expected += item.notes.length; }); });
+    return {
+      view: appState.scoreView,
+      selected: ['Tab', 'Both', 'Staff', 'Card'].map(function(name){ return document.getElementById('scoreMode' + name + 'Btn').getAttribute('aria-selected'); }),
+      firstClef: count(cards[0], '.st-clef'), firstTime: count(cards[0], '.st-time'),
+      secondClef: count(cards[1], '.st-clef'), secondTime: count(cards[1], '.st-time'),
+      heads: document.querySelectorAll('#measuresGrid .tab-staff-layer .st-head').length,
+      expectedHeads: expected,
+      everyCardStaffOn: cards.length === document.querySelectorAll('#measuresGrid .measure-card.staff-on').length,
+      anyTabOff: document.querySelectorAll('#measuresGrid .measure-card.tab-off').length,
+      gridVisible: document.querySelector('#measuresGrid .tab-cell-grid').getClientRects().length > 0
+    };
+  })()`);
+  assert.equal(both.view, 'both');
+  assert.deepEqual(both.selected, ['false', 'true', 'false', 'false'], 'only the both button is selected');
+  assert.deepEqual([both.firstClef, both.firstTime, both.secondClef, both.secondTime], [1, 1, 1, 0], 'the first card shows clef and time, later cards only the clef');
+  assert.equal(both.heads, both.expectedHeads, 'staff note heads match the layout count');
+  assert.ok(both.heads > 0, 'the default song draws note heads');
+  assert.equal(both.everyCardStaffOn, true, 'every card is staff-on');
+  assert.equal(both.anyTabOff, 0, 'the both view keeps the TAB');
+  assert.equal(both.gridVisible, true, 'the both view keeps the TAB grid visible');
+
+  // (3) 나눈 칸이 있는 곡: 오선 머리와 같은 조각의 타브 프렛 알약이 가로로 2px 안에서 맞는다
+  await client.evaluate(`changeSongById('builtin-lv6-romance-full'); true`);
+  await waitForCondition(client, allLayersDrawn, 5000);
+  const alignment = await client.evaluate(`(function(){
+    var layout = GuitarStaffLayout.layoutScore(serializeScoreMeasures(curSong.measures, '\\n'), curSong.beats, 0);
+    var mIdx = -1;
+    curSong.measures.forEach(function(measure, index){
+      if (mIdx >= 0) return;
+      var divided = measure.beats.filter(function(beat){ return beat.isSubdivided && beat.subNotes && beat.subNotes.length > 1; }).length;
+      if (divided >= 2) mIdx = index;
+    });
+    var card = document.querySelector('#measuresGrid .measure-card[data-m="' + mIdx + '"]');
+    var result = { measure: mIdx, checked: 0, divisions: {}, worst: 0, misses: [] };
+    layout.measures[mIdx].items.forEach(function(item){
+      if (item.type !== 'chord' || item.tieFromPrev) return;
+      var group = card.querySelector('.tab-staff-layer .st-chord[data-cell="' + item.cell + '"][data-unit="' + item.unit + '"]');
+      var cell = card.querySelector('.beat-cell[data-b="' + item.cell + '"]');
+      var beat = curSong.measures[mIdx].beats[item.cell];
+      var d = beat.isSubdivided && beat.subNotes ? beat.subNotes.length : 1;
+      result.divisions[d] = (result.divisions[d] || 0) + 1;
+      var headXs = Array.prototype.map.call(group.querySelectorAll('.st-head'), function(head){ var r = head.getBoundingClientRect(); return r.left + r.width / 2; });
+      var pillXs = Array.prototype.map.call(cell.querySelectorAll('.tab-fret-pill'), function(pill){ var r = pill.getBoundingClientRect(); return r.left + r.width / 2; });
+      var best = Infinity;
+      headXs.forEach(function(hx){ pillXs.forEach(function(px){ best = Math.min(best, Math.abs(hx - px)); }); });
+      result.checked++;
+      result.worst = Math.max(result.worst, best);
+      if (!(best <= 2)) result.misses.push({ cell: item.cell, unit: item.unit, best: best });
+    });
+    return result;
+  })()`);
+  assert.ok(alignment.measure >= 0, 'the song has a measure with divided cells');
+  assert.ok(alignment.checked >= 4, 'several note starts are compared (' + JSON.stringify(alignment) + ')');
+  assert.ok(Object.keys(alignment.divisions).some(key => Number(key) > 1), 'the compared measure includes divided cells (' + JSON.stringify(alignment.divisions) + ')');
+  assert.deepEqual(alignment.misses, [], 'staff heads sit within 2px of the TAB fret of the same piece (worst ' + alignment.worst + ')');
+
+  // (4) 오선 자리를 누르면 그 박으로 커서가 가고, 재생 중 활성 박 셀이 오선 높이까지 덮는다
+  const clicked = await client.evaluate(`(function(){
+    var cell = document.querySelector('#measuresGrid .beat-cell[data-m="1"][data-b="1"]');
+    cell.scrollIntoView({ block: 'center', inline: 'nearest' });
+    var layer = cell.closest('.measure-card').querySelector('.tab-staff-layer').getBoundingClientRect();
+    var rect = cell.getBoundingClientRect();
+    var x = rect.left + rect.width / 2, y = layer.top + 20;
+    var hit = document.elementFromPoint(x, y);
+    var target = hit && hit.closest('.beat-cell');
+    var inStaff = y < layer.bottom && y >= layer.top;
+    if (hit) hit.click();
+    return { inStaff: inStaff, sameCell: target === cell, measure: curMeasureIdx, beat: curBeatIdx, activeIsCell: cell.classList.contains('active-beat') };
+  })()`);
+  assert.deepEqual(clicked, { inStaff: true, sameCell: true, measure: 1, beat: 1, activeIsCell: true }, 'a click on the staff area moves the cursor to that beat');
+  const playing = await client.evaluate(`(async function(){
+    appState.clickMode = 'off';
+    document.getElementById('compactPlayBtn').click();
+    var started = Date.now();
+    while (Date.now() - started < 4000 && !document.querySelector('#measuresGrid .beat-cell.active-beat')) await new Promise(function(resolve){ setTimeout(resolve, 30); });
+    var cell = document.querySelector('#measuresGrid .beat-cell.active-beat');
+    var layer = cell && cell.closest('.measure-card').querySelector('.tab-staff-layer');
+    var result = cell && layer ? {
+      playing: isPlaying, cellTop: cell.getBoundingClientRect().top, layerTop: layer.getBoundingClientRect().top,
+      cellBottom: cell.getBoundingClientRect().bottom, layerBottom: layer.getBoundingClientRect().bottom,
+      background: getComputedStyle(cell).backgroundImage
+    } : null;
+    document.getElementById('compactPlayBtn').click();
+    return result;
+  })()`);
+  assert.ok(playing, 'playback shows an active beat');
+  assert.equal(playing.playing, true, 'the app is playing');
+  assert.ok(Math.abs(playing.cellTop - playing.layerTop) <= 1, 'the active cell starts at the top of the staff layer (' + JSON.stringify(playing) + ')');
+  assert.ok(playing.cellBottom >= playing.layerBottom, 'the active cell covers the whole staff height');
+  assert.match(playing.background, /linear-gradient/, 'the active cell tints the staff part lighter than the TAB part');
+  await client.evaluate(`appState.clickMode = 'all'; true`);
+
+  // (5) 오선만: 타브 격자는 숨고 오선은 보인다. T 키는 tab, both, staff, card 순서로 돈다. 새로고침 뒤에도 유지된다.
+  await client.evaluate(`document.getElementById('scoreModeStaffBtn').click(); true`);
+  await waitForCondition(client, allLayersDrawn, 5000);
+  const staffOnly = await client.evaluate(`(function(){
+    var card = document.querySelector('#measuresGrid .measure-card');
+    var cell = card.querySelector('.beat-cell');
+    return {
+      grid: card.querySelector('.tab-cell-grid').getClientRects().length > 0,
+      top: card.querySelector('.tab-cell-top').getClientRects().length > 0,
+      lines: card.querySelector('.tab-lines-bg').getClientRects().length > 0,
+      staff: card.querySelector('.tab-staff-layer svg').getClientRects().length > 0,
+      tabOff: card.classList.contains('tab-off'),
+      cellHeight: Math.round(cell.getBoundingClientRect().height),
+      staffHeight: GuitarStaffSvg.STAFF_HEIGHT
+    };
+  })()`);
+  assert.equal(staffOnly.grid, false, 'the staff-only view hides the TAB grid');
+  assert.equal(staffOnly.top, false, 'the staff-only view hides the note names row');
+  assert.equal(staffOnly.lines, false, 'the staff-only view hides the TAB lines');
+  assert.equal(staffOnly.staff, true, 'the staff-only view shows the staff');
+  assert.equal(staffOnly.tabOff, true, 'the card is tab-off');
+  assert.ok(staffOnly.cellHeight >= staffOnly.staffHeight && staffOnly.cellHeight <= staffOnly.staffHeight + 16, 'the beat cell keeps the staff height for the cursor and clicks (' + staffOnly.cellHeight + ')');
+  async function pressT(){
+    await client.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'T', bubbles: true })); true`);
+    return client.evaluate('appState.scoreView');
+  }
+  assert.equal(await pressT(), 'card', 'T goes from staff to card');
+  assert.equal(await client.evaluate(`document.querySelectorAll('#measuresGrid .tab-staff-layer svg').length`), 0, 'the card view draws no staff layer');
+  assert.equal(await pressT(), 'tab', 'T goes from card to tab');
+  assert.equal(await pressT(), 'both', 'T goes from tab to both');
+  assert.equal(await pressT(), 'staff', 'T goes from both to staff');
+  await reload();
+  assert.equal(await client.evaluate('appState.scoreView'), 'staff', 'the chosen view survives a reload');
+  await waitForCondition(client, allLayersDrawn, 5000);
+  assert.equal(await client.evaluate(`document.getElementById('scoreModeStaffBtn').getAttribute('aria-selected')`), 'true', 'the reloaded view button is selected');
+
+  // (6) 악보 입력에서 넘긴 조표
+  const handoff = { title: '조표 시험', beats: 4, bpm: 72, badge: '시험', key: 1, savedAt: Date.now(), lines: ['[-] E4@1 - G4@1 - | ""', '[Am] A2@5+E4@1 r r r | "끝"'] };
+  await client.evaluate('localStorage.setItem("gs.tabInput.handoff", ' + JSON.stringify(JSON.stringify(handoff)) + '); true', { userGesture: true });
+  await reload();
+  await waitForCondition(client, allLayersDrawn, 5000);
+  const keyed = await client.evaluate(`({
+    title: curSong.title, key: curSong.key,
+    keys: document.querySelectorAll('#measuresGrid .measure-card[data-m="0"] .tab-stave-side .st-key').length,
+    laterKeys: document.querySelectorAll('#measuresGrid .measure-card[data-m="1"] .tab-stave-side .st-key').length
+  })`);
+  assert.equal(keyed.title, '조표 시험', 'the handed-over score opens');
+  assert.equal(keyed.key, 1, 'the handed-over key signature is on the temporary score');
+  assert.equal(keyed.keys, 1, 'the first card shows one sharp in its left column');
+  assert.equal(keyed.laterKeys, 1, 'later cards repeat the key signature');
+
+  // (7) 툴바: 보기 단추가 넷이어도 768px와 1024px에서 넘치지 않는다
+  const toolbar = {};
+  for (const width of [768, 1024]) {
+    await client.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    toolbar[width] = await client.evaluate(`(function(){ var bar = document.getElementById('scoreToolbar'); return { scroll: bar.scrollWidth, client: bar.clientWidth }; })()`);
+    assert.ok(toolbar[width].scroll <= toolbar[width].client, 'the score toolbar does not overflow at ' + width + 'px (' + JSON.stringify(toolbar[width]) + ')');
+  }
+  process.stdout.write('  toolbar scrollWidth/clientWidth: ' + JSON.stringify(toolbar) + '\n');
+
+  // (9) 스크린샷: 둘 다 상태, 로망스 1부 재생 중
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  async function practiceShot(name, width, height, mobile) {
+    await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
+    await client.evaluate(`(async function(){
+      changeSongById('builtin-lv6-romance-full');
+      document.getElementById('scoreModeBothBtn').click();
+      appState.clickMode = 'off';
+      curMeasureIdx = 0; curBeatIdx = 0;
+      updateActiveCursor(0, 0, false);
+      document.getElementById('compactPlayBtn').click();
+      var started = Date.now();
+      while (Date.now() - started < 4000 && !(curBeatIdx >= 1 || curMeasureIdx >= 1)) await new Promise(function(resolve){ setTimeout(resolve, 30); });
+      return true;
+    })()`);
+    await waitForCondition(client, allLayersDrawn, 5000);
+    await client.evaluate(`document.getElementById('scoreToolbar').scrollIntoView({ block: 'start', inline: 'nearest' }); true`);
+    const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await client.evaluate(`(function(){ if (isPlaying) document.getElementById('compactPlayBtn').click(); appState.clickMode = 'all'; return true; })()`);
+    const target = path.join(root, 'test-artifacts', name);
+    fs.writeFileSync(target, Buffer.from(shot.data, 'base64'));
+    const header = fs.readFileSync(target).subarray(0, 24);
+    assert.equal(header.readUInt32BE(16), width, name + ' width');
+    assert.equal(header.readUInt32BE(20), height, name + ' height');
+    process.stdout.write('Artifact: ' + target + '\n');
+    return client.evaluate('({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth })');
+  }
+  await practiceShot('practice-staff.png', 1280, 900, false);
+  const phone = await practiceShot('practice-staff-mobile.png', 375, 812, true);
+  assert.ok(phone.scroll <= phone.inner, 'the 375px practice page with a staff does not overflow horizontally (scrollWidth ' + phone.scroll + ' > ' + phone.inner + ')');
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the practice staff view runs without console errors');
+  client.dialogHandler = null;
+  process.stdout.write('Browser checkpoint: practice staff view layers, alignment, cursor click, staff-only, T cycle, reload, handoff key, toolbar, and screenshots passed\n');
+}
+
 async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
-  assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=tab-input-1')), 'all app scripts use the shared revision');
+  assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=staff-view-1')), 'all app scripts use the shared revision');
   const htmlIds = ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'temporary score UI includes #'+id);});
   assert.doesNotMatch(fs.readFileSync(path.join(root,'index.html'),'utf8'),/\.beat-cell\.arp-(?:melody|sub)\b/,'obsolete articulation color rules are removed from the score stylesheet');
@@ -2895,6 +3122,7 @@ async function main() {
     assert.notEqual(staleState.title, '넘김 시험', 'stale handoff does not open the handed-over song');
     process.stdout.write('Browser checkpoint: tab-input link, handoff open, and stale handoff ignored passed\n');
 
+    await testPracticeStaffView(cdp);
     await testScoreInputScreen(cdp, httpPort);
     await testScoreInputStaff(cdp, httpPort);
 

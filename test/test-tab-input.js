@@ -512,7 +512,8 @@ test('key signature: accidental spelling follows the key, normalizeDoc fills and
   });
   assert.equal(ti.scoreToDoc({ beats: 4, raw: 'E4 - - -' }).doc.key, 0);
   assert.equal(ti.parseImportText('E4 - - -').doc.key, 0);
-  assert.equal(ti.buildHandoff(keyed, 1).key, undefined);
+  assert.equal(ti.buildHandoff(keyed, 1).key, -3, 'the handoff carries the key signature');
+  assert.equal(ti.buildHandoff(fresh(), 1).key, 0);
 });
 
 process.stdout.write('1..' + checks + '\n');

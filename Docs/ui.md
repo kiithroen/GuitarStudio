@@ -13,6 +13,8 @@
 - 2026-10-19 결정: 곡 선택 바의 `빈 악보 추가` 앞에 악보 입력 화면으로 가는 링크 `#openScoreInputLink`(`악보 입력`)를 둬. 악보를 새로 만드는 버튼들과 한 자리에 있어야 찾기 쉬워서야.
 - 2026-10-19 결정: 곡 선택 목록(`#songSelect`, `#compactSongSelect`)은 내장곡을 레벨별 묶음(`Lv.1 입문` 등)으로 보여 줘. 두 목록 모두 `src/app.js`의 `appendBuiltinSongGroups` 하나로 만들어. 레벨 기준은 [내장곡 출처](builtin-sources.md)의 레벨 절에 있어.
 
+- 2026-10-19 결정: 악보 보기 단추(`#scoreModeSeg`)는 `타브`(`#scoreModeTabBtn`)·`둘 다`(`#scoreModeBothBtn`)·`오선`(`#scoreModeStaffBtn`)·`카드`(`#scoreModeCardBtn`) 넷이야. `둘 다`와 `오선`은 타브 카드 위에 오선을 띄워. 규칙과 이유는 [오선 미리보기](staff-notation.md)의 연습 화면 절에 있어.
+
 ## 단축키와 안내
 
 - 단축키는 `src/app.js`의 keydown 핸들러 한 곳에서 처리하고 한글 자판 키도 같이 받아. 입력 칸에 포커스가 있거나 모달이 열려 있으면 무시해. 키를 바꾸면 `#helpModal` 안내도 같이 고쳐.

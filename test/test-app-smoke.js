@@ -257,13 +257,32 @@ async function testUnavailableIndexedDbBoot(html){
   }
 }
 
+// 저장된 scoreView 정규화: 네 값은 유지하고 그 밖은 tab
+function testScoreViewNormalization(){
+  function loadedView(saved){
+    const store = { 'gs.state': JSON.stringify(saved) };
+    const sb = {
+      console, document: {}, Math, JSON, Date, Promise, Object, Array, Number, String, Map, Set,
+      localStorage: { getItem(key){ return key in store ? store[key] : null; }, setItem(){}, removeItem(){} }
+    };
+    sb.window = sb;
+    const ctx = vm.createContext(sb);
+    for (const script of ['src/storage.js', 'src/app-state.js']) vm.runInContext(fs.readFileSync(path.join(root, script), 'utf8'), ctx, { filename: script });
+    return vm.runInContext('appState.scoreView', ctx);
+  }
+  for (const view of ['tab', 'both', 'staff', 'card']) assert.equal(loadedView({ scoreView: view }), view, 'saved scoreView ' + view + ' survives a reload');
+  assert.equal(loadedView({ scoreView: 'xyz' }), 'tab', 'an unknown scoreView falls back to tab');
+  assert.equal(loadedView({}), 'tab', 'a missing scoreView falls back to tab');
+}
+
 async function main(){
+  testScoreViewNormalization();
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   document.querySelector('#storageStatus');
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
-  assert.deepEqual(scripts, ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=tab-input-1')), 'every app script uses the shared revision');
+  assert.deepEqual(scripts, ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js']);
+  assert.ok(scriptTags.every(src => src.endsWith('?v=staff-view-1')), 'every app script uses the shared revision');
   for (const id of ['addBlankScoreBtn', 'blankScoreModal', 'undoScoreEditBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
     assert.match(html, new RegExp('id="' + id + '"'), 'temporary score UI includes #' + id);
   }
@@ -370,6 +389,10 @@ async function main(){
 
   const scoreMode = elements.get('scoreModeSeg');
   assert.equal(scoreMode.hidden, false, 'score view controls are available for structured songs');
+  await elements.get('scoreModeBothBtn').click();
+  assert.equal(context.appState.scoreView, 'both', 'both view updates saved app settings');
+  await elements.get('scoreModeStaffBtn').click();
+  assert.equal(context.appState.scoreView, 'staff', 'staff view updates saved app settings');
   await elements.get('scoreModeCardBtn').click();
   assert.equal(context.appState.scoreView, 'card', 'card view updates saved app settings');
   await elements.get('scoreModeTabBtn').click();

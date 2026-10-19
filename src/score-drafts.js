@@ -166,6 +166,7 @@
         measures:cloneValue(parsed.measures),
         notationVersion:2
       };
+      if (Number.isInteger(spec.key) && spec.key >= -5 && spec.key <= 5) song.key = spec.key;
       var state = stateFor(song);
       state.temporary = true;
       state.origin = spec.origin || null;

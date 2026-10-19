@@ -518,6 +518,7 @@
       bpm: doc.bpm,
       badge: doc.description.trim(),
       lines: docToScoreLines(doc),
+      key: doc.key,
       savedAt: now
     };
   }

@@ -48,10 +48,19 @@ function getBeatRightHandLabel(beat){
   return finger ? finger : '';
 }
 
+// 악보 보기 단추. T 키가 이 순서로 돈다.
+var SCORE_VIEW_BUTTONS = [
+  {view:'tab', id:'#scoreModeTabBtn'},
+  {view:'both', id:'#scoreModeBothBtn'},
+  {view:'staff', id:'#scoreModeStaffBtn'},
+  {view:'card', id:'#scoreModeCardBtn'}
+];
+
 function syncScoreModeUI(){
   var isTab = appState.scoreView !== 'card';
-  if ($('#scoreModeTabBtn')) $('#scoreModeTabBtn').setAttribute('aria-selected', String(isTab));
-  if ($('#scoreModeCardBtn')) $('#scoreModeCardBtn').setAttribute('aria-selected', String(!isTab));
+  SCORE_VIEW_BUTTONS.forEach(function(entry){
+    if ($(entry.id)) $(entry.id).setAttribute('aria-selected', String(appState.scoreView === entry.view));
+  });
   if ($('#scoreModeSeg')) $('#scoreModeSeg').hidden = !curSong || curSong.type !== 'structured';
   if ($('#structuredScoreWrap')){
     $('#structuredScoreWrap').classList.toggle('tab-view-active', isTab);
@@ -60,24 +69,16 @@ function syncScoreModeUI(){
 }
 
 function initScoreUi(){
-  if ($('#scoreModeTabBtn')){
-    $('#scoreModeTabBtn').addEventListener('click', function(){
-      appState.scoreView = 'tab';
+  SCORE_VIEW_BUTTONS.forEach(function(entry){
+    if (!$(entry.id)) return;
+    $(entry.id).addEventListener('click', function(){
+      appState.scoreView = entry.view;
       syncScoreModeUI();
       saveAppState();
       if (curSong && curSong.type === 'structured') renderStructuredMeasures();
       updateActiveCursor(curMeasureIdx, curBeatIdx, false);
     });
-  }
-  if ($('#scoreModeCardBtn')){
-    $('#scoreModeCardBtn').addEventListener('click', function(){
-      appState.scoreView = 'card';
-      syncScoreModeUI();
-      saveAppState();
-      if (curSong && curSong.type === 'structured') renderStructuredMeasures();
-      updateActiveCursor(curMeasureIdx, curBeatIdx, false);
-    });
-  }
+  });
 }
 
 function formatSongToSheetTsv(title, beats, bpm, badge, linesArr){

@@ -27,7 +27,7 @@
   if (appState.synthEngine !== 'classic') appState.synthEngine = 'ks'; // 기타 음원: 'ks' 물리 모델 / 'classic' 기존 합성음
   if (typeof appState.bodyAmount !== 'number') appState.bodyAmount = 1.0; // 울림통 공명 세기 (0~2, 1이 기본)
   if (typeof appState.sympAmount !== 'number') appState.sympAmount = 1.0; // 공명현 세기 (0~2, 0이면 꺼짐)
-  if (appState.scoreView !== 'card') appState.scoreView = 'tab'; // 악보 보기 모드: 'tab' 6현 타브(기본) / 'card' 박자 카드
+  if (['tab', 'both', 'staff', 'card'].indexOf(appState.scoreView) < 0) appState.scoreView = 'tab'; // 악보 보기 모드: 'tab' 6현 타브(기본) / 'both' 타브+오선 / 'staff' 오선 / 'card' 박자 카드
   if (CLICK_MODES.indexOf(appState.clickMode) < 0) appState.clickMode = 'all';
   if (appState.notationMode !== 'solfege') appState.notationMode = 'cde';
 

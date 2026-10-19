@@ -40,10 +40,11 @@
   function n(value){ return String(Math.round(value * 10) / 10); }
   function clamp(value, lo, hi){ return Math.max(lo, Math.min(hi, value)); }
 
+  // header.time이 null이면 박자표 없이 그린다(연습 화면의 둘째 카드부터). 없으면(undefined) 4/4로 그린다.
   function headerWidth(header){
     if (!header) return 0;
     var keyCount = Math.abs(header.key || 0);
-    return HEADER_LEFT + CLEF_W + (keyCount ? KEY_GAP + KEY_W * keyCount : 0) + TIME_GAP + TIME_W + HEADER_RIGHT;
+    return HEADER_LEFT + CLEF_W + (keyCount ? KEY_GAP + KEY_W * keyCount : 0) + (header.time === null ? 0 : TIME_GAP + TIME_W) + HEADER_RIGHT;
   }
 
   function attrs(map){
@@ -176,6 +177,42 @@
     return out;
   }
 
+  // 음자리표·조표·박자표. renderMeasure의 첫 마디 머리와 renderHeader가 같이 쓴다.
+  function drawHeader(x0, header, hw){
+    var out = [];
+    var clefX = x0 + HEADER_LEFT + CLEF_W / 2;
+    out.push(text('st-clef', clefX, yOf(2) + CLEF_BASELINE, CLEF_GLYPH, { 'font-size': MUSIC_SIZE, 'font-family': MUSIC_FONT }));
+    out.push(text('st-clef8', clefX, yOf(-4), '8', { 'font-size': 11, 'font-weight': 700, 'font-family': 'serif' }));
+    var key = header.key || 0;
+    var keySteps = key > 0 ? SHARP_STEPS : FLAT_STEPS;
+    for (var ki = 0; ki < Math.abs(key); ki++){
+      var kx = x0 + HEADER_LEFT + CLEF_W + KEY_GAP + ki * KEY_W + KEY_W / 2;
+      var keyKind = key > 0 ? 'sharp' : 'flat';
+      out.push(text('st-key', kx, yOf(keySteps[ki]) + ACC_BASELINE[keyKind], ACC_GLYPH[keyKind], {
+        'font-size': ACC_SIZE, 'font-family': MUSIC_FONT
+      }));
+    }
+    if (header.time !== null){
+      var timeX = x0 + hw - HEADER_RIGHT - TIME_W / 2;
+      var time = header.time || { numerator: 4, denominator: 4 };
+      var timeStyle = { 'dominant-baseline': 'central', 'font-size': 17, 'font-weight': 700, 'font-family': 'serif' };
+      out.push('<g class="st-time">' + text('st-time-top', timeX, yOf(6), time.numerator, timeStyle) + text('st-time-bottom', timeX, yOf(2), time.denominator, timeStyle) + '</g>');
+    }
+    return out;
+  }
+
+  // 머리만 따로 그린 SVG(음자리표, 조표, 있으면 박자표, 오선 줄). 연습 화면 카드의 왼쪽 열에 쓴다.
+  function renderHeader(header){
+    var hw = headerWidth(header);
+    var out = ['<svg class="st-svg st-header-svg" xmlns="http://www.w3.org/2000/svg"' + attrs({
+      width: n(hw), height: STAFF_HEIGHT, viewBox: '0 0 ' + n(hw) + ' ' + STAFF_HEIGHT, role: 'img', 'aria-label': '음자리표'
+    }) + '>'];
+    for (var li = 0; li < 5; li++) out.push(line('st-line', 0, yOf(li * 2), hw, yOf(li * 2), 1));
+    Array.prototype.push.apply(out, drawHeader(0, header, hw));
+    out.push('</svg>');
+    return out.join('');
+  }
+
   // ---------- 마디
 
   function renderMeasure(layout, geo){
@@ -195,24 +232,7 @@
     out.push(line('st-bar', x0 + 0.5, yOf(8), x0 + 0.5, yOf(0), 1.2));
     out.push(line('st-bar', width - 1, yOf(8), width - 1, yOf(0), 1.2));
 
-    if (header){
-      var clefX = x0 + HEADER_LEFT + CLEF_W / 2;
-      out.push(text('st-clef', clefX, yOf(2) + CLEF_BASELINE, CLEF_GLYPH, { 'font-size': MUSIC_SIZE, 'font-family': MUSIC_FONT }));
-      out.push(text('st-clef8', clefX, yOf(-4), '8', { 'font-size': 11, 'font-weight': 700, 'font-family': 'serif' }));
-      var key = header.key || 0;
-      var keySteps = key > 0 ? SHARP_STEPS : FLAT_STEPS;
-      for (var ki = 0; ki < Math.abs(key); ki++){
-        var kx = x0 + HEADER_LEFT + CLEF_W + KEY_GAP + ki * KEY_W + KEY_W / 2;
-        var keyKind = key > 0 ? 'sharp' : 'flat';
-        out.push(text('st-key', kx, yOf(keySteps[ki]) + ACC_BASELINE[keyKind], ACC_GLYPH[keyKind], {
-          'font-size': ACC_SIZE, 'font-family': MUSIC_FONT
-        }));
-      }
-      var timeX = x0 + hw - HEADER_RIGHT - TIME_W / 2;
-      var time = header.time || { numerator: 4, denominator: 4 };
-      var timeStyle = { 'dominant-baseline': 'central', 'font-size': 17, 'font-weight': 700, 'font-family': 'serif' };
-      out.push('<g class="st-time">' + text('st-time-top', timeX, yOf(6), time.numerator, timeStyle) + text('st-time-bottom', timeX, yOf(2), time.denominator, timeStyle) + '</g>');
-    }
+    if (header) Array.prototype.push.apply(out, drawHeader(x0, header, hw));
 
     // 화음 자리 계산
     var infos = items.map(function(item){
@@ -367,6 +387,7 @@
 
   var api = {
     renderMeasure: renderMeasure,
+    renderHeader: renderHeader,
     headerWidth: headerWidth,
     STAFF_HEIGHT: STAFF_HEIGHT,
     BASE_Y: BASE_Y,

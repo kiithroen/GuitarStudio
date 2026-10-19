@@ -9,8 +9,8 @@
 <title>기타 스튜디오 (Guitar Studio)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&display=swap">
-<link rel="stylesheet" href="src/base.css?v=tab-input-1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
+<link rel="stylesheet" href="src/base.css?v=staff-view-1">
 <style>
 #sheetLoadStatus{margin-top:8px;padding:7px 11px;border-radius:8px;border:1px solid var(--off);background:var(--off-soft);color:var(--off);font-weight:600}
 
@@ -179,6 +179,21 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret{background:var(--accent);color:#fff;border-color:var(--accent)}
 .tab-cell-lh{font-size:9px;font-weight:700;margin-left:1px;opacity:.85}
 .tab-rest-dash{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:var(--font-num);font-size:13px;color:var(--muted);font-weight:700}
+.tab-staff-layer,.tab-staff-head{display:none}
+/* 오선 층(보기 '둘 다'·'오선'): 박 셀을 오선 높이(--staff-h)만큼 위로 늘리고 TAB 내용을 그만큼 아래로 민다. 규칙은 Docs/staff-notation.md 의 연습 화면 절 */
+.measure-card.staff-on .tab-staff-layer{display:block;position:absolute;left:0;top:0;width:100%;height:var(--staff-h);pointer-events:none;z-index:3;color:var(--fg)}
+.measure-card.staff-on .tab-staff-head{display:block;position:absolute;left:0;top:0;line-height:0;pointer-events:none;color:var(--fg)}
+.tab-staff-layer .st-svg,.tab-staff-head .st-svg{display:block;overflow:visible}
+.measure-card.staff-on .tab-stave-side{padding-top:calc(4px + var(--staff-h))}
+.measure-card.staff-on .tab-lines-bg{top:calc(32px + var(--staff-h))}
+.measure-card.staff-on .beats-row.tab-mode{height:calc(134px + var(--staff-h))}
+.measure-card.staff-on .beat-cell.tab-cell{padding-top:calc(4px + var(--staff-h))}
+.measure-card.staff-on .beat-cell.tab-cell.active-beat{background:linear-gradient(to bottom,var(--accent-soft) var(--staff-h),rgba(45,76,155,.18) var(--staff-h))}
+.measure-card.tab-off .tab-lines-bg,.measure-card.tab-off .tab-cell-top,.measure-card.tab-off .tab-cell-grid,.measure-card.tab-off .tab-badge-title,.measure-card.tab-off .tab-str-names{display:none}
+.measure-card.tab-off .tab-stave-side{padding:0}
+.measure-card.tab-off .beats-row.tab-mode{height:calc(var(--staff-h) + 8px)}
+.measure-card.tab-off .beat-cell.tab-cell{padding-bottom:0}
+.measure-card.tab-off .beat-cell.tab-cell.active-beat{background:var(--accent-soft)}
 
 /* 이미지 / PDF 악보 뷰어 및 마디 그리드 매퍼 */
 .img-score-wrap{display:flex;flex-direction:column;gap:10px}
@@ -555,6 +570,8 @@ body.practice-compact .fretboard{
         <span class="badge accent" id="scoreTypeBadge" hidden>내장 동요 · 다장조(C)</span>
         <div class="tab-seg" id="scoreModeSeg" role="tablist" aria-label="악보 보기 모드" style="margin-left:2px;flex-shrink:0">
           <button type="button" id="scoreModeTabBtn" role="tab" aria-selected="true" title="6현 가로선 타브(TAB) 악보로 보기 (단축키: T)">타브</button>
+          <button type="button" id="scoreModeBothBtn" role="tab" aria-selected="false" title="타브(TAB) 위에 오선을 함께 보기 (단축키: T)">둘 다</button>
+          <button type="button" id="scoreModeStaffBtn" role="tab" aria-selected="false" title="오선만 보기 (단축키: T)">오선</button>
           <button type="button" id="scoreModeCardBtn" role="tab" aria-selected="false" title="박자·음표 길이 및 계이름(친절한 오선지) 카드 뷰 (단축키: T)">카드</button>
         </div>
         <span class="badge" id="compactStatusBadge" style="font-family:var(--font-num);font-weight:700">64 BPM · 1마디</span>
@@ -774,7 +791,7 @@ body.practice-compact .fretboard{
           </tr>
           <tr style="border-bottom:1px solid var(--line)">
             <td style="padding:7px 4px;font-weight:700"><kbd class="key-kbd">T</kbd> (또는 <kbd class="key-kbd">ㅅ</kbd>)</td>
-            <td style="padding:7px 4px">악보 모드 전환 (타브 악보 ↔ 박자 카드)</td>
+            <td style="padding:7px 4px">악보 보기 전환 (타브 → 둘 다 → 오선 → 카드 순서로 돌아가요)</td>
           </tr>
           <tr style="border-bottom:1px solid var(--line)">
             <td style="padding:7px 4px;font-weight:700"><kbd class="key-kbd">P</kbd> (또는 <kbd class="key-kbd">ㅔ</kbd>)</td>
@@ -904,21 +921,23 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=tab-input-1"></script>
-<script src="src/app-state.js?v=tab-input-1"></script>
-<script src="src/notation.js?v=tab-input-1"></script>
-<script src="src/rhythm.js?v=tab-input-1"></script>
-<script src="src/parser.js?v=tab-input-1"></script>
-<script src="src/score-drafts.js?v=tab-input-1"></script>
-<script src="src/score.js?v=tab-input-1"></script>
-<script src="src/audio.js?v=tab-input-1"></script>
-<script src="src/guide.js?v=tab-input-1"></script>
-<script src="src/image-analysis.js?v=tab-input-1"></script>
-<script src="src/fretboard.js?v=tab-input-1"></script>
-<script src="src/score-ui.js?v=tab-input-1"></script>
-<script src="src/sheets.js?v=tab-input-1"></script>
-<script src="src/score-prompt.js?v=tab-input-1"></script>
-<script src="src/score-editor.js?v=tab-input-1"></script>
-<script src="src/app.js?v=tab-input-1"></script>
+<script src="src/storage.js?v=staff-view-1"></script>
+<script src="src/app-state.js?v=staff-view-1"></script>
+<script src="src/notation.js?v=staff-view-1"></script>
+<script src="src/rhythm.js?v=staff-view-1"></script>
+<script src="src/parser.js?v=staff-view-1"></script>
+<script src="src/staff-layout.js?v=staff-view-1"></script>
+<script src="src/staff-svg.js?v=staff-view-1"></script>
+<script src="src/score-drafts.js?v=staff-view-1"></script>
+<script src="src/score.js?v=staff-view-1"></script>
+<script src="src/audio.js?v=staff-view-1"></script>
+<script src="src/guide.js?v=staff-view-1"></script>
+<script src="src/image-analysis.js?v=staff-view-1"></script>
+<script src="src/fretboard.js?v=staff-view-1"></script>
+<script src="src/score-ui.js?v=staff-view-1"></script>
+<script src="src/sheets.js?v=staff-view-1"></script>
+<script src="src/score-prompt.js?v=staff-view-1"></script>
+<script src="src/score-editor.js?v=staff-view-1"></script>
+<script src="src/app.js?v=staff-view-1"></script>
 </body>
 </html>

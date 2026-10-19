@@ -227,6 +227,24 @@ test('rests and check marks', function(){
   checkCounts(draw(sixteenth), sixteenth.measures[0], 'eighth chord');
 });
 
+test('renderHeader draws the clef, key and an optional time signature', function(){
+  assert.equal(typeof svgApi.renderHeader, 'function');
+  const time = { numerator: 3, denominator: 4 };
+  const withTime = svgApi.renderHeader({ key: 2, time: time });
+  assert.equal(count(withTime, 'st-clef'), 1);
+  assert.equal(count(withTime, 'st-key'), 2);
+  assert.equal(count(withTime, 'st-time'), 1);
+  assert.match(withTime, /<text class="st-time-top"[^>]*>3<\/text>/);
+  assert.match(withTime, /^<svg [^>]*height="128"/, 'the header svg height is STAFF_HEIGHT');
+  const noTime = svgApi.renderHeader({ key: 2, time: null });
+  assert.equal(count(noTime, 'st-clef'), 1);
+  assert.equal(count(noTime, 'st-key'), 2);
+  assert.equal(count(noTime, 'st-time'), 0);
+  assert.ok(svgApi.headerWidth({ key: 2, time: null }) < svgApi.headerWidth({ key: 2, time: time }), 'no time signature makes the header narrower');
+  assert.match(withTime, new RegExp('^<svg [^>]*width="' + svgApi.headerWidth({ key: 2, time: time }) + '"'), 'the svg is as wide as headerWidth');
+  assert.equal(count(withTime, 'st-line'), 5);
+});
+
 test('every built-in song draws with the counts the layout predicts', function(){
   const songs = JSON.parse(fs.readFileSync(path.join(__dirname, '../songs.json'), 'utf8'));
   let measures = 0;

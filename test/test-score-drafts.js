@@ -235,6 +235,18 @@ test('createFromScore builds a temporary structured song with origin and rejects
   captureFailure(function(){ store.createFromScore({title:'틀림',beats:4,bpm:64,lines:['[-] Q9 r r r']}); });
 });
 
+test('createFromScore keeps a key signature of -5..5 on the song and ignores anything else', function(){
+  const store = createScoreDraftStore();
+  const lines = ['[-] E4@1 - G4@1 - | ""'];
+  assert.equal(store.createFromScore({title:'조표',beats:4,bpm:72,lines:lines,key:1}).key, 1);
+  assert.equal(store.createFromScore({title:'조표',beats:4,bpm:72,lines:lines,key:-5}).key, -5);
+  assert.equal(store.createFromScore({title:'조표',beats:4,bpm:72,lines:lines,key:0}).key, 0);
+  [6, -6, 1.5, '2', null].forEach(function(bad){
+    assert.equal('key' in store.createFromScore({title:'조표',beats:4,bpm:72,lines:lines,key:bad}), false, 'key ' + bad + ' is not stored');
+  });
+  assert.equal('key' in store.createFromScore({title:'조표',beats:4,bpm:72,lines:lines}), false);
+});
+
 test('browser global export works in a VM without DOM or storage globals', function(){
   const context = vm.createContext({console:console,Map:Map,Set:Set,Array:Array,Number:Number,Math:Math,JSON:JSON,Error:Error,Object:Object,String:String,RegExp:RegExp});
   context.window = context;

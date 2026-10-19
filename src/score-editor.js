@@ -127,7 +127,9 @@ var scoreEditorHooks = (function(){
     var copyStatus = document.getElementById('scoreCopyStatus');
     if (copyStatus) copyStatus.hidden = !structured || !copyStatus.textContent;
     if (document.getElementById('scoreModeTabBtn')) document.getElementById('scoreModeTabBtn').disabled = !!pendingEdit;
-    if (document.getElementById('scoreModeCardBtn')) document.getElementById('scoreModeCardBtn').disabled = !!pendingEdit;
+    ['scoreModeBothBtn', 'scoreModeStaffBtn', 'scoreModeCardBtn'].forEach(function(id){
+      if (document.getElementById(id)) document.getElementById(id).disabled = !!pendingEdit;
+    });
   }
 
   function beforeAction(action){
@@ -431,6 +433,7 @@ var scoreEditorHooks = (function(){
         bpm:Math.max(30, Math.min(240, Math.round(Number(handoff.bpm) || 64))),
         badge:handoff.badge,
         lines:handoff.lines,
+        key:Number.isInteger(handoff.key) && handoff.key >= -5 && handoff.key <= 5 ? handoff.key : 0,
         origin:'tab-input'
       });
       return song.id;
