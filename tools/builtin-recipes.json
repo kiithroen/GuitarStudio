@@ -264,20 +264,52 @@
         1,
         23
       ],
-      "fixStrings": true
+      "fixStrings": true,
+      "downbeatOnly": [
+        "down:"
+      ],
+      "lowestOnly": [
+        "down:"
+      ],
+      "trackTranspose": {
+        "up:": -12
+      }
     },
     "edits": [
       {
-        "op": "setPitch",
-        "start": 5568,
-        "pitch": 77,
-        "to": 65
+        "op": "drop",
+        "start": 13536,
+        "pitch": 60
       },
       {
-        "op": "setPitch",
-        "start": 7680,
-        "pitch": 88,
-        "to": 76
+        "op": "drop",
+        "start": 13536,
+        "pitch": 52
+      },
+      {
+        "op": "drop",
+        "start": 13632,
+        "pitch": 53
+      },
+      {
+        "op": "drop",
+        "start": 13632,
+        "pitch": 60
+      },
+      {
+        "op": "drop",
+        "start": 13632,
+        "pitch": 57
+      },
+      {
+        "op": "drop",
+        "start": 13728,
+        "pitch": 52
+      },
+      {
+        "op": "drop",
+        "start": 13728,
+        "pitch": 60
       },
       {
         "op": "cut",
@@ -290,6 +322,13 @@
         "to": 4608
       }
     ],
-    "lineOverrides": []
+    "lineOverrides": [
+      {
+        "measure": 23,
+        "cell": 3,
+        "from": "r/G2",
+        "to": "r"
+      }
+    ]
   }
 ]

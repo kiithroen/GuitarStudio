@@ -14,12 +14,13 @@ const melodyPracticeIds = [
   'builtin-lv4-amazinggrace', 'builtin-lv4-greensleeves'
 ];
 
-// 원본 MIDI에서 변환한 곡: 운지·줄 번호가 없는 선율/저음 전사라서 아래 앱 운지 제안 검사 대상이 아니다.
+// 원본 MIDI·악보에서 옮겨 운지·줄 번호를 붙이지 않은 곡: 아래 앱 운지 제안 검사 대상이 아니다.
 const convertedIds = [
   'builtin-mary-lamb', 'builtin-sor-op60-01', 'builtin-carulli-op241-01', 'builtin-carulli-op241-05',
   'builtin-giuliani-op50-01', 'builtin-carcassi-op60-03', 'builtin-carcassi-op60-07',
   'builtin-sor-op35-22', 'builtin-tarrega-adelita', 'builtin-greensleeves-bass',
-  'builtin-bach-minuet-g', 'builtin-beethoven-fur-elise', 'builtin-romance-part2', 'builtin-romance-full'
+  'builtin-bach-minuet-g', 'builtin-beethoven-fur-elise', 'builtin-romance-part2', 'builtin-romance-full',
+  'builtin-romanza-accomp'
 ];
 
 assert.ok(songs.length > 0, 'catalog is not empty');
