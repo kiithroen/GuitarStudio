@@ -66,6 +66,25 @@
 - 2026-10-19 결정: 사용자 인터페이스 전반의 비표준 해요체·구어체 문구('~해요', '~했어요', '~해줘' 등)를 표준 UI 안내문 톤(명사형 또는 하십시오형)으로 정돈했어. 시인성을 해치던 지나치게 긴 버튼 라벨(`+ 교본 사진/PDF 악보 올리기` -> `+ 악보 올리기`, `원본으로 되돌리기` -> `원본 복원`, `마디 영역 편집 켜짐` -> `마디 편집`, `파란 코드 점: 켜짐` -> `코드 운지점` 등)도 핵심 의미를 온전히 유지하면서 간결하게 축약했어. 기존 스모크 테스트와 브라우저 테스트의 핵심 단언문 정규식 키워드는 그대로 유지하여 호환성을 보장했어.
 - 2026-10-19 결정: 그때 남은 반말·해요체 문구도 같은 톤으로 맞췄어. 상태 줄·알림·확인 창, 악보 검사 오류(`src/notation.js`·`src/parser.js`·`src/rhythm.js`), 악보 입력 화면의 모델·오선 입력 오류(`src/tab-input.js`·`src/staff-input.js`·`src/staff-layout.js`, 화면에 `error.message` 그대로 나와), 시트 연동 안내, 코드 사전 설명(`desc`, 지판 왼손 운지 칸에 보여), `tools/check-score.js` 출력이야. 규칙: 서술은 `~습니다`·`~입니다`, 부탁은 `~하세요`, 확인 창은 `~하시겠습니까?`, `·`로 잇는 짧은 상태 조각과 단추는 명사형. `src/score-prompt.js`의 AI 프롬프트 본문은 AI에게 주는 지시라 UI가 아니어서 그대로 뒀어(복사 결과 안내 셋만 바꿨어). 문서(`Docs/`) 말투는 이 결정의 범위가 아니야. 오류 문구를 통째로 비교하던 테스트는 새 문구로 맞췄어. 다시 찾을 때는 남은 반말 어미(`없어.`, `여야 해`, `해줘` 같은 것)를 `git grep`으로 찾아.
 
+## 시트 자동 가져오기
+
+`tools/sheet-import-script.js`는 앱이 아니라 Google Sheets의 Apps Script 편집기에 붙여 넣어 도는 스크립트야. 드라이브의 `FOLDER_NAME` 폴더에서 `.tsv`를 모두 읽어 시트 첫 탭(또는 `SHEET_NAME`)에 넣어. 쓰는 법은 [사용 안내](usage.md#드라이브-폴더에서-자동으로-가져오기)에 있어.
+
+- Apps Script 런타임에서 그대로 돌아야 해서 `require`·`module`·`import`를 쓰지 않고 최상위 함수 선언만 둬. `test/test-sheet-import-script.js`가 `vm`으로 파일을 읽고 `SpreadsheetApp`·`DriveApp`·`PropertiesService`·`LockService`·`ScriptApp`을 가짜로 넣어 돌려.
+- 악보 문법은 검사하지 않아. 문법은 `src/notation.js`가 SSOT라 스크립트에 옮기지 않고, 앱이 시트를 읽을 때와 `tools/check-score.js`가 검사해. 스크립트는 한 줄이 탭으로 나뉜 5열인지, 제목과 악보가 비지 않았는지만 봐.
+
+2026-10-20 결정:
+
+- 화면에서 드래그해 복사한 TSV는 클립보드에 탭이 빠진 HTML이 같이 실려서, 시트가 HTML을 골라 한 칸에 몰아넣었어. `Ctrl+Shift+V`로 피할 수는 있지만 곡마다 붙여 넣는 일이 번거로웠어. 앱은 GitHub Pages에서 돌아 로컬 파일을 못 읽고, 드라이브 파일을 브라우저에서 바로 읽으려면 Drive API 키가 필요해. 그래서 앱은 지금처럼 시트만 읽고, 시트 쪽 Apps Script가 드라이브 폴더를 가져오게 했어.
+- 틀린 길: 앱이 로컬 TSV 폴더를 `python -m http.server`의 폴더 목록으로 읽는 안은 서버를 띄워 둬야 해서 버렸어.
+- 행은 제목으로 맞춰. 앱은 E열부터 끝까지를 악보로 이어 읽어서(`src/sheets.js`의 `cols.slice(4)`) 출처 파일 같은 열을 더 둘 수 없어.
+- 파일마다 마지막 수정 시각을 Script Properties(`PROP_PREFIX` + 파일 id)에 남기고 바뀐 파일의 행만 써. 시트에서 직접 고친 행을 자동 실행이 매번 덮어쓰지 않게 하려는 거야. 오류나 제목 중복이 있던 파일은 기록하지 않아 다음 실행에서 다시 봐.
+- 파일을 지워도 행은 지우지 않아. 위 열 제약 때문에 시트에서 손으로 넣은 곡과 파일에서 온 곡을 구분할 수 없어서야.
+- 같은 제목이 여러 줄에 있으면 그 제목은 모두 건너뛰어. 어느 쪽이 맞는지 스크립트가 정하지 않아.
+- 제목·설명·악보 칸은 값을 쓰기 전에 서식을 일반 텍스트(`@`)로 바꿔. 설명이 `3/4`처럼 날짜로 읽힐 수 있는 값이면 시트가 바꿔 버려서야. 칸 수·BPM은 숫자로 써서 붙여 넣던 기존 행과 맞춰.
+- 폴더는 id가 아니라 이름(`FOLDER_NAME`)으로 찾아. 저장소가 공개라 개인 드라이브 id를 넣지 않으려고. 휴지통이 아닌 같은 이름 폴더가 없거나 둘 이상이면 오류로 멈춰.
+- 안 돌려 본 것: 실제 Apps Script에서의 실행, 드라이브 데스크톱의 "내 컴퓨터"로 동기화한 폴더를 `DriveApp.getFoldersByName`이 찾는지.
+
 ## 이력
 
 모듈 분리, 공통 파서·카포 경로, 단위·스모크 테스트, 초보 리듬 입력과 재생 계약 정리를 마쳤어. alphaTab 재생은 `codex/alphatab-player` 실험 브랜치에만 있고 main 앱은 기존 엔진을 써.
@@ -93,6 +112,7 @@ node test/test-audio.js
 node test/test-guide.js
 node test/test-storage.js
 node test/test-sheets.js
+node test/test-sheet-import-script.js
 node test/test-app-smoke.js
 node test/test-browser-smoke.js
 Get-ChildItem src\*.js, test\*.js, tools\*.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }

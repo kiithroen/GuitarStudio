@@ -13,6 +13,7 @@
 - 카포처럼 전역 피치에 영향을 주는 값은 TAB·코드 카드·지판·가이드음 모든 경로에 같이 반영한다.
 - 악보 입력 화면(`score-input.html`)은 `app.js`를 불러오지 않는다. 두 화면이 같이 쓰는 전역은 `src/app-state.js`, 스타일은 `src/base.css`에 둔다. 칸 수 목록은 `GuitarNotation.SHEET_BEAT_COUNTS`, 음이름은 `noteNameForMidi`만 쓴다.
 - UI 문구(상태 줄·알림·확인 창·오류 메시지)는 `~습니다`·`~하세요`·명사형으로 쓰고 반말·해요체를 쓰지 않는다. 문서 말투와 `src/score-prompt.js`의 AI 프롬프트 본문은 해당하지 않는다. 규칙은 `Docs/development.md`의 UI 톤 절.
+- `tools/sheet-import-script.js`는 시트의 Apps Script에 붙여 넣는 파일이다. `require`·`module`·`import`를 쓰지 않고, 악보 문법 검사를 옮기지 않는다.
 
 ## 악보·재생
 - 마디 구분은 `//`와 줄바꿈, 칸 안 분할은 붙여 쓴 `/`(2·3·4분할)다. 구형 공백 슬래시, 구형 악보 변환, 옛 호환 표기(한글 음이름, 괄호·쉼표 분할, 뒤 주법, 따옴표 없는 메모, 코드 별칭, `R`)는 받지 않는다. 되살리지 않는다.
@@ -27,7 +28,7 @@
 
 ## 검증 (명령은 `Docs/development.md` 검증 절)
 - 커밋 전 모든 `src/*.js`, `test/*.js`, `tools/*.js`가 `node --check`를 통과해야 한다.
-- 파서 정규식·악보 구조·카포: `test-parser`. 음가·쉼·유지·재생: `test-rhythm`, `test-guide`, `test-audio`. 부팅·상태 저장: `test-app-smoke`. DOM·인터랙션·콘솔 에러: `test-browser-smoke`. 타브 입력 모델·변환: `test-tab-input`. 오선 배치·그리기: `test-staff-layout`, `test-staff-svg`. 오선 입력 계산: `test-staff-input`.
+- 파서 정규식·악보 구조·카포: `test-parser`. 음가·쉼·유지·재생: `test-rhythm`, `test-guide`, `test-audio`. 부팅·상태 저장: `test-app-smoke`. DOM·인터랙션·콘솔 에러: `test-browser-smoke`. 타브 입력 모델·변환: `test-tab-input`. 오선 배치·그리기: `test-staff-layout`, `test-staff-svg`. 오선 입력 계산: `test-staff-input`. 시트 자동 가져오기 스크립트: `test-sheet-import-script`.
 - 오선 미리보기의 음 길이는 `GuitarRhythm.annotate` 결과만 쓴다. 따로 길이를 계산하거나 성부를 나누지 않는다.
 
 ## 커밋
