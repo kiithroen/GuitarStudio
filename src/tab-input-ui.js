@@ -457,7 +457,10 @@
       slotEl.classList.add('is-cursor-slot');
       var posEl = slotEl.querySelector('.ti-pos[data-str="' + cursor.str + '"]');
       if (posEl) posEl.classList.add('is-cursor');
-      if (scroll && slotEl.scrollIntoView) slotEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      if (scroll && slotEl.scrollIntoView){
+        slotEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        box.scrollIntoView({ block: 'nearest' });
+      }
     }
 
     placeStaffCursor(slotEl);

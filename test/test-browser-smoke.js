@@ -2166,8 +2166,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=capo-select-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=capo-select-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=measure-scroll-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=measure-scroll-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -2392,6 +2392,73 @@ async function testScoreInputScreen(client, httpPort) {
   await setCapo(0);
   assert.equal(await client.evaluate('document.getElementById("tiDescription").value'), '', 'the capo mark is removed again');
   assert.deepEqual(client.consoleErrors.slice(capoErrorsBefore), [], 'the capo combo box runs without console errors');
+
+  // 마디 영역 자체 스크롤: 마디가 많으면 마디 영역에 스크롤바가 서고 결과 영역이 멀지 않으며, 커서 조각은 입력판에 가리지 않는다.
+  const scrollErrorsBefore = client.consoleErrors.length;
+  const importScore = lineCount => client.evaluate(`(function(){
+    window.confirm = function(){ return true; };
+    var lines = [];
+    for (var i = 0; i < ${lineCount}; i++) lines.push('[-] C4 - - - | ""');
+    document.getElementById('tiImportBtn').click();
+    var area = document.getElementById('tiImportText');
+    area.value = lines.join('\\n');
+    area.dispatchEvent(new Event('input', { bubbles:true }));
+    document.getElementById('tiImportApplyBtn').click();
+    return { measures:__tiTest.count(), error:document.getElementById('tiImportError').textContent, open:document.getElementById('tiImportDialog').open };
+  })()`);
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false });
+  const many = await importScore(40);
+  assert.deepEqual(many, { measures: 40, error: '', open: false }, 'a 40-measure score is imported for the measure scroll checks');
+  const scrollBox = await client.evaluate(`(function(){
+    window.scrollTo(0, 0);
+    var box = document.getElementById('tiMeasures'), result = document.getElementById('tiResultPanel');
+    var boxTop = box.getBoundingClientRect().top + window.scrollY, resultTop = result.getBoundingClientRect().top + window.scrollY;
+    return { overflowY:getComputedStyle(box).overflowY, scrollHeight:box.scrollHeight, clientHeight:box.clientHeight, inner:window.innerHeight,
+      dock:document.getElementById('tiDock').getBoundingClientRect().height, gap:resultTop - boxTop };
+  })()`);
+  assert.equal(scrollBox.overflowY, 'auto', 'the measure area scrolls on its own (overflow-y auto)');
+  assert.ok(scrollBox.scrollHeight > scrollBox.clientHeight, 'the 40-measure area has a scrollbar (' + JSON.stringify(scrollBox) + ')');
+  assert.ok(scrollBox.clientHeight <= scrollBox.inner - scrollBox.dock - 32 + 1, 'the measure area fits between the top and the input dock (' + JSON.stringify(scrollBox) + ')');
+  assert.ok(scrollBox.gap <= scrollBox.clientHeight + 120, 'the result panel sits right after the measure area (' + JSON.stringify(scrollBox) + ')');
+  const lastSlot = await client.evaluate(`(function(){
+    window.scrollTo(0, 0);
+    document.getElementById('tiMeasures').scrollTop = 0;
+    __tiTest.pos(0,0,0,1).click();
+    window.scrollTo(0, 0);
+    document.getElementById('tiMeasures').scrollTop = 0;
+    for (var i = 0; i < 159; i++) __tiTest.key('ArrowRight', 'ArrowRight');
+    var slot = document.querySelector('.ti-slot.is-cursor-slot');
+    var rect = slot.getBoundingClientRect(), box = document.getElementById('tiMeasures').getBoundingClientRect();
+    var dock = document.getElementById('tiDock').getBoundingClientRect(), bar = document.getElementById('tiSelectionBar');
+    return { m:slot.dataset.m, c:slot.dataset.c, top:rect.top, bottom:rect.bottom, boxTop:box.top, boxBottom:box.bottom, dockTop:dock.top,
+      barBottom:bar.hidden ? null : bar.getBoundingClientRect().bottom, boxScroll:document.getElementById('tiMeasures').scrollTop };
+  })()`);
+  assert.deepEqual([lastSlot.m, lastSlot.c], ['39', '3'], 'arrow keys reach the last cell of the last measure (' + JSON.stringify(lastSlot) + ')');
+  assert.ok(lastSlot.boxScroll > 0, 'the measure area scrolled itself to the cursor (' + JSON.stringify(lastSlot) + ')');
+  assert.ok(lastSlot.top >= lastSlot.boxTop - 1 && lastSlot.bottom <= lastSlot.boxBottom + 1, 'the cursor slot is inside the visible measure area (' + JSON.stringify(lastSlot) + ')');
+  assert.ok(lastSlot.bottom <= lastSlot.dockTop && lastSlot.top >= 0, 'the cursor slot on the last measure stays above the input dock (' + JSON.stringify(lastSlot) + ')');
+  if (lastSlot.barBottom !== null) assert.ok(lastSlot.top >= lastSlot.barBottom, 'the cursor slot stays below the selection bar (' + JSON.stringify(lastSlot) + ')');
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  await client.evaluate('window.scrollTo(0, document.documentElement.scrollHeight); true');
+  const scrollShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const scrollShotPath = path.join(root, 'test-artifacts', 'score-input-measure-scroll.png');
+  fs.writeFileSync(scrollShotPath, Buffer.from(scrollShot.data, 'base64'));
+  const scrollShotHeader = fs.readFileSync(scrollShotPath).subarray(0, 24);
+  assert.deepEqual([scrollShotHeader.readUInt32BE(16), scrollShotHeader.readUInt32BE(20)], [1024, 768], 'measure scroll screenshot size');
+  process.stdout.write('Artifact: ' + scrollShotPath + '\n');
+  const few = await importScore(2);
+  assert.deepEqual(few, { measures: 2, error: '', open: false }, 'a 2-measure score is imported for the short score check');
+  const shortBox = await client.evaluate('(function(){ var box = document.getElementById("tiMeasures"); return { scrollHeight:box.scrollHeight, clientHeight:box.clientHeight }; })()');
+  assert.ok(shortBox.scrollHeight <= shortBox.clientHeight, 'two measures show no scrollbar (' + JSON.stringify(shortBox) + ')');
+  await importScore(40);
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: true });
+  const phoneBox = await client.evaluate('(function(){ var box = document.getElementById("tiMeasures"); return { page:document.documentElement.scrollWidth, inner:window.innerWidth, scrollHeight:box.scrollHeight, clientHeight:box.clientHeight }; })()');
+  assert.ok(phoneBox.page <= phoneBox.inner, 'the 375px page does not overflow horizontally with the measure scroll (' + JSON.stringify(phoneBox) + ')');
+  assert.ok(phoneBox.clientHeight >= 280 || phoneBox.scrollHeight < 280, 'the 375x812 measure area keeps at least 280px (' + JSON.stringify(phoneBox) + ')');
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  await importScore(2);
+  assert.deepEqual(client.consoleErrors.slice(scrollErrorsBefore), [], 'the measure scroll checks run without console errors');
+  process.stdout.write('Measure scroll 1024x768: ' + JSON.stringify(scrollBox) + '\n');
 
   // 9. 연습 화면에서 열기
   const inputTitle = await client.evaluate('document.getElementById("tiTitle").value.trim()');

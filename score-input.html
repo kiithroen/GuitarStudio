@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=capo-select-1">
+<link rel="stylesheet" href="src/base.css?v=measure-scroll-1">
 <style>
 /* 악보 입력 화면 전용. 색은 base.css 토큰만 쓴다. */
 body{padding-bottom:var(--ti-dock-h,0px)}
@@ -31,7 +31,7 @@ textarea.ti-input{height:auto;padding:8px 10px;font-family:var(--font-num);font-
 #tiSelectionLabel{font-weight:700;font-size:13.5px;margin-right:6px}
 
 /* 마디 카드 */
-#tiMeasures{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
+#tiMeasures{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;max-height:max(280px, calc(100dvh - var(--ti-dock-h,0px) - var(--ti-sel-h,0px) - 32px));overflow-y:auto;padding:2px;scroll-margin:calc(var(--ti-sel-h,0px) + 16px) 0 calc(var(--ti-dock-h,0px) + 16px)}
 .ti-measure{flex:0 1 auto;min-width:0;max-width:100%;display:flex;flex-direction:column;gap:6px;padding:8px 10px 10px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
 .ti-measure.is-selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
 .ti-measure-head{display:flex;align-items:center;gap:6px;min-width:0}
@@ -68,7 +68,7 @@ textarea.ti-input{height:auto;padding:8px 10px;font-family:var(--font-num);font-
 .ti-cell-head{height:18px;line-height:18px;text-align:center;font-family:var(--font-num);font-size:10.5px;color:var(--muted);cursor:pointer;user-select:none}
 .ti-cell-head:hover{color:var(--accent)}
 .ti-slots{display:flex}
-.ti-slot{flex:1 1 0;min-width:0;position:relative;display:flex;flex-direction:column;scroll-margin:calc(var(--ti-sel-h,0px) + 16px) 0 calc(var(--ti-dock-h,0px) + 16px)}
+.ti-slot{flex:1 1 0;min-width:0;position:relative;display:flex;flex-direction:column;scroll-margin:8px}
 .ti-slot + .ti-slot{border-left:1px dashed var(--line)}
 .ti-slot.is-cursor-slot{--ti-bg:color-mix(in srgb,var(--accent) 14%,var(--surface));background:var(--ti-bg)}
 .ti-pos{position:relative;height:24px;display:flex;align-items:center;justify-content:center;font-family:var(--font-num);font-size:13px;line-height:1;cursor:pointer;user-select:none}
@@ -338,18 +338,18 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   </div>
 </dialog>
 
-<script src="src/storage.js?v=capo-select-1"></script>
-<script src="src/app-state.js?v=capo-select-1"></script>
-<script src="src/notation.js?v=capo-select-1"></script>
-<script src="src/rhythm.js?v=capo-select-1"></script>
-<script src="src/parser.js?v=capo-select-1"></script>
-<script src="src/score-ui.js?v=capo-select-1"></script>
-<script src="src/score-prompt.js?v=capo-select-1"></script>
-<script src="src/audio.js?v=capo-select-1"></script>
-<script src="src/staff-layout.js?v=capo-select-1"></script>
-<script src="src/staff-svg.js?v=capo-select-1"></script>
-<script src="src/tab-input.js?v=capo-select-1"></script>
-<script src="src/staff-input.js?v=capo-select-1"></script>
-<script src="src/tab-input-ui.js?v=capo-select-1"></script>
+<script src="src/storage.js?v=measure-scroll-1"></script>
+<script src="src/app-state.js?v=measure-scroll-1"></script>
+<script src="src/notation.js?v=measure-scroll-1"></script>
+<script src="src/rhythm.js?v=measure-scroll-1"></script>
+<script src="src/parser.js?v=measure-scroll-1"></script>
+<script src="src/score-ui.js?v=measure-scroll-1"></script>
+<script src="src/score-prompt.js?v=measure-scroll-1"></script>
+<script src="src/audio.js?v=measure-scroll-1"></script>
+<script src="src/staff-layout.js?v=measure-scroll-1"></script>
+<script src="src/staff-svg.js?v=measure-scroll-1"></script>
+<script src="src/tab-input.js?v=measure-scroll-1"></script>
+<script src="src/staff-input.js?v=measure-scroll-1"></script>
+<script src="src/tab-input-ui.js?v=measure-scroll-1"></script>
 </body>
 </html>
