@@ -1136,6 +1136,13 @@
     setStatus('');
     saveUi();
     refreshCursorUI(false);
+    // 커서 조각에 음이나 쉼이 있으면 고른 길이를 바로 넣는다(같은 길이면 건너뛰어 되돌리기 기록을 더하지 않는다)
+    var slot = T.getSlot(doc, cursor);
+    if (!slot || !(slot.rest || slot.notes.some(function(note){ return !!note; }))) return;
+    var units = staffDuration();
+    if (units == null) return;
+    if (S.eventEnd(doc, cursor) - S.posToUnits(doc, cursor) === units) return;
+    placeAtCursor({ keep: true });
   }
 
   // 오선 모드 키(Docs/staff-input.md 키보드 표). 처리했으면 true. 글자는 event.code, 숫자와 점은 event.key.
@@ -1194,7 +1201,6 @@
     $('tiStaffRestBtn').addEventListener('click', function(){ placeAtCursor({ rest: true }); });
     $('tiSemiUpBtn').addEventListener('click', function(){ transposeSelected(1); });
     $('tiSemiDownBtn').addEventListener('click', function(){ transposeSelected(-1); });
-    $('tiDurChangeBtn').addEventListener('click', function(){ placeAtCursor({ keep: true }); });
     $('tiStringCands').addEventListener('click', function(event){
       var btn = event.target.closest('button');
       if (btn) moveSelectedToString(Number(btn.dataset.str));

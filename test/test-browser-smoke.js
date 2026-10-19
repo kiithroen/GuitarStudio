@@ -2153,8 +2153,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=staff-manual-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=staff-manual-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=staff-dur-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=staff-dur-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoInfo', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -2525,7 +2525,7 @@ async function testScoreInputStaff(client, httpPort) {
 async function testStaffInputMode(client, httpPort) {
   client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
-  ['tiModeTab', 'tiModeStaff', 'tiStaffPanel', 'tiPitchPicker', 'tiPitchHint', 'tiDotBtn', 'tiTripletBtn', 'tiStaffRestBtn', 'tiSemiUpBtn', 'tiSemiDownBtn', 'tiDurChangeBtn', 'tiStringCands'
+  ['tiModeTab', 'tiModeStaff', 'tiStaffPanel', 'tiPitchPicker', 'tiPitchHint', 'tiDotBtn', 'tiTripletBtn', 'tiStaffRestBtn', 'tiSemiUpBtn', 'tiSemiDownBtn', 'tiStringCands'
   ].forEach(id => assert.match(inputHtml, new RegExp('id="' + id + '"'), 'score-input.html includes #' + id));
   ['whole', 'half', 'quarter', 'eighth', '16th', '32nd'].forEach(value => assert.match(inputHtml, new RegExp('data-dur="' + value + '"'), 'score-input.html has the ' + value + ' length button'));
   const inputUrl = `http://127.0.0.1:${httpPort}/score-input.html`;
@@ -2765,7 +2765,7 @@ async function testStaffInputMode(client, httpPort) {
   assert.equal((await cellTokens(0, 1)).length, 3, 'A and C keys without Shift join the G as a three-note chord (' + await line(0) + ')');
   assert.ok((await cellLabel11()).startsWith('1마디 · 2칸'), 'the keys leave the cursor in place');
   // 11-6. 2분음표: →로 3칸에 가서 음을 넣고 →를 누르면 2분음표가 쥔 4칸을 건너뛰어 다음 마디 1칸이다. ←는 3칸으로 돌아온다.
-  await client.evaluate(`__tiTest.key('6', 'Digit6'); __tiTest.key('ArrowRight', 'ArrowRight'); true`);
+  await client.evaluate(`__tiTest.key('ArrowRight', 'ArrowRight'); __tiTest.key('6', 'Digit6'); true`);
   assert.ok((await cellLabel11()).startsWith('1마디 · 3칸'), 'the right arrow reaches the third cell (' + await cellLabel11() + ')');
   await client.evaluate('__tiTest.clickBand(0, false); true');
   assert.ok((await line(0)).split(' ')[3].startsWith('E3@') && (await line(0)).split(' ')[4] === '-', 'a half note holds the third and fourth cells (' + await line(0) + ')');
@@ -2802,10 +2802,59 @@ async function testStaffInputMode(client, httpPort) {
   const chordCell = (await line(0)).split(' ')[2];
   assert.ok(chordCell.includes('G4@') && !chordCell.includes('G2@'), 'a letter on a slot with a note takes that slot as the reference note: G4 joins the E4, not G2 (' + chordCell + ')');
 
+  // 12. 길이를 고르면 커서 자리의 음·쉼에 바로 반영된다(길이 바꾸기 단추는 없다). 빈 새 악보, 4칸, 오선 모드, 4분음표.
+  const durErrorsBefore = client.consoleErrors.length;
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate(`document.getElementById('tiNewBtn').click(); __tiTest.key('5', 'Digit5'); true`);
+  assert.equal(await text(), '[-] r r r r | ""', 'a new score is empty for the length steps');
+  const shape = async () => (await line(0)).split(' ').slice(1, 5).map(token => (token === '-' || token === 'r') ? token : 'N').join(' ');
+  const cursor12 = () => client.evaluate('__tiTest.cursor()');
+  // 12-1. C4 자리를 누른 뒤 6(2분음표)를 고르면 그 음이 2분음표가 된다.
+  await client.evaluate('__tiTest.clickBand(-2, false); true');
+  assert.equal(await shape(), 'N r r r', 'a quarter note is written first (' + await line(0) + ')');
+  await client.evaluate(`__tiTest.key('6', 'Digit6'); true`);
+  assert.equal(await shape(), 'N - r r', 'picking the half note length lengthens the note under the cursor at once (' + await line(0) + ')');
+  assert.ok((await cursor12()).startsWith('1마디 · 1칸'), 'the cursor stays on the note when its length changes (' + await cursor12() + ')');
+  // 12-2. 점은 점2분음표로, 한 번 더 누르면 2분음표로 돌아온다.
+  await client.evaluate(`__tiTest.key('.', 'Period'); true`);
+  assert.equal(await shape(), 'N - - r', 'the dot key makes it a dotted half note (' + await line(0) + ')');
+  await client.evaluate(`__tiTest.key('.', 'Period'); true`);
+  assert.equal(await shape(), 'N - r r', 'the dot key again returns it to a half note (' + await line(0) + ')');
+  // 12-3. 이미 같은 길이를 다시 골라도 문서와 되돌리기 기록은 그대로다.
+  const beforeSame = await text();
+  await client.evaluate(`__tiTest.key('6', 'Digit6'); true`);
+  assert.equal(await text(), beforeSame, 'picking the length the note already has leaves the text alone');
+  await client.evaluate(`__tiTest.key('z', 'KeyZ', { ctrlKey:true }); true`);
+  assert.equal(await shape(), 'N - - r', 'one undo goes back to the dotted half note: picking the same length added no undo step (' + await line(0) + ')');
+  // 12-4. 길이 단추도 같다.
+  await client.evaluate(`document.querySelector('[data-dur="quarter"]').click(); true`);
+  assert.equal(await shape(), 'N r r r', 'the quarter button shortens the note at once (' + await line(0) + ')');
+  // 12-5. 빈 조각에서는 고르기만 한다. 고른 길이로 다음 음이 들어간다.
+  await client.evaluate(`document.getElementById('tiNewBtn').click(); __tiTest.key('6', 'Digit6'); true`);
+  assert.equal(await text(), '[-] r r r r | ""', 'picking a length on an empty slot leaves the text alone');
+  assert.equal(await client.evaluate(`document.querySelector('[data-dur="half"]').getAttribute('aria-pressed')`), 'true', 'the half note button is pressed');
+  await client.evaluate('__tiTest.clickBand(-2, false); true');
+  assert.equal(await shape(), 'N - r r', 'the next note is written with the picked length (' + await line(0) + ')');
+  // 12-6. 이 칸 수에서 적을 수 없는 길이는 오류만 내고 문서는 그대로다.
+  const beforeShort12 = await text();
+  await client.evaluate(`__tiTest.key('2', 'Digit2'); true`);
+  assert.ok((await client.evaluate('__tiTest.status()')).includes('적을 수 없습니다'), 'a length the cell count cannot write shows an error (' + await client.evaluate('__tiTest.status()') + ')');
+  assert.equal(await text(), beforeShort12, 'the rejected length leaves the text alone');
+  await client.evaluate(`__tiTest.key('5', 'Digit5'); true`);
+  // 12-7. 길이 바꾸기 단추는 없고, 높이와 가로 넘침과 콘솔 오류도 본다.
+  assert.equal(await client.evaluate(`document.getElementById('tiDurChangeBtn')`), null, 'the length change button is gone');
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate('window.scrollTo(0, 0); true');
+  const durDock = await client.evaluate('__tiTest.dock()');
+  assert.ok(durDock <= 230, 'the 1024x768 staff input dock stays at most 230px tall without the length change button (is ' + durDock + ')');
+  const durShot = await shot('score-input-staff-dur.png', 1024, 768, false);
+  assert.ok(durShot.scroll <= durShot.inner, 'the 1024px staff input page does not overflow horizontally');
+  assert.deepEqual(client.consoleErrors.slice(durErrorsBefore), [], 'the length steps run without console errors');
+
   await client.send('Emulation.clearDeviceMetricsOverride');
   await client.evaluate(clearStorage);
   client.dialogHandler = null;
-  process.stdout.write('Browser checkpoint: staff input mode switch, length and letter keys, picker click, chord, semitone, key signature, length error, delete, string candidates, heights, screenshots, manual cursor advance, and Shift-free chords passed\n');
+  process.stdout.write('Browser checkpoint: staff input mode switch, length and letter keys, picker click, chord, semitone, key signature, length error, delete, string candidates, heights, screenshots, manual cursor advance, Shift-free chords, and immediate length change passed\n');
 }
 
 // 악보 입력 화면의 텍스트로 입력 모드. 규칙은 Docs/tab-input.md 의 텍스트로 입력 절.
