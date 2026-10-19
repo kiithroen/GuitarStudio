@@ -344,7 +344,7 @@ function curCapo(){
       fret: note.fret != null ? note.fret : 0,
       lh: getExplicitLeftHand(token, componentIndex),
       rh: isHeld ? null : (getExplicitRightHand(token, componentIndex) || null),
-      art: !isHeld && note.explicitArticulation && (note.articulation === 'apoyando' || note.articulation === 'tirando') ? note.articulation : null
+      art: !isHeld && note.explicitArticulation && note.articulation === 'apoyando' ? note.articulation : null
     }));
   }
 
@@ -483,9 +483,7 @@ function curCapo(){
           var beatToken = b.tok || b.customTok || b.en;
           var effBass = getExplicitBass(b);
           var pitchLabel = formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(m.chord || '')});
-          var articDesc = uniformArticulation === 'apoyando'
-            ? ' [악보 지정 아포얀도]'
-            : (uniformArticulation === 'tirando' ? ' [악보 지정 티란도]' : '');
+          var articDesc = uniformArticulation === 'apoyando' ? ' [악보 지정 아포얀도]' : '';
           var tabDurationInfo = getBeatDurationInfo(m.beats, bIdx, curSong.beats);
           cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + (pitchLabel ? ': ' + pitchLabel : '') +
             (pitchLabel && tabDurationInfo.durName && tabDurationInfo.kind !== 'rest' && tabDurationInfo.kind !== 'hold' ? ' · 길이: ' + tabDurationInfo.durName : '') +
@@ -688,9 +686,7 @@ function curCapo(){
           cell.dataset.m = mIdx;
           cell.dataset.b = bIdx;
 
-          var articDesc = uniformArticulation === 'apoyando'
-            ? ' [악보 지정 아포얀도]'
-            : (uniformArticulation === 'tirando' ? ' [악보 지정 티란도]' : '');
+          var articDesc = uniformArticulation === 'apoyando' ? ' [악보 지정 아포얀도]' : '';
 
           var detailDesc = m.no + '마디 ' + (bIdx + 1) + '박: ' +
             (mainKind === 'rest' ? '쉼' : (mainKind === 'hold' ? '유지' : (pitchLabel + ' · ' + durInfo.durName))) +
@@ -1736,7 +1732,7 @@ function curCapo(){
       // 청음 피드백을 위해 살짝 단음 프리뷰 재생 (연습 정지 상태일 때 사용자가 음색 차이를 바로 체감)
       if (!isPlaying && appState.guideSound){
         ensureAudioCtx();
-        playGuitarNote(64, 0.45, actx.currentTime + 0.02, 0.9, 'tirando');
+        playGuitarNote(64, 0.45, actx.currentTime + 0.02, 0.9, null);
       }
     });
   }

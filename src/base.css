@@ -87,5 +87,4 @@ h3{margin:0;font-size:14.5px;font-weight:600}
 .fret-lh{font-size:.65em;margin-bottom:auto}
 .fret-rh{font-size:9px;margin-top:auto}
 .fret-label.is-apoyando{color:var(--near);font-weight:700}
-.fret-label.is-tirando{color:var(--muted)}
-.fret-label.is-apoyando .fret-lh,.fret-label.is-apoyando .fret-rh,.fret-label.is-tirando .fret-lh,.fret-label.is-tirando .fret-rh{color:inherit}
+.fret-label.is-apoyando .fret-lh,.fret-label.is-apoyando .fret-rh{color:inherit}

@@ -9,6 +9,9 @@
   // 시트 행·검사 도구·타브 입력 화면이 같이 쓰는 허용 칸 수 목록
   var SHEET_BEAT_COUNTS = [2, 3, 4, 6, 8, 9];
 
+  // 없앤 티란도 표시 ~ 가 붙은 음 토큰에 보이는 오류 문구 (이 문구를 만드는 곳은 여기 하나)
+  var TIRANDO_MARK_REMOVED_MESSAGE = '티란도 표시 ~는 없앴어. ~를 지워(따로 적지 않은 음은 티란도로 쳐).';
+
   function scan(text, splitBars){
     var out = [];
     var start = 0;
@@ -226,6 +229,10 @@
             var parsed = parseNoteToken ? parseNoteToken(chordPart, measureIndex * bpb + beatIndex) : null;
             var plainChordPart = chordPart.replace(/\?$/, '');
             if (!parsed){
+              if (plainChordPart.charAt(0) === '~'){
+                add(errors, 'UNKNOWN_NOTE', measureNo, beatIndex + 1, TIRANDO_MARK_REMOVED_MESSAGE);
+                return;
+              }
               if (/@\d+(?::[pima])?$/.test(plainChordPart)){
                 add(errors, 'INVALID_STRING_OVERRIDE', measureNo, beatIndex + 1, '현 지정 음표를 기타에서 연주할 수 없어: ' + chordPart);
               }

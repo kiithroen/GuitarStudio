@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=staff-input-1">
+<link rel="stylesheet" href="src/base.css?v=no-tirando-1">
 <style>
 /* 악보 입력 화면 전용. 색은 base.css 토큰만 쓴다. */
 body{padding-bottom:var(--ti-dock-h,0px)}
@@ -77,7 +77,6 @@ textarea.ti-input{height:auto;padding:8px 10px;font-family:var(--font-num);font-
 .ti-pos.is-uncertain .ti-pos-label{--ti-bg:color-mix(in srgb,var(--off) 18%,var(--surface));color:var(--off)}
 .ti-pos.is-cursor{outline:2px solid var(--accent);outline-offset:-2px;border-radius:4px}
 .ti-attr-group .btn[data-attr="art"][data-value="!"]{color:var(--near);font-weight:700}
-.ti-attr-group .btn[data-attr="art"][data-value="~"]{color:var(--muted)}
 .ti-slot.is-rest::after{content:attr(data-rest);position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;font-family:var(--font-num);font-size:20px;font-style:italic;color:var(--muted);opacity:.6;pointer-events:none}
 .ti-slot.is-rest.is-uncertain::after{color:var(--off);opacity:1}
 
@@ -298,7 +297,6 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
           <span class="ti-attr-group"><span class="label">주법</span>
             <button class="btn" type="button" data-attr="art" data-value="">없음</button>
             <button class="btn" type="button" data-attr="art" data-value="!">! 아포얀도</button>
-            <button class="btn" type="button" data-attr="art" data-value="~">~ 티란도</button>
           </span>
           <button id="tiUncertainBtn" class="btn" type="button" aria-pressed="false">? 확인</button>
         </span>
@@ -321,18 +319,18 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   </div>
 </dialog>
 
-<script src="src/storage.js?v=staff-input-1"></script>
-<script src="src/app-state.js?v=staff-input-1"></script>
-<script src="src/notation.js?v=staff-input-1"></script>
-<script src="src/rhythm.js?v=staff-input-1"></script>
-<script src="src/parser.js?v=staff-input-1"></script>
-<script src="src/score-ui.js?v=staff-input-1"></script>
-<script src="src/score-prompt.js?v=staff-input-1"></script>
-<script src="src/audio.js?v=staff-input-1"></script>
-<script src="src/staff-layout.js?v=staff-input-1"></script>
-<script src="src/staff-svg.js?v=staff-input-1"></script>
-<script src="src/tab-input.js?v=staff-input-1"></script>
-<script src="src/staff-input.js?v=staff-input-1"></script>
-<script src="src/tab-input-ui.js?v=staff-input-1"></script>
+<script src="src/storage.js?v=no-tirando-1"></script>
+<script src="src/app-state.js?v=no-tirando-1"></script>
+<script src="src/notation.js?v=no-tirando-1"></script>
+<script src="src/rhythm.js?v=no-tirando-1"></script>
+<script src="src/parser.js?v=no-tirando-1"></script>
+<script src="src/score-ui.js?v=no-tirando-1"></script>
+<script src="src/score-prompt.js?v=no-tirando-1"></script>
+<script src="src/audio.js?v=no-tirando-1"></script>
+<script src="src/staff-layout.js?v=no-tirando-1"></script>
+<script src="src/staff-svg.js?v=no-tirando-1"></script>
+<script src="src/tab-input.js?v=no-tirando-1"></script>
+<script src="src/staff-input.js?v=no-tirando-1"></script>
+<script src="src/tab-input-ui.js?v=no-tirando-1"></script>
 </body>
 </html>

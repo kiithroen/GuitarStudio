@@ -17,7 +17,9 @@
   var KEY_MIN = -5;
   var KEY_MAX = 5;
   var RH_VALUES = ['p', 'i', 'm', 'a'];
-  var ART_VALUES = ['!', '~'];
+  var ART_VALUES = ['!'];
+  // 티란도 표시 ~ 를 없애기 전에 저장된 문서의 주법 값. 읽을 때 없음(null)으로 바꾼다.
+  var REMOVED_ART_VALUE = '~';
 
   function isInt(value){ return typeof value === 'number' && Number.isInteger(value); }
   function beatsListText(){ return GuitarNotation.SHEET_BEAT_COUNTS.join(', '); }
@@ -70,7 +72,7 @@
     if (!isInt(note.fret) || note.fret < 0 || note.fret > MAX_FRET) return where + ': 프렛은 0~' + MAX_FRET + '의 정수여야 해.';
     if (note.lh !== null && !(isInt(note.lh) && note.lh >= 0 && note.lh <= 4)) return where + ': 왼손 운지는 없음 또는 0~4여야 해.';
     if (note.rh !== null && RH_VALUES.indexOf(note.rh) < 0) return where + ': 오른손 운지는 없음 또는 p·i·m·a여야 해.';
-    if (note.art !== null && ART_VALUES.indexOf(note.art) < 0) return where + ': 주법은 없음 또는 !·~여야 해.';
+    if (note.art !== null && ART_VALUES.indexOf(note.art) < 0) return where + ': 주법은 없음 또는 !여야 해.';
     if (typeof note.uncertain !== 'boolean') return where + ': 확인 표시는 true/false여야 해.';
     return null;
   }
@@ -108,7 +110,9 @@
           if (!Array.isArray(slot.notes) || slot.notes.length !== STRING_COUNT) return { error: sWhere + ': 음 목록은 ' + STRING_COUNT + '개여야 해.' };
           var hasNote = false;
           for (var n = 0; n < slot.notes.length; n++){
-            var noteError = validateNoteShape(slot.notes[n], sWhere + ', ' + (n + 1) + '번 줄');
+            var shapeNote = slot.notes[n];
+            if (shapeNote && shapeNote.art === REMOVED_ART_VALUE) shapeNote = Object.assign({}, shapeNote, { art: null });
+            var noteError = validateNoteShape(shapeNote, sWhere + ', ' + (n + 1) + '번 줄');
             if (noteError) return { error: noteError };
             if (slot.notes[n] !== null) hasNote = true;
           }
@@ -118,6 +122,13 @@
     }
     var doc = cloneDoc(raw);
     if (doc.key === undefined) doc.key = 0;
+    doc.measures.forEach(function(measure){
+      measure.cells.forEach(function(cell){
+        cell.slots.forEach(function(slot){
+          slot.notes.forEach(function(note){ if (note && note.art === REMOVED_ART_VALUE) note.art = null; });
+        });
+      });
+    });
     return { doc: doc };
   }
 
@@ -244,7 +255,7 @@
     var a = attrs || {};
     if ('lh' in a && !(a.lh === null || (isInt(a.lh) && a.lh >= 0 && a.lh <= 4))) throw new Error('왼손 운지는 null 또는 0~4여야 해: ' + a.lh);
     if ('rh' in a && !(a.rh === null || RH_VALUES.indexOf(a.rh) >= 0)) throw new Error('오른손 운지는 null 또는 p·i·m·a여야 해: ' + a.rh);
-    if ('art' in a && !(a.art === null || ART_VALUES.indexOf(a.art) >= 0)) throw new Error('주법은 null 또는 !·~여야 해: ' + a.art);
+    if ('art' in a && !(a.art === null || ART_VALUES.indexOf(a.art) >= 0)) throw new Error('주법은 null 또는 !여야 해: ' + a.art);
     if ('uncertain' in a && typeof a.uncertain !== 'boolean') throw new Error('확인 표시는 true/false여야 해: ' + a.uncertain);
     var note = slot.notes[str - 1];
     if (!note) return { ok: false };
@@ -552,7 +563,7 @@
       if (slot.notes[str - 1]) return { error: where + ': 두 음이 ' + str + '번 줄에 겹쳐. 원문에 @줄을 적어 줘.' };
       var art = null;
       if (parsed.explicitArticulation){
-        art = parsed.articulation === 'apoyando' ? '!' : (parsed.articulation === 'tirando' ? '~' : null);
+        art = parsed.articulation === 'apoyando' ? '!' : null;
       }
       slot.notes[str - 1] = {
         fret: parsed.pos.fret,

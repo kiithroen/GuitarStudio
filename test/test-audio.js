@@ -193,7 +193,7 @@ test('exact KS note-off starts the natural release and source ends within the re
 });
 
 test('guide chord parts share a nominal tie-chain duration while KS and classic voices decay naturally', function(){
-  const parsed = parser.parseScore('[Em] ~0E2@6:p+!4B4@1:a - -', 3);
+  const parsed = parser.parseScore('[Em] 0E2@6:p+!4B4@1:a - -', 3);
   assert.deepEqual(parsed.errors, []);
   const beat = parsed.measures[0].beats[0];
   const nominalEnd = 2 + beat.durationUnits / 12 * 0.4;
@@ -248,7 +248,7 @@ test('classic natural envelope uses the shared KS profile and never gates at nom
   [false, true].forEach(isFx => {
     const { context, filters } = makeContext(0, isFx);
     const profile = context.__audioHooks.getNaturalDecayProfile(40, true, 6);
-    const voice = context.__audioHooks.buildClassicVoice(40, 1, 0.125, 1, true, true, false, isFx,
+    const voice = context.__audioHooks.buildClassicVoice(40, 1, 0.125, 1, true, true, isFx,
       true, NaN, true, 6);
     const events = voice.out.gain.events;
     assert.equal(voice.stopAt, 1 + profile.duration, 'classic natural source uses the same profile lifetime');
@@ -261,7 +261,7 @@ test('classic natural envelope uses the shared KS profile and never gates at nom
 });
 
 test('parsed guide notes on other strings do not truncate a longer natural tail', function(){
-  const parsed = parser.parseScore('[Em] ~0E2@6:p+!4B4@1:a B3@2:m G3@3:i', 3);
+  const parsed = parser.parseScore('[Em] 0E2@6:p+!4B4@1:a B3@2:m G3@3:i', 3);
   assert.deepEqual(parsed.errors, []);
   const { context } = makeContext(2, false);
   context.appState.sympAmount = 0;
@@ -298,8 +298,8 @@ test('a parsed guide rest cuts a natural tail while capo is applied once to clas
 
 test('exact classic tone decay is preserved independently from the natural note-off release', function(){
   const { context, filters } = makeContext(0);
-  const exact = context.__audioHooks.buildClassicVoice(64, 1, 0.2, 1, false, false, false, false, true);
-  const regular = context.__audioHooks.buildClassicVoice(64, 1, 0.2, 1, false, false, false, false, false);
+  const exact = context.__audioHooks.buildClassicVoice(64, 1, 0.2, 1, false, false, false, true);
+  const regular = context.__audioHooks.buildClassicVoice(64, 1, 0.2, 1, false, false, false, false);
   assert.ok(Math.abs(exact.toneDuration - 0.2) < 1e-9);
   assert.ok(Math.abs(exact.stopAt - 1.23) < 1e-9);
   assert.ok(Math.abs(regular.stopAt - 1.23) < 1e-9);
@@ -311,21 +311,21 @@ test('classic low bass cutoff floors apply only below midi 55 in hall and dry mo
   [40, 41, 43].forEach(midi => {
     [true, false].forEach(isFx => {
       const { context, filters } = makeContext(0, isFx);
-      context.__audioHooks.buildClassicVoice(midi, 1, 0.5, 1, true, false, false, isFx, false);
+      context.__audioHooks.buildClassicVoice(midi, 1, 0.5, 1, true, false, isFx, false);
       const events = filters[0].frequency.events;
       assert.ok(events[0][1] >= 1200, 'bass attack stays at or above 1200Hz for MIDI ' + midi);
       assert.ok(events[1][1] >= 600, 'bass decay stays at or above 600Hz for MIDI ' + midi);
     });
   });
   const { context, filters } = makeContext(0, false);
-  context.__audioHooks.buildClassicVoice(55, 1, 0.5, 1, false, false, false, false, false);
+  context.__audioHooks.buildClassicVoice(55, 1, 0.5, 1, false, false, false, false);
   const expected = 440 * Math.pow(2, (55 - 69) / 12) * 3;
   assert.ok(Math.abs(filters[0].frequency.events[1][1] - expected) < 1e-9, 'MIDI 55 retains its original dry decay cutoff');
 });
 
 test('short exact classic notes keep legacy tone span while hard stop closes damp within 15ms', function(){
   const { context, filters } = makeContext(0, true);
-  const voice = context.__audioHooks.buildClassicVoice(40, 1, 0.125, 1, true, false, false, true, true, 1.2);
+  const voice = context.__audioHooks.buildClassicVoice(40, 1, 0.125, 1, true, false, true, true, 1.2);
   assert.equal(voice.toneDuration, 0.35, 'exact note uses the legacy minimum tone span');
   assert.ok(voice.stopAt <= 1.215, 'hard source boundary is at most 15ms after hardStopAt');
   assert.ok(filters[0].frequency.events[1][2] > 1.125, 'tone filter envelope continues beyond short written note-off');

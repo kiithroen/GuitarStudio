@@ -127,4 +127,9 @@ assert.equal(run.status, 0, run.stderr);
 assert.equal(run.stdout, prompt);
 pass('the node -e command in the project prompt prints the full conversion rules');
 
+assert.ok(promptLines.some(line => line.indexOf('| 주법 | `!` 아포얀도 |') === 0 && line.indexOf('~') < 0), 'the articulation row names only the apoyando mark !');
+assert.ok(promptLines.some(line => line.indexOf('| 티란도 표시') === 0 && line.indexOf('적지 않아') > 0), 'the exceptions table says to leave tirando marks out');
+assert.ok(!/(\s|,)`~`/.test(prompt) && !/\s~[A-G0-4]/.test(prompt), 'the prompt never shows the removed ~ mark as a token');
+pass('the prompt teaches apoyando only and says tirando is the unmarked note');
+
 process.stdout.write('1..' + checks + '\n');

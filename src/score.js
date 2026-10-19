@@ -115,7 +115,7 @@ var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./
     else collect(beat);
     if (!notes.length || notes.some(function(note){ return note.explicitArticulation !== true; })) return null;
     var articulation = notes[0].articulation;
-    if (articulation !== 'apoyando' && articulation !== 'tirando') return null;
+    if (articulation !== 'apoyando') return null;
     return notes.every(function(note){ return note.articulation === articulation; }) ? articulation : null;
   }
 

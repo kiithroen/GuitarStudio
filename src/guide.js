@@ -56,7 +56,7 @@ function getBeatGuideEvents(beat, options){
       var articulation = hasChordComponents
         ? (note.articulation || null)
         : (note.articulation || noteSource.articulation || part.articulation || null);
-      var gain = articulation === 'apoyando' ? 1.16 : (articulation === 'tirando' ? 0.62 : 1.0);
+      var gain = articulation === 'apoyando' ? 1.16 : 1.0;
       events.push({ kind:'note', note:note, duration:duration, when:when,
         gain:gain, articulation:articulation, str:note.str });
     });

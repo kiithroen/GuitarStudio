@@ -55,7 +55,7 @@
     var text = String(component || '').trim();
     var parsed = GuitarParser.parseNoteToken(text, 0);
     if (!parsed) return fail('읽을 수 없는 음이야: ' + text);
-    var core = text.replace(/\?$/, '').replace(/^[!~]/, '');
+    var core = text.replace(/\?$/, '').replace(/^!/, '');
     var m = core.match(/^[0-4]?([A-G])([#b]?)([2-5])/);
     if (!m) return fail('음이름을 읽을 수 없어: ' + text);
     var letter = m[1];

@@ -294,7 +294,7 @@ test('keep: changing only the length leaves strings and fingerings alone', funct
 test('stringCandidates and moveToString keep the right hand and drop the left', function(){
   const doc = fresh();
   put(doc, pos(0), 12, { midis: [64] });
-  ti.setNoteAttrs(doc, pos(0), 1, { lh: 3, rh: 'p', art: '~', uncertain: true });
+  ti.setNoteAttrs(doc, pos(0), 1, { lh: 3, rh: 'p', art: '!', uncertain: true });
   assert.deepEqual(si.stringCandidates(doc, pos(0), 1), [
     { str: 1, fret: 0, current: true },
     { str: 2, fret: 5, current: false },
@@ -307,7 +307,7 @@ test('stringCandidates and moveToString keep the right hand and drop the left', 
   assert.equal(refused.ok, false);
   assert.equal(si.moveToString(doc, pos(0), 1, 3).ok, false);
   assert.deepEqual(si.moveToString(doc, pos(0), 1, 2), { ok: true, str: 2 });
-  assert.deepEqual(noteAt(doc, pos(0), 2), { fret: 5, lh: null, rh: 'p', art: '~', uncertain: true });
+  assert.deepEqual(noteAt(doc, pos(0), 2), { fret: 5, lh: null, rh: 'p', art: '!', uncertain: true });
   assert.equal(noteAt(doc, pos(0), 1), null);
   const plain = fresh();
   put(plain, pos(0), 12, { midis: [64] });

@@ -226,7 +226,7 @@
 
   // 두 방향 진동(2단 감쇠): 실제 줄은 상판에 수직·수평 두 방향으로 함께 진동
   // 수직 진동은 상판을 세게 밀어 소리가 크지만 금방 줄고, 수평 진동은 약하게 전달돼 오래 남음 → "처음엔 빨리 줄고 꼬리는 길게" 울리는 기타 특유의 감쇠
-  // 아포얀도는 줄을 상판 쪽으로 눌러 수직 성분이 많고(어택이 두툼), 티란도는 옆으로 뜯어 수평 성분이 많음(여운이 김)
+  // 아포얀도는 줄을 상판 쪽으로 눌러 수직 성분이 많고(어택이 두툼), 표시 없는 음(티란도)은 옆으로 뜯어 수평 성분이 많음(여운이 김)
   var KS_POLAR = {
     vT60: 0.35, vHigh: 0.8,   // 수직: 기본 감쇠 시간 대비 배수 (기음, 3kHz)
     hT60: 1.4, hHigh: 1.15,   // 수평
@@ -271,7 +271,7 @@
 
   // 탄현 파형: 배음 크기를 |sin(kπβ)|/k^p 로 정해 한 주기를 합성 (β: 브리지에서 튕긴 위치, 1/β번째 배음이 빠짐)
   // 노이즈로 배음 크기를 정하면 음마다 우연히 2·3배음이 약해져 일부 음이 흐릿해지므로, 크기는 고정하고 위상만 살짝 흔들어 자연스러움 유지
-  // 아포얀도는 브리지에서 더 멀리(β 0.2) 둥글게(p 1.7), 티란도는 브리지 쪽(β 0.14)에서 더 밝게(p 1.4)
+  // 아포얀도는 브리지에서 더 멀리(β 0.2) 둥글게(p 1.7), 표시 없는 음(티란도)은 브리지 쪽(β 0.14)에서 더 밝게(p 1.4)
   function ksExcitation(N, f, midi, isApoyando, betaScale){
     var rnd = seededRandom(midi * 977 + (isApoyando ? 1 : 2));
     var beta = Math.min(0.45, (isApoyando ? 0.2 : 0.14) * (betaScale || 1)), p = isApoyando ? 1.7 : 1.4;
@@ -464,7 +464,7 @@
   }
 
   // 기존 합성음 (삼각파 2개 + 사인파 + 로우패스 스윕): 물리 모델 음원과 A/B 비교용
-  function buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx, exactDuration, hardStopAt, naturalDecay, strNo){
+  function buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isFx, exactDuration, hardStopAt, naturalDecay, strNo){
     var freq = 440 * Math.pow(2, (midi - 69) / 12);
     exactDuration = !!exactDuration && !naturalDecay;
     var toneDuration = exactDuration || naturalDecay ? Math.max(dur, legacyToneDuration(dur, isBass, isApoyando, isFx)) : dur;
@@ -492,9 +492,9 @@
     var g1 = actx.createGain();
     var g2 = actx.createGain();
     var g3 = actx.createGain();
-    // 아포얀도(눌러치기)는 상판 수직 진동으로 기음(o1)과 2배음(o2)이 두껍고 둥글며, 티란도(뜯어치기)는 가볍고 맑게 발음
-    g1.gain.value = isBass ? 0.72 : (isApoyando ? 1.05 : (isTirando ? 0.74 : 0.85));
-    g2.gain.value = isBass ? 0.55 : (isApoyando ? 0.36 : (isTirando ? 0.24 : 0.28));
+    // 아포얀도(눌러치기)는 상판 수직 진동으로 기음(o1)과 2배음(o2)이 두껍고 둥글며, 표시 없는 음(티란도, 뜯어치기)은 가볍고 맑게 발음
+    g1.gain.value = isBass ? 0.72 : (isApoyando ? 1.05 : 0.85);
+    g2.gain.value = isBass ? 0.55 : (isApoyando ? 0.36 : 0.28);
     g3.gain.setValueAtTime(isBass ? 0.32 : (isApoyando ? 0.10 : 0.15), t);
     g3.gain.exponentialRampToValueAtTime(0.008, t + Math.min(0.32, toneDuration * 0.45));
 
@@ -517,9 +517,9 @@
       filter.frequency.exponentialRampToValueAtTime(isBass ? Math.max(freq * 3.0, CLASSIC_BASS_DECAY_CUTOFF) : freq * 3.0, t + toneDuration * 0.85);
     }
 
-    // 주법별 오실레이터 비율·피크 차이로 생기는 음량 차이 상쇄 (실측: 같은 scale에서 아포얀도 +3.9dB(드라이 +3.1dB), 티란도 -1.2dB)
-    // 강약은 호출부 scale(아포얀도 ×1.16, 티란도 ×0.62)로만 정해져 물리음원과 같은 균형이 됨 (보정 전에는 티란도가 주선율보다 10.6dB 작았음)
-    var artComp = isBass ? 1 : (isApoyando ? (isFx ? 0.64 : 0.70) : (isTirando ? 1.15 : 1));
+    // 주법별 오실레이터 비율·피크 차이로 생기는 음량 차이 상쇄 (실측: 같은 scale에서 아포얀도 +3.9dB(드라이 +3.1dB))
+    // 강약은 호출부 scale(아포얀도 ×1.16)로만 정해져 물리음원과 같은 균형이 됨
+    var artComp = isBass ? 1 : (isApoyando ? (isFx ? 0.64 : 0.70) : 1);
     var peakGain = (isFx ? (isBass ? 0.44 : (isApoyando ? 0.42 : 0.36)) :
       (isBass ? 0.42 : (isApoyando ? 0.40 : 0.34))) * scale * artComp;
     if (naturalDecay){
@@ -578,7 +578,7 @@
     return { out: noteOut, srcs: [o1, o2, o3], stopAt: stopAt, toneDuration:toneDuration };
   }
 
-  // 클래식 기타 나일론 현 + 저음 권선현(Wound Bass) + 아포얀도(Apoyando)/티란도(Tirando) 음색 재생
+  // 클래식 기타 나일론 현 + 저음 권선현(Wound Bass) + 아포얀도(Apoyando) 음색 재생(표시 없는 음은 티란도)
   // strNum: 실제 탄현하는 줄 번호(1~6). 생략하면 1포지션 표준 운지로 추정
   function playGuitarNote(midi, durSec, when, gainScale, articulation, strNum, options){
     if (!midi) return;
@@ -586,7 +586,6 @@
     var t = when != null ? when : actx.currentTime;
     var isBass = midi < 55; // 4·5·6번 저음 권선현(E2~F#3) 여부
     var isApoyando = articulation === 'apoyando';
-    var isTirando = articulation === 'tirando';
     var isFx = !!appState.acousticFx;
     var naturalDecay = !!(options && options.naturalDecay);
     var exactDuration = !!(options && options.exactDuration) && !naturalDecay;
@@ -597,7 +596,7 @@
 
     var hardStopAt = (exactDuration || naturalDecay) && options ? Number(options.hardStopAt) : NaN;
     var voice = appState.synthEngine === 'classic'
-      ? buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isTirando, isFx, exactDuration, hardStopAt, naturalDecay, sNo)
+      ? buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isFx, exactDuration, hardStopAt, naturalDecay, sNo)
       : buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, sNo, exactDuration, hardStopAt, naturalDecay);
 
     // 같은 줄 재탄현 시 이 보이스만 독립적으로 끊을 수 있도록 엔벨로프 뒤에 별도 감쇠 게인을 둠

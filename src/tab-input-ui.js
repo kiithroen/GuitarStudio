@@ -86,7 +86,7 @@
 
   // ---------- 소리
 
-  function articulationName(art){ return art === '!' ? 'apoyando' : (art === '~' ? 'tirando' : null); }
+  function articulationName(art){ return art === '!' ? 'apoyando' : null; }
 
   function playNotes(items){
     if (!ui.sound || !items.length) return;
@@ -222,7 +222,7 @@
     var parts = [str + '번 줄 ' + note.fret + '프렛 · ' + T.noteLabel(doc, str, note.fret)];
     if (note.lh != null) parts.push('왼손 ' + note.lh);
     if (note.rh) parts.push('오른손 ' + note.rh);
-    if (note.art) parts.push(note.art === '!' ? '아포얀도' : '티란도');
+    if (note.art) parts.push('아포얀도');
     if (note.uncertain) parts.push('확인 필요');
     return parts.join(' · ');
   }
@@ -234,7 +234,7 @@
     pos.classList.add('has-note');
     if (note.uncertain) pos.classList.add('is-uncertain');
     pos.title = noteTitle(str, note);
-    // 프렛 글자 모양은 연습 화면과 같은 buildFretLabel 이 만든다. 주법은 기호 대신 글자 색(아포얀도 주황 굵게, 티란도 회색).
+    // 프렛 글자 모양은 연습 화면과 같은 buildFretLabel 이 만든다. 주법은 기호 대신 글자 색(아포얀도 주황 굵게).
     var label = buildFretLabel({ fret: note.fret, lh: note.lh, rh: note.rh, art: articulationName(note.art) });
     label.classList.add('ti-pos-label');
     pos.appendChild(label);

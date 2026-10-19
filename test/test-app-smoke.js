@@ -282,7 +282,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=staff-input-1')), 'every app script uses the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=no-tirando-1')), 'every app script uses the shared revision');
   for (const id of ['addBlankScoreBtn', 'blankScoreModal', 'undoScoreEditBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
     assert.match(html, new RegExp('id="' + id + '"'), 'temporary score UI includes #' + id);
   }
@@ -359,8 +359,8 @@ async function main(){
     assert.equal(previewBass.duration, sharedDuration, 'app preview schedules the bass for its shared chord subdivision duration');
     assert.equal(previewMelody.duration, sharedDuration, 'app preview schedules the melody for the same shared chord duration');
     assert.equal(previewBass.when, previewMelody.when, 'chord components preserve their shared attack');
-    assert.deepEqual([previewBass.midi, previewBass.articulation, previewBass.str], [bass.midi, 'tirando', 6],
-      'app preview keeps the written bass pitch, articulation, and string');
+    assert.deepEqual([previewBass.midi, previewBass.articulation, previewBass.str], [bass.midi, null, 6],
+      'app preview keeps the written bass pitch and string, with no articulation mark');
     assert.deepEqual([previewMelody.midi, previewMelody.articulation, previewMelody.str], [melody.midi, 'apoyando', 1],
       'app preview keeps the written melody pitch, articulation, and string');
     assert.equal(previewBass.options.naturalDecay, true, 'structured app preview requests the natural sound lifetime');

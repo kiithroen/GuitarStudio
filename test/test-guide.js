@@ -20,14 +20,14 @@ function part(tok, midi, str, fields){
 }
 
 const chord = part('0E2+0G3+1C4', 60, 2, { chordNotes:[
-  { midi:40, str:6 }, { midi:55, str:3, articulation:'tirando' }, { midi:60, str:2, articulation:'apoyando' }
+  { midi:40, str:6 }, { midi:55, str:3 }, { midi:60, str:2, articulation:'apoyando' }
 ] });
 const chordEvents = context.getBeatGuideEvents(chord, { startTime:4, slotDuration:0.6 });
 assert.equal(chordEvents.length, 3, 'full chord emits every component');
 assert.deepEqual(Array.from(chordEvents, event => event.when), [4, 4, 4], 'chord components share an onset');
 assert.deepEqual(Array.from(chordEvents, event => event.duration), [0.6, 0.6, 0.6], 'chord components share written duration');
 assert.deepEqual(Array.from(chordEvents, event => event.str), [6, 3, 2], 'chord component strings are preserved');
-assert.deepEqual(Array.from(chordEvents, event => event.gain), [1.0, 0.62, 1.16], 'explicit articulation gain follows each chord component');
+assert.deepEqual(Array.from(chordEvents, event => event.gain), [1.0, 1.0, 1.16], 'explicit articulation gain follows each chord component');
 
 const syntheticChordFallback = part('C3+E4', 64, 1, { articulation:'apoyando', chordNotes:[
   { midi:48, str:5 }, { midi:64, str:1 }
@@ -95,17 +95,17 @@ assert.deepEqual(Array.from(parsedChordEvents, event => event.note.midi), [40, 5
 assert.deepEqual(Array.from(parsedChordEvents, event => event.when), [10.2, 10.2, 10.2, 10.4, 10.4, 10.4], 'parsed chords stay simultaneous at each subdivided onset');
 assert.deepEqual(Array.from(parsedChordEvents, event => Math.round(event.duration * 100) / 100), [0.2, 0.2, 0.2, 1.4, 1.4, 1.4], 'parsed chord components share each written tie-chain duration');
 
-const parsedMixedChord = parser.parseScore('[C] ~0E2@6:p+!4B4@1:a r r r', 4).measures[0].beats[0];
+const parsedMixedChord = parser.parseScore('[C] 0E2@6:p+!4B4@1:a r r r', 4).measures[0].beats[0];
 const parsedMixedChordEvents = context.getBeatGuideEvents(parsedMixedChord, { startTime:7, slotDuration:0.4 });
 assert.deepEqual(Array.from(parsedMixedChordEvents, event => [event.note.midi, event.articulation, event.gain, event.when, event.duration, event.str]), [
-  [40, 'tirando', 0.62, 7, 0.4, 6], [71, 'apoyando', 1.16, 7, 0.4, 1]
+  [40, null, 1.0, 7, 0.4, 6], [71, 'apoyando', 1.16, 7, 0.4, 1]
 ], 'parsed mixed chord uses component articulations and keeps simultaneous timing and strings');
 
-const durationScore = parser.parseScore('[C] ~0E2@6:p+!4B4@1:a - - r', 4);
+const durationScore = parser.parseScore('[C] 0E2@6:p+!4B4@1:a - - r', 4);
 const durationBeat = durationScore.measures[0].beats[0];
 const durationEvents = context.getBeatGuideEvents(durationBeat, { startTime:0, slotDuration:0.5 });
 assert.deepEqual(Array.from(durationEvents, event => [event.note.midi,event.duration,event.articulation]), [
-  [40,1.5,'tirando'], [71,1.5,'apoyando']
+  [40,1.5,null], [71,1.5,'apoyando']
 ], 'annotated chord components use their shared note-or-hold part duration');
 const resumedBeat = durationScore.measures[0].beats[1];
 const resumedMiddle = context.getBeatGuideEvents(resumedBeat, {
@@ -129,13 +129,13 @@ assert.deepEqual(Array.from(context.getBeatGuideEvents(parsedMelodyArtChord, { s
 ], 'melody articulation is not used as a fallback for an unmarked bass component');
 
 const explicitApo = parser.parseScore('!C4/D4 r r r', 4).measures[0].beats[0];
-const explicitTir = parser.parseScore('~C4/D4 r r r', 4).measures[0].beats[0];
+const unmarkedSplit = parser.parseScore('C4/D4 r r r', 4).measures[0].beats[0];
 assert.deepEqual(Array.from(context.getBeatGuideEvents(explicitApo, { startTime:0, slotDuration:0.8 }), event => [event.articulation, event.gain]), [
   ['apoyando', 1.16], [null, 1.0]
 ], 'parsed explicit apoyando applies only to its written subdivision');
-assert.deepEqual(Array.from(context.getBeatGuideEvents(explicitTir, { startTime:0, slotDuration:0.8 }), event => [event.articulation, event.gain]), [
-  ['tirando', 0.62], [null, 1.0]
-], 'parsed explicit tirando applies only to its written subdivision');
+assert.deepEqual(Array.from(context.getBeatGuideEvents(unmarkedSplit, { startTime:0, slotDuration:0.8 }), event => [event.articulation, event.gain]), [
+  [null, 1.0], [null, 1.0]
+], 'unmarked notes (tirando) all use the plain gain');
 
 const plainForHand = parser.parseScore('E4 - - -',4).measures[0].beats[0];
 const markedForHand = parser.parseScore('E4:a - - -',4).measures[0].beats[0];

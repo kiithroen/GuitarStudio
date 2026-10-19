@@ -25,7 +25,7 @@ test('note token: string number always written, optional fingering, articulation
   assert.deepEqual(ti.setNoteAttrs(doc, pos(0), 3, { lh: 2, rh: 'i', art: '!', uncertain: true }), { ok: true });
   assert.equal(ti.docToMeasureObjects(doc)[0].notes[0], '!2A3@3:i?');
   assert.equal(ti.noteToken(doc, 3, doc.measures[0].cells[0].slots[0].notes[2]), '!2A3@3:i?');
-  assert.equal(ti.noteToken(doc, 1, { fret: 0, lh: 0, rh: null, art: '~', uncertain: false }), '~0E4@1');
+  assert.equal(ti.noteToken(doc, 1, { fret: 0, lh: 0, rh: null, art: '!', uncertain: false }), '!0E4@1');
 });
 
 test('chord notes are joined from the lowest pitch, thicker string first on equal pitch', function(){
@@ -106,7 +106,7 @@ test('validateDoc: a document using every feature has no errors or warnings; a b
   put(doc, pos(0, 0), [[5, 0], [3, 2], [2, 1]]);
   ti.setNoteAttrs(doc, pos(0, 0), 5, { lh: 0, rh: 'p' });
   ti.setNoteAttrs(doc, pos(0, 0), 3, { lh: 2, rh: 'i', uncertain: true });
-  ti.setNoteAttrs(doc, pos(0, 0), 2, { art: '~' });
+  ti.setNoteAttrs(doc, pos(0, 0), 2, { art: '!' });
   ti.setDivision(doc, 0, 1, 2);
   put(doc, pos(0, 1, 0), [[1, 0]]);
   put(doc, pos(0, 1, 1), [[1, 3]]);
@@ -260,6 +260,8 @@ test('note edits: set replaces and clears rest, toggle, remove, attrs, rest and 
   assert.throws(function(){ ti.setNoteAttrs(doc, p, 1, { rh: 'x' }); });
   assert.throws(function(){ ti.setNoteAttrs(doc, p, 1, { lh: 5 }); });
   assert.throws(function(){ ti.setNoteAttrs(doc, p, 1, { art: '>' }); });
+  assert.throws(function(){ ti.setNoteAttrs(doc, p, 1, { art: '~' }); }, /주법/, 'the removed tirando value ~ is refused');
+  assert.equal(ti.getSlot(doc, p).notes[0].art, null, 'a refused attribute leaves the note unchanged');
   assert.equal(ti.hasContent(doc), true);
   const memoOnly = fresh();
   ti.setMeasureMemo(memoOnly, 0, 'x');
@@ -336,6 +338,32 @@ test('normalizeDoc accepts a valid document as a copy and rejects broken shapes'
   assert.equal(typeof ti.normalizeDoc(null).error, 'string');
 });
 
+test('normalizeDoc reads a stored art "~" (the removed tirando mark) as no mark instead of rejecting the document', function(){
+  const doc = fresh();
+  ti.setNote(doc, pos(0), 1, 0);
+  ti.setNote(doc, pos(0), 2, 1);
+  const stored = ti.cloneDoc(doc);
+  stored.measures[0].cells[0].slots[0].notes[0].art = '~';
+  stored.measures[0].cells[0].slots[0].notes[1].art = '!';
+  const before = JSON.stringify(stored);
+  const result = ti.normalizeDoc(stored);
+  assert.equal(result.error, undefined);
+  const notes = result.doc.measures[0].cells[0].slots[0].notes;
+  assert.equal(notes[0].art, null, '~ becomes null');
+  assert.equal(notes[1].art, '!', '! stays');
+  assert.equal(JSON.stringify(stored), before, 'the stored object is not mutated');
+  assert.equal(ti.docToMeasureObjects(result.doc)[0].notes[0], '!C4@2+E4@1', 'the migrated note is written without a tirando mark and the apoyando note keeps its !');
+  assert.deepEqual(ti.validateDoc(result.doc).errors, []);
+});
+
+test('parseImportText refuses a ~ note with the tirando-removed message', function(){
+  for (const text of ['[-] ~E4 r r r', '[-] E4 ~B3@2 r r', '[-] E2+~B3 r r r']){
+    const parsed = ti.parseImportText(text, { title: 't' });
+    assert.equal(parsed.doc, undefined, text + ' is not imported');
+    assert.ok(String(parsed.error).indexOf('티란도 표시 ~는 없앴어. ~를 지워(따로 적지 않은 음은 티란도로 쳐).') >= 0, text + ' shows the message: ' + parsed.error);
+  }
+});
+
 test('parseImportText: TSV row fields, plain score, and the error cases', function(){
   const row = ['제목', '3', '90', '설명 Capo 2', '[Am] E4@1 - - | "m"'].join('\t');
   const parsed = ti.parseImportText(row, { title: 'x', bpm: 70, description: 'y' });
@@ -378,13 +406,13 @@ test('import detects the accidental spelling from the source tokens', function()
 });
 
 test('import keeps string, fret, fingering, articulation and check marks', function(){
-  const parsed = ti.parseImportText('[-] !2A3@3:i?+E2 ~B3@2/r? r r', { title: 't' });
+  const parsed = ti.parseImportText('[-] !2A3@3:i?+E2 B3@2/r? r r', { title: 't' });
   assert.equal(parsed.error, undefined);
   const slots = parsed.doc.measures[0].cells[0].slots;
   assert.deepEqual(slots[0].notes[2], { fret: 2, lh: 2, rh: 'i', art: '!', uncertain: true });
   assert.deepEqual(slots[0].notes[5], { fret: 0, lh: null, rh: null, art: null, uncertain: false });
   const second = parsed.doc.measures[0].cells[1].slots;
-  assert.deepEqual(second[0].notes[1], { fret: 0, lh: null, rh: null, art: '~', uncertain: false });
+  assert.deepEqual(second[0].notes[1], { fret: 0, lh: null, rh: null, art: null, uncertain: false });
   assert.equal(second[1].rest, true);
   assert.equal(second[1].restUncertain, true);
   assert.equal(parsed.doc.measures[0].chord, '');

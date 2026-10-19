@@ -264,7 +264,7 @@
     tok = tok.trim();
     if (tok.indexOf('*') >= 0) return null;
     // 화음 끝의 주법 postfix가 마지막 구성음의 오른손 suffix에 붙는 조합은 금지한다.
-    if (/:([pima])[!~]$/.test(tok)) return null;
+    if (/:([pima])!$/.test(tok)) return null;
 
     // 화음은 구성음을 먼저 나눠 각 음표의 주법과 운지를 독립적으로 해석한다.
     if (tok.indexOf('+') >= 0){
@@ -321,22 +321,19 @@
       explicitRh = rhMatch[1];
       tok = tok.slice(0, -rhMatch[0].length);
     }
-    if (explicitRh && /[!~]$/.test(tok)) return null;
+    if (explicitRh && /!$/.test(tok)) return null;
     // >와 ^는 더 이상 아포얀도 별칭이 아니다.
     if (/[>^]/.test(tok)) return null;
 
-    // 악보 주법 명시 기호 추출: ! (아포얀도), ~ (티란도)
+    // 악보 주법 명시 기호 추출: ! (아포얀도). 따로 적지 않은 음이 티란도다.
     var explicitArtic = null;
     if (/^!/.test(tok)){
       explicitArtic = 'apoyando';
       tok = tok.slice(1).trim();
-    } else if (/^~/.test(tok)){
-      explicitArtic = 'tirando';
-      tok = tok.slice(1).trim();
     }
     if (!tok || tok === '-' || tok === '.') return null;
 
-    var articPfx = explicitArtic === 'apoyando' ? '!' : (explicitArtic === 'tirando' ? '~' : '');
+    var articPfx = explicitArtic === 'apoyando' ? '!' : '';
 
     var m = tok.match(/^([0-4])?([A-G])([#b]?)([2-5])(?:@([1-6]))?$/);
     if (m){
@@ -414,7 +411,7 @@
     return parsed.pos && parsed.pos.rh != null ? parsed.pos.rh : null;
   }
 
-  // 명시된 아포얀도/티란도만 남긴다. 자동 주법 추론은 수행하지 않는다.
+  // 명시된 아포얀도만 남긴다. 자동 주법 추론은 수행하지 않는다.
   function annotateMeasureArticulation(beats, bpb){
     if (!Array.isArray(beats)) return;
     beats.forEach(function(beat){

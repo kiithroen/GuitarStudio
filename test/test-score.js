@@ -17,7 +17,7 @@ function firstBeat(source){
 }
 
 test('labels show plain note names on mixed chord subdivisions', function(){
-  const beat = firstBeat('~E2+!B4/~B3/~G3 r r r');
+  const beat = firstBeat('E2+!B4/B3/G3 r r r');
   assert.equal(score.formatBeatPitchLabel(beat, {compact:true}), 'E+B·B·G', 'compact labels omit articulation symbols');
   assert.equal(score.formatBeatPitchLabel(beat, {compact:false}), 'E2+B4 · B3 · G3', 'noncompact labels omit articulation symbols');
 });
@@ -39,7 +39,7 @@ test('articulation marks do not change plain chord component labels', function()
 });
 
 test('subdivision notes, three-note chords, and the legacy chord label follow compact rules', function(){
-  assert.equal(score.formatBeatPitchLabel(firstBeat('!C3/E4/~G4 D4 r A3'), {compact:true}), 'C·E·G');
+  assert.equal(score.formatBeatPitchLabel(firstBeat('!C3/E4/G4 D4 r A3'), {compact:true}), 'C·E·G');
   assert.equal(score.formatBeatPitchLabel(firstBeat('C3+E4+G4 D4 r A3'), {compact:true, chord:'C'}), 'C');
   assert.equal(score.formatBeatPitchLabel(firstBeat('C3+E4+G4 D4 r A3'), {compact:true}), 'C+E+G');
   assert.equal(score.formatBeatPitchLabel(firstBeat('C3+E4+G4 D4 r A3'), {compact:false, chord:'C'}), 'C3+E4+G4');
@@ -49,7 +49,7 @@ test('subdivision notes, three-note chords, and the legacy chord label follow co
 
 test('single note, rest, hold, invalid, and parent articulation formatting are explicit', function(){
   assert.equal(score.formatBeatPitchLabel(firstBeat('!E4 D4 r A3'), {compact:true}), 'E4');
-  assert.equal(score.formatBeatPitchLabel(firstBeat('~B4 C4 r G4'), {compact:false}), 'B4');
+  assert.equal(score.formatBeatPitchLabel(firstBeat('B4 C4 r G4'), {compact:false}), 'B4');
   const restHold = parser.parseScore('E4 - r G4', 4).measures[0].beats;
   assert.equal(score.formatBeatPitchLabel(parser.parseScore('r r r r', 4).measures[0].beats[0]), '쉼');
   assert.equal(score.formatBeatPitchLabel(restHold[1]), '유지');
@@ -62,15 +62,14 @@ test('single note, rest, hold, invalid, and parent articulation formatting are e
 
 test('uniform articulation requires every attack component to have the same explicit mark', function(){
   assert.equal(score.getUniformBeatArticulation(firstBeat('!C3+!E4 D4 r A3')), 'apoyando');
-  assert.equal(score.getUniformBeatArticulation(firstBeat('~C3+~E4 D4 r A3')), 'tirando');
+  assert.equal(score.getUniformBeatArticulation(firstBeat('C3+E4 D4 r A3')), null, 'unmarked notes have no uniform articulation');
   assert.equal(score.getUniformBeatArticulation(firstBeat('!C3+E4 D4 r A3')), null);
-  assert.equal(score.getUniformBeatArticulation(firstBeat('!C3+~E4 D4 r A3')), null);
   assert.equal(score.getUniformBeatArticulation(firstBeat('!C3/!E4/!G4 D4 r A3')), 'apoyando');
   assert.equal(score.getUniformBeatArticulation(parser.parseScore('r r r r', 4).measures[0].beats[0]), null);
 });
 
 test('formatting leaves parser objects unchanged', function(){
-  const beat = firstBeat('~E2+!B4/~B3/~G3 r r r');
+  const beat = firstBeat('E2+!B4/B3/G3 r r r');
   const before = JSON.stringify(beat);
   score.formatBeatPitchLabel(beat, {compact:true, chord:'Em'});
   score.formatBeatPitchLabel(beat, {compact:false});

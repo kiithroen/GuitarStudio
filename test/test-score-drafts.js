@@ -154,16 +154,16 @@ test('last-bar deletion is blocked and remains atomic', function(){
 test('explicit fingering, articulation, and JSON memo survive full-score edits and canonical round trip', function(){
   const store = createScoreDraftStore();
   store.list([song('written','표기',['[C] C4 - - -'],4)]);
-  const edited = store.apply('written',0,'[C] 0E4:p !1F4 ~3G4 r | "메모 *3"',false);
+  const edited = store.apply('written',0,'[C] 0E4:p !1F4 3G4 r | "메모 *3"',false);
   const serialized = parser.serializeScoreMeasures(edited.measures);
   assert.match(serialized,/0E4:p/);
   assert.match(serialized,/!1F4/);
-  assert.match(serialized,/~3G4/);
+  assert.match(serialized,/3G4/);
   assert.match(serialized, /"메모 \*3"/);
   const reparsed = parser.parseScore(serialized,4);
   assert.deepEqual(reparsed.errors,[]);
   assert.equal(reparsed.measures[0].lyric,'메모 *3');
-  assert.deepEqual(reparsed.measures[0].beats.map(beat=>beat.tok),['0E4:p','!1F4','~3G4','r']);
+  assert.deepEqual(reparsed.measures[0].beats.map(beat=>beat.tok),['0E4:p','!1F4','3G4','r']);
 });
 
 test('clean sources refresh while dirty drafts and their original reset snapshot survive re-registration', function(){

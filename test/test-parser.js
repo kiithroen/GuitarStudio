@@ -43,12 +43,12 @@ test('duration postfix syntax is rejected instead of normalized or converted', f
     assert.equal(parser.parseNoteToken(token,0),null,token+' is rejected');
     assert.ok(parser.parseScore(token+' r r r',4).errors.length,token+' fails score validation');
   }
-  const scoreData=parse('[C] ~0E2@6:p+!4B4@1:a B3@2:m G3@3:i r',4);
+  const scoreData=parse('[C] 0E2@6:p+!4B4@1:a B3@2:m G3@3:i r',4);
   assert.deepEqual(scoreData.errors,[]);
   assert.equal(Object.hasOwn(scoreData.measures[0].beats[0].chordNotes[0],'explicitDurationSlots'),false);
   assert.equal(Object.hasOwn(scoreData.measures[0].beats[0].chordNotes[1],'explicitDurationSlots'),false);
   const serialized=parser.serializeScoreMeasures(scoreData.measures);
-  assert.match(serialized,/~0E2@6:p\+!4B4@1:a/);
+  assert.match(serialized,/0E2@6:p\+!4B4@1:a/);
   assert.doesNotMatch(serialized,/\*/);
   assert.deepEqual(parse(serialized,4).measures[0].beats.map(beat=>beat.tok),scoreData.measures[0].beats.map(beat=>beat.tok));
   const memo=parse('[C] C4 - - - | "메모 *3"',4);
@@ -66,7 +66,7 @@ test('explicit right-hand suffixes stay attached to their written note only', fu
     assert.equal(note.customTok,'C4:'+finger);
     assert.equal(parser.getExplicitRightHand('C4:'+finger),finger);
   }
-  for (const token of ['1C4:i','!1C4@2:i','~E4:a']){
+  for (const token of ['1C4:i','!1C4@2:i','E4:a']){
     assert.ok(parser.parseNoteToken(token,0),token);
     assert.equal(parser.getExplicitRightHand(token),token.slice(-1));
   }
@@ -117,14 +117,14 @@ test('bass plus melody and multi-note chords preserve roles and ascending arpegg
 
 test('chord articulation belongs to its written component and canonical tokens retain it', function(){
   assert.equal(parser.parseNoteToken('C4!', 0), null, 'postfix apoyando is rejected');
-  assert.equal(parser.parseNoteToken('C4~', 0), null, 'postfix tirando is rejected');
+  assert.equal(parser.parseNoteToken('C4~', 0), null, 'a trailing ~ is rejected');
+  assert.equal(parser.parseNoteToken('~C4', 0), null, 'the removed tirando mark ~ is rejected');
   const cases = [
     ['!C3+E4', [[48, 'apoyando', true], [64, null, false]], '!C3+E4'],
     ['C3+!E4', [[48, null, false], [64, 'apoyando', true]], 'C3+!E4'],
-    ['~C3+!E4', [[48, 'tirando', true], [64, 'apoyando', true]], '~C3+!E4'],
     ['!E4+C3', [[48, null, false], [64, 'apoyando', true]], 'C3+!E4'],
-    ['~0E2@6:p+!4B4@1:a', [[40, 'tirando', true], [71, 'apoyando', true]], '~0E2@6:p+!4B4@1:a'],
-    ['C3+~E3+!G3', [[48, null, false], [52, 'tirando', true], [55, 'apoyando', true]], 'C3+~E3+!G3']
+    ['0E2@6:p+!4B4@1:a', [[40, null, false], [71, 'apoyando', true]], '0E2@6:p+!4B4@1:a'],
+    ['C3+E3+!G3', [[48, null, false], [52, null, false], [55, 'apoyando', true]], 'C3+E3+!G3']
   ];
   for (const [token, expected, canonical] of cases){
     const parsed = parser.parseNoteToken(token, 0);
@@ -136,12 +136,12 @@ test('chord articulation belongs to its written component and canonical tokens r
     assert.equal(parsed.customTok, canonical, token + ' normalized chord serialization');
   }
 
-  const parsed = parser.parseNoteToken('~0E2@6:p+!4B4@1:a', 0);
+  const parsed = parser.parseNoteToken('0E2@6:p+!4B4@1:a', 0);
   assert.deepEqual([parsed.bass.tok, parsed.bass.articulation, parsed.bass.explicitArticulation, parsed.bass.rh, parsed.bass.lh, parsed.bass.str],
-    ['~0E2@6:p', 'tirando', true, 'p', 0, 6], 'bass retains its own articulation and complete token metadata');
+    ['0E2@6:p', null, false, 'p', 0, 6], 'bass retains its own articulation and complete token metadata');
   assert.deepEqual([parsed.pos.rh, parsed.pos.lh, parsed.pos.str, parsed.articulation], ['a', 4, 1, 'apoyando'], 'melody representative retains its own metadata');
 
-  for (const token of ['~0E2@6:p+!4B4@1:a', 'E4+!C3', 'C3+~E3+!G3']){
+  for (const token of ['0E2@6:p+!4B4@1:a', 'E4+!C3', 'C3+E3+!G3']){
     const score = parse('[C] ' + token + ' r r r', 4);
     assert.equal(score.errors.length, 0, token + ' parses as score');
     const serialized = parser.serializeScoreMeasures(score.measures);
@@ -318,6 +318,7 @@ test('removed legacy notations are rejected and modern equivalents pass', functi
     ['[-] F\u266F4 r r r', 'UNKNOWN_NOTE'],
     ['[-] E4! r r r', 'UNKNOWN_NOTE'],
     ['[-] E4~ r r r', 'UNKNOWN_NOTE'],
+    ['[-] ~E4 r r r', 'UNKNOWN_NOTE'],
     ['[-] 도4 r r r', 'UNKNOWN_NOTE'],
     ['[-] 0솔 r r r', 'UNKNOWN_NOTE'],
     ['[-] E4,F4 r r r', 'UNKNOWN_NOTE'],
@@ -362,6 +363,21 @@ test('removed legacy notations are rejected and modern equivalents pass', functi
   assert.equal(parser.parseScore('[-] E4 r r r', 4).measures[0].chord, '');
   assert.equal(parser.lookupChord('am'), null);
   assert.notEqual(parser.lookupChord('Am'), null);
+});
+
+test('the removed tirando mark ~ is an UNKNOWN_NOTE error with a message that says to delete it', function(){
+  const message = '티란도 표시 ~는 없앴어. ~를 지워(따로 적지 않은 음은 티란도로 쳐).';
+  for (const token of ['~E4', 'E2+~B3', '~0E2@6:p+!4B4@1:a', '!E4+~B3']){
+    const result = parser.validateScore('[-] ' + token + ' r r r', 4);
+    const unknown = result.errors.filter(e => e.code === 'UNKNOWN_NOTE');
+    assert.ok(unknown.length >= 1, token + ' reports UNKNOWN_NOTE');
+    assert.ok(unknown.some(e => e.message === message && e.measure === 1 && e.beat === 1), token + ' reports the tirando-removed message at measure 1 beat 1');
+    assert.equal(parser.parseNoteToken(token, 0), null, token + ' is not a note');
+    assert.ok(parse('[-] ' + token + ' r r r', 4).errors.some(e => e.code === 'UNKNOWN_NOTE'), token + ' parseScore reports UNKNOWN_NOTE');
+  }
+  const plain = parser.validateScore('[-] E4! r r r', 4).errors.filter(e => e.code === 'UNKNOWN_NOTE');
+  assert.ok(plain.length >= 1 && plain.every(e => e.message !== message), 'other bad tokens do not get the tirando message');
+  assert.deepEqual(parser.validateScore('[-] E4 !E4 E2+B3 r', 4).errors, [], 'unmarked notes and apoyando stay valid');
 });
 
 test('noteNameForMidi gives octave names in sharp or flat spelling', function(){

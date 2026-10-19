@@ -147,7 +147,7 @@ test('underspecified preview preserves entered slots and source tokens', functio
 });
 
 test('chord holds share one part duration and sounding lookup restores the whole chord', function(){
-  const raw='[C] ~0E2@6:p+!4B4@1:a - - r';
+  const raw='[C] 0E2@6:p+!4B4@1:a - - r';
   const parsed=parse(raw,4);
   assert.deepEqual(parsed.errors,[]);
   const beats=parsed.measures[0].beats;

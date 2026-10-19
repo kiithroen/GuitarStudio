@@ -148,7 +148,7 @@ function initFretboard(){
       var artic = targetNote.articulation;
       var articTag = targetNote.explicitArticulation && artic === 'apoyando'
         ? ' · 아포얀도(눌러치기)'
-        : (targetNote.explicitArticulation && artic === 'tirando' ? ' · 티란도(뜯어치기)' : '');
+        : '';
 
       var songCapo = getSongCapo(curSong);
       var capoTag = songCapo > 0 ? (' [Capo ' + songCapo + ' 실음: ' + midiInfo(soundingMidi(targetNote.midi, songCapo)).en + ']') : '';

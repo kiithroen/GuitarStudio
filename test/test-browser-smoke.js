@@ -464,7 +464,7 @@ async function testTemporaryScoreEditor(client){
 
   const copiedDraft=await client.evaluate(`(async function(){
     var previous=curSong,oldClipboard=Object.getOwnPropertyDescriptor(navigator,'clipboard'),copied='';
-    var parsed=parseScore('[C] !1C4@2:i ~E4@1:p r r | "copy memo"',4);
+    var parsed=parseScore('[C] !1C4@2:i E4@1:p r r | "copy memo"',4);
     if(parsed.errors.length)throw new Error('TSV metadata fixture rejected: '+JSON.stringify(parsed.errors));
     try {
       curSong={id:'copy-metadata-fixture',title:'Copy metadata fixture',badge:'Capo 2',type:'structured',beats:4,bpm:77,capo:0,measures:parsed.measures};
@@ -472,10 +472,10 @@ async function testTemporaryScoreEditor(client){
       Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:function(value){copied=value;return Promise.resolve();}}});
       document.getElementById('copyCurSongTsvBtn').click();
       await new Promise(function(resolve){setTimeout(resolve,0);});
-      return {columns:copied.split('\t').length,hasChord:copied.includes('[C]'),hasApoyando:copied.includes('!1C4@2:i'),hasTirando:copied.includes('~E4@1:p'),hasMemo:copied.includes('copy memo'),hasCapo:copied.includes('Capo 2'),statusVisible:!document.getElementById('scoreCopyStatus').hidden};
+      return {columns:copied.split('\t').length,hasChord:copied.includes('[C]'),hasApoyando:copied.includes('!1C4@2:i'),hasUnmarked:copied.includes(' E4@1:p'),hasTilde:copied.includes('~'),hasMemo:copied.includes('copy memo'),hasCapo:copied.includes('Capo 2'),statusVisible:!document.getElementById('scoreCopyStatus').hidden};
     } finally {curSong=previous;if(oldClipboard)Object.defineProperty(navigator,'clipboard',oldClipboard);else try{delete navigator.clipboard;}catch(_){};renderSong();}
   })()`);
-  assert.deepEqual(copiedDraft,{columns:5,hasChord:true,hasApoyando:true,hasTirando:true,hasMemo:true,hasCapo:true,statusVisible:true},'actual TSV copy preserves score metadata and reveals its result status');
+  assert.deepEqual(copiedDraft,{columns:5,hasChord:true,hasApoyando:true,hasUnmarked:true,hasTilde:false,hasMemo:true,hasCapo:true,statusVisible:true},'actual TSV copy preserves score metadata and reveals its result status');
 
   const copiedPrompt=await client.evaluate(`(async function(){
     var oldClipboard=Object.getOwnPropertyDescriptor(navigator,'clipboard'),copied='';
@@ -850,7 +850,7 @@ async function testConcertHallOfflineRender(client){
   assert.equal(render.lv6FirstMeasure.id, 'builtin-lv6-romance-full', 'offline render uses the actual Lv.6 built-in score');
   assert.equal(render.lv6FirstMeasure.events.length, 10, 'Lv.6 first measure guide emits bass, melody, and inner voice notes');
   assert.deepEqual(render.lv6FirstMeasure.events.slice(0, 2).map(function(event){return [event.midi,event.gain,event.articulation,event.str];}),
-    [[40,0.62,'tirando',6],[71,1.16,'apoyando',1]], 'Lv.6 opening bass and melody retain their written articulation and strings');
+    [[40,1,null,6],[71,1.16,'apoyando',1]], 'Lv.6 opening bass (unmarked, so tirando) and melody retain their written articulation and strings');
   assert.equal(render.lv6FirstMeasure.durationUnits.bass, render.lv6FirstMeasure.durationUnits.melody,
     'Lv.6 opening bass and melody use one shared chord duration');
   assert.equal(render.lv6FirstMeasure.durationUnits.bass, render.lv6FirstMeasure.durationUnits.slotUnits,
@@ -1324,7 +1324,7 @@ async function testSubdividedGuide(client) {
       var sameFretPills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="0"] .tab-fret-pill')).filter(function(p){ return Math.abs(parseFloat(p.style.left) - 25) < 0.001; });
       check(sameFretPills.length === 1 && sameFretPills[0].classList.contains('note-fret'), 'same-string same-fret pair draws one neutral note pill');
 
-      var durationScore = parseScore('[C] ~0E2@6:p+!4B4@1:a - -', 3);
+      var durationScore = parseScore('[C] 0E2@6:p+!4B4@1:a - -', 3);
       check(durationScore.errors.length === 0, 'shared chord and whole-chord hold fixture parses as a valid three-beat score');
       window.curSong = { id:'browser-shared-duration', title:'Shared duration', type:'structured', beats:3, bpm:100, measures:durationScore.measures };
       appState.beats = 3;
@@ -1867,10 +1867,10 @@ async function testBuiltinScores(client, browserBin){
       if(events.filter(function(event){return event.note.midi===40;}).length!==1||
         events.filter(function(event){return event.note.midi===71;}).length!==3||
         events.filter(function(event){return event.note.midi!==40&&event.note.midi!==71;}).length!==6) throw new Error('Lv.6 bass/melody/inner note counts are not 1/3/6');
-      if(events[0].note.midi!==40||events[0].gain!==0.62||events[0].articulation!=='tirando'||
+      if(events[0].note.midi!==40||events[0].gain!==1||events[0].articulation!==null||
         events[1].note.midi!==71||events[1].gain!==1.16||events[1].articulation!=='apoyando') throw new Error('Lv.6 opening bass/melody articulation or gain mismatch');
       var noArticulationGlyphs=tabLabels.concat(cardLabels,tabTitles,cardTitles).every(function(value){return !/[!~]/.test(value);});
-      var cardTitleHasUniformArticulation=cardTitles.some(function(title){return title.indexOf('악보 지정 아포얀도')>=0||title.indexOf('악보 지정 티란도')>=0;});
+      var cardTitleHasUniformArticulation=cardTitles.some(function(title){return title.indexOf('악보 지정 아포얀도')>=0;});
       var score=document.getElementById('structuredScoreWrap');
       if(score) score.scrollIntoView({block:'start'});
       return {catalogCount:window.BUILTIN_SONGS.length,rendered:results,lv5Card:{inactiveBackground:lv5InactiveBackground,plainBackground:lv1InactiveBackground,
@@ -2047,8 +2047,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=staff-input-1')), 'score-input.html scripts use the shared revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=staff-input-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=no-tirando-1')), 'score-input.html scripts use the shared revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=no-tirando-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoInfo', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -2909,7 +2909,7 @@ async function testFretLabel(client, httpPort) {
   assert.equal(practice.melodyLh, '4', 'the pill shows the left-hand finger as a superscript');
   assert.equal(practice.melodyRh, 'a', 'the pill shows the right-hand finger as a subscript');
   assert.ok(/^\d+4a$/.test(practice.melodyText), 'the pill text is the fret then the two small figures, with no ! or parentheses: ' + practice.melodyText);
-  assert.ok(/\bis-tirando\b/.test(practice.bassClass), 'the written tirando makes the sixth-string bass pill is-tirando: ' + practice.bassClass);
+  assert.ok(!/\bis-(apoyando|tirando)\b/.test(practice.bassClass), 'the unmarked sixth-string bass pill has no articulation class: ' + practice.bassClass);
   assert.equal(practice.bassHasFingering, true, 'the bass pill keeps its right-hand finger');
   assert.ok(practice.bassText.indexOf('(') < 0 && practice.bassText.indexOf('~') < 0, 'the bass pill has no tilde or parentheses: ' + practice.bassText);
   assert.equal(practice.anyGlyph, false, 'no TAB pill draws !, ~ or parentheses');
@@ -2927,7 +2927,7 @@ async function testFretLabel(client, httpPort) {
       var pillColor = getComputedStyle(pill).color;
       return Array.prototype.slice.call(pill.querySelectorAll('.fret-label, .fret-lh, .fret-rh')).map(function(node){ return getComputedStyle(node).color === pillColor; });
     });
-    return { pillCount: pills.length, allFollow: result.every(function(list){ return list.length > 0 && list.every(Boolean); }), withArt: pills.filter(function(pill){ return !!pill.querySelector('.is-apoyando, .is-tirando'); }).length };
+    return { pillCount: pills.length, allFollow: result.every(function(list){ return list.length > 0 && list.every(Boolean); }), withArt: pills.filter(function(pill){ return !!pill.querySelector('.is-apoyando'); }).length };
   })()`);
   assert.ok(playing.pillCount > 0 && playing.withArt > 0, 'a playing beat has pills with written articulation');
   assert.equal(playing.allFollow, true, 'inside the active beat the fret label and its figures follow the pill text color');
@@ -2955,10 +2955,9 @@ async function testFretLabel(client, httpPort) {
     var out = { apoClass: apo.className, apoText: apo.textContent, apoColor: getComputedStyle(apo).color, apoLh: apo.querySelector('sup.fret-lh').textContent, apoRh: apo.querySelector('sub.fret-rh').textContent,
       near: probeColor('--near'), muted: probeColor('--muted'), off: probeColor('--off'), scoreText: t.text().split('\\n')[0] };
     out.buttonApo = getComputedStyle(t.attr('art','!')).color;
-    out.buttonTir = getComputedStyle(t.attr('art','~')).color;
-    t.attr('art','~').click();
-    var tir = label();
-    out.tirClass = tir.className; out.tirColor = getComputedStyle(tir).color; out.tirText = tir.textContent; out.tirScoreText = t.text().split('\\n')[0];
+    out.artButtons = Array.prototype.map.call(document.querySelectorAll('#tiAttrs [data-attr="art"]'), function(b){ return b.dataset.value + '|' + b.textContent.trim(); }).join(',');
+    out.hasTildeButton = !!t.attr('art','~');
+    out.attrsText = document.getElementById('tiAttrs').textContent;
     t.attr('art','!').click();
     document.getElementById('tiUncertainBtn').click();
     var unsure = label();
@@ -2971,10 +2970,10 @@ async function testFretLabel(client, httpPort) {
   assert.deepEqual([input.apoLh, input.apoRh], ['1', 'i'], 'the tab label shows the left hand above and the right hand below');
   assert.equal(input.apoColor, input.near, 'the apoyando label is drawn in the --near color');
   assert.ok(input.scoreText.indexOf('!') >= 0, 'the score text still carries the ! mark: ' + input.scoreText);
-  assert.ok(/\bis-tirando\b/.test(input.tirClass) && input.tirColor === input.muted, 'tirando is drawn in the --muted color: ' + input.tirClass);
-  assert.ok(input.tirText.indexOf('~') < 0 && input.tirScoreText.indexOf('~') >= 0, 'tirando draws no glyph but the score text keeps ~');
+  assert.equal(input.hasTildeButton, false, 'the input panel has no ~ tirando button');
+  assert.equal(input.artButtons, '|없음,!|! 아포얀도', 'the articulation buttons are only none and apoyando: ' + input.artButtons);
+  assert.ok(input.attrsText.indexOf('티란도') < 0, 'the input panel never mentions tirando');
   assert.equal(input.buttonApo, input.near, 'the apoyando button text is drawn in the --near color');
-  assert.equal(input.buttonTir, input.muted, 'the tirando button text is drawn in the --muted color');
   assert.ok(/\bis-apoyando\b/.test(input.unsureClass) && /\bis-uncertain\b/.test(input.unsureParent), 'a checked note keeps its articulation class');
   assert.equal(input.unsureColor, input.off, 'a check mark (red) beats the articulation color');
 
@@ -2993,7 +2992,7 @@ async function testFretLabel(client, httpPort) {
     return true;
   })()`);
   assert.equal(await client.evaluate(`document.getElementById('tiImportError').textContent`), '', 'the Romance import has no error');
-  assert.ok(await client.evaluate(`document.querySelectorAll('#tiMeasures .fret-label.is-apoyando').length > 0 && document.querySelectorAll('#tiMeasures .fret-label.is-tirando').length > 0`), 'the imported Romance shows both articulation colors');
+  assert.ok(await client.evaluate(`document.querySelectorAll('#tiMeasures .fret-label.is-apoyando').length > 0 && document.querySelectorAll('#tiMeasures .fret-label.is-tirando').length === 0`), 'the imported Romance shows the apoyando color and no tirando class');
   await saveShot('score-input-fret-label.png', 1280, 900);
   await client.send('Emulation.clearDeviceMetricsOverride');
   assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the fret label steps run without console errors');
@@ -3005,7 +3004,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=staff-input-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=no-tirando-1')), 'all app scripts use the shared revision');
   const htmlIds = ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'temporary score UI includes #'+id);});
   assert.doesNotMatch(fs.readFileSync(path.join(root,'index.html'),'utf8'),/\.beat-cell\.arp-(?:melody|sub)\b/,'obsolete articulation color rules are removed from the score stylesheet');
