@@ -36,13 +36,13 @@
 
     function draftError(errors){
       var list = Array.isArray(errors) && errors.length ? errors : [{
-        code:'INVALID_SCORE_EDIT', measure:1, beat:null, message:'악보를 적용할 수 없어.'
+        code:'INVALID_SCORE_EDIT', measure:1, beat:null, message:'악보를 적용할 수 없습니다.'
       }];
       var first = list[0];
       var position = [];
       if (first.measure != null) position.push('마디 ' + first.measure);
       if (first.beat != null) position.push('박 ' + first.beat);
-      var message = first.message || '악보를 적용할 수 없어.';
+      var message = first.message || '악보를 적용할 수 없습니다.';
       if (position.length) message += ' (' + position.join(', ') + ')';
       var error = new Error(message);
       error.errors = cloneValue(list);
@@ -140,7 +140,7 @@
     // 읽을 수 없는 줄이면 아무것도 바꾸지 않고 던진다.
     function replaceScore(source, lines, opts){
       opts = opts || {};
-      if (!source || source.type !== 'structured') throw draftError([{code:'UNKNOWN_DRAFT',measure:1,beat:null,message:'고칠 원래 악보가 없어.'}]);
+      if (!source || source.type !== 'structured') throw draftError([{code:'UNKNOWN_DRAFT',measure:1,beat:null,message:'고칠 원래 악보가 없습니다.'}]);
       var text = Array.isArray(lines) ? lines.join('\n') : String(lines == null ? '' : lines);
       var parsed = parser.parseScore(text, source.beats);
       if (parsed.errors.length) throw draftError(parsed.errors);

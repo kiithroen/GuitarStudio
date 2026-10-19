@@ -210,9 +210,9 @@
     return PROJECT_PROMPT_LINES.join('\n');
   }
 
-  var COPY_OK = '프롬프트를 복사했어. AI 채팅에 악보 이미지와 함께 붙여 넣고, 받은 TSV 한 행을 Google Sheets 빈 행 A열에 붙여 넣어.';
-  var COPY_PROJECT_OK = '프로젝트 AI용 프롬프트를 복사했어. 저장소를 연 AI 채팅에 악보 이미지와 함께 붙여 넣어.';
-  var COPY_FAIL = '클립보드에 복사하지 못했어. 브라우저의 클립보드 권한을 확인해 줘.';
+  var COPY_OK = '프롬프트를 복사했습니다. AI 채팅에 악보 이미지와 함께 붙여 넣고, 받은 TSV 한 행을 Google Sheets 빈 행 A열에 붙여 넣으세요.';
+  var COPY_PROJECT_OK = '프로젝트 AI용 프롬프트를 복사했습니다. 저장소를 연 AI 채팅에 악보 이미지와 함께 붙여 넣으세요.';
+  var COPY_FAIL = '클립보드에 복사하지 못했습니다. 브라우저의 클립보드 권한을 확인하세요.';
 
   // 클립보드 API 가 없거나 거부될 때 쓰는 대체 복사
   function copyWithTextarea(text){

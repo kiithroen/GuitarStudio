@@ -147,7 +147,7 @@ var scoreEditorHooks = (function(){
   }
 
   function reportTabInputHandoffFailure(message){
-    showStorageStatus('악보 입력에서 넘긴 악보를 열지 못했어: ' + message);
+    showStorageStatus('악보 입력에서 넘긴 악보를 열지 못했습니다: ' + message);
   }
 
   // sources: 원본 곡 목록(내장곡·시트 곡). 넘긴 값의 sourceId 곡이 있으면 그 곡의 수정 초안으로, 없으면 새 임시 악보로 연다.
@@ -159,7 +159,7 @@ var scoreEditorHooks = (function(){
     if (!isFinite(age) || age > TAB_INPUT_HANDOFF_MAX_AGE_MS || age < -TAB_INPUT_HANDOFF_MAX_FUTURE_MS) return null;
     var validLines = Array.isArray(handoff.lines) && handoff.lines.every(function(line){ return typeof line === 'string'; });
     if (typeof handoff.title !== 'string' || !handoff.title || !validLines){
-      reportTabInputHandoffFailure('넘긴 내용의 모양이 틀렸어.');
+      reportTabInputHandoffFailure('넘긴 내용의 모양이 틀렸습니다.');
       return null;
     }
     var validKey = Number.isInteger(handoff.key) && handoff.key >= -5 && handoff.key <= 5;
@@ -168,7 +168,7 @@ var scoreEditorHooks = (function(){
         ? sources.find(function(song){ return song && song.type === 'structured' && song.id === handoff.sourceId; })
         : null;
       if (source && Number(handoff.beats) !== source.beats){
-        showStorageStatus('칸 수가 바뀌어서 원래 곡 대신 새 임시 악보로 열었어.');
+        showStorageStatus('칸 수가 바뀌어서 원래 곡 대신 새 임시 악보로 열었습니다.');
         source = null;
       }
       if (source){

@@ -366,7 +366,7 @@ test('removed legacy notations are rejected and modern equivalents pass', functi
 });
 
 test('the removed tirando mark ~ is an UNKNOWN_NOTE error with a message that says to delete it', function(){
-  const message = '티란도 표시 ~는 없앴어. ~를 지워(따로 적지 않은 음은 티란도로 쳐).';
+  const message = '티란도 표시 ~는 더 이상 쓰지 않습니다. ~를 지우세요(따로 적지 않은 음은 티란도로 칩니다).';
   for (const token of ['~E4', 'E2+~B3', '~0E2@6:p+!4B4@1:a', '!E4+~B3']){
     const result = parser.validateScore('[-] ' + token + ' r r r', 4);
     const unknown = result.errors.filter(e => e.code === 'UNKNOWN_NOTE');

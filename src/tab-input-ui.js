@@ -23,9 +23,9 @@
   var SAVE_DEBOUNCE_MS = 300;
   var TEXT_DEBOUNCE_MS = 300;
   var TEXT_OK = '미리보기에 반영됨';
-  var TEXT_LOCK_TITLE = '텍스트 모드에서는 아래 편집기에서 고쳐';
-  var CONFIRM_REPLACE = '지금 작업을 지우고 바꿀까? 되돌리기로 돌아올 수 있어.';
-  var COPY_FAIL = '복사하지 못했어. 결과 칸에서 직접 복사해.';
+  var TEXT_LOCK_TITLE = '텍스트 모드에서는 아래 편집기에서 고치세요';
+  var CONFIRM_REPLACE = '지금 작업을 지우고 바꾸시겠습니까? 되돌리기로 돌아올 수 있습니다.';
+  var COPY_FAIL = '복사하지 못했습니다. 결과 칸에서 직접 복사하세요.';
   var SOURCE_INFO = '연습 화면 곡을 고치는 중 · 완료 후 연습 화면에서 열면 해당 곡의 수정 초안으로 반영됩니다.';
 
   var doc;
@@ -65,7 +65,7 @@
 
   function setStatus(text){ $('tiStatus').textContent = text || ''; }
   function setResultStatus(text){ $('tiResultStatus').textContent = text || ''; }
-  function lostText(count){ return '조각 ' + count + '개가 지워졌어. 되돌리기로 돌아올 수 있어.'; }
+  function lostText(count){ return '조각 ' + count + '개가 지워졌습니다. 되돌리기로 돌아올 수 있습니다.'; }
 
   // ---------- 저장
 
@@ -81,7 +81,7 @@
       status.textContent = '자동 저장됨 ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes());
       status.classList.remove('is-warn');
     } else {
-      status.textContent = '이 기기에 저장하지 못했어. 시트용 TSV로 복사해 둬.';
+      status.textContent = '이 기기에 저장하지 못했습니다. 시트용 TSV로 복사해 두세요.';
       status.classList.add('is-warn');
     }
     return ok;
@@ -1088,7 +1088,7 @@
 
   function transposeSelected(semitones){
     if (!noteSel){
-      setStatus('고른 음이 없어.');
+      setStatus('고른 음이 없습니다.');
       return;
     }
     var target = { pos: copyPos(noteSel.pos), str: noteSel.str };
@@ -1238,7 +1238,7 @@
     if (kind === 'copy'){
       try {
         clip = T.copyRange(doc, a, b);
-        setStatus(clip.length + '마디를 복사했어.');
+        setStatus(clip.length + '마디를 복사했습니다.');
       } catch (error) {
         setStatus(error.message);
       }
@@ -1480,21 +1480,21 @@
     error.hidden = true;
     replaceDoc(result.doc);
     $('tiImportDialog').close();
-    setStatus('불러왔어 · ' + doc.measures.length + '마디');
+    setStatus('불러왔습니다 · ' + doc.measures.length + '마디');
   }
 
   // ---------- 결과 버튼
 
   async function copyScoreText(){
     var ok = await GuitarScorePrompt.copyText(T.docScoreText(doc));
-    setResultStatus(ok ? '악보 텍스트를 복사했어.' : COPY_FAIL);
+    setResultStatus(ok ? '악보 텍스트를 복사했습니다.' : COPY_FAIL);
   }
 
   async function copyScoreTsv(){
     try {
       var tsv = formatSongToSheetTsv(doc.title.trim() || T.DEFAULT_TITLE, doc.beats, doc.bpm, doc.description.trim() || '악보 입력', T.docToScoreLines(doc));
       var ok = await GuitarScorePrompt.copyText(tsv);
-      setResultStatus(ok ? '시트용 TSV 한 행을 복사했어. 시트의 빈 행 A열에 붙여 넣어.' : COPY_FAIL);
+      setResultStatus(ok ? '시트용 TSV 한 행을 복사했습니다. 시트의 빈 행 A열에 붙여 넣으세요.' : COPY_FAIL);
     } catch (error) {
       setResultStatus(error && error.message ? error.message : COPY_FAIL);
     }
@@ -1505,7 +1505,7 @@
     saveNow();
     var ok = ls.set(HANDOFF_KEY, T.buildHandoff(doc, Date.now()));
     if (ok) location.href = 'index.html';
-    else setResultStatus('넘기지 못했어. 시트용 TSV로 복사해 연습 화면에서 불러와.');
+    else setResultStatus('넘기지 못했습니다. 시트용 TSV로 복사해 연습 화면에서 불러오세요.');
   }
 
   // ---------- 연습 화면에서 넘어온 악보
@@ -1526,9 +1526,9 @@
     if (!request) return;
     var title = typeof request.title === 'string' && request.title.trim() ? request.title.trim() : T.DEFAULT_TITLE;
     var validLines = Array.isArray(request.lines) && request.lines.every(function(line){ return typeof line === 'string'; });
-    var failure = '연습 화면에서 넘긴 "' + title + '"을 열지 못했어: ';
+    var failure = '연습 화면에서 넘긴 "' + title + '"을 열지 못했습니다: ';
     if (!validLines){
-      setStatus(failure + '넘긴 내용의 모양이 틀렸어.');
+      setStatus(failure + '넘긴 내용의 모양이 틀렸습니다.');
       return;
     }
     var result = T.scoreToDoc({
@@ -1547,14 +1547,14 @@
     next.sourceId = typeof request.sourceId === 'string' ? request.sourceId : null;
     var differs = T.docScoreText(doc) !== T.docScoreText(next) || doc.sourceId !== next.sourceId;
     if (T.hasContent(doc) && differs &&
-        !window.confirm('지금 작업을 "' + title + '"(으)로 바꿀까? 되돌리기로 돌아올 수 있지만, TSV로 보관하지 않은 지금 작업은 새로고침하면 못 돌아와.')){
-      setStatus('연습 화면에서 넘긴 악보를 열지 않았어.');
+        !window.confirm('지금 작업을 "' + title + '"(으)로 바꾸시겠습니까? 되돌리기로 돌아올 수 있지만, TSV로 보관하지 않은 지금 작업은 새로고침하면 못 돌아옵니다.')){
+      setStatus('연습 화면에서 넘긴 악보를 열지 않았습니다.');
       return;
     }
     var measure = Number.isInteger(request.measure) ? Math.max(0, Math.min(next.measures.length - 1, request.measure)) : 0;
     replaceDoc(next);
     setCursor({ m: measure, c: 0, s: 0, str: 1 }, true);
-    setStatus('연습 화면에서 "' + title + '"을 열었어 · ' + (measure + 1) + '마디부터');
+    setStatus('연습 화면에서 "' + title + '"을 열었습니다 · ' + (measure + 1) + '마디부터');
   }
 
   // ---------- 입력판 만들기
@@ -1614,7 +1614,7 @@
       var value = Number(raw);
       if (!/^\d+$/.test(raw) || value < 30 || value > 240){
         $('tiBpm').value = String(doc.bpm);
-        setStatus('BPM은 30에서 240 사이 정수여야 해.');
+        setStatus('BPM은 30에서 240 사이 정수여야 합니다.');
         return;
       }
       if (value === doc.bpm) return;
@@ -1917,7 +1917,7 @@
     var stored = ls.get(DOC_KEY, null);
     if (stored == null) return { doc: T.createDoc() };
     var result = T.normalizeDoc(stored);
-    if (result.error) return { doc: T.createDoc(), notice: '저장된 작업을 읽지 못해 새 악보로 시작했어.' };
+    if (result.error) return { doc: T.createDoc(), notice: '저장된 작업을 읽지 못해 새 악보로 시작했습니다.' };
     return { doc: result.doc };
   }
 

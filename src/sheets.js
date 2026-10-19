@@ -61,7 +61,7 @@
       window[cbName] = function(res){
         cleanup();
         if (!res || res.status === 'error' || !res.table){
-          reject(new Error('시트 데이터를 읽지 못했어요.'));
+          reject(new Error('시트 데이터를 읽지 못했습니다.'));
           return;
         }
         var rows = (res.table.rows || []).map(function(r){
@@ -121,10 +121,10 @@
           var beatValue = beatText ? Number(beatText) : 4;
           var bpmValue = bpmText ? Number(bpmText) : 64;
           if (!Number.isFinite(beatValue) || Math.floor(beatValue) !== beatValue || GuitarNotation.SHEET_BEAT_COUNTS.indexOf(beatValue) < 0){
-            throw new Error('시트 ' + (rIdx + 1) + '행: 박자는 ' + GuitarNotation.SHEET_BEAT_COUNTS.join(', ') + ' 중 하나여야 해.');
+            throw new Error('시트 ' + (rIdx + 1) + '행: 박자는 ' + GuitarNotation.SHEET_BEAT_COUNTS.join(', ') + ' 중 하나여야 합니다.');
           }
           if (!Number.isFinite(bpmValue) || Math.floor(bpmValue) !== bpmValue || bpmValue < 1){
-            throw new Error('시트 ' + (rIdx + 1) + '행: BPM은 1 이상의 정수여야 해.');
+            throw new Error('시트 ' + (rIdx + 1) + '행: BPM은 1 이상의 정수여야 합니다.');
           }
           beats = beatValue;
           bpm = bpmValue;
@@ -160,14 +160,14 @@
       hideSheetLoadStatus();
       ls.set('gs.sheetUrl', rawUrl.trim());
       var nowStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-      $('#sheetSyncStatus').textContent = '연동 완료 (' + nowStr + ') · 총 ' + parsedSongs.length + '곡을 내 구글 시트에서 불러왔어요.';
+      $('#sheetSyncStatus').textContent = '연동 완료 (' + nowStr + ') · 총 ' + parsedSongs.length + '곡을 내 구글 시트에서 불러왔습니다.';
       $('#openSheetSyncBtn').textContent = '구글 시트 (' + parsedSongs.length + '곡)';
       rebuildSongSelect(parsedSongs.length && !silent ? parsedSongs[0].id : appState.lastSongId);
       return true;
     } catch (err){
       $('#sheetSyncStatus').textContent = '불러오기 실패: ' + err.message;
       $('#sheetLoadStatus').hidden = false;
-      $('#sheetLoadStatus').textContent = '구글 시트를 불러오지 못했어. ' + err.message + ' 시트를 확인한 뒤 구글 시트 연동에서 다시 불러와.';
+      $('#sheetLoadStatus').textContent = '구글 시트를 불러오지 못했습니다. ' + err.message + ' 시트를 확인한 뒤 구글 시트 연동에서 다시 불러오세요.';
       return false;
     }
   }
@@ -192,7 +192,7 @@
       sheetSongs = [];
       $('#sheetUrlInput').value = '';
       $('#openSheetSyncBtn').textContent = '구글 시트 연동';
-      $('#sheetSyncStatus').textContent = '구글 시트 연동이 해제되었어요.';
+      $('#sheetSyncStatus').textContent = '구글 시트 연동이 해제되었습니다.';
       hideSheetLoadStatus();
       rebuildSongSelect((BUILTIN_SONGS[0] ? BUILTIN_SONGS[0].id : (allSongs[0] ? allSongs[0].id : null)));
     });
@@ -214,7 +214,7 @@
       var tsv = header + '\n' + sample1;
       try {
         await navigator.clipboard.writeText(tsv);
-        $('#sheetSyncStatus').textContent = '시트 기본 양식이 복사되었어요! 새 구글 스프레드시트의 A1 칸을 클릭하고 Ctrl+V를 누르세요.';
+        $('#sheetSyncStatus').textContent = '시트 기본 양식이 복사되었습니다. 새 구글 스프레드시트의 A1 칸을 클릭하고 Ctrl+V를 누르세요.';
       } catch (e){
         prompt('새 구글 시트 A1 칸에 붙여넣을 양식:', tsv);
       }
@@ -222,7 +222,7 @@
 
     $('#copyCurSongTsvBtn').addEventListener('click', async function(){
       if (!curSong || curSong.type !== 'structured'){
-        alert('구조화된(계이름) 악보가 선택되어 있을 때만 시트 행으로 복사할 수 있어요.');
+        alert('구조화된(계이름) 악보가 선택되어 있을 때만 시트 행으로 복사할 수 있습니다.');
         return;
       }
       var copyStatus = $('#scoreCopyStatus');
@@ -238,13 +238,13 @@
         try {
           if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('clipboard unavailable');
           await navigator.clipboard.writeText(tsv);
-          if (copyStatus) copyStatus.textContent = '악보를 복사했어. Google Sheets의 빈 행 A열에 붙여넣어.';
+          if (copyStatus) copyStatus.textContent = '악보를 복사했습니다. Google Sheets의 빈 행 A열에 붙여넣으세요.';
         } catch (clipboardError){
           prompt('Google Sheets A열에 붙여넣을 내용:', tsv);
-          if (copyStatus) copyStatus.textContent = '복사 권한이 없어 TSV를 입력창에 표시했어. 내용을 복사해 A열에 붙여넣어.';
+          if (copyStatus) copyStatus.textContent = '복사 권한이 없어 TSV를 입력창에 표시했습니다. 내용을 복사해 A열에 붙여넣으세요.';
         }
       } catch (error){
-        if (copyStatus) copyStatus.textContent = error.message || '악보를 TSV로 만들지 못했어.';
+        if (copyStatus) copyStatus.textContent = error.message || '악보를 TSV로 만들지 못했습니다.';
       }
     });
   }

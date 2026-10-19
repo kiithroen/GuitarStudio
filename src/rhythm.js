@@ -39,7 +39,7 @@
       beats.forEach(function(beat, bi){
         var parts = partsFor(beat), count = parts.length;
         var supported = count === 1 || count === 2 || count === 3 || count === 4;
-        if (!supported) errors.push({code:'UNSUPPORTED_SUBDIVISION',measure:mi+1,beat:bi+1,message:'한 박은 2, 3 또는 4개로만 나눌 수 있어.'});
+        if (!supported) errors.push({code:'UNSUPPORTED_SUBDIVISION',measure:mi+1,beat:bi+1,message:'한 박은 2, 3 또는 4개로만 나눌 수 있습니다.'});
         var slotUnits = supported ? UNITS_PER_SLOT / count : UNITS_PER_SLOT;
         if (!Number.isInteger(slotUnits)) slotUnits = 1;
         var groupStart = (mi * slots + bi) * UNITS_PER_SLOT;
@@ -55,7 +55,7 @@
           part.durationUnits = slotUnits;
           part.tieFrom = null;
           locationMap.push({part:part, measureIndex:mi, beatIndex:bi, subIndex:subIndex, startUnits:start});
-          if (kind === 'invalid' && String(part.tok || '').trim() !== '.') errors.push({code:'UNKNOWN_NOTE',measure:mi+1,beat:bi+1,message:'알 수 없거나 모호한 음표 토큰 ' + String(part.tok || '') + ' 가 있어.'});
+          if (kind === 'invalid' && String(part.tok || '').trim() !== '.') errors.push({code:'UNKNOWN_NOTE',measure:mi+1,beat:bi+1,message:'알 수 없거나 모호한 음표 토큰 ' + String(part.tok || '') + ' 가 있습니다.'});
         });
       });
     });
@@ -80,7 +80,7 @@
       }
       if (part.kind === 'hold') {
         if (!activeChain) {
-          errors.push({code:'ORPHAN_HOLD',measure:entry.measureIndex+1,beat:entry.beatIndex+1,message:'유지는 바로 앞 음 또는 화음 뒤에만 올 수 있어.'});
+          errors.push({code:'ORPHAN_HOLD',measure:entry.measureIndex+1,beat:entry.beatIndex+1,message:'유지는 바로 앞 음 또는 화음 뒤에만 올 수 있습니다.'});
           return;
         }
         part.tieFrom = {measureIndex:activeChain.attack.measureIndex,beatIndex:activeChain.attack.beatIndex,subIndex:activeChain.attack.subIndex};

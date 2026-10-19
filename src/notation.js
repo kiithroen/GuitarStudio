@@ -10,7 +10,7 @@
   var SHEET_BEAT_COUNTS = [2, 3, 4, 6, 8, 9];
 
   // 없앤 티란도 표시 ~ 가 붙은 음 토큰에 보이는 오류 문구 (이 문구를 만드는 곳은 여기 하나)
-  var TIRANDO_MARK_REMOVED_MESSAGE = '티란도 표시 ~는 없앴어. ~를 지워(따로 적지 않은 음은 티란도로 쳐).';
+  var TIRANDO_MARK_REMOVED_MESSAGE = '티란도 표시 ~는 더 이상 쓰지 않습니다. ~를 지우세요(따로 적지 않은 음은 티란도로 칩니다).';
 
   function scan(text, splitBars){
     var out = [];
@@ -115,11 +115,11 @@
           if (typeof parsed !== 'string') throw Error('lyric must be string');
           lyric = parsed;
         } catch(e){
-          errors.push({code:'INVALID_LYRIC_QUOTE', message:'마디 메모·가사 JSON 문자열의 따옴표, escape 또는 닫힌 뒤 문자를 확인해줘.'});
+          errors.push({code:'INVALID_LYRIC_QUOTE', message:'마디 메모·가사 JSON 문자열의 따옴표, escape 또는 닫힌 뒤 문자를 확인하세요.'});
           lyric = rawLyric;
         }
       } else {
-        if (rawLyric) errors.push({code:'INVALID_LYRIC_QUOTE', message:'마디 메모는 큰따옴표 JSON 문자열로 적어줘. 예: | "메모"'});
+        if (rawLyric) errors.push({code:'INVALID_LYRIC_QUOTE', message:'마디 메모는 큰따옴표 JSON 문자열로 적으세요. 예: | "메모"'});
         lyric = rawLyric;
       }
     }
@@ -161,16 +161,16 @@
       list.push({code:code, measure:measure, beat:beat, message:message});
     }
 
-    if (!text.trim()) add(errors, 'EMPTY_SCORE', 1, null, '악보가 비어 있어.');
+    if (!text.trim()) add(errors, 'EMPTY_SCORE', 1, null, '악보가 비어 있습니다.');
     if (!missingBeats && !validBeats){
-      add(errors, 'INVALID_BEATS', 1, null, '박자 수는 1에서 12 사이의 유한한 정수여야 해. 미리보기는 4박으로 처리돼.');
+      add(errors, 'INVALID_BEATS', 1, null, '박자 수는 1에서 12 사이의 유한한 정수여야 합니다. 미리보기는 4박으로 처리됩니다.');
     }
     segments.forEach(function(segment, index){
       if (segment.separator === '//' && !segment.value.trim()){
-        add(errors, 'EMPTY_MEASURE', Math.max(1, index + 1), null, '// 구분자 사이에 비어 있는 마디가 있어.');
+        add(errors, 'EMPTY_MEASURE', Math.max(1, index + 1), null, '// 구분자 사이에 비어 있는 마디가 있습니다.');
       }
       if (segment.separator === '//' && segments[index + 1] && !segments[index + 1].value.trim()){
-        add(errors, 'EMPTY_MEASURE', index + 2, null, '악보 끝에 // 구분자만 남아 있어.');
+        add(errors, 'EMPTY_MEASURE', index + 2, null, '악보 끝에 // 구분자만 남아 있습니다.');
       }
     });
 
@@ -181,11 +181,11 @@
       decoded.errors.forEach(function(error){ add(errors, error.code, measureNo, null, error.message); });
 
       if (/(?:^|\s)\/(?:\s|$)/.test(decoded.notation)){
-        add(errors, 'ISOLATED_SLASH', measureNo, null, '음표 영역의 단독 슬래시는 마디 구분자로 사용할 수 없어. 박내 분할은 붙여 쓴 / 를 사용해줘.');
+        add(errors, 'ISOLATED_SLASH', measureNo, null, '음표 영역의 단독 슬래시는 마디 구분자로 사용할 수 없습니다. 박내 분할은 붙여 쓴 / 를 사용하세요.');
       }
       if ((decoded.notation.match(/\(/g) || []).length !== (decoded.notation.match(/\)/g) || []).length ||
           (decoded.notation.match(/\[/g) || []).length !== (decoded.notation.match(/\]/g) || []).length){
-        add(errors, 'UNBALANCED_DELIMITER', measureNo, null, '괄호 또는 대괄호가 닫히지 않았어.');
+        add(errors, 'UNBALANCED_DELIMITER', measureNo, null, '괄호 또는 대괄호가 닫히지 않았습니다.');
       }
       var quoted = false;
       var escaped = false;
@@ -197,30 +197,30 @@
           else if (quoteChar === '"') quoted = false;
         } else if (quoteChar === '"') quoted = true;
       }
-      if (quoted) add(errors, 'UNBALANCED_DELIMITER', measureNo, null, '따옴표가 닫히지 않았어.');
+      if (quoted) add(errors, 'UNBALANCED_DELIMITER', measureNo, null, '따옴표가 닫히지 않았습니다.');
 
-      if (tokens.length > bpb) add(errors, 'TOO_MANY_BEATS', measureNo, bpb + 1, '마디의 박 수가 설정된 ' + bpb + '박을 초과해.');
-      if (tokens.length < bpb) add(errors, 'MISSING_BEATS', measureNo, tokens.length + 1, '마디에 ' + (bpb - tokens.length) + '칸이 부족해. 누락된 칸을 r 또는 음표로 직접 입력해줘.');
+      if (tokens.length > bpb) add(errors, 'TOO_MANY_BEATS', measureNo, bpb + 1, '마디의 박 수가 설정된 ' + bpb + '박을 초과합니다.');
+      if (tokens.length < bpb) add(errors, 'MISSING_BEATS', measureNo, tokens.length + 1, '마디에 ' + (bpb - tokens.length) + '칸이 부족합니다. 누락된 칸을 r 또는 음표로 직접 입력하세요.');
 
       tokens.forEach(function(token, beatIndex){
         var parts = splitBeatSubtokens(token);
         if (!parts.length || parts.some(function(part){ return !part; })){
-          add(errors, 'EMPTY_SUBDIVISION', measureNo, beatIndex + 1, '박 안에 비어 있는 분할 음표가 있어.');
+          add(errors, 'EMPTY_SUBDIVISION', measureNo, beatIndex + 1, '박 안에 비어 있는 분할 음표가 있습니다.');
         }
 
         parts.forEach(function(part){
           if (part === '.'){
-            add(errors, 'AMBIGUOUS_REST_TOKEN', measureNo, beatIndex + 1, '점(.)은 쉼인지 유지인지 모호해. 쉼은 r, 유지는 -로 입력해줘.');
+            add(errors, 'AMBIGUOUS_REST_TOKEN', measureNo, beatIndex + 1, '점(.)은 쉼인지 유지인지 모호합니다. 쉼은 r, 유지는 -로 입력하세요.');
             return;
           }
           if (!part || part === '-' || isRestToken(part)) return;
           if (part.indexOf('/') >= 0){
-            add(errors, 'ISOLATED_SLASH', measureNo, beatIndex + 1, '박 안의 단독 슬래시 표기를 확인해줘.');
+            add(errors, 'ISOLATED_SLASH', measureNo, beatIndex + 1, '박 안의 단독 슬래시 표기를 확인하세요.');
             return;
           }
           var chordParts = part.split('+');
           if (chordParts.some(function(chordPart){ return !chordPart.trim(); })){
-            add(errors, 'EMPTY_SUBDIVISION', measureNo, beatIndex + 1, '화음 안에 비어 있는 음표가 있어.');
+            add(errors, 'EMPTY_SUBDIVISION', measureNo, beatIndex + 1, '화음 안에 비어 있는 음표가 있습니다.');
           }
           var components = [];
           chordParts.forEach(function(chordPart){
@@ -234,16 +234,16 @@
                 return;
               }
               if (/@\d+(?::[pima])?$/.test(plainChordPart)){
-                add(errors, 'INVALID_STRING_OVERRIDE', measureNo, beatIndex + 1, '현 지정 음표를 기타에서 연주할 수 없어: ' + chordPart);
+                add(errors, 'INVALID_STRING_OVERRIDE', measureNo, beatIndex + 1, '현 지정 음표를 기타에서 연주할 수 없습니다: ' + chordPart);
               }
-              add(errors, 'UNKNOWN_NOTE', measureNo, beatIndex + 1, '알 수 없는 음표 토큰 ' + chordPart + ' 가 있어.');
+              add(errors, 'UNKNOWN_NOTE', measureNo, beatIndex + 1, '알 수 없는 음표 토큰 ' + chordPart + ' 가 있습니다.');
               return;
             }
             if (/@\d+(?::[pima])?$/.test(plainChordPart) && !parsed.pos){
-              add(errors, 'INVALID_STRING_OVERRIDE', measureNo, beatIndex + 1, '현 지정 음표를 기타에서 연주할 수 없어: ' + chordPart);
+              add(errors, 'INVALID_STRING_OVERRIDE', measureNo, beatIndex + 1, '현 지정 음표를 기타에서 연주할 수 없습니다: ' + chordPart);
             }
             if (!parsed.pos){
-              add(errors, 'GUITAR_RANGE', measureNo, beatIndex + 1, '기타에서 연주할 수 없는 음역이야: ' + chordPart);
+              add(errors, 'GUITAR_RANGE', measureNo, beatIndex + 1, '기타에서 연주할 수 없는 음역입니다: ' + chordPart);
             }
             components.push({token:chordPart, note:parsed});
           });
@@ -258,7 +258,7 @@
             if (Object.prototype.hasOwnProperty.call(map, stringNo) && (!explicit || map[stringNo] !== note.pos.fret)){
               add(explicit ? errors : warnings,
                 explicit ? 'STRING_COLLISION' : 'DEFAULT_STRING_COLLISION', measureNo, beatIndex + 1,
-                explicit ? '동시에 지정한 음들이 같은 현에서 다른 프렛을 사용해: ' + stringNo + '번 줄.' : '기본 운지 추정에서 같은 현 충돌이 있어: ' + stringNo + '번 줄.');
+                explicit ? '동시에 지정한 음들이 같은 현에서 다른 프렛을 사용합니다: ' + stringNo + '번 줄.' : '기본 운지 추정에서 같은 현 충돌이 있습니다: ' + stringNo + '번 줄.');
             }
             map[stringNo] = note.pos.fret;
           });

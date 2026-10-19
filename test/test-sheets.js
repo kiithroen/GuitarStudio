@@ -66,7 +66,7 @@ await test('JSONP error and timeout clean all pending resources', async function
   const failed = h.context.loadSheetViaJsonp('sheetId', '0');
   const badScript = h.scripts.at(-1); const badCb = callbackName(badScript); const badTimer = [...h.timers.keys()][0];
   h.context[badCb]({ status: 'error' });
-  await assert.rejects(failed, /시트 데이터를 읽지 못했어요/);
+  await assert.rejects(failed, /시트 데이터를 읽지 못했습니다/);
   assert.equal(h.context[badCb], undefined); assert.equal(badScript.parentNode, null); assert.equal(h.timers.has(badTimer), false);
   const timed = h.context.loadSheetViaJsonp('sheetId', '0');
   const timedScript = h.scripts.at(-1); const timedCb = callbackName(timedScript); const timedTimer = [...h.timers.keys()][0];
@@ -148,7 +148,7 @@ await test('silent sync failure explains itself on the main screen and success c
   }
   assert.equal(await syncSilent(badRows), false);
   assert.equal(h.elements.sheetLoadStatus.hidden, false);
-  assert.match(h.elements.sheetLoadStatus.textContent, /구글 시트를 불러오지 못했어/);
+  assert.match(h.elements.sheetLoadStatus.textContent, /구글 시트를 불러오지 못했습니다/);
   assert.match(h.elements.sheetLoadStatus.textContent, /1행/);
   assert.match(h.elements.sheetSyncStatus.textContent, /불러오기 실패/);
 

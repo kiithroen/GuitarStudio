@@ -34,14 +34,14 @@
 
   function createCell(division){
     var count = division == null ? 1 : division;
-    if (!isInt(count) || count < 1 || count > MAX_DIVISION) throw new Error('칸을 나눌 수는 1~' + MAX_DIVISION + '이어야 해: ' + division);
+    if (!isInt(count) || count < 1 || count > MAX_DIVISION) throw new Error('칸을 나눌 수는 1~' + MAX_DIVISION + '이어야 합니다: ' + division);
     var slots = [];
     for (var i = 0; i < count; i++) slots.push(createSlot());
     return { slots: slots };
   }
 
   function createMeasure(beats){
-    if (!isAllowedBeats(beats)) throw new Error('칸 수는 ' + beatsListText() + ' 중 하나여야 해: ' + beats);
+    if (!isAllowedBeats(beats)) throw new Error('칸 수는 ' + beatsListText() + ' 중 하나여야 합니다: ' + beats);
     var cells = [];
     for (var i = 0; i < beats; i++) cells.push(createCell(1));
     return { chord: '', memo: '', cells: cells };
@@ -69,47 +69,47 @@
 
   function validateNoteShape(note, where){
     if (note === null) return null;
-    if (!note || typeof note !== 'object') return where + ': 음이 올바르지 않아.';
-    if (!isInt(note.fret) || note.fret < 0 || note.fret > MAX_FRET) return where + ': 프렛은 0~' + MAX_FRET + '의 정수여야 해.';
-    if (note.lh !== null && !(isInt(note.lh) && note.lh >= 0 && note.lh <= 4)) return where + ': 왼손 운지는 없음 또는 0~4여야 해.';
-    if (note.rh !== null && RH_VALUES.indexOf(note.rh) < 0) return where + ': 오른손 운지는 없음 또는 p·i·m·a여야 해.';
-    if (note.art !== null && ART_VALUES.indexOf(note.art) < 0) return where + ': 주법은 없음 또는 !여야 해.';
-    if (typeof note.uncertain !== 'boolean') return where + ': 확인 표시는 true/false여야 해.';
+    if (!note || typeof note !== 'object') return where + ': 음이 올바르지 않습니다.';
+    if (!isInt(note.fret) || note.fret < 0 || note.fret > MAX_FRET) return where + ': 프렛은 0~' + MAX_FRET + '의 정수여야 합니다.';
+    if (note.lh !== null && !(isInt(note.lh) && note.lh >= 0 && note.lh <= 4)) return where + ': 왼손 운지는 없음 또는 0~4여야 합니다.';
+    if (note.rh !== null && RH_VALUES.indexOf(note.rh) < 0) return where + ': 오른손 운지는 없음 또는 p·i·m·a여야 합니다.';
+    if (note.art !== null && ART_VALUES.indexOf(note.art) < 0) return where + ': 주법은 없음 또는 !여야 합니다.';
+    if (typeof note.uncertain !== 'boolean') return where + ': 확인 표시는 true/false여야 합니다.';
     return null;
   }
 
   function isValidKey(key){ return isInt(key) && key >= KEY_MIN && key <= KEY_MAX; }
 
   function normalizeDoc(raw){
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: '문서가 객체가 아니야.' };
-    if (raw.version !== 1) return { error: '지원하지 않는 문서 버전이야: ' + raw.version };
-    if (!isInt(raw.beats) || !isAllowedBeats(raw.beats)) return { error: '칸 수는 ' + beatsListText() + ' 중 하나여야 해: ' + raw.beats };
-    if (!isInt(raw.bpm) || raw.bpm < BPM_MIN || raw.bpm > BPM_MAX) return { error: 'BPM은 ' + BPM_MIN + '~' + BPM_MAX + '의 정수여야 해: ' + raw.bpm };
-    if (typeof raw.title !== 'string') return { error: '제목이 문자열이 아니야.' };
-    if (typeof raw.description !== 'string') return { error: '설명이 문자열이 아니야.' };
-    if (raw.accidentals !== 'sharp' && raw.accidentals !== 'flat') return { error: '변화표는 sharp 또는 flat이어야 해: ' + raw.accidentals };
-    if (raw.key !== undefined && !isValidKey(raw.key)) return { error: '조표는 ' + KEY_MIN + '~' + KEY_MAX + '의 정수여야 해: ' + raw.key };
-    if (raw.sourceId !== undefined && raw.sourceId !== null && typeof raw.sourceId !== 'string') return { error: '원래 곡 id는 문자열이거나 null이어야 해: ' + raw.sourceId };
-    if (!Array.isArray(raw.measures) || !raw.measures.length) return { error: '마디가 하나 이상 있어야 해.' };
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: '문서가 객체가 아닙니다.' };
+    if (raw.version !== 1) return { error: '지원하지 않는 문서 버전입니다: ' + raw.version };
+    if (!isInt(raw.beats) || !isAllowedBeats(raw.beats)) return { error: '칸 수는 ' + beatsListText() + ' 중 하나여야 합니다: ' + raw.beats };
+    if (!isInt(raw.bpm) || raw.bpm < BPM_MIN || raw.bpm > BPM_MAX) return { error: 'BPM은 ' + BPM_MIN + '~' + BPM_MAX + '의 정수여야 합니다: ' + raw.bpm };
+    if (typeof raw.title !== 'string') return { error: '제목이 문자열이 아닙니다.' };
+    if (typeof raw.description !== 'string') return { error: '설명이 문자열이 아닙니다.' };
+    if (raw.accidentals !== 'sharp' && raw.accidentals !== 'flat') return { error: '변화표는 sharp 또는 flat이어야 합니다: ' + raw.accidentals };
+    if (raw.key !== undefined && !isValidKey(raw.key)) return { error: '조표는 ' + KEY_MIN + '~' + KEY_MAX + '의 정수여야 합니다: ' + raw.key };
+    if (raw.sourceId !== undefined && raw.sourceId !== null && typeof raw.sourceId !== 'string') return { error: '원래 곡 id는 문자열이거나 null이어야 합니다: ' + raw.sourceId };
+    if (!Array.isArray(raw.measures) || !raw.measures.length) return { error: '마디가 하나 이상 있어야 합니다.' };
     for (var m = 0; m < raw.measures.length; m++){
       var measure = raw.measures[m];
       var mWhere = '마디 ' + (m + 1);
-      if (!measure || typeof measure !== 'object') return { error: mWhere + ': 마디가 올바르지 않아.' };
-      if (typeof measure.chord !== 'string') return { error: mWhere + ': 코드가 문자열이 아니야.' };
-      if (typeof measure.memo !== 'string') return { error: mWhere + ': 메모가 문자열이 아니야.' };
-      if (!Array.isArray(measure.cells) || measure.cells.length !== raw.beats) return { error: mWhere + ': 칸 수가 ' + raw.beats + '개여야 해.' };
+      if (!measure || typeof measure !== 'object') return { error: mWhere + ': 마디가 올바르지 않습니다.' };
+      if (typeof measure.chord !== 'string') return { error: mWhere + ': 코드가 문자열이 아닙니다.' };
+      if (typeof measure.memo !== 'string') return { error: mWhere + ': 메모가 문자열이 아닙니다.' };
+      if (!Array.isArray(measure.cells) || measure.cells.length !== raw.beats) return { error: mWhere + ': 칸 수가 ' + raw.beats + '개여야 합니다.' };
       for (var c = 0; c < measure.cells.length; c++){
         var cell = measure.cells[c];
         var cWhere = mWhere + ', 칸 ' + (c + 1);
         if (!cell || !Array.isArray(cell.slots) || cell.slots.length < 1 || cell.slots.length > MAX_DIVISION){
-          return { error: cWhere + ': 나눈 수는 1~' + MAX_DIVISION + '이어야 해.' };
+          return { error: cWhere + ': 나눈 수는 1~' + MAX_DIVISION + '이어야 합니다.' };
         }
         for (var s = 0; s < cell.slots.length; s++){
           var slot = cell.slots[s];
           var sWhere = cWhere + ', 조각 ' + (s + 1);
-          if (!slot || typeof slot !== 'object') return { error: sWhere + ': 조각이 올바르지 않아.' };
-          if (typeof slot.rest !== 'boolean' || typeof slot.restUncertain !== 'boolean') return { error: sWhere + ': 쉼 표시는 true/false여야 해.' };
-          if (!Array.isArray(slot.notes) || slot.notes.length !== STRING_COUNT) return { error: sWhere + ': 음 목록은 ' + STRING_COUNT + '개여야 해.' };
+          if (!slot || typeof slot !== 'object') return { error: sWhere + ': 조각이 올바르지 않습니다.' };
+          if (typeof slot.rest !== 'boolean' || typeof slot.restUncertain !== 'boolean') return { error: sWhere + ': 쉼 표시는 true/false여야 합니다.' };
+          if (!Array.isArray(slot.notes) || slot.notes.length !== STRING_COUNT) return { error: sWhere + ': 음 목록은 ' + STRING_COUNT + '개여야 합니다.' };
           var hasNote = false;
           for (var n = 0; n < slot.notes.length; n++){
             var shapeNote = slot.notes[n];
@@ -118,7 +118,7 @@
             if (noteError) return { error: noteError };
             if (slot.notes[n] !== null) hasNote = true;
           }
-          if (slot.rest && hasNote) return { error: sWhere + ': 쉼인데 음이 있어.' };
+          if (slot.rest && hasNote) return { error: sWhere + ': 쉼인데 음이 있습니다.' };
         }
       }
     }
@@ -209,16 +209,16 @@
 
   function requireSlot(doc, pos){
     var slot = getSlot(doc, pos);
-    if (!slot) throw new Error('올바르지 않은 위치야: ' + JSON.stringify(pos));
+    if (!slot) throw new Error('올바르지 않은 위치입니다: ' + JSON.stringify(pos));
     return slot;
   }
 
   function requireStr(str){
-    if (!isInt(str) || str < 1 || str > STRING_COUNT) throw new Error('줄은 1~' + STRING_COUNT + '이어야 해: ' + str);
+    if (!isInt(str) || str < 1 || str > STRING_COUNT) throw new Error('줄은 1~' + STRING_COUNT + '이어야 합니다: ' + str);
   }
 
   function requireFret(fret){
-    if (!isInt(fret) || fret < 0 || fret > MAX_FRET) throw new Error('프렛은 0~' + MAX_FRET + '이어야 해: ' + fret);
+    if (!isInt(fret) || fret < 0 || fret > MAX_FRET) throw new Error('프렛은 0~' + MAX_FRET + '이어야 합니다: ' + fret);
   }
 
   function setNote(doc, pos, str, fret){
@@ -256,10 +256,10 @@
     var slot = requireSlot(doc, pos);
     requireStr(str);
     var a = attrs || {};
-    if ('lh' in a && !(a.lh === null || (isInt(a.lh) && a.lh >= 0 && a.lh <= 4))) throw new Error('왼손 운지는 null 또는 0~4여야 해: ' + a.lh);
-    if ('rh' in a && !(a.rh === null || RH_VALUES.indexOf(a.rh) >= 0)) throw new Error('오른손 운지는 null 또는 p·i·m·a여야 해: ' + a.rh);
-    if ('art' in a && !(a.art === null || ART_VALUES.indexOf(a.art) >= 0)) throw new Error('주법은 null 또는 !여야 해: ' + a.art);
-    if ('uncertain' in a && typeof a.uncertain !== 'boolean') throw new Error('확인 표시는 true/false여야 해: ' + a.uncertain);
+    if ('lh' in a && !(a.lh === null || (isInt(a.lh) && a.lh >= 0 && a.lh <= 4))) throw new Error('왼손 운지는 null 또는 0~4여야 합니다: ' + a.lh);
+    if ('rh' in a && !(a.rh === null || RH_VALUES.indexOf(a.rh) >= 0)) throw new Error('오른손 운지는 null 또는 p·i·m·a여야 합니다: ' + a.rh);
+    if ('art' in a && !(a.art === null || ART_VALUES.indexOf(a.art) >= 0)) throw new Error('주법은 null 또는 !여야 합니다: ' + a.art);
+    if ('uncertain' in a && typeof a.uncertain !== 'boolean') throw new Error('확인 표시는 true/false여야 합니다: ' + a.uncertain);
     var note = slot.notes[str - 1];
     if (!note) return { ok: false };
     ['lh', 'rh', 'art', 'uncertain'].forEach(function(key){ if (key in a) note[key] = a[key]; });
@@ -299,8 +299,8 @@
   function setDivision(doc, m, c, division){
     var measure = doc.measures[m];
     var cell = measure && measure.cells[c];
-    if (!cell) throw new Error('올바르지 않은 칸이야: 마디 ' + m + ', 칸 ' + c);
-    if (!isInt(division) || division < 1 || division > MAX_DIVISION) throw new Error('칸을 나눌 수는 1~' + MAX_DIVISION + '이어야 해: ' + division);
+    if (!cell) throw new Error('올바르지 않은 칸입니다: 마디 ' + m + ', 칸 ' + c);
+    if (!isInt(division) || division < 1 || division > MAX_DIVISION) throw new Error('칸을 나눌 수는 1~' + MAX_DIVISION + '이어야 합니다: ' + division);
     var oldSlots = cell.slots;
     var d = oldSlots.length;
     var next = createCell(division).slots;
@@ -319,13 +319,13 @@
   }
 
   function setKey(doc, key){
-    if (!isValidKey(key)) throw new Error('조표는 ' + KEY_MIN + '~' + KEY_MAX + '의 정수여야 해: ' + key);
+    if (!isValidKey(key)) throw new Error('조표는 ' + KEY_MIN + '~' + KEY_MAX + '의 정수여야 합니다: ' + key);
     doc.key = key;
     return { ok: true };
   }
 
   function setBeats(doc, beats){
-    if (!isAllowedBeats(beats)) throw new Error('칸 수는 ' + beatsListText() + ' 중 하나여야 해: ' + beats);
+    if (!isAllowedBeats(beats)) throw new Error('칸 수는 ' + beatsListText() + ' 중 하나여야 합니다: ' + beats);
     var lost = 0;
     doc.measures.forEach(function(measure){
       if (measure.cells.length > beats){
@@ -339,27 +339,27 @@
   }
 
   function setMeasureChord(doc, m, text){
-    if (!doc.measures[m]) throw new Error('올바르지 않은 마디야: ' + m);
-    if (typeof text !== 'string') throw new Error('코드는 문자열이어야 해.');
+    if (!doc.measures[m]) throw new Error('올바르지 않은 마디입니다: ' + m);
+    if (typeof text !== 'string') throw new Error('코드는 문자열이어야 합니다.');
     doc.measures[m].chord = text;
     return { ok: true };
   }
 
   function setMeasureMemo(doc, m, text){
-    if (!doc.measures[m]) throw new Error('올바르지 않은 마디야: ' + m);
-    if (typeof text !== 'string') throw new Error('메모는 문자열이어야 해.');
+    if (!doc.measures[m]) throw new Error('올바르지 않은 마디입니다: ' + m);
+    if (typeof text !== 'string') throw new Error('메모는 문자열이어야 합니다.');
     doc.measures[m].memo = text;
     return { ok: true };
   }
 
   function requireRange(doc, a, b){
     if (!isInt(a) || !isInt(b) || a < 0 || b < a || b >= doc.measures.length){
-      throw new Error('올바르지 않은 마디 범위야: ' + a + '~' + b);
+      throw new Error('올바르지 않은 마디 범위입니다: ' + a + '~' + b);
     }
   }
 
   function insertEmptyMeasure(doc, index){
-    if (!isInt(index) || index < 0 || index > doc.measures.length) throw new Error('올바르지 않은 마디 위치야: ' + index);
+    if (!isInt(index) || index < 0 || index > doc.measures.length) throw new Error('올바르지 않은 마디 위치입니다: ' + index);
     doc.measures.splice(index, 0, createMeasure(doc.beats));
     return { ok: true };
   }
@@ -390,11 +390,11 @@
   }
 
   function pasteAfter(doc, index, measures){
-    if (!isInt(index) || index < -1 || index >= doc.measures.length) throw new Error('올바르지 않은 붙여넣기 위치야: ' + index);
-    if (!Array.isArray(measures)) throw new Error('붙여넣을 마디 목록이 없어.');
+    if (!isInt(index) || index < -1 || index >= doc.measures.length) throw new Error('올바르지 않은 붙여넣기 위치입니다: ' + index);
+    if (!Array.isArray(measures)) throw new Error('붙여넣을 마디 목록이 없습니다.');
     var lost = 0;
     var adapted = copyJson(measures).map(function(measure){
-      if (!measure || !Array.isArray(measure.cells)) throw new Error('붙여넣을 마디가 올바르지 않아.');
+      if (!measure || !Array.isArray(measure.cells)) throw new Error('붙여넣을 마디가 올바르지 않습니다.');
       if (measure.cells.length > doc.beats){
         measure.cells.slice(doc.beats).forEach(function(cell){ lost += cellContentCount(cell); });
         measure.cells = measure.cells.slice(0, doc.beats);
@@ -545,7 +545,7 @@
     var position = [];
     if (first.measure != null) position.push('마디 ' + first.measure);
     if (first.beat != null) position.push('박 ' + first.beat);
-    var message = first.message || '악보를 읽을 수 없어.';
+    var message = first.message || '악보를 읽을 수 없습니다.';
     return position.length ? message + ' (' + position.join(', ') + ')' : message;
   }
 
@@ -562,9 +562,9 @@
     for (var i = 0; i < components.length; i++){
       var token = components[i].trim();
       var parsed = GuitarParser.parseNoteToken(token, 0);
-      if (!parsed || !parsed.pos) return { error: where + ': 읽을 수 없는 음이야: ' + token };
+      if (!parsed || !parsed.pos) return { error: where + ': 읽을 수 없는 음입니다: ' + token };
       var str = parsed.pos.str;
-      if (slot.notes[str - 1]) return { error: where + ': 두 음이 ' + str + '번 줄에 겹쳐. 원문에 @줄을 적어 줘.' };
+      if (slot.notes[str - 1]) return { error: where + ': 두 음이 ' + str + '번 줄에 겹칩니다. 원문에 @줄을 적으세요.' };
       var art = null;
       if (parsed.explicitArticulation){
         art = parsed.articulation === 'apoyando' ? '!' : null;
@@ -585,7 +585,7 @@
   function scoreToDoc(spec){
     var s = spec || {};
     var beats = s.beats;
-    if (!isInt(beats) || !isAllowedBeats(beats)) return { error: '칸 수는 ' + beatsListText() + ' 중 하나여야 해: ' + beats };
+    if (!isInt(beats) || !isAllowedBeats(beats)) return { error: '칸 수는 ' + beatsListText() + ' 중 하나여야 합니다: ' + beats };
     var validation = GuitarParser.validateScore(s.raw, beats);
     if (validation.errors.length) return { error: firstErrorText(validation.errors) };
 
@@ -602,7 +602,7 @@
       for (var c = 0; c < tokens.length; c++){
         var parts = GuitarNotation.splitBeatSubtokens(tokens[c]);
         var where = '마디 ' + (m + 1) + ', 칸 ' + (c + 1);
-        if (parts.length < 1 || parts.length > MAX_DIVISION) return { error: where + ': 칸을 ' + parts.length + '개로 나눌 수 없어.' };
+        if (parts.length < 1 || parts.length > MAX_DIVISION) return { error: where + ': 칸을 ' + parts.length + '개로 나눌 수 없습니다.' };
         var cell = { slots: [] };
         for (var p = 0; p < parts.length; p++){
           var result = parseSlotPart(parts[p], where, flags);
@@ -651,22 +651,22 @@
 
     if (firstLine !== null && firstLine.indexOf('\t') >= 0){
       var cols = firstLine.split('\t');
-      if (cols.length !== 5) return { error: '열이 5개여야 해(제목, 칸 수, BPM, 설명, 악보). 지금 ' + cols.length + '개.' };
+      if (cols.length !== 5) return { error: '열이 5개여야 합니다(제목, 칸 수, BPM, 설명, 악보). 지금 ' + cols.length + '개.' };
       var beatsText = cols[1].trim();
       if (!isIntegerText(beatsText) || !isAllowedBeats(Number(beatsText))){
-        return { error: '칸 수는 ' + beatsListText() + ' 중 하나여야 해: ' + beatsText };
+        return { error: '칸 수는 ' + beatsListText() + ' 중 하나여야 합니다: ' + beatsText };
       }
       var bpmText = cols[2].trim();
-      if (!isIntegerText(bpmText) || Number(bpmText) < 1) return { error: 'BPM은 1 이상의 정수여야 해: ' + bpmText };
+      if (!isIntegerText(bpmText) || Number(bpmText) < 1) return { error: 'BPM은 1 이상의 정수여야 합니다: ' + bpmText };
       var bpm = Math.max(BPM_MIN, Math.min(BPM_MAX, Number(bpmText)));
       return scoreToDoc({ title: cols[0].trim(), beats: Number(beatsText), bpm: bpm, description: cols[3].trim(), raw: cols[4].trim() });
     }
 
-    if (!source.trim()) return { error: '불러올 악보가 비어 있어.' };
+    if (!source.trim()) return { error: '불러올 악보가 비어 있습니다.' };
     var measureLines = GuitarNotation.splitScoreMeasures(source);
     var firstMeasure = GuitarNotation.decodeMeasureLine(measureLines[0] || '');
     var beats = GuitarNotation.tokenizeMeasureBeats(firstMeasure.notation).length;
-    if (!isAllowedBeats(beats)) return { error: '첫 마디 칸 수(' + beats + ')가 ' + beatsListText() + ' 중 하나가 아니야.' };
+    if (!isAllowedBeats(beats)) return { error: '첫 마디 칸 수(' + beats + ')가 ' + beatsListText() + ' 중 하나가 아닙니다.' };
     return scoreToDoc({
       title: cur.title == null ? DEFAULT_TITLE : cur.title,
       beats: beats,

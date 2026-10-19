@@ -126,10 +126,10 @@ try {
     const missing = path.join(tmpDir, 'no-such-file.tsv');
     const noFile = runCli([missing]);
     assert.equal(noFile.status, 2);
-    assert.ok(noFile.stderr.includes('파일을 읽지 못했어: ' + missing), noFile.stderr);
+    assert.ok(noFile.stderr.includes('파일을 읽지 못했습니다: ' + missing), noFile.stderr);
     const empty = runCli([writeFixture('')]);
     assert.equal(empty.status, 1);
-    assert.ok(empty.all.includes('검사할 행이 없어.'), empty.all);
+    assert.ok(empty.all.includes('검사할 행이 없습니다.'), empty.all);
     pass('no argument and missing file exit 2; empty file exits 1 with the no-rows message');
   }
 

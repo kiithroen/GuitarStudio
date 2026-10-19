@@ -43,7 +43,7 @@ test('durationUnits and unit positions: values, dots, triplets, lengths the grid
   assert.equal(units(6, '32nd'), 3);
   assert.equal(units(6, 'quarter', true), 36);
   const bad = si.durationUnits(4, '32nd', false, false);
-  assert.match(bad.error, /^이 길이는 지금 칸 수에서 못 적어\./);
+  assert.match(bad.error, /^이 길이는 지금 칸 수에서 적을 수 없습니다\./);
   assert.match(bad.error, /8칸/);
   assert.equal(si.durationUnits(4, 'quarter').error, undefined);
   const doc = fresh({ beats: 6 });
@@ -134,7 +134,7 @@ test('a length that would drop notes behind the new boundary is refused and the 
   const before = snapshot(doc);
   const result = si.placeEvent(doc, pos(0, 0, 0), 6, { midis: [64] });
   assert.equal(result.ok, false);
-  assert.match(result.error, /맞지 않아/);
+  assert.match(result.error, /맞지 않습니다/);
   assert.deepEqual(doc, before);
   // 뒤 조각이 비어 있으면 같은 길이가 들어간다.
   const loose = fresh();
@@ -319,10 +319,10 @@ test('writtenToMidi: guitar range E2-E5, written an octave above sounding', func
   const doc = fresh();
   const low = si.writtenToMidi(doc, pos(0), 'D', 3);
   assert.equal(low.midi, undefined);
-  assert.equal(low.error, '기타 음역(E2~E5) 밖이야.');
+  assert.equal(low.error, '기타 음역(E2~E5) 밖입니다.');
   assert.deepEqual(si.writtenToMidi(doc, pos(0), 'E', 6), { midi: 76 });
   assert.deepEqual(si.writtenToMidi(doc, pos(0), 'E', 3), { midi: 40 });
-  assert.equal(si.writtenToMidi(doc, pos(0), 'F', 6).error, '기타 음역(E2~E5) 밖이야.');
+  assert.equal(si.writtenToMidi(doc, pos(0), 'F', 6).error, '기타 음역(E2~E5) 밖입니다.');
   assert.equal(si.writtenToMidi(doc, pos(0), 'H', 4).error !== undefined, true);
 });
 

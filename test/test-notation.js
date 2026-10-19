@@ -27,7 +27,7 @@ test('decoder protects JSON lyric delimiters and rejects unquoted memos', functi
   const unquoted=notation.decodeMeasureLine('[C] C4 | 너 / 나');
   assert.equal(unquoted.errors.length, 1);
   assert.equal(unquoted.errors[0].code, 'INVALID_LYRIC_QUOTE');
-  assert.equal(unquoted.errors[0].message, '마디 메모는 큰따옴표 JSON 문자열로 적어줘. 예: | "메모"');
+  assert.equal(unquoted.errors[0].message, '마디 메모는 큰따옴표 JSON 문자열로 적으세요. 예: | "메모"');
   assert.deepEqual(notation.decodeMeasureLine('[C] C4 |').errors, [], 'an empty memo has no error');
   assert.deepEqual(notation.decodeMeasureLine('[C] C4 |   ').errors, [], 'a blank memo has no error');
   assert.equal(notation.decodeMeasureLine('[C] C4 | "bad').errors[0].code, 'INVALID_LYRIC_QUOTE');

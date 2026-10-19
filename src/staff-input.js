@@ -11,8 +11,8 @@
   var UNITS_PER_CELL = GuitarRhythm.UNITS_PER_SLOT;
   var MIN_MIDI = 40; // E2
   var MAX_MIDI = 76; // E5
-  var RANGE_ERROR = '기타 음역(E2~E5) 밖이야.';
-  var NO_STRING_ERROR = '이 음을 칠 빈 줄이 없어.';
+  var RANGE_ERROR = '기타 음역(E2~E5) 밖입니다.';
+  var NO_STRING_ERROR = '이 음을 칠 빈 줄이 없습니다.';
   var LETTER_SEMITONE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   var SHARP_ORDER = 'FCGDAEB';
   var FLAT_ORDER = 'BEADGCF';
@@ -38,14 +38,14 @@
 
   function durationUnits(beats, value, dotted, triplet){
     var eighths = VALUE_EIGHTHS[value];
-    if (!eighths) return { error: '알 수 없는 음표값이야: ' + value };
+    if (!eighths) return { error: '알 수 없는 음표값입니다: ' + value };
     var info = GuitarRhythm.getGridInfo(beats);
     var cellEighths = info.slotQuarterLength * 8;
     var num = eighths * UNITS_PER_CELL * (dotted ? 3 : 1) * (triplet ? 2 : 1);
     var den = cellEighths * (dotted ? 2 : 1) * (triplet ? 3 : 1);
     if (num % den !== 0 || num / den < 1){
-      var hint = info.slotQuarterLength === 1 ? ' 더 짧은 음표를 쓰려면 칸 수를 8칸으로 골라.' : '';
-      return { error: '이 길이는 지금 칸 수에서 못 적어.' + hint };
+      var hint = info.slotQuarterLength === 1 ? ' 더 짧은 음표를 쓰려면 칸 수를 8칸으로 고르세요.' : '';
+      return { error: '이 길이는 지금 칸 수에서 적을 수 없습니다.' + hint };
     }
     return { units: num / den };
   }
@@ -115,8 +115,8 @@
 
   function addToChord(doc, pos, midi){
     var slot = GuitarTabInput.getSlot(doc, pos);
-    if (!slot) return fail('올바르지 않은 위치야.');
-    if (slot.rest || slotIsEmpty(slot)) return fail('화음에 더할 음이 없어. 먼저 음을 넣어.');
+    if (!slot) return fail('올바르지 않은 위치입니다.');
+    if (slot.rest || slotIsEmpty(slot)) return fail('화음에 더할 음이 없습니다. 먼저 음을 넣으세요.');
     var str = assignString(slot, midi);
     if (str == null) return fail(midi < MIN_MIDI || midi > MAX_MIDI ? RANGE_ERROR : NO_STRING_ERROR);
     putNote(doc, pos, str, midi);
@@ -145,11 +145,11 @@
   function moveToString(doc, pos, fromStr, toStr){
     var slot = GuitarTabInput.getSlot(doc, pos);
     if (!slot || !isInt(fromStr) || fromStr < 1 || fromStr > GuitarTabInput.STRING_COUNT || !slot.notes[fromStr - 1]){
-      return fail('옮길 음이 없어.');
+      return fail('옮길 음이 없습니다.');
     }
     var midi = GuitarTabInput.noteMidi(fromStr, slot.notes[fromStr - 1].fret);
     var allowed = stringCandidates(doc, pos, fromStr).some(function(item){ return item.str === toStr; });
-    if (!allowed) return fail('그 줄에서는 이 음을 칠 수 없어.');
+    if (!allowed) return fail('그 줄에서는 이 음을 칠 수 없습니다.');
     if (toStr === fromStr) return { ok: true, str: toStr };
     relocateNote(slot, fromStr, toStr, midi);
     return { ok: true, str: toStr };
@@ -194,14 +194,14 @@
   }
 
   function writtenToMidi(doc, pos, letter, writtenOctave){
-    if (!isLetter(letter) || !isInt(writtenOctave)) return { error: '올바르지 않은 음이야.' };
+    if (!isLetter(letter) || !isInt(writtenOctave)) return { error: '올바르지 않은 음입니다.' };
     var midi = midiOf(doc, pos, letter, writtenOctave - 1);
     if (midi < MIN_MIDI || midi > MAX_MIDI) return { error: RANGE_ERROR };
     return { midi: midi };
   }
 
   function nearestMidi(doc, pos, letter, refMidi){
-    if (!isLetter(letter)) return { error: '올바르지 않은 음이야.' };
+    if (!isLetter(letter)) return { error: '올바르지 않은 음입니다.' };
     var best = null;
     for (var octave = 2; octave <= 5; octave++){
       var midi = midiOf(doc, pos, letter, octave);
@@ -238,8 +238,8 @@
 
   function transposeNote(doc, pos, str, semitones){
     var slot = GuitarTabInput.getSlot(doc, pos);
-    if (!slot || !isInt(str) || str < 1 || str > GuitarTabInput.STRING_COUNT || !slot.notes[str - 1]) return fail('옮길 음이 없어.');
-    if (!isInt(semitones)) return fail('옮길 반음 수가 올바르지 않아.');
+    if (!slot || !isInt(str) || str < 1 || str > GuitarTabInput.STRING_COUNT || !slot.notes[str - 1]) return fail('옮길 음이 없습니다.');
+    if (!isInt(semitones)) return fail('옮길 반음 수가 올바르지 않습니다.');
     var note = slot.notes[str - 1];
     var target = GuitarTabInput.noteMidi(str, note.fret) + semitones;
     if (target < MIN_MIDI || target > MAX_MIDI) return fail(RANGE_ERROR);
@@ -256,7 +256,7 @@
   }
 
   function noteToRest(doc, pos){
-    if (!GuitarTabInput.isValidPos(doc, pos)) return fail('올바르지 않은 위치야.');
+    if (!GuitarTabInput.isValidPos(doc, pos)) return fail('올바르지 않은 위치입니다.');
     GuitarTabInput.setRest(doc, pos, true);
     return { ok: true };
   }
@@ -290,18 +290,18 @@
   }
 
   function placeEvent(doc, pos, D, content){
-    if (!GuitarTabInput.isValidPos(doc, pos)) return fail('올바르지 않은 위치야.');
-    if (!isInt(D) || D < 1) return fail('올바르지 않은 길이야.');
+    if (!GuitarTabInput.isValidPos(doc, pos)) return fail('올바르지 않은 위치입니다.');
+    if (!isInt(D) || D < 1) return fail('올바르지 않은 길이입니다.');
     var mode = null;
     if (content && content.rest) mode = 'rest';
     else if (content && content.keep) mode = 'keep';
     else if (content && Array.isArray(content.midis)) mode = 'notes';
-    if (!mode) return fail('넣을 내용이 없어.');
+    if (!mode) return fail('넣을 내용이 없습니다.');
     var midis = [];
     if (mode === 'notes'){
-      if (!content.midis.length) return fail('넣을 음이 없어.');
+      if (!content.midis.length) return fail('넣을 음이 없습니다.');
       for (var k = 0; k < content.midis.length; k++){
-        if (!isInt(content.midis[k])) return fail('올바르지 않은 음이야.');
+        if (!isInt(content.midis[k])) return fail('올바르지 않은 음입니다.');
       }
       midis = content.midis.slice().sort(function(a, b){ return a - b; });
     }
@@ -310,7 +310,7 @@
     var t0 = posToUnits(work, pos);
     var t1 = t0 + D;
     var oldEnd = eventEnd(work, pos);
-    if (mode === 'keep' && oldEnd === null) return fail('길이를 바꿀 음이나 쉼이 없어.');
+    if (mode === 'keep' && oldEnd === null) return fail('길이를 바꿀 음이나 쉼이 없습니다.');
 
     // 1. 곡 끝을 넘으면 빈 마디를 붙인다.
     var appended = 0;
@@ -333,7 +333,7 @@
 
     // 3. t1이 칸 안쪽이면 그 자리에 경계를 만든다.
     if (t1 < totalUnits(work) && !unitsToPos(work, t1)){
-      if (!makeBoundary(work, t0, t1)) return fail('이 길이는 이 칸의 나눔과 맞지 않아. 뒤에 있는 음을 먼저 지우거나 다른 길이를 골라.');
+      if (!makeBoundary(work, t0, t1)) return fail('이 길이는 이 칸의 나눔과 맞지 않습니다. 뒤에 있는 음을 먼저 지우거나 다른 길이를 고르세요.');
     }
 
     // 4. t0 조각에 넣는다.

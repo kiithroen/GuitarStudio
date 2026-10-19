@@ -360,7 +360,7 @@ test('parseImportText refuses a ~ note with the tirando-removed message', functi
   for (const text of ['[-] ~E4 r r r', '[-] E4 ~B3@2 r r', '[-] E2+~B3 r r r']){
     const parsed = ti.parseImportText(text, { title: 't' });
     assert.equal(parsed.doc, undefined, text + ' is not imported');
-    assert.ok(String(parsed.error).indexOf('티란도 표시 ~는 없앴어. ~를 지워(따로 적지 않은 음은 티란도로 쳐).') >= 0, text + ' shows the message: ' + parsed.error);
+    assert.ok(String(parsed.error).indexOf('티란도 표시 ~는 더 이상 쓰지 않습니다. ~를 지우세요(따로 적지 않은 음은 티란도로 칩니다).') >= 0, text + ' shows the message: ' + parsed.error);
   }
 });
 
@@ -383,16 +383,16 @@ test('parseImportText: TSV row fields, plain score, and the error cases', functi
   assert.equal(plain.doc.bpm, 77);
   assert.equal(plain.doc.description, '설명');
   assert.equal(plain.doc.measures.length, 2);
-  assert.match(ti.parseImportText(['t', '4', '64', '[-] r r r r'].join('\t'), current).error, /^열이 5개여야 해/);
-  assert.match(ti.parseImportText(['t', '5', '64', 'd', '[-] r r r r r'].join('\t'), current).error, /^칸 수는 2, 3, 4, 6, 8, 9 중 하나여야 해: 5$/);
-  assert.match(ti.parseImportText(['t', '4', '0', 'd', '[-] r r r r'].join('\t'), current).error, /^BPM은 1 이상의 정수여야 해: 0$/);
+  assert.match(ti.parseImportText(['t', '4', '64', '[-] r r r r'].join('\t'), current).error, /^열이 5개여야 합니다/);
+  assert.match(ti.parseImportText(['t', '5', '64', 'd', '[-] r r r r r'].join('\t'), current).error, /^칸 수는 2, 3, 4, 6, 8, 9 중 하나여야 합니다: 5$/);
+  assert.match(ti.parseImportText(['t', '4', '0', 'd', '[-] r r r r'].join('\t'), current).error, /^BPM은 1 이상의 정수여야 합니다: 0$/);
   assert.match(ti.parseImportText(['t', '4', 'x', 'd', '[-] r r r r'].join('\t'), current).error, /^BPM은/);
-  assert.equal(ti.parseImportText('   \n ', current).error, '불러올 악보가 비어 있어.');
-  assert.match(ti.parseImportText('[-] r r r r r', current).error, /^첫 마디 칸 수\(5\)가 2, 3, 4, 6, 8, 9 중 하나가 아니야\.$/);
+  assert.equal(ti.parseImportText('   \n ', current).error, '불러올 악보가 비어 있습니다.');
+  assert.match(ti.parseImportText('[-] r r r r r', current).error, /^첫 마디 칸 수\(5\)가 2, 3, 4, 6, 8, 9 중 하나가 아닙니다\.$/);
   const unknown = ti.parseImportText('[-] Q9 r r r', current);
   assert.ok(unknown.error.indexOf('(마디 1') > 0, unknown.error);
   const collide = ti.parseImportText('[-] E4+F4 r r r', current);
-  assert.match(collide.error, /1번 줄에 겹쳐/);
+  assert.match(collide.error, /1번 줄에 겹칩니다/);
   assert.match(collide.error, /^마디 1, 칸 1:/);
 });
 
@@ -523,7 +523,7 @@ test('key signature: accidental spelling follows the key, normalizeDoc fills and
   ti.setKey(doc, 5);
   assert.equal(doc.key, 5);
   [6, -6, 1.5, '1', null].forEach(function(bad){
-    assert.throws(function(){ ti.setKey(doc, bad); }, /조표는 -5~5의 정수여야 해/);
+    assert.throws(function(){ ti.setKey(doc, bad); }, /조표는 -5~5의 정수여야 합니다/);
   });
   assert.equal(doc.key, 5);
   const legacy = JSON.parse(JSON.stringify(fresh()));
@@ -536,7 +536,7 @@ test('key signature: accidental spelling follows the key, normalizeDoc fills and
   [6, -6, 1.5].forEach(function(bad){
     const raw = JSON.parse(JSON.stringify(fresh()));
     raw.key = bad;
-    assert.match(ti.normalizeDoc(raw).error, /조표는 -5~5의 정수여야 해/);
+    assert.match(ti.normalizeDoc(raw).error, /조표는 -5~5의 정수여야 합니다/);
   });
   assert.equal(ti.scoreToDoc({ beats: 4, raw: 'E4 - - -' }).doc.key, 0);
   assert.equal(ti.parseImportText('E4 - - -').doc.key, 0);

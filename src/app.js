@@ -2098,7 +2098,7 @@ function curCapo(){
         var oldBars = targetSys.bars || [];
         var hasManualData = oldBars.some(function(bar){ return !!(bar && (bar.chord || bar.note || bar.memo)); });
         if (newBarCount !== oldBars.length && hasManualData){
-          alert('기존 음표·코드가 있어 마디 영역을 자동 교체하지 않았어요. 수동으로 영역을 조정해 주세요.');
+          alert('기존 음표·코드가 있어 마디 영역을 자동 교체하지 않았습니다. 수동으로 영역을 조정해 주세요.');
           return;
         }
         var newBars = [];
@@ -2131,7 +2131,7 @@ function curCapo(){
     var targetTitle = curSong.title;
 
 
-    if (!confirm('"' + targetTitle + '" 악보를 이 기기(IndexedDB)에서 영구 삭제할까요?')) return;
+    if (!confirm('"' + targetTitle + '" 악보를 이 기기(IndexedDB)에서 영구 삭제하시겠습니까?')) return;
     if (!await removePersistedImageSong(targetId)) return;
     clearStorageError();
     imageSongs = imageSongs.filter(function(s){ return s.id !== targetId; });
@@ -2335,7 +2335,7 @@ function curCapo(){
         data = JSON.parse(fr.result);
         if (!data || typeof data !== 'object' || (data.customSongs != null && !Array.isArray(data.customSongs))) throw new Error('Invalid backup format');
       } catch (err){
-        alert('백업 파일 형식이 올바르지 않아요.');
+        alert('백업 파일 형식이 올바르지 않습니다.');
         return;
       }
       try {

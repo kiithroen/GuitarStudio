@@ -57,25 +57,25 @@
   // fingers: 왼손 손가락 번호 (0:개방, 1:검지, 2:중지, 3:약지, 4:소지)
   var CHORD_DB = {
     'C':   { name: 'C (다장조)',   frets: [-1, 3, 2, 0, 1, 0], fingers: [0, 3, 2, 0, 1, 0], desc: '5번줄 3프렛(약지), 4번줄 2프렛(중지), 2번줄 1프렛(검지)' },
-    'G7':  { name: 'G7 (솔7)',     frets: [3, 2, 0, 0, 0, 1],  fingers: [3, 2, 0, 0, 0, 1], desc: '1번줄 1프렛(검지)만 짚는 약식 G7로도 동요에서 자주 연주해요' },
+    'G7':  { name: 'G7 (솔7)',     frets: [3, 2, 0, 0, 0, 1],  fingers: [3, 2, 0, 0, 0, 1], desc: '1번줄 1프렛(검지)만 짚는 약식 G7로도 동요에서 자주 연주합니다' },
     'G':   { name: 'G (사장조)',   frets: [3, 2, 0, 0, 0, 3],  fingers: [2, 1, 0, 0, 0, 3], desc: '6번줄 3프렛, 5번줄 2프렛, 1번줄 3프렛' },
     'F':   { name: 'F (바장조)',   frets: [-1, -1, 3, 2, 1, 1],fingers: [0, 0, 3, 2, 1, 1], desc: '입문 단계에서는 1·2번줄 1프렛(검지 미니바레) + 3번줄 2프렛 + 4번줄 3프렛 약식 추천' },
     'D':   { name: 'D (라장조)',   frets: [-1, -1, 0, 2, 3, 2],fingers: [0, 0, 0, 1, 3, 2], desc: '3번줄 2프렛(검지), 1번줄 2프렛(중지), 2번줄 3프렛(약지)' },
-    'A':   { name: 'A (가장조)',   frets: [-1, 0, 2, 2, 2, 0], fingers: [0, 0, 1, 2, 3, 0], desc: '4·3·2번줄 2프렛을 나란히 짚어요' },
+    'A':   { name: 'A (가장조)',   frets: [-1, 0, 2, 2, 2, 0], fingers: [0, 0, 1, 2, 3, 0], desc: '4·3·2번줄 2프렛을 나란히 짚습니다' },
     'E':   { name: 'E (마장조)',   frets: [0, 2, 2, 1, 0, 0],  fingers: [0, 2, 3, 1, 0, 0], desc: '3번줄 1프렛(검지), 5·4번줄 2프렛(중지·약지)' },
-    'Am':  { name: 'Am (가단조)',  frets: [-1, 0, 2, 2, 1, 0], fingers: [0, 0, 2, 3, 1, 0], desc: 'C 코드에서 약지(3번)만 3번줄 2프렛으로 옮기면 돼요' },
+    'Am':  { name: 'Am (가단조)',  frets: [-1, 0, 2, 2, 1, 0], fingers: [0, 0, 2, 3, 1, 0], desc: 'C 코드에서 약지(3번)만 3번줄 2프렛으로 옮기면 됩니다' },
     'Dm':  { name: 'Dm (라단조)',  frets: [-1, -1, 0, 2, 3, 1],fingers: [0, 0, 0, 2, 3, 1], desc: '1번줄 1프렛(검지), 3번줄 2프렛(중지), 2번줄 3프렛(약지)' },
-    'Em':  { name: 'Em (마단조)',  frets: [0, 2, 2, 0, 0, 0],  fingers: [0, 2, 3, 0, 0, 0], desc: '5번줄·4번줄 2프렛만 짚는 가장 쉬운 코드예요' },
+    'Em':  { name: 'Em (마단조)',  frets: [0, 2, 2, 0, 0, 0],  fingers: [0, 2, 3, 0, 0, 0], desc: '5번줄·4번줄 2프렛만 짚는 가장 쉬운 코드입니다' },
     'Bm':  { name: 'Bm (나단조)',  frets: [-1, 2, 4, 4, 3, 2], fingers: [0, 1, 3, 4, 2, 1], desc: '2프렛 바레(1번 검지) + 2번줄 3프렛(중지) + 4·3번줄 4프렛(약지·소지)' },
     'Fm':  { name: 'Fm (바단조)',  frets: [-1, -1, 3, 1, 1, 1],fingers: [0, 0, 3, 1, 1, 1], desc: '1·2·3번줄 1프렛 미니바레(검지) + 4번줄 3프렛(약지)' },
     'F#m': { name: 'F#m (올림바단조)', frets: [2, 4, 4, 2, 2, 2], fingers: [1, 3, 4, 1, 1, 1], desc: '2프렛 바레(검지) + 5·4번줄 4프렛(약지·소지)' },
     'Gm':  { name: 'Gm (사단조)',  frets: [3, 5, 5, 3, 3, 3],  fingers: [1, 3, 4, 1, 1, 1], desc: '3프렛 바레(검지) + 5·4번줄 5프렛(약지·소지)' },
     'Cm':  { name: 'Cm (다단조)',  frets: [-1, 3, 5, 5, 4, 3], fingers: [0, 1, 3, 4, 2, 1], desc: '3프렛 바레(검지) + 2번줄 4프렛(중지) + 4·3번줄 5프렛' },
-    'C7':  { name: 'C7 (도7)',     frets: [-1, 3, 2, 3, 1, 0], fingers: [0, 3, 2, 4, 1, 0], desc: 'C 코드 운지에서 3번줄 3프렛에 소지(4번)만 추가해요' },
+    'C7':  { name: 'C7 (도7)',     frets: [-1, 3, 2, 3, 1, 0], fingers: [0, 3, 2, 4, 1, 0], desc: 'C 코드 운지에서 3번줄 3프렛에 소지(4번)만 추가합니다' },
     'E7':  { name: 'E7 (미7)',     frets: [0, 2, 0, 1, 0, 0],  fingers: [0, 2, 0, 1, 0, 0], desc: '3번줄 1프렛(검지), 5번줄 2프렛(중지)' },
     'D7':  { name: 'D7 (레7)',     frets: [-1, -1, 0, 2, 1, 2],fingers: [0, 0, 0, 2, 1, 3], desc: '2번줄 1프렛(검지), 3번줄 2프렛(중지), 1번줄 2프렛(약지)' },
     'A7':  { name: 'A7 (라7)',     frets: [-1, 0, 2, 0, 2, 0], fingers: [0, 0, 2, 0, 3, 0], desc: '4번줄 2프렛(중지), 2번줄 2프렛(약지)' },
-    'B7':  { name: 'B7 (시7)',     frets: [-1, 2, 1, 2, 0, 2], fingers: [0, 2, 1, 3, 0, 4], desc: '로망스 중반부에 등장하는 핵심 코드예요' }
+    'B7':  { name: 'B7 (시7)',     frets: [-1, 2, 1, 2, 0, 2], fingers: [0, 2, 1, 3, 0, 4], desc: '로망스 중반부에 등장하는 핵심 코드입니다' }
   };
 
   function cleanChordToken(rawName){
@@ -469,11 +469,11 @@
       if (chord.chord && !/^[A-G][#b]?[A-Za-z0-9#+()\/-]*$/.test(chord.chord)){
         result.errors.push({
           code:'INVALID_CHORD', measure:index + 1, beat:null,
-          message:'코드 이름은 영문 코드 표기로 적어줘(예: [Am], [G7], [C/G]). 코드가 없으면 [-]: [' + decoded.chordRaw + ']'
+          message:'코드 이름은 영문 코드 표기로 적으세요(예: [Am], [G7], [C/G]). 코드가 없으면 [-]: [' + decoded.chordRaw + ']'
         });
       } else if (chord.chord && !CHORD_DB[chord.chord]) result.warnings.push({
         code:'UNSUPPORTED_CHORD', measure:index + 1, beat:null,
-        message:'코드 사전에 없는 코드 표기야: '+chord.chord+'.'
+        message:'코드 사전에 없는 코드 표기입니다: '+chord.chord+'.'
       });
     });
     return result;
@@ -560,7 +560,7 @@
 
   function buildStructuredSong(spec){
     var score = parseScore(spec.lines || spec.raw || [], spec.beats);
-    if (score.errors.length){ var error = new Error('악보에 저장할 수 없는 오류가 있어.'); error.name = 'ScoreValidationError'; error.errors = score.errors; throw error; }
+    if (score.errors.length){ var error = new Error('악보에 저장할 수 없는 오류가 있습니다.'); error.name = 'ScoreValidationError'; error.errors = score.errors; throw error; }
     return {
       id: spec.id, title: spec.title, badge: spec.badge, type: 'structured',
       builtin: !!spec.builtin, bpm: spec.bpm, beats: score.beats,

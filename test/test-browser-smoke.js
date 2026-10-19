@@ -488,7 +488,7 @@ async function testEditHandoff(client, httpPort) {
   assert.ok(input.cursor.startsWith('3마디 · '), 'the cursor starts at the measure the edit button belongs to (is ' + input.cursor + ')');
   assert.equal(input.sourceInfoShown, true, 'the input screen says which song is being edited');
   assert.match(input.sourceInfo, /연습 화면 곡을 고치는 중/);
-  assert.equal(input.status, '연습 화면에서 "' + song.title + '"을 열었어 · 3마디부터', 'the status line reports the opened song and measure');
+  assert.equal(input.status, '연습 화면에서 "' + song.title + '"을 열었습니다 · 3마디부터', 'the status line reports the opened song and measure');
   assert.equal(input.openKeyLeft, null, 'the open key is consumed');
   assert.equal(input.savedSourceId, SONG_ID, 'the auto saved work remembers the source song id');
   await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -531,7 +531,7 @@ async function testEditHandoff(client, httpPort) {
   assert.equal(draft.sourceUnchanged, true, 'the built-in source is untouched');
   assert.equal(draft.handoffLeft, null, 'the hand-off key is consumed');
 
-  // 4. 원본으로 되돌리기
+  // 4. 원본 복원
   await client.evaluate(`document.getElementById('resetScoreDraftBtn').click(); true`);
   const reverted = await client.evaluate(`(function(){
     var status = scoreDrafts.status(curSong.id);
@@ -575,7 +575,7 @@ async function testEditHandoff(client, httpPort) {
   assert.equal(beatsChanged.beats, Number(newBeats), 'the temporary score has the new cell count');
   assert.equal(beatsChanged.group, '임시 악보');
   assert.equal(beatsChanged.noticeHidden, false, 'the storage status line is shown');
-  assert.equal(beatsChanged.notice, '칸 수가 바뀌어서 원래 곡 대신 새 임시 악보로 열었어.', 'the storage status line explains the new temporary score');
+  assert.equal(beatsChanged.notice, '칸 수가 바뀌어서 원래 곡 대신 새 임시 악보로 열었습니다.', 'the storage status line explains the new temporary score');
   assert.equal(beatsChanged.sourceDirty, false, 'the original song gets no draft');
 
   // 5. 입력 화면에 다른 작업이 있으면 바꿀지 묻는다
@@ -600,7 +600,7 @@ async function testEditHandoff(client, httpPort) {
   assert.equal(confirms.length, 1, 'one confirmation is asked when the input screen has other work');
   assert.ok(confirms[0].message.includes(song.title) && confirms[0].message.includes('지금 작업'), 'the confirmation names the song and the current work');
   assert.deepEqual([refused.text, refused.title, refused.sourceInfoHidden], [work.text, work.title, true], 'refusing keeps the current work');
-  assert.equal(refused.status, '연습 화면에서 넘긴 악보를 열지 않았어.', 'the status line says the score was not opened');
+  assert.equal(refused.status, '연습 화면에서 넘긴 악보를 열지 않았습니다.', 'the status line says the score was not opened');
   assert.equal(refused.openKeyLeft, null, 'a refused hand-off is consumed too');
   await navigate(practiceUrl, practiceReady);
   await selectSong();
@@ -613,7 +613,7 @@ async function testEditHandoff(client, httpPort) {
   assert.equal(accepted.title, song.title, 'accepting replaces the work with the song');
   assert.equal(accepted.sourceInfoHidden, false, 'the replaced work shows the source info');
   assert.equal(accepted.cursor, '1마디 · 1칸 · 1번 줄', 'the toolbar edit starts at the first measure');
-  assert.equal(accepted.status, '연습 화면에서 "' + song.title + '"을 열었어 · 1마디부터');
+  assert.equal(accepted.status, '연습 화면에서 "' + song.title + '"을 열었습니다 · 1마디부터');
   assert.equal(accepted.undoDisabled, false, 'the replacement can be undone');
   await client.evaluate(`(function(){ ${KEY_HELPER} key('z', 'KeyZ', { ctrlKey:true }); return true; })()`);
   const undone = await client.evaluate(`({ text:document.getElementById('tiScoreText').value, sourceInfoHidden:document.getElementById('tiSourceInfo').hidden })`);
@@ -2153,8 +2153,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=text-mode-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=text-mode-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=ui-tone-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=ui-tone-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoInfo', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -2246,7 +2246,7 @@ async function testScoreInputScreen(client, httpPort) {
   await client.evaluate(`__tiTest.id('tiDeleteBtn').click(); true`);
   assert.equal(await client.evaluate('__tiTest.count()'), 1, 'delete removes the selected measure');
 
-  // 6. 입력하면 다음 칸으로
+  // 6. 입력 시 자동 이동
   await client.evaluate(`(function(){ var t = __tiTest; t.id('tiAutoAdvance').click(); t.pos(0,3,0,2).click(); t.fret(2,0).click(); return true; })()`);
   const advanced = await client.evaluate(`({ measures:__tiTest.count(), label:document.getElementById('tiCursorLabel').textContent, pressed:document.getElementById('tiAutoAdvance').getAttribute('aria-pressed') })`);
   assert.deepEqual(advanced, { measures: 2, label: '2마디 · 1칸 · 2번 줄', pressed: 'true' }, 'auto advance appends a measure after the last slot and moves the cursor into it');
@@ -2283,7 +2283,7 @@ async function testScoreInputScreen(client, httpPort) {
   assert.equal(imported.measures, imported.expected, 'the imported song has every measure');
   assert.ok(imported.measures > 1, 'the imported song replaced the typed measures');
   assert.ok(imported.diagnostics.includes('오류 없음'), 'the imported song passes validation');
-  assert.equal(imported.status, '불러왔어 · ' + imported.measures + '마디', 'the status reports the imported measure count');
+  assert.equal(imported.status, '불러왔습니다 · ' + imported.measures + '마디', 'the status reports the imported measure count');
   assert.equal(imported.title, song.title, 'the imported title is shown');
   assert.equal(imported.beats, String(song.beats), 'the imported beat count is shown');
   const badImport = await client.evaluate(`(function(){
@@ -2849,7 +2849,7 @@ async function testTextInputMode(client, httpPort) {
   // 6b. 텍스트 모드에서 카드는 미리보기다: 코드·메모 칸은 읽기 전용, 오른쪽 클릭 지우기·선택 막대·마디 추가는 막히고, 카드 클릭은 글자 커서를 그 마디 줄로 보낸다.
   const locked = await client.evaluate(`({ inputs:Array.prototype.map.call(document.querySelectorAll('#tiMeasures .ti-chord, #tiMeasures .ti-memo'), function(i){ return [i.readOnly, i.title]; }),
     add:__tx.shown('tiAddMeasureBtn') })`);
-  assert.ok(locked.inputs.length >= 4 && locked.inputs.every(item => item[0] === true && item[1] === '텍스트 모드에서는 아래 편집기에서 고쳐'), 'the card chord and memo inputs are read-only with the editor hint in the text mode');
+  assert.ok(locked.inputs.length >= 4 && locked.inputs.every(item => item[0] === true && item[1] === '텍스트 모드에서는 아래 편집기에서 고치세요'), 'the card chord and memo inputs are read-only with the editor hint in the text mode');
   assert.equal(locked.add, false, 'the add-measure button is hidden in the text mode');
   const beforeErase = await client.evaluate('__tx.result()');
   await client.evaluate(`__tx.pos(0, 1, 0, 2).dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, cancelable:true })); true`);
@@ -3290,7 +3290,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=edit-link-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=ui-tone-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

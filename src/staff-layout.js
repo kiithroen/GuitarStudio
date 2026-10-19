@@ -36,7 +36,7 @@
         return { base: v.base, dots: v.dots, triplet: !!triplet };
       }
     }
-    return fail('음표로 그릴 수 없는 길이야: ' + q + '(4분음표 수)');
+    return fail('음표로 그릴 수 없는 길이입니다: ' + q + '(4분음표 수)');
   }
 
   // 길이(1/12칸 단위)를 음표 값으로. startInCell은 칸 안 시작 위치, 셋잇단 여부는 호출한 쪽이 정한다.
@@ -44,7 +44,7 @@
     if (triplet){
       if (length === 4) return valueForQuarters(cellQuarter / 2, true);
       if (length === 8) return valueForQuarters(cellQuarter, true);
-      return fail('셋잇단으로 그릴 수 없는 길이야: ' + length);
+      return fail('셋잇단으로 그릴 수 없는 길이입니다: ' + length);
     }
     return valueForQuarters(length / UNITS * cellQuarter, false);
   }
@@ -54,10 +54,10 @@
   function parseComponent(component){
     var text = String(component || '').trim();
     var parsed = GuitarParser.parseNoteToken(text, 0);
-    if (!parsed) return fail('읽을 수 없는 음이야: ' + text);
+    if (!parsed) return fail('읽을 수 없는 음입니다: ' + text);
     var core = text.replace(/\?$/, '').replace(/^!/, '');
     var m = core.match(/^[0-4]?([A-G])([#b]?)([2-5])/);
-    if (!m) return fail('음이름을 읽을 수 없어: ' + text);
+    if (!m) return fail('음이름을 읽을 수 없습니다: ' + text);
     var letter = m[1];
     var alter = m[2] === '#' ? 1 : (m[2] === 'b' ? -1 : 0);
     var written = Number(m[3]) + 1;
@@ -109,7 +109,7 @@
         });
         length = best;
       }
-      if (triplet ? (length !== 4 && length !== 8) : (length % 3 !== 0)) return fail('음표로 그릴 수 없는 토막이야: 위치 ' + p + ', 길이 ' + length);
+      if (triplet ? (length !== 4 && length !== 8) : (length % 3 !== 0)) return fail('음표로 그릴 수 없는 토막입니다: 위치 ' + p + ', 길이 ' + length);
       out.push({ start: p, length: length, triplet: triplet });
       p += length;
     }
@@ -146,12 +146,12 @@
   }
 
   function buildLayout(text, beats, key){
-    if (!Number.isInteger(key) || key < KEY_MIN || key > KEY_MAX) fail('조표는 ' + KEY_MIN + '~' + KEY_MAX + '의 정수여야 해: ' + key);
+    if (!Number.isInteger(key) || key < KEY_MIN || key > KEY_MAX) fail('조표는 ' + KEY_MIN + '~' + KEY_MAX + '의 정수여야 합니다: ' + key);
     var parsed = GuitarParser.parseScore(text, beats);
-    if (parsed.errors && parsed.errors.length) return { error: parsed.errors[0].message || '악보를 읽을 수 없어.' };
+    if (parsed.errors && parsed.errors.length) return { error: parsed.errors[0].message || '악보를 읽을 수 없습니다.' };
     var measures = parsed.measures;
     var annotated = GuitarRhythm.annotate(measures, beats);
-    if (annotated.errors && annotated.errors.length) return { error: annotated.errors[0].message || '악보를 읽을 수 없어.' };
+    if (annotated.errors && annotated.errors.length) return { error: annotated.errors[0].message || '악보를 읽을 수 없습니다.' };
     var grid = GuitarRhythm.getGridInfo(beats);
     var cellQuarter = grid.slotQuarterLength;
     var measureUnits = beats * UNITS;

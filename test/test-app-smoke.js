@@ -282,7 +282,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=edit-link-1')), 'every app script uses the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=ui-tone-1')), 'every app script uses the shared revision');
   for (const id of ['editInInputBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
     assert.match(html, new RegExp('id="' + id + '"'), 'draft UI includes #' + id);
   }
@@ -529,7 +529,7 @@ async function main(){
   localValues.set('gs.tabInput.handoff', JSON.stringify(Object.assign({}, returnedPayload, { beats: source.beats === 3 ? 2 : 3, lines: ['[-] ' + new Array(source.beats === 3 ? 2 : 3).fill('r').join(' ')] })));
   const beatsDraftId = context.scoreEditorHooks.consumeTabInputHandoff(context.BUILTIN_SONGS.concat(context.sheetSongs));
   assert.match(beatsDraftId, /^temp-score-\d+$/, 'a hand-off whose cell count differs from the source opens a new temporary score');
-  assert.equal(elements.get('storageStatus').textContent, '칸 수가 바뀌어서 원래 곡 대신 새 임시 악보로 열었어.', 'the storage status explains the new temporary score');
+  assert.equal(elements.get('storageStatus').textContent, '칸 수가 바뀌어서 원래 곡 대신 새 임시 악보로 열었습니다.', 'the storage status explains the new temporary score');
   assert.equal(elements.get('storageStatus').hidden, false);
   assert.equal(context.scoreDrafts.status(source.id).dirty, false, 'the source song keeps no draft');
 

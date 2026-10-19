@@ -19,15 +19,15 @@ function isIntegerText(text){
 
 // 행 모양 검사. 걸리는 첫 항목 하나만 돌려주고 통과하면 null.
 function checkRowShape(cols){
-  if (cols.length !== 5) return { code: 'ROW_COLUMNS', message: '열이 5개여야 해(제목, 칸 수, BPM, 설명, 악보를 탭으로 나눠). 지금 ' + cols.length + '개.' };
-  if (!cols[0].trim()) return { code: 'ROW_TITLE', message: '제목이 비어 있어.' };
+  if (cols.length !== 5) return { code: 'ROW_COLUMNS', message: '열이 5개여야 합니다(제목, 칸 수, BPM, 설명, 악보를 탭으로 구분). 지금 ' + cols.length + '개.' };
+  if (!cols[0].trim()) return { code: 'ROW_TITLE', message: '제목이 비어 있습니다.' };
   const beatsText = cols[1].trim();
   if (!isIntegerText(beatsText) || ALLOWED_BEATS.indexOf(Number(beatsText)) < 0){
-    return { code: 'ROW_BEATS', message: '칸 수는 ' + ALLOWED_BEATS.join(', ') + ' 중 하나여야 해: ' + beatsText };
+    return { code: 'ROW_BEATS', message: '칸 수는 ' + ALLOWED_BEATS.join(', ') + ' 중 하나여야 합니다: ' + beatsText };
   }
   const bpmText = cols[2].trim();
   if (!isIntegerText(bpmText) || Number(bpmText) < BPM_MIN || Number(bpmText) > BPM_MAX){
-    return { code: 'ROW_BPM', message: 'BPM은 ' + BPM_MIN + '~' + BPM_MAX + ' 사이의 정수여야 해: ' + bpmText };
+    return { code: 'ROW_BPM', message: 'BPM은 ' + BPM_MIN + '~' + BPM_MAX + ' 사이의 정수여야 합니다: ' + bpmText };
   }
   return null;
 }
@@ -92,12 +92,12 @@ function main(argv){
   try {
     text = fs.readFileSync(file, 'utf8');
   } catch (e){
-    process.stderr.write('파일을 읽지 못했어: ' + file + '\n');
+    process.stderr.write('파일을 읽지 못했습니다: ' + file + '\n');
     return 2;
   }
   const result = checkScoreText(text, file);
   if (!result.rows.length){
-    process.stderr.write('검사할 행이 없어.\n');
+    process.stderr.write('검사할 행이 없습니다.\n');
     return 1;
   }
   process.stdout.write(result.output + '\n');
