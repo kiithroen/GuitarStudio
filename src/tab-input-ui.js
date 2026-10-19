@@ -470,8 +470,9 @@
     if (division > 1) label += ' · 조각 ' + (cursor.s + 1) + '/' + division;
     label += ' · ' + cursor.str + '번 줄';
     $('tiCursorLabel').textContent = label;
-    $('tiPrevBtn').disabled = !T.prevPos(doc, cursor);
-    $('tiNextBtn').disabled = !T.nextPos(doc, cursor);
+    var staffMove = ui.inputMode === 'staff';
+    $('tiPrevBtn').disabled = !(staffMove ? S.prevEventPos(doc, cursor) : T.prevPos(doc, cursor));
+    $('tiNextBtn').disabled = !(staffMove ? S.nextEventPos(doc, cursor) : T.nextPos(doc, cursor));
     $('tiRestBtn').setAttribute('aria-pressed', String(!!slot.rest));
     for (var d = 1; d <= 4; d++) $('tiDiv' + d).setAttribute('aria-pressed', String(division === d));
     $('tiAutoAdvance').setAttribute('aria-pressed', String(ui.autoAdvance));
@@ -686,7 +687,10 @@
   }
 
   function moveCursor(direction){
-    var p = direction > 0 ? T.nextPos(doc, cursor) : T.prevPos(doc, cursor);
+    var staff = ui.inputMode === 'staff';
+    var p = direction > 0
+      ? (staff ? S.nextEventPos(doc, cursor) : T.nextPos(doc, cursor))
+      : (staff ? S.prevEventPos(doc, cursor) : T.prevPos(doc, cursor));
     if (p) setCursor(p, true);
   }
 
@@ -1011,7 +1015,7 @@
     if (note) playNotes([{ str: noteSel.str, note: note }]);
   }
 
-  // 커서 자리에 사건(음·쉼·길이 바꾸기)을 넣고 커서를 다음 조각으로 옮긴다. 실패하면 문서와 되돌리기 기록은 그대로.
+  // 커서 자리에 사건(음·쉼·길이 바꾸기)을 넣는다. 커서는 그대로 둔다. 실패하면 문서와 되돌리기 기록은 그대로.
   function placeAtCursor(content){
     setStatus('');
     var units = staffDuration();
@@ -1020,11 +1024,8 @@
     var opts = {
       measures: [pos.m],
       onDone: function(result){
-        cursor.m = result.next.m;
-        cursor.c = result.next.c;
-        cursor.s = result.next.s;
         opts.measures = [];
-        for (var m = pos.m; m <= cursor.m; m++) opts.measures.push(m);
+        for (var m = pos.m; m <= result.next.m; m++) opts.measures.push(m);
         lastEntry = null;
         noteSel = null;
         if (result.placed && result.placed.length){
@@ -1044,19 +1045,27 @@
     playNoteSel();
   }
 
-  function placeNote(midi){ placeAtCursor({ midis: [midi] }); }
-
-  // Shift 입력: 방금 넣은 사건의 조각(없으면 커서 조각)에 길이를 바꾸지 않고 음을 더한다.
-  function addChordNote(midi){
+  // 음높이 입력: 커서 조각에 음이 있으면 같은 음은 지우고 다른 음은 화음에 더한다. 음이 없으면 지금 길이로 새로 넣는다.
+  function inputPitch(midi){
+    var slot = T.getSlot(doc, cursor);
+    var hasNote = !!slot && slot.notes.some(function(note){ return !!note; });
+    if (!hasNote){
+      placeAtCursor({ midis: [midi] });
+      return;
+    }
     setStatus('');
-    var target = lastEntry && T.getSlot(doc, lastEntry.pos) ? lastEntry.pos : cursor;
-    var pos = copyPos(target);
-    var result = apply(function(d){ return S.addToChord(d, pos, midi); }, {
+    var pos = copyPos(cursor);
+    var result = apply(function(d){ return S.toggleChordNote(d, pos, midi); }, {
       measures: [pos.m],
       onDone: function(res){
-        lastEntry = { pos: pos };
-        noteSel = { pos: pos, str: res.str };
-        cursor.str = res.str;
+        if (res.str){
+          lastEntry = { pos: pos };
+          noteSel = { pos: pos, str: res.str };
+          cursor.str = res.str;
+        } else {
+          lastEntry = null;
+          noteSel = null;
+        }
       }
     });
     if (!result) return;
@@ -1064,17 +1073,20 @@
       setStatus(result.error);
       return;
     }
-    playNoteSel();
+    if (result.added) playNoteSel();
   }
 
-  function enterLetter(letter, chord){
-    var ref = S.referenceMidi(doc, cursor, lastEntry);
+  function enterLetter(letter){
+    var slot = T.getSlot(doc, cursor);
+    var hasNote = !!slot && slot.notes.some(function(note){ return !!note; });
+    var refEntry = lastEntry || (hasNote ? { pos: copyPos(cursor) } : null);
+    var ref = S.referenceMidi(doc, cursor, refEntry);
     var found = S.nearestMidi(doc, cursor, letter, ref);
     if (found.error){
       setStatus(found.error);
       return;
     }
-    if (chord) addChordNote(found.midi); else placeNote(found.midi);
+    inputPitch(found.midi);
   }
 
   function deleteToRest(){
@@ -1132,7 +1144,7 @@
     var code = event.code;
     if (/^Key[A-G]$/.test(code)){
       event.preventDefault();
-      if (!event.repeat) enterLetter(code.charAt(3), event.shiftKey);
+      if (!event.repeat) enterLetter(code.charAt(3));
       return true;
     }
     if (code === 'KeyT'){
@@ -1203,7 +1215,7 @@
         setStatus(found.error);
         return;
       }
-      if (event.shiftKey) addChordNote(found.midi); else placeNote(found.midi);
+      inputPitch(found.midi);
     });
   }
 

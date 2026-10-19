@@ -123,6 +123,59 @@
     return { ok: true, str: str };
   }
 
+  // 같은 실음이 있으면 지우고(남은 음이 없으면 쉼), 없으면 화음에 더한다.
+  function toggleChordNote(doc, pos, midi){
+    var slot = GuitarTabInput.getSlot(doc, pos);
+    if (!slot) return fail('올바르지 않은 위치입니다.');
+    var hasNote = slot.notes.some(function(note){ return !!note; });
+    if (!hasNote) return fail('화음에 더할 음이 없습니다. 먼저 음을 넣으세요.');
+    var same = [];
+    slot.notes.forEach(function(note, index){
+      if (note && GuitarTabInput.noteMidi(index + 1, note.fret) === midi) same.push(index + 1);
+    });
+    if (same.length){
+      same.forEach(function(str){ GuitarTabInput.removeNote(doc, pos, str); });
+      var top = null;
+      slot.notes.forEach(function(note, index){
+        if (!note) return;
+        var m = GuitarTabInput.noteMidi(index + 1, note.fret);
+        if (!top || m > top.midi) top = { str: index + 1, midi: m };
+      });
+      if (!top){
+        GuitarTabInput.setRest(doc, pos, true);
+        return { ok: true, removed: true, str: null };
+      }
+      return { ok: true, removed: true, str: top.str };
+    }
+    var str = assignString(slot, midi);
+    if (str == null) return fail(midi < MIN_MIDI || midi > MAX_MIDI ? RANGE_ERROR : NO_STRING_ERROR);
+    putNote(doc, pos, str, midi);
+    return { ok: true, added: true, str: str };
+  }
+
+  // 토큰이 '-'(앞 음을 잇는 빈 조각)가 아닌 다음 조각. 없으면 null.
+  function nextEventPos(doc, pos){
+    if (!GuitarTabInput.isValidPos(doc, pos)) return null;
+    var tokens = GuitarTabInput.slotTokens(doc);
+    var p = GuitarTabInput.nextPos(doc, pos);
+    while (p){
+      if (tokens[p.m][p.c][p.s] !== '-') return p;
+      p = GuitarTabInput.nextPos(doc, p);
+    }
+    return null;
+  }
+
+  function prevEventPos(doc, pos){
+    if (!GuitarTabInput.isValidPos(doc, pos)) return null;
+    var tokens = GuitarTabInput.slotTokens(doc);
+    var p = GuitarTabInput.prevPos(doc, pos);
+    while (p){
+      if (tokens[p.m][p.c][p.s] !== '-') return p;
+      p = GuitarTabInput.prevPos(doc, p);
+    }
+    return null;
+  }
+
   function stringCandidates(doc, pos, str){
     var slot = GuitarTabInput.getSlot(doc, pos);
     if (!slot || !isInt(str) || str < 1 || str > GuitarTabInput.STRING_COUNT || !slot.notes[str - 1]) return [];
@@ -365,7 +418,7 @@
     var next = unitsToPos(work, t1);
     if (slotIsEmpty(GuitarTabInput.getSlot(work, next))) GuitarTabInput.setRest(work, next, true);
 
-    // 6. 커서는 t1 조각으로.
+    // 6. t1 조각을 돌려준다(커서는 화면이 옮기지 않는다).
 
     doc.measures = work.measures;
     return { ok: true, next: next, appended: appended, placed: placed };
@@ -375,6 +428,7 @@
     UNITS_PER_CELL: UNITS_PER_CELL, MIN_MIDI: MIN_MIDI, MAX_MIDI: MAX_MIDI,
     durationUnits: durationUnits, totalUnits: totalUnits, posToUnits: posToUnits, unitsToPos: unitsToPos, eventEnd: eventEnd,
     placeEvent: placeEvent, assignString: assignString, addToChord: addToChord,
+    toggleChordNote: toggleChordNote, nextEventPos: nextEventPos, prevEventPos: prevEventPos,
     stringCandidates: stringCandidates, moveToString: moveToString,
     alterFor: alterFor, writtenToMidi: writtenToMidi, nearestMidi: nearestMidi, referenceMidi: referenceMidi,
     transposeNote: transposeNote, noteToRest: noteToRest

@@ -54,6 +54,23 @@ test('empty slots become - while sound continues and r at the start or after a r
   assert.deepEqual(tokens(after)[1], ['r', 'r', 'r', 'r']);
 });
 
+test('slotTokens: tokens per measure, cell and slot; the cell lines still come from the reduced tokens', function(){
+  const text = '[-] C4 - E4/r G4 | ""\n[-] - - r A4/B4 | ""';
+  const read = ti.scoreToDoc({ beats: 4, raw: text });
+  assert.equal(read.error, undefined);
+  assert.deepEqual(ti.slotTokens(read.doc), [
+    [['C4@2'], ['-'], ['E4@1', 'r'], ['G4@1']],
+    [['-'], ['-'], ['r'], ['A4@1', 'B4@1']]
+  ]);
+  assert.deepEqual(ti.docToScoreLines(read.doc), ['[-] C4@2 - E4@1/r G4@1 | ""', '[-] - - r A4@1/B4@1 | ""']);
+  const empty = ti.slotTokens(fresh());
+  assert.deepEqual(empty, [[['r'], ['r'], ['r'], ['r']]]);
+  const across = fresh();
+  ti.setNote(across, pos(0, 3), 1, 0);
+  ti.insertEmptyMeasure(across, 1);
+  assert.deepEqual(ti.slotTokens(across)[1], [['-'], ['-'], ['-'], ['-']], 'sounding continues across the measure');
+});
+
 test('divided cells are shortened only when the sound stays the same', function(){
   function cellWith(division, fill, before){
     const doc = fresh();

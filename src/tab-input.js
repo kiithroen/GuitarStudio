@@ -485,11 +485,12 @@
     return tokens;
   }
 
-  function docToMeasureObjects(doc){
+  // 마디마다, 칸마다, 조각마다 토큰 문자열 [m][c][s]. 빈 조각은 앞에 울리는 음이 있으면 '-', 아니면 'r'.
+  function slotTokens(doc){
     var sounding = false;
     return doc.measures.map(function(measure){
-      var notes = measure.cells.map(function(cell){
-        var tokens = cell.slots.map(function(slot){
+      return measure.cells.map(function(cell){
+        return cell.slots.map(function(slot){
           if (slot.rest){
             sounding = false;
             return slot.restUncertain ? 'r?' : 'r';
@@ -501,8 +502,14 @@
           }
           return sounding ? '-' : 'r';
         });
-        return reduceCellTokens(tokens).join('/');
       });
+    });
+  }
+
+  function docToMeasureObjects(doc){
+    var all = slotTokens(doc);
+    return doc.measures.map(function(measure, m){
+      var notes = all[m].map(function(tokens){ return reduceCellTokens(tokens).join('/'); });
       return { chord: String(measure.chord).trim(), autoChord: false, notes: notes, lyric: measure.memo };
     });
   }
@@ -688,7 +695,7 @@
     clearRange: clearRange, copyRange: copyRange, pasteAfter: pasteAfter,
     createHistory: createHistory,
     noteMidi: noteMidi, noteLabel: noteLabel, noteToken: noteToken,
-    docToMeasureObjects: docToMeasureObjects, docToScoreLines: docToScoreLines, docScoreText: docScoreText,
+    slotTokens: slotTokens, docToMeasureObjects: docToMeasureObjects, docToScoreLines: docToScoreLines, docScoreText: docScoreText,
     validateDoc: validateDoc, docCapo: docCapo, buildHandoff: buildHandoff,
     scoreToDoc: scoreToDoc, parseImportText: parseImportText, replaceMeasuresFromText: replaceMeasuresFromText
   };

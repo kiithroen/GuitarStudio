@@ -367,6 +367,66 @@ test('the end of every event is filled with a rest, also at the end of the score
   assert.deepEqual(tokens(rest)[0], ['r', 'r', 'r', 'r']);
 });
 
+test('nextEventPos and prevEventPos skip held slots and stop at the ends', function(){
+  const read = ti.scoreToDoc({ beats: 4, raw: '[-] C4 - E4/r G4 | ""\n[-] - - r A4/B4 | ""' });
+  assert.equal(read.error, undefined);
+  const doc = read.doc;
+  assert.deepEqual(si.nextEventPos(doc, pos(0, 0, 0)), pos(0, 2, 0));
+  assert.deepEqual(si.nextEventPos(doc, pos(0, 2, 0)), pos(0, 2, 1));
+  assert.deepEqual(si.nextEventPos(doc, pos(0, 2, 1)), pos(0, 3, 0));
+  assert.deepEqual(si.nextEventPos(doc, pos(0, 3, 0)), pos(1, 2, 0));
+  assert.deepEqual(si.nextEventPos(doc, pos(1, 2, 0)), pos(1, 3, 0));
+  assert.deepEqual(si.nextEventPos(doc, pos(1, 3, 0)), pos(1, 3, 1));
+  assert.equal(si.nextEventPos(doc, pos(1, 3, 1)), null);
+  assert.deepEqual(si.prevEventPos(doc, pos(1, 2, 0)), pos(0, 3, 0));
+  assert.deepEqual(si.prevEventPos(doc, pos(0, 2, 0)), pos(0, 0, 0));
+  assert.equal(si.prevEventPos(doc, pos(0, 0, 0)), null);
+  assert.equal(si.nextEventPos(doc, pos(9, 0, 0)), null);
+  assert.equal(si.prevEventPos(doc, pos(0, 9, 0)), null);
+  assert.deepEqual(si.nextEventPos(ti.createDoc(), pos(0, 0, 0)), pos(0, 1, 0), 'an empty score has no held slots');
+});
+
+test('toggleChordNote adds a new pitch, removes the same pitch, turns the last note into a rest, refuses an empty slot', function(){
+  const doc = fresh();
+  const first = put(doc, pos(0), 12, { midis: [60] });
+  assert.deepEqual(first.next, pos(0, 1, 0));
+  const c4 = ti.getSlot(doc, pos(0)).notes.findIndex(Boolean) + 1;
+  const added = si.toggleChordNote(doc, pos(0), 64);
+  assert.equal(added.ok, true);
+  assert.equal(added.added, true);
+  assert.equal(ti.getSlot(doc, pos(0)).notes.filter(Boolean).length, 2);
+  const removedE = si.toggleChordNote(doc, pos(0), 64);
+  assert.equal(removedE.ok, true);
+  assert.equal(removedE.removed, true);
+  assert.equal(removedE.str, c4, 'the remaining note is C4');
+  assert.equal(ti.getSlot(doc, pos(0)).notes.filter(Boolean).length, 1);
+  const removedC = si.toggleChordNote(doc, pos(0), 60);
+  assert.equal(removedC.ok, true);
+  assert.equal(removedC.removed, true);
+  assert.equal(removedC.str, null);
+  const slot = ti.getSlot(doc, pos(0));
+  assert.equal(slot.rest, true);
+  assert.equal(slot.notes.filter(Boolean).length, 0);
+  const refused = si.toggleChordNote(doc, pos(0), 64);
+  assert.equal(refused.ok, false);
+  assert.equal(refused.error, '화음에 더할 음이 없습니다. 먼저 음을 넣으세요.');
+  const before = snapshot(doc);
+  assert.equal(si.toggleChordNote(doc, pos(9), 64).error, '올바르지 않은 위치입니다.');
+  assert.deepEqual(doc, before);
+  const high = fresh();
+  put(high, pos(0), 12, { midis: [60] });
+  assert.equal(si.toggleChordNote(high, pos(0), 90).ok, false, 'out of range is refused');
+  const empty = fresh();
+  assert.equal(si.toggleChordNote(empty, pos(0), 64).ok, false, 'an empty slot has no chord to join');
+  // 남은 음이 둘일 때 가장 높은 음의 줄을 돌려준다.
+  const three = fresh();
+  put(three, pos(0), 12, { midis: [60, 64, 67] });
+  const afterG = si.toggleChordNote(three, pos(0), 60);
+  assert.equal(afterG.removed, true);
+  const g4 = ti.getSlot(three, pos(0)).notes.findIndex(function(n, i){ return n && ti.noteMidi(i + 1, n.fret) === 67; }) + 1;
+  assert.equal(afterG.str, g4, 'the highest remaining note is G4');
+});
+
 test('random operations keep the document valid and failures leave it untouched', function(){
   let seed = 20261019;
   function random(){
