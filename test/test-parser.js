@@ -255,4 +255,60 @@ test('all songs.json entries parse into the expected number of beats per measure
   }
 });
 
+test('uncertain mark ? parses like the unmarked token and flags the beat', function(){
+  const text = '[-] E4? 1C4@2:i? C3@5+E4@1? r? | ""';
+  const parsed = parse(text, 4);
+  assert.deepEqual(parsed.errors, []);
+  assert.deepEqual(parser.validateScore(text, 4).errors, []);
+  const beats = parsed.measures[0].beats;
+  assert.deepEqual(beats.map(beat => beat.tok), ['E4?', '1C4@2:i?', 'C3@5+E4@1?', 'r?']);
+  const plain = parse('[-] E4 r r r', 4).measures[0].beats[0];
+  assert.equal(beats[0].midi, plain.midi);
+  assert.equal(beats[0].kind, 'note');
+  assert.equal(beats[0].uncertain, true);
+  assert.equal(parser.getExplicitRightHand(beats[1].tok, 0), 'i');
+  assert.equal(parser.getExplicitLeftHand(beats[1].tok, 0), 1);
+  assert.equal(beats[1].uncertain, true);
+  assert.equal(beats[2].chordNotes.length, 2);
+  assert.equal(beats[2].uncertain, true);
+  assert.equal(beats[3].kind, 'rest');
+  assert.equal(beats[3].uncertain, true);
+});
+
+test('uncertain mark ? works on a lone rest, split parts, and chord components', function(){
+  const text = '[-] ? E4?/F4 C3@5?+E4@1 r | ""';
+  const parsed = parse(text, 4);
+  assert.deepEqual(parsed.errors, []);
+  assert.deepEqual(parser.validateScore(text, 4).errors, []);
+  const beats = parsed.measures[0].beats;
+  assert.equal(beats[0].kind, 'rest');
+  assert.equal(beats[0].uncertain, true);
+  assert.equal(beats[1].uncertain, true);
+  assert.equal(beats[1].subNotes[0].uncertain, true);
+  assert.equal(beats[1].subNotes[1].uncertain, false);
+  assert.equal(beats[2].uncertain, true);
+  assert.equal(beats[3].uncertain, false);
+});
+
+test('beats without a ? mark report uncertain false', function(){
+  const beats = parse('[-] E4 r r r', 4).measures[0].beats;
+  assert.ok(beats.every(beat => beat.uncertain === false));
+  assert.equal(score.countUncertainBeats(parse('[-] E4 r r r', 4).measures), 0);
+  assert.equal(score.countUncertainBeats(parse('[-] E4? r? E4/F4? r', 4).measures), 3);
+});
+
+test('double, hold, and dot uncertain marks stay errors', function(){
+  for (const token of ['E4??', '-?', '.?']){
+    const result = parse('[-] ' + token + ' r r r', 4);
+    assert.ok(result.errors.length >= 1, token + ' is rejected');
+  }
+});
+
+test('uncertain marks survive score serialization', function(){
+  const measures = parse('[-] E4? 1C4@2:i? C3@5+E4@1? r? | ""', 4).measures;
+  const text = parser.serializeScoreMeasures(measures.map(m => ({chord:m.chord || '-', autoChord:!!m.autoChord, notes:m.beats.map(b => b.tok), lyric:m.lyric || ''})), '\n');
+  assert.ok(text.includes('E4?'));
+  assert.ok(text.includes('r?'));
+});
+
 process.stdout.write('1..' + checks + '\n');

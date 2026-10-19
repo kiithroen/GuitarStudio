@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const scorePrompt = require('../src/score-prompt.js');
 const parser = require('../src/parser.js');
+const notation = require('../src/notation.js');
 
 let checks = 0;
 function pass(name){
@@ -38,6 +39,11 @@ assert.deepEqual(
   parsedLines.measures.map(function(m){ return m.beats.map(function(b){ return b.tok; }); })
 );
 pass('example TSV row has five columns and its score column parses like the line form');
+
+assert.ok(scorePrompt.EXAMPLE_MEASURES.some(function(line){
+  return line.split('|')[0].trim().split(/\s+/).some(function(tok){ return notation.hasUncertainMark(tok); });
+}), 'prompt examples show at least one uncertain mark token');
+pass('prompt examples include an uncertain-mark token');
 
 assert.doesNotMatch(prompt, /제미니|gemini|chatgpt|gpt|claude|클로드|안티그래비티|antigravity|copilot/i);
 pass('prompt names no specific AI product');

@@ -180,4 +180,17 @@ test('chord holds share one part duration and sounding lookup restores the whole
   assert.equal(rhythm.getSoundingNotes(loopClip,6)[0].remainingUnits,18,'sounding lookup uses the hold chain through the next whole rest');
 });
 
+test('uncertain mark keeps rest and hold meaning in the rhythm chain', function(){
+  assert.ok(parse('E4 r? - r',4).errors.some(error=>error.code==='ORPHAN_HOLD'),'r? still cuts the hold chain');
+  assert.ok(parser.validateScore('E4 r? - r',4).errors.some(error=>error.code==='ORPHAN_HOLD'),'validate sees r? as a rest');
+  const held=parse('E4? - r r',4);
+  assert.deepEqual(held.errors,[],'E4? followed by a hold has no rhythm error');
+  assert.equal(held.measures[0].beats[0].durationUnits,24);
+  assert.deepEqual(parser.validateScore('E4? - r r',4).errors,[]);
+  const restMark=parse('r? E4 ? E4',4);
+  assert.deepEqual(restMark.errors,[],'r? and a lone ? are rests, not unknown notes');
+  assert.deepEqual(restMark.measures[0].beats.map(beat=>beat.kind),['rest','note','rest','note']);
+  assert.deepEqual(parser.validateScore('r? E4 ? E4',4).errors,[]);
+});
+
 process.stdout.write('1..' + checks + '\n');

@@ -20,7 +20,8 @@
   function partsFor(beat){ return beat && beat.isSubdivided && Array.isArray(beat.subNotes) ? beat.subNotes : [beat]; }
   function kindFor(part){
     var tok = String(part && part.tok || '').trim();
-    if (/^[rR]$/.test(tok)) return 'rest';
+    var N = typeof GuitarNotation !== 'undefined' ? GuitarNotation : (typeof module !== 'undefined' && module.exports ? require('./notation.js') : null);
+    if (N.isRestToken(tok)) return 'rest';
     if (tok === '-') return 'hold';
     if (tok === '.') return 'invalid';
     if (part && part.midi != null) return 'note';

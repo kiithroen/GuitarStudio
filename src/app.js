@@ -208,6 +208,12 @@ function curCapo(){
         $('#phaseTxt').textContent = '악보 확인 필요 · ' + (sourceError.measure ? sourceError.measure + '마디 ' : '') + (sourceError.beat ? sourceError.beat + '박: ' : '') + sourceError.message;
       }
     }
+    var uncertainBadgeEl = $('#uncertainBadge');
+    if (uncertainBadgeEl){
+      var uncertainCount = curSong.type === 'structured' && Array.isArray(curSong.measures) ? countUncertainBeats(curSong.measures) : 0;
+      uncertainBadgeEl.hidden = uncertainCount === 0;
+      if (uncertainCount > 0) uncertainBadgeEl.textContent = '확인 ' + uncertainCount + '곳';
+    }
     var songCapo = getSongCapo(curSong);
     var capoBadgeTxt = (songCapo > 0 && !/(?:capo|카포)\s*[:.]?\s*(?:fret\s*)?\d/i.test(curSong.badge || '')) ? (' · Capo ' + songCapo) : '';
     $('#scoreTitle').textContent = curSong.title;
@@ -405,6 +411,7 @@ function curCapo(){
           if (((curSong.beats === 9 || curSong.beats === 6) && (bIdx === 3 || bIdx === 6)) || (curSong.beats === 8 && bIdx === 4)){
             extraCls += ' arp-group-start';
           }
+          if (b.uncertain) extraCls += ' is-uncertain';
           cell.className = 'beat-cell' + extraCls;
           cell.dataset.m = mIdx;
           cell.dataset.b = bIdx;
@@ -417,7 +424,7 @@ function curCapo(){
           var tabDurationInfo = getBeatDurationInfo(m.beats, bIdx, curSong.beats);
           cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + (pitchLabel ? ': ' + pitchLabel : '') +
             (pitchLabel && tabDurationInfo.durName && tabDurationInfo.kind !== 'rest' && tabDurationInfo.kind !== 'hold' ? ' · 길이: ' + tabDurationInfo.durName : '') +
-            articDesc + ' (클릭: 운지 보기 및 음 듣기)';
+            articDesc + ' (클릭: 운지 보기 및 음 듣기)' + (b.uncertain ? ' · 확인 필요(?)' : '');
 
           var topRow = document.createElement('div');
           topRow.className = 'tab-cell-top';
@@ -507,7 +514,7 @@ function curCapo(){
                 appendExplicitRightHand(pill, subToken, componentIndex);
                 gridEl.appendChild(pill);
               }
-              if (sn.kind === 'hold' || sn.kind === 'rest' || sn.tok === '-' || /^[rR]$/.test(sn.tok || '')){
+              if (sn.kind === 'hold' || sn.kind === 'rest' || sn.tok === '-' || GuitarNotation.isRestToken(sn.tok)){
                 var dash = document.createElement('span');
                 dash.className = 'tab-rest-dash ' + (sn.kind === 'hold' || sn.tok === '-' ? 'tab-hold-mark' : 'tab-rest-mark');
                 dash.textContent = (sn.kind === 'hold' || sn.tok === '-') ? '—' : 'r';
@@ -667,6 +674,7 @@ function curCapo(){
           if (mainKind === 'rest'){
             extraCls += ' is-rest';
           }
+          if (b.uncertain) extraCls += ' is-uncertain';
           cell.className = 'beat-cell' + extraCls;
           cell.dataset.m = mIdx;
           cell.dataset.b = bIdx;
@@ -678,7 +686,7 @@ function curCapo(){
           var detailDesc = m.no + '마디 ' + (bIdx + 1) + '박: ' +
             (mainKind === 'rest' ? '쉼' : (mainKind === 'hold' ? '유지' : (pitchLabel + ' · ' + durInfo.durName))) +
             (durInfo.kind === 'group' ? ' · 분할별 길이: ' + durInfo.durName : '') +
-            articDesc + ' (클릭: 음 듣기 및 지판 확인)';
+            articDesc + ' (클릭: 음 듣기 및 지판 확인)' + (b.uncertain ? ' · 확인 필요(?)' : '');
           cell.title = detailDesc;
 
           // 1. 박자 번호 및 음표 길이 헤더 (친절한 리듬 표기)
@@ -706,7 +714,7 @@ function curCapo(){
           if (b.midi || (b.isSubdivided && b.subNotes)){
             koEl.className = 'b-ko-main';
             function getDisplayPitch(p){
-              if (p.kind === 'rest' || /^[rR]$/.test(p.tok || '')) return '쉼';
+              if (p.kind === 'rest' || GuitarNotation.isRestToken(p.tok)) return '쉼';
               if (p.kind === 'hold' || p.ko === '유지') return '유지';
               if (p.chordNotes && p.chordNotes.length >= 2){
                 return p.chordNotes.map(function(c){ return isSolfege ? c.ko : (c.en ? c.en.replace(/\d+$/, '') : c.ko); }).join('·');

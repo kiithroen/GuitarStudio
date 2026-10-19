@@ -119,7 +119,16 @@ var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./
     return notes.every(function(note){ return note.articulation === articulation; }) ? articulation : null;
   }
 
+  // 확인 표시 ? 가 있는 칸 수의 SSOT. beat.uncertain 은 parseScore 가 채운다.
+  function countUncertainBeats(measures){
+    var count = 0;
+    (measures || []).forEach(function(measure){
+      (measure && measure.beats || []).forEach(function(beat){ if (beat && beat.uncertain === true) count++; });
+    });
+    return count;
+  }
+
 if (typeof window !== 'undefined'){ window.getNoteDisplayName = getNoteDisplayName; }
 
-if (typeof module !== 'undefined' && module.exports){ module.exports = { NOTE_DUR_SVGS: NOTE_DUR_SVGS, getBeatDurationInfo: getBeatDurationInfo, formatBeatPitchLabel: formatBeatPitchLabel, getUniformBeatArticulation: getUniformBeatArticulation, getNoteDisplayName: getNoteDisplayName }; }
+if (typeof module !== 'undefined' && module.exports){ module.exports = { NOTE_DUR_SVGS: NOTE_DUR_SVGS, getBeatDurationInfo: getBeatDurationInfo, formatBeatPitchLabel: formatBeatPitchLabel, getUniformBeatArticulation: getUniformBeatArticulation, getNoteDisplayName: getNoteDisplayName, countUncertainBeats: countUncertainBeats }; }
 

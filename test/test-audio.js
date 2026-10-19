@@ -71,6 +71,7 @@ function makeContext(capo, acousticFx){
     curCapo(){ return capo; },
     soundingMidi(midi, offset){ return Number(midi) + Number(offset || 0); },
     getSongCapo(song){ return song.capo || 0; },
+    GuitarNotation: require('../src/notation.js'),
     getExplicitBass: parser.getExplicitBass,
     midiInfo(midi){ return { pos: { str: midi % 6 + 1 } }; },
     getMeasureCount(song){ return song.bars.length; },

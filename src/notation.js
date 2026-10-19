@@ -127,6 +127,16 @@
     return {notation:text, chordRaw:chordRaw, lyric:lyric, errors:errors};
   }
 
+  // 쉼 토큰 판별의 SSOT. 확인 표시가 붙은 r?, R?, 단독 ?도 쉼이다.
+  function isRestToken(tok){
+    return /^(?:[rR]\??|\?)$/.test(String(tok || '').trim());
+  }
+
+  // 구성음 중 하나라도 ? 로 끝나면 확인 표시가 있는 토큰이다(단독 ? 포함).
+  function hasUncertainMark(tok){
+    return String(tok || '').trim().split('+').some(function(part){ return part.trim().charAt(part.trim().length - 1) === '?'; });
+  }
+
   function serializeScoreMeasures(measures, separator){
     return (measures || []).map(function(measure){
       var chord = measure.chord || '-';
@@ -204,7 +214,7 @@
             add(errors, 'AMBIGUOUS_REST_TOKEN', measureNo, beatIndex + 1, '점(.)은 쉼인지 유지인지 모호해. 쉼은 r, 유지는 -로 입력해줘.');
             return;
           }
-          if (!part || /^(-|R|r)$/.test(part)) return;
+          if (!part || part === '-' || isRestToken(part)) return;
           if (part.indexOf('/') >= 0){
             add(errors, 'ISOLATED_SLASH', measureNo, beatIndex + 1, '박 안의 단독 슬래시 표기를 확인해줘.');
             return;
@@ -218,20 +228,21 @@
             chordPart = chordPart.trim();
             if (!chordPart) return;
             var parsed = parseNoteToken ? parseNoteToken(chordPart, measureIndex * bpb + beatIndex) : null;
+            var plainChordPart = chordPart.replace(/\?$/, '');
             if (!parsed){
-              if (/@\d+(?::[pima])?$/.test(chordPart)){
+              if (/@\d+(?::[pima])?$/.test(plainChordPart)){
                 add(errors, 'INVALID_STRING_OVERRIDE', measureNo, beatIndex + 1, '현 지정 음표를 기타에서 연주할 수 없어: ' + chordPart);
               }
               add(errors, 'UNKNOWN_NOTE', measureNo, beatIndex + 1, '알 수 없는 음표 토큰 ' + chordPart + ' 가 있어.');
               return;
             }
-            if (/@\d+(?::[pima])?$/.test(chordPart) && !parsed.pos){
+            if (/@\d+(?::[pima])?$/.test(plainChordPart) && !parsed.pos){
               add(errors, 'INVALID_STRING_OVERRIDE', measureNo, beatIndex + 1, '현 지정 음표를 기타에서 연주할 수 없어: ' + chordPart);
             }
             if (!parsed.pos){
               add(errors, 'GUITAR_RANGE', measureNo, beatIndex + 1, '기타에서 연주할 수 없는 음역이야: ' + chordPart);
             }
-            if (/^[!~]?[A-Ga-g][#b♯♭♮]?(?::[pima])?$/.test(chordPart)){
+            if (/^[!~]?[A-Ga-g][#b♯♭♮]?(?::[pima])?$/.test(plainChordPart)){
               add(warnings, 'AMBIGUOUS_OCTAVE', measureNo, beatIndex + 1, '옥타브가 생략된 음표 ' + chordPart + ' 는 기본 옥타브 4로 해석돼.');
             }
             components.push({token:chordPart, note:parsed});
@@ -285,6 +296,8 @@
     splitBeatSubtokens:splitBeatSubtokens,
     decodeMeasureLine:decodeMeasureLine,
     serializeScoreMeasures:serializeScoreMeasures,
+    isRestToken:isRestToken,
+    hasUncertainMark:hasUncertainMark,
     validateScore:validateScore
   };
 });

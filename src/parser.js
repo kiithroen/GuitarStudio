@@ -242,7 +242,22 @@
     return { midi: m, en: en, ko: ko, pos: pos };
   }
 
+  // 확인 표시 ?: 끝의 ? 하나를 떼고 나머지는 ? 가 없을 때와 똑같이 파싱한다.
   function parseNoteToken(tok, altIdx){
+    if (!tok || tok === '-' || tok === '.') return null;
+    tok = tok.trim();
+    if (tok.indexOf('??') >= 0) return null;
+    var uncertain = false;
+    if (tok.charAt(tok.length - 1) === '?'){
+      tok = tok.slice(0, -1);
+      uncertain = true;
+    }
+    var result = parseNoteTokenCore(tok, altIdx);
+    if (result && uncertain) result.uncertain = true;
+    return result;
+  }
+
+  function parseNoteTokenCore(tok, altIdx){
     if (!tok || tok === '-' || tok === '.') return null;
     tok = tok.trim();
     if (tok.indexOf('*') >= 0) return null;
@@ -534,7 +549,7 @@
             var note = parseNoteToken(stk, mIdx * bpb + b);
             return {
               tok: stk, midi: note ? note.midi : null, en: note ? note.en : '-',
-              ko: note ? note.ko : (/^[rR]$/.test(stk) ? '쉼' : (stk === '-' ? '유지' : '')),
+              ko: note ? note.ko : (GuitarNotation.isRestToken(stk) ? '쉼' : (stk === '-' ? '유지' : '')),
               str: note && note.pos ? note.pos.str : null,
               fret: note && note.pos ? note.pos.fret : null,
               lh: note && note.pos ? note.pos.lh : null,
@@ -544,12 +559,14 @@
               articulation: note && note.articulation ? note.articulation : null,
               explicitArticulation: !!(note && note.explicitArticulation),
               durFrac: 1 / rawSubToks.length,
-              kind: /^[rR]$/.test(stk) ? 'rest' : (stk === '-' ? 'hold' : (stk === '.' ? 'invalid' : (note ? 'note' : 'invalid')))
+              kind: GuitarNotation.isRestToken(stk) ? 'rest' : (stk === '-' ? 'hold' : (stk === '.' ? 'invalid' : (note ? 'note' : 'invalid'))),
+              uncertain: GuitarNotation.hasUncertainMark(stk)
             };
           });
           var first = parsedSubs.find(function(note){ return note.midi != null; });
           parsedBeats.push({
             tok: tok, isSubdivided: true, kind:'group', subNotes: parsedSubs,
+            uncertain: parsedSubs.some(function(p){ return p.uncertain; }),
             midi: first ? first.midi : null,
             en: parsedSubs.map(function(note){ return note.en; }).join('/'),
             ko: parsedSubs.map(function(note){ return note.ko; }).join('/'),
@@ -562,9 +579,10 @@
         } else {
           var noteInfo = parseNoteToken(rawSubToks[0] || tok, mIdx * bpb + b);
           parsedBeats.push({
-            tok: tok, isSubdivided: false, kind:/^[rR]$/.test(tok) ? 'rest' : (tok === '-' ? 'hold' : (tok === '.' ? 'invalid' : (noteInfo ? 'note' : 'invalid'))),
+            tok: tok, isSubdivided: false, kind:GuitarNotation.isRestToken(tok) ? 'rest' : (tok === '-' ? 'hold' : (tok === '.' ? 'invalid' : (noteInfo ? 'note' : 'invalid'))),
+            uncertain: GuitarNotation.hasUncertainMark(tok),
             midi: noteInfo ? noteInfo.midi : null,
-            en: noteInfo ? noteInfo.en : '-', ko: noteInfo ? noteInfo.ko : (/^[rR]$/.test(tok) ? '쉼' : (tok === '-' ? '유지' : '')),
+            en: noteInfo ? noteInfo.en : '-', ko: noteInfo ? noteInfo.ko : (GuitarNotation.isRestToken(tok) ? '쉼' : (tok === '-' ? '유지' : '')),
             str: noteInfo && noteInfo.pos ? noteInfo.pos.str : null,
             fret: noteInfo && noteInfo.pos ? noteInfo.pos.fret : null,
             lh: noteInfo && noteInfo.pos ? noteInfo.pos.lh : null,
