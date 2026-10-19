@@ -1,4 +1,7 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const scorePrompt = require('../src/score-prompt.js');
 const parser = require('../src/parser.js');
 const notation = require('../src/notation.js');
@@ -103,5 +106,25 @@ pass('prompt embeds a table row for every rhythm example');
 
 assert.equal(prompt.includes('{{'), false);
 pass('prompt has no unreplaced placeholder');
+
+const projectPrompt = scorePrompt.buildProjectPrompt();
+assert.doesNotMatch(projectPrompt, /제미니|gemini|chatgpt|gpt|claude|클로드|안티그래비티|antigravity|copilot/i);
+pass('project prompt names no specific AI product');
+
+const root = path.resolve(__dirname, '..');
+['Docs/score-format.md', 'tools/check-score.js'].forEach(function(rel){
+  assert.ok(projectPrompt.includes(rel), 'project prompt mentions ' + rel);
+  assert.ok(fs.existsSync(path.join(root, rel)), rel + ' exists');
+});
+pass('project prompt points at the grammar doc and the check tool, and both files exist');
+
+const commandLines = projectPrompt.split('\n').filter(function(line){ return /^\s*node -e "/.test(line); });
+assert.equal(commandLines.length, 1, 'project prompt has one node -e command line');
+const code = commandLines[0].match(/node -e "(.*)"\s*$/)[1];
+const run = spawnSync(process.execPath, ['-e', code], { cwd: root, encoding: 'utf8' });
+assert.equal(run.error, undefined);
+assert.equal(run.status, 0, run.stderr);
+assert.equal(run.stdout, prompt);
+pass('the node -e command in the project prompt prints the full conversion rules');
 
 process.stdout.write('1..' + checks + '\n');

@@ -191,7 +191,26 @@
     return lines.join('\n');
   }
 
+  // 저장소를 읽고 명령을 실행할 수 있는 AI용 짧은 프롬프트. 문법과 변환 규칙은 문서와 buildScoreImagePrompt() 를 가리킨다.
+  var PROJECT_PROMPT_LINES = [
+    '첨부한 기타 악보 이미지를 이 저장소(기타 스튜디오)의 텍스트 악보로 옮겨 줘. 저장소 파일을 읽고 명령을 실행할 수 있다고 가정할게.',
+    '',
+    '1. `Docs/score-format.md`(악보 문법)를 읽어. 문법은 이 문서가 전부야.',
+    '2. 아래 명령으로 변환 규칙을 출력해서 따라. [작업 원칙], [문법 5]~[문법 7], [예외와 애매한 경우]가 핵심이고, [출력] 절 대신 아래 3~5번을 따라. 규칙과 문서가 다르면 문서를 따라.',
+    '   node -e "process.stdout.write(require(\'./src/score-prompt.js\').buildScoreImagePrompt())"',
+    '3. 결과를 `Temp/scores/<제목>.tsv`에 TSV 한 행(제목, 칸 수, BPM, 설명, 악보를 탭으로 나눔)으로 저장해. 파일 이름에서 `\\ / : * ? " < > |`는 빼.',
+    '4. `node tools/check-score.js Temp/scores/<제목>.tsv`로 검사하고 오류가 0이 될 때까지 고쳐. 확인 표시 `?`는 오류가 아니니 그대로 둬. 원본을 다시 읽어 확신이 생긴 음만 `?`를 지워.',
+    '5. 채팅에는 원본 박자표, 고른 칸 수, 원본 템포와 BPM, 카포, 튜닝을 적고, TSV 한 행을 코드블록으로, 바꾸거나 `?`를 붙인 마디 요약과 저장한 파일 경로를 적어.',
+    '',
+    '이 작업에서는 `Temp/scores/` 밖의 파일을 고치지 말고, 커밋하거나 푸시하지 마.'
+  ];
+
+  function buildProjectPrompt(){
+    return PROJECT_PROMPT_LINES.join('\n');
+  }
+
   var COPY_OK = '프롬프트를 복사했어. AI 채팅에 악보 이미지와 함께 붙여 넣고, 받은 TSV 한 행을 Google Sheets 빈 행 A열에 붙여 넣어.';
+  var COPY_PROJECT_OK = '프로젝트 AI용 프롬프트를 복사했어. 저장소를 연 AI 채팅에 악보 이미지와 함께 붙여 넣어.';
   var COPY_FAIL = '클립보드에 복사하지 못했어. 브라우저의 클립보드 권한을 확인해 줘.';
 
   // 클립보드 API 가 없거나 거부될 때 쓰는 대체 복사
@@ -227,16 +246,21 @@
     return copyWithTextarea(text);
   }
 
-  function initScorePromptButton(){
-    var btn = document.getElementById('copyScorePromptBtn');
+  function bindCopyButton(id, buildText, okText){
+    var btn = document.getElementById(id);
     if (!btn) return;
     btn.addEventListener('click', async function(){
-      var ok = await copyText(buildScoreImagePrompt());
+      var ok = await copyText(buildText());
       var status = document.getElementById('scorePromptStatus');
       if (!status) return;
       status.hidden = false;
-      status.textContent = ok ? COPY_OK : COPY_FAIL;
+      status.textContent = ok ? okText : COPY_FAIL;
     });
+  }
+
+  function initScorePromptButton(){
+    bindCopyButton('copyScorePromptBtn', buildScoreImagePrompt, COPY_OK);
+    bindCopyButton('copyProjectPromptBtn', buildProjectPrompt, COPY_PROJECT_OK);
   }
 
   return {
@@ -245,7 +269,9 @@
     EXAMPLE_MEASURES: EXAMPLE_MEASURES,
     EXAMPLE_TSV_ROW: EXAMPLE_TSV_ROW,
     RHYTHM_EXAMPLES: RHYTHM_EXAMPLES,
+    PROJECT_PROMPT_LINES: PROJECT_PROMPT_LINES,
     buildScoreImagePrompt: buildScoreImagePrompt,
+    buildProjectPrompt: buildProjectPrompt,
     initScorePromptButton: initScorePromptButton
   };
 });

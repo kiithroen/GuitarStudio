@@ -54,6 +54,7 @@
 - 2026-10-19 결정: 프롬프트를 앱을 모르는 AI 기준으로 다시 썼어. 작업 원칙 → 출력 → 문법 1~7(마디, 칸 내용, 음 토큰 자리 순서, 음높이, 박자와 칸, 음 길이 표, 여러 성부) → 예외와 애매한 경우 표 → 출력 전 점검 순서야. 이전 판은 규칙이 흩어져 있고 음표 길이를 어떻게 적는지 대응이 없어서 AI가 유추해야 했어(8분음표 둘을 두 칸에 적는 식의 실수 위험). 음 길이 표는 `RHYTHM_EXAMPLES` 데이터에서 만들고, `test-score-prompt`가 각 표기를 파서로 읽어 길이가 표와 맞는지 확인해. 옥타브 번호(가운데 도 = C4)와 기타 오선보의 한 옥타브 차이처럼 앱 밖의 관습에 기대던 부분도 명시했어.
 - `test/test-score-prompt.js`는 프롬프트 속 문법 예시(`EXAMPLE_MEASURES`, `EXAMPLE_TSV_ROW`)와 음 길이 표(`RHYTHM_EXAMPLES`)가 현재 파서로 오류 없이 읽히고 길이가 맞는지만 확인해. 규칙 문장은 검사하지 않으니 문법을 바꾸면 프롬프트 규칙도 같이 고쳐.
 - 클립보드 API가 없거나 거부되면 화면 밖 textarea와 `execCommand('copy')`로 복사해. `window.prompt`는 여러 줄을 한 줄로 뭉개서 쓰지 않아.
+- 2026-10-19 결정: 저장소를 읽고 명령을 실행할 수 있는 AI(코딩 에이전트)용 짧은 프롬프트를 `#copyProjectPromptBtn`으로 복사해. 본문은 `src/score-prompt.js`의 `buildProjectPrompt()`야. 문법과 변환 규칙을 다시 적지 않고 `Docs/score-format.md`와 `buildScoreImagePrompt()` 출력 명령을 가리켜서, 규칙이 한 군데에만 있게 했어. AI는 결과를 `Temp/scores/<제목>.tsv`에 저장하고 `node tools/check-score.js`로 문법 오류가 0인지 확인해. 이 도구는 행 모양(5열, 칸 수, BPM 30~240)을 보고 악보는 `parser.validateScore`로만 검사해. 칸 수 목록은 `src/sheets.js`, BPM 범위는 `src/app.js` 곡 적용부와 같아야 해. `test-score-prompt`가 프롬프트 속 명령을 실제로 실행해 확인해.
 
 ## 이력
 
@@ -72,13 +73,14 @@ node test/test-notation.js
 node test/test-rhythm.js
 node test/test-image-conversion.js
 node test/test-score-prompt.js
+node test/test-check-score.js
 node test/test-audio.js
 node test/test-guide.js
 node test/test-storage.js
 node test/test-sheets.js
 node test/test-app-smoke.js
 node test/test-browser-smoke.js
-Get-ChildItem src\*.js, test\*.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
+Get-ChildItem src\*.js, test\*.js, tools\*.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
 ```
 
 브라우저 스모크는 Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 실행 파일을 지정할 수 있어. 임시 HTTP 서버와 임시 브라우저 프로필을 쓰며 Web Audio API 경로를 실제로 실행해. Node 내장 `fetch`와 `WebSocket` 전역이 필요하고 `node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`로 확인할 수 있어. 실제 기기에서의 청취 품질은 확인하지 않아. 스크린샷 검증은 `test-artifacts/`에 새 파일을 만들 수 있으니 기존 개인 자료를 보존해.

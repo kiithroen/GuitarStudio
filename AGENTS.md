@@ -23,7 +23,7 @@
 - 악보 문법을 바꾸면 `src/score-prompt.js`의 사진 변환 프롬프트 규칙과 예시도 같이 고치고 `test-score-prompt`를 돌린다.
 
 ## 검증 (명령은 `Docs/development.md` 검증 절)
-- 커밋 전 모든 `src/*.js`, `test/*.js`가 `node --check`를 통과해야 한다.
+- 커밋 전 모든 `src/*.js`, `test/*.js`, `tools/*.js`가 `node --check`를 통과해야 한다.
 - 파서 정규식·악보 구조·카포: `test-parser`. 음가·쉼·유지·재생: `test-rhythm`, `test-guide`, `test-audio`. 부팅·상태 저장: `test-app-smoke`. DOM·인터랙션·콘솔 에러: `test-browser-smoke`.
 
 ## 커밋

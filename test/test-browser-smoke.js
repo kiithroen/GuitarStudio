@@ -486,6 +486,17 @@ async function testTemporaryScoreEditor(client){
   })()`);
   assert.deepEqual(copiedPrompt,{same:true,statusVisible:true,buttonInSongBar:true},'photo conversion prompt button copies the generic prompt and reveals its status');
 
+  const copiedProjectPrompt=await client.evaluate(`(async function(){
+    var oldClipboard=Object.getOwnPropertyDescriptor(navigator,'clipboard'),copied='';
+    try {
+      Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:function(value){copied=value;return Promise.resolve();}}});
+      document.getElementById('copyProjectPromptBtn').click();
+      await new Promise(function(resolve){setTimeout(resolve,0);});
+      return {same:copied===GuitarScorePrompt.buildProjectPrompt(),statusVisible:!document.getElementById('scorePromptStatus').hidden,buttonInSongBar:!!document.getElementById('copyProjectPromptBtn').closest('.song-bar')};
+    } finally {if(oldClipboard)Object.defineProperty(navigator,'clipboard',oldClipboard);else try{delete navigator.clipboard;}catch(_){}}
+  })()`);
+  assert.deepEqual(copiedProjectPrompt,{same:true,statusVisible:true,buttonInSongBar:true},'project prompt button copies the short repository prompt and reveals its status');
+
   const uncertainMarks=await client.evaluate(`(function(){
     var previous=curSong,previousView=appState.scoreView;
     var parsed=parseScore('[C] C4 E4? G4 r? | "확인"',4);
@@ -2032,8 +2043,8 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=no-legacy-1')), 'all app scripts use the shared revision');
-  const htmlIds = ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
+  assert.ok(scriptTags.every(src => src.endsWith('?v=project-prompt-1')), 'all app scripts use the shared revision');
+  const htmlIds = ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'temporary score UI includes #'+id);});
   assert.doesNotMatch(fs.readFileSync(path.join(root,'index.html'),'utf8'),/\.beat-cell\.arp-(?:melody|sub)\b/,'obsolete articulation color rules are removed from the score stylesheet');
   const browserBin = findBrowserBinary();
