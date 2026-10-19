@@ -240,6 +240,33 @@ test('capo offsets clamp to twelve and title/badge metadata takes precedence', f
   assert.equal(parser.soundingMidi(60, 100), 72);
 });
 
+test('setSongCapoText rewrites, appends, or removes the capo mark in the title and badge', function(){
+  const cases = [
+    ['로망스', '3/4 · 아포얀도', 3, '로망스', '3/4 · 아포얀도 · Capo 3'],
+    ['곡', '', 2, '곡', 'Capo 2'],
+    ['곡', '카포: 2 · 메모', 5, '곡', '카포: 5 · 메모'],
+    ['곡', 'capo fret 2', 7, '곡', 'capo fret 7'],
+    ['Song (Capo 2)', 'x · Capo 2', 4, 'Song (Capo 4)', 'x · Capo 4'],
+    ['곡', 'a · Capo 2 · b', 0, '곡', 'a · b'],
+    ['곡', 'Capo 2', 0, '곡', ''],
+    ['Song (Capo 2)', 'x', 0, 'Song', 'x'],
+    ['곡', 'a · Capo 2', 0, '곡', 'a'],
+    ['곡', 'Capo 2 · a', 0, '곡', 'a'],
+    ['곡', '메모', 0, '곡', '메모']
+  ];
+  cases.forEach(function(row){
+    const input = { title: row[0], badge: row[1] };
+    const result = parser.setSongCapoText(input, row[2]);
+    assert.deepEqual(result, { title: row[3], badge: row[4] }, JSON.stringify(row));
+    assert.deepEqual(input, { title: row[0], badge: row[1] }, 'the given song object is not changed');
+    assert.equal(parser.getSongCapo(result), row[2], 'the result reads back as the capo ' + JSON.stringify(row));
+  });
+  assert.deepEqual(parser.setSongCapoText({}, 2), { title: '', badge: 'Capo 2' }, 'missing title and badge count as empty text');
+  [13, -1, 2.5].forEach(function(capo){
+    assert.throws(function(){ parser.setSongCapoText({ title: 'a', badge: '' }, capo); }, new Error('카포는 0~12의 정수여야 합니다: ' + capo));
+  });
+});
+
 test('all songs.json entries parse into the expected number of beats per measure', function(){
   const songs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'songs.json'), 'utf8'));
   assert.equal(new Set(songs.map(song => song.id)).size, songs.length);

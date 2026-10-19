@@ -398,11 +398,9 @@
     if (input.value !== text) input.value = text;
   }
 
-  function refreshCapoInfo(){
-    var capo = T.docCapo(doc);
-    var badge = $('tiCapoInfo');
-    badge.hidden = capo === 0;
-    badge.textContent = capo === 0 ? '' : '카포 ' + capo;
+  // 카포 콤보박스는 제목·설명 글의 카포 표기를 읽어 보여 준다(저장은 그 글이다).
+  function refreshCapoSelect(){
+    setValue($('tiCapoSelect'), T.docCapo(doc));
   }
 
   function refreshInfo(){
@@ -411,7 +409,7 @@
     setValue($('tiBpm'), doc.bpm);
     setValue($('tiDescription'), doc.description);
     setValue($('tiKeySelect'), keyOptionValue());
-    refreshCapoInfo();
+    refreshCapoSelect();
     var sourceInfo = $('tiSourceInfo');
     sourceInfo.hidden = !doc.sourceId;
     sourceInfo.textContent = doc.sourceId ? SOURCE_INFO : '';
@@ -1624,8 +1622,8 @@
   }
 
   function bindInfo(){
-    bindTextField($('tiTitle'), function(value){ doc.title = value; refreshCapoInfo(); });
-    bindTextField($('tiDescription'), function(value){ doc.description = value; refreshCapoInfo(); });
+    bindTextField($('tiTitle'), function(value){ doc.title = value; refreshCapoSelect(); });
+    bindTextField($('tiDescription'), function(value){ doc.description = value; refreshCapoSelect(); });
 
     $('tiBpm').addEventListener('change', function(){
       var raw = $('tiBpm').value.trim();
@@ -1644,6 +1642,20 @@
       if (value === doc.beats) return;
       var result = apply(function(d){ return T.setBeats(d, value); }, { all: true });
       if (result && result.lost > 0) setStatus(lostText(result.lost));
+    });
+
+    $('tiCapoSelect').addEventListener('change', function(){
+      var value = Number($('tiCapoSelect').value);
+      if (value === T.docCapo(doc)){
+        refreshCapoSelect();
+        return;
+      }
+      apply(function(d){
+        var text = GuitarParser.setSongCapoText({ title: d.title, badge: d.description }, value);
+        d.title = text.title;
+        d.description = text.badge;
+        return { ok: true };
+      }, { measures: [] });
     });
 
     $('tiKeySelect').addEventListener('change', function(){

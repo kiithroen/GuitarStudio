@@ -63,7 +63,8 @@
     function keyOf(song){ return Number.isInteger(song && song.key) ? song.key : 0; }
 
     function isDirty(state){
-      return canonicalScore(state.song) !== state.originalCanonical || keyOf(state.song) !== keyOf(state.original);
+      return canonicalScore(state.song) !== state.originalCanonical || keyOf(state.song) !== keyOf(state.original) ||
+        parser.getSongCapo(state.song) !== parser.getSongCapo(state.original);
     }
 
     function status(id){
@@ -136,7 +137,7 @@
       return state.song;
     }
 
-    // 원래 곡(source)의 수정 초안을 만든다. 마디(와 조표)만 바꾸고 제목·BPM·배지는 원래 곡 그대로 둔다.
+    // 원래 곡(source)의 수정 초안을 만든다. 마디(와 조표)만 바꾸고 제목·BPM·배지는 원래 곡 그대로 둔다. opts.capo 가 있으면 제목·배지의 카포 표기만 그 값으로 맞춘다.
     // 읽을 수 없는 줄이면 아무것도 바꾸지 않고 던진다.
     function replaceScore(source, lines, opts){
       opts = opts || {};
@@ -153,6 +154,12 @@
       next.measures = cloneValue(parsed.measures);
       if (Number.isInteger(opts.key) && opts.key >= -5 && opts.key <= 5) next.key = opts.key;
       else delete next.key;
+      if (Number.isInteger(opts.capo) && opts.capo >= 0 && opts.capo <= 12){
+        var capoText = parser.setSongCapoText({title:next.title, badge:next.badge}, opts.capo);
+        next.title = capoText.title;
+        next.badge = capoText.badge;
+        next.capo = opts.capo;
+      }
       state.song = next;
       state.origin = opts.origin || null;
       return state.song;

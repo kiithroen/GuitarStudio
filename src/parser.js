@@ -438,12 +438,43 @@
     return { chord: cleaned, autoChord: isMarkedAuto, needsInfer: false };
   }
 
+  // 카포 표기: 1번 그룹은 숫자 앞 글자(카포: , capo fret 등), 2번 그룹은 숫자
+  var CAPO_TEXT_SOURCE = '((?:capo|카포)\\s*[:.]?\\s*(?:fret\\s*)?)(\\d+)';
+
+  // 제목·설명 글의 카포 표기를 capo(0~12)에 맞춘다. 받은 객체는 바꾸지 않고 { title, badge } 를 새로 돌려준다.
+  // 0 이면 표기를 지우고(표기를 바로 감싼 괄호도), 남은 구분점 · 과 공백을 정리한다.
+  function setSongCapoText(song, capo){
+    if (typeof capo !== 'number' || !isFinite(capo) || Math.floor(capo) !== capo || capo < 0 || capo > 12){
+      throw new Error('카포는 0~12의 정수여야 합니다: ' + capo);
+    }
+    var title = (song && song.title) || '';
+    var badge = (song && song.badge) || '';
+    var hasMark = new RegExp(CAPO_TEXT_SOURCE, 'i');
+    if (capo > 0){
+      var replaceAll = function(text){
+        return text.replace(new RegExp(CAPO_TEXT_SOURCE, 'gi'), function(all, head){ return head + capo; });
+      };
+      var newBadge = replaceAll(badge);
+      if (!hasMark.test(title) && !hasMark.test(badge)) newBadge = badge ? badge.trim() + ' · Capo ' + capo : 'Capo ' + capo;
+      return { title: replaceAll(title), badge: newBadge };
+    }
+    var removeMark = new RegExp('\\(\\s*' + CAPO_TEXT_SOURCE + '\\s*\\)|\\[\\s*' + CAPO_TEXT_SOURCE + '\\s*\\]|' + CAPO_TEXT_SOURCE, 'gi');
+    var clean = function(text){
+      if (!hasMark.test(text)) return text;
+      return text.replace(removeMark, '')
+        .replace(/\s*·\s*(·\s*)+/g, ' · ')
+        .replace(/^[\s·,]+|[\s·,]+$/g, '')
+        .replace(/\s{2,}/g, ' ');
+    };
+    return { title: clean(title), badge: clean(badge) };
+  }
+
   function getSongCapo(song){
     if (!song) return 0;
     // 제목/배지 표기를 우선 적용 (저장 후 곡 이름을 바꿔 카포를 추가/변경해도 즉시 반영)
     var str = (song.title || '') + ' ' + (song.badge || '');
-    var m = str.match(/(?:capo|카포)\s*[:.]?\s*(?:fret\s*)?(\d+)/i);
-    if (m) return Math.max(0, Math.min(12, Number(m[1])));
+    var m = str.match(new RegExp(CAPO_TEXT_SOURCE, 'i'));
+    if (m) return Math.max(0, Math.min(12, Number(m[2])));
     if (song.capo != null && isFinite(song.capo)) return Math.max(0, Math.min(12, Number(song.capo)));
     return 0;
   }
@@ -579,7 +610,7 @@
     getExplicitRightHand: getExplicitRightHand,
     parseBracketChordSpec: parseBracketChordSpec, tokenizeMeasureBeats: tokenizeMeasureBeats,
     decodeMeasureLine: GuitarNotation.decodeMeasureLine, serializeScoreMeasures: serializeScoreMeasures, validateScore: validateScore,
-    getSongCapo: getSongCapo, soundingMidi: soundingMidi, splitScoreMeasures: splitScoreMeasures,
+    getSongCapo: getSongCapo, setSongCapoText: setSongCapoText, soundingMidi: soundingMidi, splitScoreMeasures: splitScoreMeasures,
     getExplicitBass: getExplicitBass,
     parseScore: parseScore, buildStructuredSong: buildStructuredSong
   };

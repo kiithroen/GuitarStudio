@@ -558,6 +558,19 @@ async function testEditHandoff(client, httpPort) {
   assert.equal(keyReverted.key == null ? null : keyReverted.key, keyOnly.sourceKey == null ? null : keyOnly.sourceKey, 'reverting restores the original key');
   assert.deepEqual([keyReverted.dirty, keyReverted.resetHidden], [false, true], 'reverting clears the draft state');
 
+  // 4-2b. 입력 화면에서 콤보박스로 고른 카포가 연습 화면의 수정 초안에 들어가고, 원본 복원이 되돌린다.
+  await selectSong();
+  await clickAndLeave('#editInInputBtn', inputReady);
+  await client.evaluate(`(function(){ var select = document.getElementById('tiCapoSelect'); select.value = '3'; select.dispatchEvent(new Event('change', { bubbles:true })); return true; })()`);
+  await clickAndLeave('#tiOpenPracticeBtn', practiceReady);
+  const capoDraft = await client.evaluate(`({ id:curSong.id, capo:curCapo(), badge:document.getElementById('scoreTypeBadge').textContent, resetShown:!document.getElementById('resetScoreDraftBtn').hidden, dirty:scoreDrafts.status(curSong.id).dirty })`);
+  assert.equal(capoDraft.id, SONG_ID, 'a capo-only change opens as the original song id');
+  assert.equal(capoDraft.capo, 3, 'the practice screen plays the capo picked on the input screen');
+  assert.ok(capoDraft.badge.includes('Capo 3'), 'the song badge shows the new capo (' + capoDraft.badge + ')');
+  assert.deepEqual([capoDraft.resetShown, capoDraft.dirty], [true, true], 'a capo-only change is a modified draft with a revert button');
+  await client.evaluate(`document.getElementById('resetScoreDraftBtn').click(); true`);
+  assert.equal(await client.evaluate('curCapo()'), 0, 'reverting the draft restores the original capo');
+
   // 4-3. 입력 화면에서 칸 수를 바꿔 돌아오면 원래 곡 대신 새 임시 악보로 열고 알려 준다.
   await selectSong();
   await clickAndLeave('#editInInputBtn', inputReady);
@@ -2153,10 +2166,10 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=staff-dur-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=staff-dur-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=capo-select-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=capo-select-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
-  ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoInfo', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
+  ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
     'tiResultPanel', 'tiDiagnostics', 'tiScoreText', 'tiCopyTextBtn', 'tiCopyTsvBtn', 'tiOpenPracticeBtn', 'tiResultStatus', 'tiDock', 'tiCursorLabel', 'tiPrevBtn', 'tiNextBtn',
     'tiRestBtn', 'tiClearSlotBtn', 'tiDiv1', 'tiDiv2', 'tiDiv3', 'tiDiv4', 'tiPlaySlotBtn', 'tiAutoAdvance', 'tiSoundToggle', 'tiStaffToggle', 'tiDockToggle', 'tiFretboard', 'tiAttrs', 'tiUncertainBtn',
@@ -2349,6 +2362,36 @@ async function testScoreInputScreen(client, httpPort) {
   assert.ok(attrsToggle.openHeight > 0, 'the finger row is visible after the toggle');
   assert.ok(mobileShot.scroll <= mobileShot.inner, 'the 375px page does not overflow horizontally (scrollWidth ' + mobileShot.scroll + ' > ' + mobileShot.inner + ')');
   await client.send('Emulation.clearDeviceMetricsOverride');
+
+  // 카포 콤보박스: 설명 글의 카포 표기를 읽고 고친다. 콤보를 고르면 한 단계(되돌리기 하나)로 글이 바뀐다.
+  const capoErrorsBefore = client.consoleErrors.length;
+  const capoState = () => client.evaluate('({ select:document.getElementById("tiCapoSelect").value, description:document.getElementById("tiDescription").value, info:document.getElementById("tiCapoInfo") })');
+  assert.equal((await capoState()).info, null, 'the capo badge is gone');
+  await client.evaluate(`(function(){ var d = document.getElementById('tiDescription'); d.value = '카포 2'; d.dispatchEvent(new Event('input', { bubbles:true })); d.dispatchEvent(new Event('change', { bubbles:true })); return true; })()`);
+  assert.equal((await capoState()).select, '2', 'typing a capo mark in the description moves the combo box');
+  const setCapo = value => client.evaluate(`(function(){ var select = document.getElementById('tiCapoSelect'); select.value = '${value}'; select.dispatchEvent(new Event('change', { bubbles:true })); return true; })()`);
+  await setCapo(5);
+  assert.equal((await capoState()).description, '카포 5', 'picking 5 rewrites the capo mark in the description');
+  await setCapo(0);
+  const capoZero = await capoState();
+  assert.deepEqual([capoZero.select, capoZero.description], ['0', ''], 'picking none removes the capo mark');
+  await client.evaluate('document.getElementById("tiUndoBtn").click(); true');
+  const capoUndone = await capoState();
+  assert.deepEqual([capoUndone.select, capoUndone.description], ['5', '카포 5'], 'one undo brings back the capo mark and the combo box');
+  assert.equal(await client.evaluate('curCapo()'), 5, 'the capo the screen plays with follows the combo box');
+  const capoWidths = [];
+  for (const [width, height, mobile] of [[1024, 768, false], [375, 812, true]]) {
+    const result = await inputShot(width === 1024 ? 'score-input-capo.png' : 'score-input-capo-mobile.png', width, height, mobile);
+    capoWidths.push(result);
+    assert.ok(result.scroll <= result.inner, 'the ' + width + 'px page does not overflow horizontally with the capo combo box (scrollWidth ' + result.scroll + ' > ' + result.inner + ')');
+    const row = await client.evaluate('(function(){ var row = document.querySelector("#tiInfoPanel .ti-row"); return { scroll:row.scrollWidth, client:row.clientWidth, panel:document.getElementById("tiInfoPanel").getBoundingClientRect().height }; })()');
+    assert.ok(row.scroll <= row.client, 'the song info row does not overflow at ' + width + 'px (' + JSON.stringify(row) + ')');
+    if (width === 1024) assert.ok(row.panel <= 150, 'the 1024x768 song info panel is at most 150px tall with the capo combo box (is ' + row.panel + ')');
+  }
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  await setCapo(0);
+  assert.equal(await client.evaluate('document.getElementById("tiDescription").value'), '', 'the capo mark is removed again');
+  assert.deepEqual(client.consoleErrors.slice(capoErrorsBefore), [], 'the capo combo box runs without console errors');
 
   // 9. 연습 화면에서 열기
   const inputTitle = await client.evaluate('document.getElementById("tiTitle").value.trim()');
@@ -3414,7 +3457,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=ui-tone-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=capo-select-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

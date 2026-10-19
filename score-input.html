@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=staff-dur-1">
+<link rel="stylesheet" href="src/base.css?v=capo-select-1">
 <style>
 /* 악보 입력 화면 전용. 색은 base.css 토큰만 쓴다. */
 body{padding-bottom:var(--ti-dock-h,0px)}
@@ -21,7 +21,7 @@ textarea.ti-input{height:auto;padding:8px 10px;font-family:var(--font-num);font-
 .ti-info-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,2fr);gap:10px}
 .ti-field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .ti-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.ti-key{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
+.ti-key{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
 #tiKeySelect{width:auto;height:32px;font-size:12.5px;font-weight:500;color:var(--fg)}
 #tiSaveStatus{margin-left:6px}
 #tiSaveStatus.is-warn{color:var(--off);font-weight:600}
@@ -191,11 +191,11 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
       <label class="ti-field"><span class="label">제목</span><input id="tiTitle" class="ti-input" type="text" autocomplete="off"></label>
       <label class="ti-field"><span class="label">칸 수</span><select id="tiBeats" class="ti-input"></select></label>
       <label class="ti-field"><span class="label">BPM</span><input id="tiBpm" class="ti-input" type="number" min="30" max="240" step="1" inputmode="numeric"></label>
-      <label class="ti-field"><span class="label">설명</span><input id="tiDescription" class="ti-input" type="text" autocomplete="off" placeholder="설명 (카포는 Capo 2처럼)"></label>
+      <label class="ti-field"><span class="label">설명</span><input id="tiDescription" class="ti-input" type="text" autocomplete="off" placeholder="설명"></label>
     </div>
     <div class="ti-row">
-      <span id="tiCapoInfo" class="badge accent" hidden></span>
       <label class="ti-key">조표 <select id="tiKeySelect" class="ti-input" aria-label="조표"><option value="0s">조표 없음 · ♯로 적기</option><option value="0f">조표 없음 · ♭으로 적기</option><option value="1">♯ 1개 · 사장조/마단조</option><option value="2">♯ 2개 · 라장조/나단조</option><option value="3">♯ 3개 · 가장조/올림바단조</option><option value="4">♯ 4개 · 마장조/올림다단조</option><option value="5">♯ 5개 · 나장조/올림사단조</option><option value="-1">♭ 1개 · 바장조/라단조</option><option value="-2">♭ 2개 · 내림나장조/사단조</option><option value="-3">♭ 3개 · 내림마장조/다단조</option><option value="-4">♭ 4개 · 내림가장조/바단조</option><option value="-5">♭ 5개 · 내림라장조/내림나단조</option></select></label>
+      <label class="ti-key">카포 <select id="tiCapoSelect" class="ti-input" aria-label="카포"><option value="0">없음</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></label>
       <button id="tiNewBtn" class="btn sm" type="button">새 악보</button>
       <button id="tiImportBtn" class="btn sm" type="button">불러오기</button>
       <button id="tiUndoBtn" class="btn sm" type="button">되돌리기</button>
@@ -338,18 +338,18 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   </div>
 </dialog>
 
-<script src="src/storage.js?v=staff-dur-1"></script>
-<script src="src/app-state.js?v=staff-dur-1"></script>
-<script src="src/notation.js?v=staff-dur-1"></script>
-<script src="src/rhythm.js?v=staff-dur-1"></script>
-<script src="src/parser.js?v=staff-dur-1"></script>
-<script src="src/score-ui.js?v=staff-dur-1"></script>
-<script src="src/score-prompt.js?v=staff-dur-1"></script>
-<script src="src/audio.js?v=staff-dur-1"></script>
-<script src="src/staff-layout.js?v=staff-dur-1"></script>
-<script src="src/staff-svg.js?v=staff-dur-1"></script>
-<script src="src/tab-input.js?v=staff-dur-1"></script>
-<script src="src/staff-input.js?v=staff-dur-1"></script>
-<script src="src/tab-input-ui.js?v=staff-dur-1"></script>
+<script src="src/storage.js?v=capo-select-1"></script>
+<script src="src/app-state.js?v=capo-select-1"></script>
+<script src="src/notation.js?v=capo-select-1"></script>
+<script src="src/rhythm.js?v=capo-select-1"></script>
+<script src="src/parser.js?v=capo-select-1"></script>
+<script src="src/score-ui.js?v=capo-select-1"></script>
+<script src="src/score-prompt.js?v=capo-select-1"></script>
+<script src="src/audio.js?v=capo-select-1"></script>
+<script src="src/staff-layout.js?v=capo-select-1"></script>
+<script src="src/staff-svg.js?v=capo-select-1"></script>
+<script src="src/tab-input.js?v=capo-select-1"></script>
+<script src="src/staff-input.js?v=capo-select-1"></script>
+<script src="src/tab-input-ui.js?v=capo-select-1"></script>
 </body>
 </html>

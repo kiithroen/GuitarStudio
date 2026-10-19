@@ -172,7 +172,7 @@ var scoreEditorHooks = (function(){
         source = null;
       }
       if (source){
-        return scoreDrafts.replaceScore(source, handoff.lines, {key:validKey ? handoff.key : null, origin:'tab-input'}).id;
+        return scoreDrafts.replaceScore(source, handoff.lines, {key:validKey ? handoff.key : null, capo:GuitarParser.getSongCapo({title:handoff.title, badge:handoff.badge}), origin:'tab-input'}).id;
       }
       var song = scoreDrafts.createFromScore({
         title:handoff.title,

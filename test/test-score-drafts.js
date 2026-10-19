@@ -103,6 +103,34 @@ test('replaceScore key: -5..5 integers are stored, anything else removes the key
   assert.equal('key' in store.replaceScore(source, ['[C] D4 - - -']), false, 'no options removes the key');
 });
 
+test('replaceScore capo: the capo mark is rewritten or removed, a capo-only difference is dirty, and reset restores the original capo', function(){
+  const same = ['[C] C4 - - -'];
+  const plain = song('capo-none', '카포 없음', same, 4, {capo:0});
+  const store = createScoreDraftStore();
+  const draft = store.replaceScore(plain, same, {capo:3, origin:'tab-input'});
+  assert.equal(parser.getSongCapo(draft), 3, 'the draft reads back the new capo');
+  assert.equal(draft.capo, 3);
+  assert.deepEqual(store.status('capo-none'), {dirty:true,temporary:false,origin:'tab-input'}, 'same measures with another capo is a modified draft');
+  assert.equal(parser.getSongCapo(plain), 0, 'the source keeps its own capo');
+  assert.equal(parser.getSongCapo(store.reset('capo-none')), 0, 'reset brings back the original capo');
+  assert.equal(store.status('capo-none').dirty, false);
+
+  const sameStore = createScoreDraftStore();
+  const kept = sameStore.replaceScore(plain, same, {capo:0});
+  assert.equal(parser.getSongCapo(kept), 0);
+  assert.equal(sameStore.status('capo-none').dirty, false, 'the same capo as the original is not a change');
+
+  const marked = song('capo-marked', '카포 곡', same, 4, {badge:'Capo 2'});
+  assert.equal(parser.getSongCapo(marked), 2);
+  const markStore = createScoreDraftStore();
+  const removed = markStore.replaceScore(marked, same, {capo:0});
+  assert.equal(parser.getSongCapo(removed), 0, 'removing the mark does not fall back to the stored capo');
+  assert.ok(!/capo/i.test(removed.badge), 'the badge no longer has the capo mark (' + removed.badge + ')');
+  assert.equal(markStore.status('capo-marked').dirty, true);
+  assert.equal(parser.getSongCapo(marked), 2, 'the source keeps its capo mark');
+  assert.equal(parser.getSongCapo(markStore.reset('capo-marked')), 2, 'reset brings the capo back');
+});
+
 test('a key-only difference makes the draft dirty, survives list(), and reset restores the original key', function(){
   const same = ['[C] C4 - - -'];
   const source = song('key-only', '조표만', same, 4);
