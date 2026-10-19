@@ -282,10 +282,14 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=no-tirando-1')), 'every app script uses the shared revision');
-  for (const id of ['addBlankScoreBtn', 'blankScoreModal', 'undoScoreEditBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
-    assert.match(html, new RegExp('id="' + id + '"'), 'temporary score UI includes #' + id);
+  assert.ok(scriptTags.every(src => src.endsWith('?v=edit-link-1')), 'every app script uses the shared revision');
+  for (const id of ['editInInputBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
+    assert.match(html, new RegExp('id="' + id + '"'), 'draft UI includes #' + id);
   }
+  for (const id of ['addBlankScoreBtn', 'blankScoreModal', 'undoScoreEditBtn']){
+    assert.doesNotMatch(html, new RegExp('id="' + id + '"'), 'removed in-page editing UI has no #' + id);
+  }
+  assert.doesNotMatch(html, /score-measure-menu|score-inline-editor|scoreMeasureText/);
   assert.doesNotMatch(html, /newTextSongBtn|editStructuredBtn|convertImgToScoreBtn|ocrModalFileInput|refImgDetails|refScoreImg|newSongModal|veBarsGrid/);
   for (const script of scripts){
     const source = fs.readFileSync(path.join(root, script), 'utf8');
@@ -486,27 +490,58 @@ async function main(){
 
   const hasImageUi = html.includes('id="uploadImgBtn"') && html.includes('id="fileInput"') && html.includes('id="barEditModal"') && html.includes('id="renameSongBtn"') && html.includes('id="deleteSongBtn"');
   assert.equal(hasImageUi, true, 'image/PDF upload, bar metadata, rename, and delete controls remain');
-  const originalSongCount = context.allSongs.length;
-  await elements.get('addBlankScoreBtn').click();
-  assert.equal(elements.get('blankScoreModal').hidden, false, 'blank-score button opens the creation modal');
-  assert.deepEqual([elements.get('blankScoreTitle').value, elements.get('blankScoreBeats').value, elements.get('blankScoreBpm').value],
-    ['빈 악보 1', '4', '64'], 'blank-score modal starts with the specified defaults');
-  await elements.get('cancelBlankScoreBtn').click();
-  assert.equal(context.allSongs.length, originalSongCount, 'canceling blank-score creation does not add a draft');
-  await elements.get('addBlankScoreBtn').click();
-  elements.get('blankScoreTitle').value = 'VM temporary score';
-  elements.get('blankScoreBeats').value = '3';
-  elements.get('blankScoreBpm').value = '88';
-  await elements.get('createBlankScoreBtn').click();
-  assert.equal(context.curSong.id, 'temp-score-1', 'blank-score creation selects the in-memory temporary score');
-  assert.deepEqual([context.curSong.title, context.curSong.beats, context.curSong.bpm], ['VM temporary score', 3, 88],
-    'blank-score creation applies the chosen title, cell count, and BPM');
-  assert.deepEqual(Array.from(context.curSong.measures[0].beats, beat => beat.tok), ['r', 'r', 'r'], 'blank score starts with a full rest measure');
-  assert.equal(context.scoreDrafts.status(context.curSong.id).temporary, true, 'blank score is marked as temporary');
-  assert.equal(songStore.has(context.curSong.id), false, 'temporary text score is never written to IndexedDB');
+  // 연습 화면의 편집은 악보 입력 화면으로 넘기고, 고쳐 돌아오면 원래 곡의 수정 초안이 된다. 텍스트 악보는 저장소에 남지 않는다.
+  context.changeSongById('builtin-lv1-butterfly');
+  assert.equal(elements.get('editInInputBtn').hidden, false, 'edit button shows for a text score');
+  assert.equal(elements.get('scoreDraftControls').hidden, true, 'an untouched original shows no draft controls');
+  context.location = { href: '' };
+  await elements.get('editInInputBtn').click();
+  assert.equal(context.location.href, 'score-input.html', 'toolbar edit goes to the score input screen');
+  const opened = JSON.parse(localValues.get('gs.tabInput.open'));
+  localValues.delete('gs.tabInput.open');
+  const source = context.BUILTIN_SONGS.find(song => song.id === 'builtin-lv1-butterfly');
+  assert.deepEqual([opened.sourceId, opened.title, opened.beats, opened.measure], ['builtin-lv1-butterfly', source.title, source.beats, 0], 'hand-off carries the source id, title, cell count and start measure');
+  assert.equal(opened.lines.length, source.measures.length, 'hand-off carries one line per measure');
+  assert.equal(opened.key, null, 'a song without a key signature hands off null');
+  assert.ok(Math.abs(Date.now() - opened.savedAt) < 60000, 'hand-off is time stamped');
+  assert.equal(context.scoreDrafts.status(source.id).dirty, false, 'handing off does not make a draft');
+
+  const returnedLines = opened.lines.slice();
+  returnedLines[returnedLines.length - 1] = '[-] ' + new Array(source.beats).fill('r').join(' ');
+  const returnedPayload = { sourceId: source.id, title: 'not used', beats: source.beats, bpm: 99, badge: 'not used', lines: returnedLines, key: 2, savedAt: Date.now() };
+  localValues.set('gs.tabInput.handoff', JSON.stringify(returnedPayload));
+  const draftId = context.scoreEditorHooks.consumeTabInputHandoff(context.BUILTIN_SONGS.concat(context.sheetSongs));
+  assert.equal(draftId, source.id, 'a hand-off with a known source id opens that song');
+  assert.equal(localValues.has('gs.tabInput.handoff'), false, 'the hand-off key is consumed');
+  assert.deepEqual({ ...context.scoreDrafts.status(draftId) }, { dirty: true, temporary: false, origin: 'tab-input' }, 'the song becomes a modified draft');
+  const draft = context.scoreDrafts.get(draftId);
+  assert.deepEqual([draft.title, draft.bpm, draft.badge, draft.key], [source.title, source.bpm, source.badge, 2], 'title, BPM and badge stay the original, the key follows the hand-off');
+  assert.equal(Array.from(draft.measures[draft.measures.length - 1].beats, beat => beat.tok).join(' '), new Array(source.beats).fill('r').join(' '), 'the draft carries the edited measure');
+  assert.equal(Array.from(source.measures[source.measures.length - 1].beats, beat => beat.tok).join(' ') === new Array(source.beats).fill('r').join(' '), false, 'the original source is untouched');
+  context.rebuildSongSelect(draftId);
+  assert.match(elements.get('scoreDraftStatus').textContent, /악보 입력에서 고친 수정 초안/, 'status line names the draft');
+  assert.equal(elements.get('resetScoreDraftBtn').hidden, false, 'revert button shows for the draft');
+  await elements.get('resetScoreDraftBtn').click();
+  assert.equal(context.curSong.measures.length, source.measures.length, 'revert restores the original measures');
+  assert.equal(Array.from(context.curSong.measures[context.curSong.measures.length - 1].beats, beat => beat.tok).join(' ') === new Array(source.beats).fill('r').join(' '), false, 'revert restores the original last measure');
+  assert.deepEqual({ ...context.scoreDrafts.status(draftId) }, { dirty: false, temporary: false, origin: null }, 'revert clears the draft state');
+
+  localValues.set('gs.tabInput.handoff', JSON.stringify(Object.assign({}, returnedPayload, { beats: source.beats === 3 ? 2 : 3, lines: ['[-] ' + new Array(source.beats === 3 ? 2 : 3).fill('r').join(' ')] })));
+  const beatsDraftId = context.scoreEditorHooks.consumeTabInputHandoff(context.BUILTIN_SONGS.concat(context.sheetSongs));
+  assert.match(beatsDraftId, /^temp-score-\d+$/, 'a hand-off whose cell count differs from the source opens a new temporary score');
+  assert.equal(elements.get('storageStatus').textContent, '칸 수가 바뀌어서 원래 곡 대신 새 임시 악보로 열었어.', 'the storage status explains the new temporary score');
+  assert.equal(elements.get('storageStatus').hidden, false);
+  assert.equal(context.scoreDrafts.status(source.id).dirty, false, 'the source song keeps no draft');
+
+  localValues.set('gs.tabInput.handoff', JSON.stringify(Object.assign({}, returnedPayload, { sourceId: null, title: 'VM temporary score', bpm: 88 })));
+  const temporaryId = context.scoreEditorHooks.consumeTabInputHandoff(context.BUILTIN_SONGS.concat(context.sheetSongs));
+  assert.match(temporaryId, /^temp-score-\d+$/, 'a hand-off without a source id opens a new temporary score');
+  assert.deepEqual([context.scoreDrafts.get(temporaryId).title, context.scoreDrafts.get(temporaryId).bpm], ['VM temporary score', 88]);
+  assert.equal(context.scoreDrafts.status(temporaryId).temporary, true, 'the new score is temporary');
+  assert.equal(songStore.has(temporaryId), false, 'temporary text score is never written to IndexedDB');
   assert.equal([...localValues.values()].some(value => String(value).includes('VM temporary score')), false,
     'temporary score text is not written to localStorage');
-  process.stdout.write('Result: app VM smoke passed (versioned scripts, temporary score editing, image-only persistence, fallback boot)\n');
+  process.stdout.write('Result: app VM smoke passed (versioned scripts, hand-off to score input and back, image-only persistence, fallback boot)\n');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

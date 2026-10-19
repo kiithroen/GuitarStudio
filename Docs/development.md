@@ -13,7 +13,7 @@
 | `src/notation.js` | 입력 줄 토큰화, 마디 메모·가사·코드 머리표, 직렬화와 구조 검증 |
 | `src/rhythm.js` | 칸 길이와 쉼·유지 체인 분석 |
 | `src/parser.js` | `parseScore`, 음·화음·운지 파싱, 카포와 실음 계산 |
-| `src/score-drafts.js` | 곡별 메모리 임시 초안과 검증된 마디 편집 이력 |
+| `src/score-drafts.js` | 곡별 메모리 임시 악보·수정 초안과 원본 되돌리기 |
 | `src/score.js` | 화면의 박자·음가·음이름 표시 |
 | `src/audio.js` | KS/classic 합성기와 재생음 수명 관리 |
 | `src/guide.js` | 구조화 악보의 재생 이벤트 생성·예약 |
@@ -22,7 +22,7 @@
 | `src/score-ui.js` | 악보 보기 전환과 `formatSongToSheetTsv` 공통 함수 |
 | `src/sheets.js` | Google Sheets 읽기 연동 |
 | `src/score-prompt.js` | 악보 이미지 변환용 범용 AI 프롬프트 문자열과 복사 버튼 |
-| `src/score-editor.js` | 임시 악보 생성·편집 UI, 마디 작업과 초안 작업 흐름 |
+| `src/score-editor.js` | 초안 상태 줄·원본으로 되돌리기, 악보 입력 화면과 주고받기 |
 | `src/app.js` | 앱 상태, UI 부팅과 기능 연결 |
 
 `app.js` 부팅 때 앱 모듈과 상태가 준비된 뒤 `initFretboard()`, `initScoreUi()`, `initSheetSync()`, `GuitarScorePrompt.initScorePromptButton()`과 편집 UI가 이벤트를 등록해. 로컬 스크립트는 모두 같은 `v` 쿼리 버전을 써. DOM 구조나 스크립트 구성이 바뀌면 버전을 같이 올려 캐시된 이전 코드와 섞이지 않게 해.
@@ -40,8 +40,8 @@
 ## 초안과 저장
 
 - 2026-10-19 결정: 텍스트 악보는 원본과 임시 작업을 분리해. 내장곡과 Google Sheets 원본은 바꾸지 않고, 새 악보와 수정 초안은 `score-drafts.js`가 곡별로 탭 메모리에만 둬서 새로고침하면 사라져. 텍스트 악보는 IndexedDB·localStorage·백업에 저장하지 않아. 이미지·PDF 악보와 앱 설정의 영속화는 그대로야. 예외는 악보 입력 화면의 작업 중인 악보 하나야(localStorage, 이유는 [악보 입력](tab-input.md)의 저장과 넘기기).
-- 2026-10-19 결정: 악보 입력 화면이 `gs.tabInput.handoff`에 넘긴 악보는 부팅 때 `scoreEditorHooks.consumeTabInputHandoff`가 읽어 `scoreDrafts.createFromScore`로 임시 악보를 만들어(출처 `tab-input`). 연습 화면에서 고치지 않은 이 임시 악보는 떠날 때 경고하지 않아.
-- 편집은 전체 악보 검증이 성공할 때만 적용해. 마디 편집 한 번이 실행 취소 한 단계고, 초안 초기화는 그 곡 원본 복사본으로 되돌려. 편집 중에는 곡 전환·재생·복사·다른 편집을 막아 미적용 내용을 잃지 않게 해.
+- 2026-10-19 결정: 악보 입력 화면이 `gs.tabInput.handoff`에 넘긴 악보는 부팅 때 `scoreEditorHooks.consumeTabInputHandoff`가 읽어. 넘긴 값에 원래 곡 id(`sourceId`)가 있고 그 곡이 있으며 칸 수가 같으면 `scoreDrafts.replaceScore`로 그 곡의 수정 초안을 만들고, 아니면 `scoreDrafts.createFromScore`로 새 임시 악보를 만들어(둘 다 출처 `tab-input`). 칸 수가 바뀐 악보는 원래 곡에 맞춰 읽을 수 없어서 임시 악보로 열고 그 이유를 `#storageStatus`에 알려 줘. 수정 초안의 조표(`key`)도 원본과 다르면 고친 것으로 봐(조표만 바꿔도 초안이 남고 `원본으로 되돌리기`가 보여). 출처가 `tab-input`인 초안은 떠날 때 경고하지 않아(원본이 입력 화면에 자동 저장돼 있어서야).
+- 2026-10-19 결정: 연습 화면의 편집은 악보 입력 화면으로 넘겨. 툴바 `악보 편집`(`#editInInputBtn`)과 마디 머리의 `편집` 버튼이 지금 곡(초안이면 초안 내용)과 원래 곡 id, 시작 마디를 `gs.tabInput.open`에 써서 `score-input.html`로 가. 전에 있던 마디 원문 편집·마디 추가·삭제·`빈 악보 추가`·초안 한 단계 되돌리기는 지웠어. 편집기가 둘이면 사용자가 헷갈리고 같은 기능을 두 군데서 고쳐야 해서야. `원본으로 되돌리기`는 남겨 초안을 원래 곡으로 돌려.
 - IndexedDB에는 이미지·PDF 악보, localStorage에는 앱 설정과 곡별 최근 연습 BPM·구간 이어가기 상태가 있어. 과거에 저장된 구조화 악보 DB 레코드는 자동 삭제하지 않고 앱에서 노출하지도 않아.
 - 백업 포맷은 버전 1의 `customSongs` 키를 유지해. 이름과 달리 이미지 전용 데이터를 담아.
 - Google Sheets 연동은 읽기 전용이야. TSV 복사는 초안의 현재 악보를 5열 형식으로 내보내고 시트에 직접 쓰지 않아.

@@ -31,8 +31,10 @@ test('CommonJS API and unknown status are available without global writes', func
   assert.equal(typeof createScoreDraftStore, 'function');
   assert.equal(global.GuitarParser, undefined);
   const store = createScoreDraftStore();
-  assert.deepEqual(store.status('missing'), {dirty:false,temporary:false,canUndo:false,origin:null});
+  assert.deepEqual(store.status('missing'), {dirty:false,temporary:false,origin:null});
   assert.equal(store.get('missing'), null);
+  ['createBlank','apply','remove','undo'].forEach(name=>assert.equal(store[name], undefined, name + ' is removed'));
+  assert.equal(typeof store.replaceScore, 'function');
 });
 
 test('structured sources are cloned, empty originals stay unchanged, and image sources pass through', function(){
@@ -46,115 +48,134 @@ test('structured sources are cloned, empty originals stay unchanged, and image s
   assert.notStrictEqual(listed[0], original);
   assert.strictEqual(listed[1], image);
   assert.equal(listed[0].measures.length, 0);
-  assert.deepEqual(store.status('empty'), {dirty:false,temporary:false,canUndo:false,origin:null});
+  assert.deepEqual(store.status('empty'), {dirty:false,temporary:false,origin:null});
   original.title = '입력 변경';
   assert.equal(store.get('empty').title, '빈 악보');
-  const blank = store.createBlank({title:'쉼표 시작',beats:3});
-  assert.deepEqual(blank.measures[0].beats.map(beat=>beat.tok), ['r','r','r']);
 });
 
-test('blank drafts use parser-valid rest bars and retain temporary metadata', function(){
-  const store = createScoreDraftStore();
-  const blank = store.createBlank({title:'새 악보',beats:'3',bpm:80});
-  assert.match(blank.id, /^temp-score-\d+$/);
-  assert.equal(blank.title, '새 악보');
-  assert.equal(blank.badge, '임시 악보');
-  assert.equal(blank.type, 'structured');
-  assert.equal(blank.builtin, false);
-  assert.equal(blank.capo, 0);
-  assert.equal(blank.beats, 3);
-  assert.equal(blank.bpm, 80);
-  assert.deepEqual(blank.measures[0].beats.map(beat=>beat.tok), ['r','r','r']);
-  assert.deepEqual(store.status(blank.id), {dirty:false,temporary:true,canUndo:false,origin:null});
-  assert.throws(()=>store.createBlank({beats:0}), error=>error.errors.some(item=>item.code === 'INVALID_BEATS'));
-});
-
-test('apply, insert, remove, one-step undo, and reset replace objects without mutating older returns', function(){
+test('replaceScore makes a source without any state a draft: measures replaced, title bpm badge and extras kept', function(){
   const source = song('edit', '편집', ['[C] C4 - - - | "원본"','[G] D4 - - -'], 4, {fromSheet:'sheet-1',ytUrl:'https://example.test'});
+  const frozen = JSON.parse(JSON.stringify(source));
   const store = createScoreDraftStore();
-  store.list([source]);
-  const before = store.get('edit');
-  const edited = store.apply('edit',0,'[Am] E4 - - - | "수정"',false);
-  assert.notStrictEqual(edited,before);
-  assert.equal(before.measures[0].lyric,'원본');
-  assert.equal(edited.measures[0].chord,'Am');
-  assert.equal(edited.fromSheet,'sheet-1');
-  assert.equal(edited.ytUrl,'https://example.test');
-  assert.equal(store.status('edit').dirty,true);
-  assert.equal(store.status('edit').canUndo,true);
-  const inserted = store.apply('edit',0,'[F] G4 - - -',true);
-  assert.equal(inserted.measures.length,3);
-  assert.equal(inserted.measures[1].chord,'F');
-  assert.equal(store.undo('edit').measures.length,2);
-  assert.equal(store.status('edit').canUndo,false);
-  const removed = store.remove('edit',1);
-  assert.equal(removed.measures.length,1);
-  assert.equal(store.undo('edit').measures.length,2);
-  const preReset = store.get('edit');
-  const reset = store.reset('edit');
-  assert.notStrictEqual(reset,preReset);
-  assert.equal(reset.measures[0].lyric,'원본');
-  assert.equal(store.status('edit').dirty,false);
-  assert.equal(store.status('edit').canUndo,true);
-  assert.equal(store.undo('edit').measures[0].lyric,'수정');
-  assert.equal(store.status('edit').dirty,true);
+  assert.deepEqual(store.status('edit'), {dirty:false,temporary:false,origin:null}, 'no state before the call');
+  const edited = store.replaceScore(source, ['[Am] E4 - - - | "수정"','[F] G4 - - -','[C] r r r r'], {key:2, origin:'tab-input'});
+  assert.deepEqual(source, frozen, 'the source object is not mutated');
+  assert.equal(edited.id, 'edit');
+  assert.equal(edited.title, '편집');
+  assert.equal(edited.bpm, 72);
+  assert.equal(edited.badge, '기본 배지');
+  assert.equal(edited.capo, 2);
+  assert.equal(edited.fromSheet, 'sheet-1');
+  assert.equal(edited.ytUrl, 'https://example.test');
+  assert.equal(edited.measures.length, 3);
+  assert.equal(edited.measures[0].chord, 'Am');
+  assert.equal(edited.measures[0].lyric, '수정');
+  assert.deepEqual(edited.measures[0].beats.map(beat=>beat.tok), ['E4','-','-','-']);
+  assert.equal(edited.key, 2);
+  assert.strictEqual(store.get('edit'), edited);
+  assert.deepEqual(store.status('edit'), {dirty:true,temporary:false,origin:'tab-input'});
+  const listed = store.list([source]);
+  assert.strictEqual(listed[0], edited, 'a later list() keeps the draft instead of refreshing it');
+});
+
+test('replaceScore on a state that already exists replaces the song object and keeps the first original for reset', function(){
+  const source = song('again', '다시', ['[C] C4 - - -'], 4);
+  const store = createScoreDraftStore();
+  const first = store.list([source])[0];
+  const second = store.replaceScore(first, '[G] D4 - - -', {origin:'tab-input'});
+  assert.notStrictEqual(second, first);
+  assert.equal(first.measures[0].chord, 'C', 'the object returned before is not mutated');
+  const third = store.replaceScore(second, ['[Am] E4 - - -'], {});
+  assert.equal(third.measures[0].chord, 'Am');
+  assert.equal(store.status('again').origin, null, 'origin follows the last call');
+  const reset = store.reset('again');
+  assert.equal(reset.measures[0].chord, 'C');
+});
+
+test('replaceScore key: -5..5 integers are stored, anything else removes the key', function(){
+  const source = song('keyed', '조표', ['[C] C4 - - -'], 4, {key:3});
+  const store = createScoreDraftStore();
+  assert.equal(store.replaceScore(source, ['[C] D4 - - -'], {key:-5}).key, -5);
+  assert.equal(store.replaceScore(source, ['[C] D4 - - -'], {key:0}).key, 0);
+  [6, -6, 1.5, '2', null, undefined].forEach(function(bad){
+    assert.equal('key' in store.replaceScore(source, ['[C] D4 - - -'], {key:bad}), false, 'key ' + bad + ' is removed');
+  });
+  assert.equal('key' in store.replaceScore(source, ['[C] D4 - - -']), false, 'no options removes the key');
+});
+
+test('a key-only difference makes the draft dirty, survives list(), and reset restores the original key', function(){
+  const same = ['[C] C4 - - -'];
+  const source = song('key-only', '조표만', same, 4);
+  const store = createScoreDraftStore();
+  const draft = store.replaceScore(source, same, {key:2, origin:'tab-input'});
+  assert.equal(draft.key, 2);
+  assert.deepEqual(store.status('key-only'), {dirty:true,temporary:false,origin:'tab-input'}, 'same measures with another key is a modified draft');
+  assert.strictEqual(store.list([source])[0], draft, 'list() does not overwrite the draft with the source');
+  assert.equal(store.get('key-only').key, 2, 'the key is still there after list()');
+  const reset = store.reset('key-only');
+  assert.equal('key' in reset, false, 'reset brings back the original, which had no key');
+  assert.equal(store.status('key-only').dirty, false);
+  store.replaceScore(source, same, {key:0});
+  assert.equal(store.status('key-only').dirty, false, 'no key in the source and key 0 in the draft are the same thing');
+  const keyed = song('key-kept', '조표 원본', same, 4, {key:3});
+  const store2 = createScoreDraftStore();
+  store2.replaceScore(keyed, same, {key:3});
+  assert.equal(store2.status('key-kept').dirty, false, 'the same key is not a difference');
+  store2.replaceScore(keyed, same, {});
+  assert.equal(store2.status('key-kept').dirty, true, 'dropping the original key is a difference');
+  assert.equal(store2.reset('key-kept').key, 3, 'reset brings back the original key');
+});
+
+test('replaceScore rejects unreadable lines atomically with the measure position', function(){
+  const source = song('atomic', '원자성', ['[C] C4 - - -','[C] - - - -'], 4);
+  const store = createScoreDraftStore();
+  const failure = captureFailure(()=>store.replaceScore(source, ['[C] Q9 - - -','[C] - - - -'], {origin:'tab-input'}));
+  assert.match(failure.message, /마디 1/);
+  assert.equal(store.get('atomic'), null, 'a failed call registers no state');
+  assert.deepEqual(store.status('atomic'), {dirty:false,temporary:false,origin:null});
+  const baseline = store.replaceScore(source, ['[C] D4 - - -','[C] - - - -'], {origin:'tab-input'});
+  const statusBefore = store.status('atomic');
+  [
+    ['[C] D4 - -'],
+    ['[C] D4 - - -','[C] E4 - -'],
+    ['[C] D4 - - - //'],
+    ['// [C] D4 - - -']
+  ].forEach(function(lines){
+    const error = captureFailure(()=>store.replaceScore(source, lines, {origin:'tab-input'}));
+    assert.ok(/마디 \d/.test(error.message));
+    assert.strictEqual(store.get('atomic'), baseline, 'failed call preserves the current object');
+    assert.deepEqual(store.status('atomic'), statusBefore);
+  });
+  assert.throws(()=>store.replaceScore({id:'pic',type:'image'}, ['[C] C4 - - -']), error=>Array.isArray(error.errors));
+  assert.throws(()=>store.replaceScore(null, ['[C] C4 - - -']), error=>Array.isArray(error.errors));
+});
+
+test('reset after replaceScore brings back the original score and clears the origin', function(){
+  const source = song('back', '되돌림', ['[C] C4 - - - | "원본"','[G] D4 - - -'], 4);
+  const store = createScoreDraftStore();
+  store.replaceScore(source, ['[Am] E4 - - - | "수정"'], {key:1, origin:'tab-input'});
+  assert.equal(store.status('back').dirty, true);
+  const reset = store.reset('back');
+  assert.equal(reset.measures.length, 2);
+  assert.equal(reset.measures[0].lyric, '원본');
+  assert.equal('key' in reset, false);
+  assert.deepEqual(store.status('back'), {dirty:false,temporary:false,origin:null});
   assert.deepEqual(source.measures[0].beats.map(beat=>beat.tok), ['C4','-','-','-']);
 });
 
-test('measure-only and whole-score validation failures are atomic and report locations', function(){
+test('quoted slash memo and a hold continuing from the previous measure remain valid', function(){
+  const source = song('joined','마디 연결',['[C] C4 - - -','[C] - - - -'],4);
   const store = createScoreDraftStore();
-  store.list([song('atomic','원자성',['[C] C4 - - -','[C] - - - -'],4)]);
-  const id = 'atomic';
-  const baseline = store.get(id);
-  const baselineStatus = store.status(id);
-  const failures = [
-    ()=>store.apply(id,0,'[C] D4 - - -\n[C] E4 - - -',false),
-    ()=>store.apply(id,0,'[C] D4 - -',false),
-    ()=>store.apply(id,0,'[C] r r r r',false)
-  ];
-  failures.forEach(function(fail){
-    captureFailure(fail);
-    assert.strictEqual(store.get(id),baseline,'failed operation preserves the current returned object');
-    assert.deepEqual(store.status(id),baselineStatus,'failed operation preserves dirty and undo state');
-  });
-  [
-    '[C] D4 - - - //',
-    '// [C] D4 - - -'
-  ].forEach(function(raw){
-    const error = captureFailure(()=>store.apply(id,0,raw,false));
-    assert.ok(error.errors.some(item=>item.code === 'EMPTY_MEASURE'), 'boundary double slash is validated as part of the full score');
-    assert.strictEqual(store.get(id),baseline,'boundary failure leaves the score object unchanged');
-    assert.deepEqual(store.status(id),baselineStatus,'boundary failure leaves dirty and undo state unchanged');
-  });
-  assert.throws(()=>store.remove(id,0), error=>error.errors.some(item=>/HOLD/.test(item.code)), 'removing an attack that feeds a later bar hold is rejected');
-  assert.strictEqual(store.get(id),baseline);
-  assert.deepEqual(store.status(id),baselineStatus);
-});
-
-test('quoted slash memo and a hold continuing from the previous measure remain valid edits', function(){
-  const store = createScoreDraftStore();
-  store.list([song('joined','마디 연결',['[C] C4 - - -','[C] - - - -'],4)]);
-  const edited = store.apply('joined',0,'[C] E4 - - - | "memo // / |"',false);
+  const edited = store.replaceScore(source, ['[C] E4 - - - | "memo // / |"','[C] - - - -']);
   assert.equal(edited.measures[0].lyric,'memo // / |');
+  assert.equal(edited.measures[1].beats[0].kind,'hold');
   assert.equal(edited.measures[1].beats[0].tieFrom.measureIndex,0);
-  const held = store.apply('joined',1,'[C] - - - -',false);
-  assert.equal(held.measures[1].beats[0].kind,'hold');
-  assert.equal(held.measures[1].beats[0].tieFrom.measureIndex,0);
 });
 
-test('last-bar deletion is blocked and remains atomic', function(){
+test('explicit fingering, articulation, and JSON memo survive replaceScore and canonical round trip', function(){
+  const source = song('written','표기',['[C] C4 - - -'],4);
   const store = createScoreDraftStore();
-  store.list([song('last','한 마디',['[C] C4 - - -'],4)]);
-  const before = store.get('last');
-  assert.throws(()=>store.remove('last',0), error=>error.errors.some(item=>item.code === 'LAST_MEASURE'));
-  assert.strictEqual(store.get('last'),before);
-  assert.equal(store.status('last').canUndo,false);
-});
-
-test('explicit fingering, articulation, and JSON memo survive full-score edits and canonical round trip', function(){
-  const store = createScoreDraftStore();
-  store.list([song('written','표기',['[C] C4 - - -'],4)]);
-  const edited = store.apply('written',0,'[C] 0E4:p !1F4 3G4 r | "메모 *3"',false);
+  const edited = store.replaceScore(source, ['[C] 0E4:p !1F4 3G4 r | "메모 *3"']);
   const serialized = parser.serializeScoreMeasures(edited.measures);
   assert.match(serialized,/0E4:p/);
   assert.match(serialized,/!1F4/);
@@ -175,7 +196,7 @@ test('clean sources refresh while dirty drafts and their original reset snapshot
   store.list([second]);
   assert.equal(store.get('refresh').title,'최신 clean');
   assert.equal(store.get('refresh').capo,4);
-  store.apply('refresh',0,'[F] F4 - - -',false);
+  store.replaceScore(store.get('refresh'), ['[F] F4 - - -']);
   const dirtyDraft = store.get('refresh');
   const listed = store.list([third]);
   assert.strictEqual(listed[0],dirtyDraft);
@@ -185,27 +206,16 @@ test('clean sources refresh while dirty drafts and their original reset snapshot
   assert.equal(store.get('refresh').measures[0].chord,'G');
 });
 
-test('source score changes invalidate stale undo snapshots after a clean refresh', function(){
+test('dirty drafts and created temporary scores remain visible when sources disappear', function(){
   const store = createScoreDraftStore();
-  store.list([song('undo-refresh','초기',['[C] C4 - - -'],4)]);
-  store.apply('undo-refresh',0,'[G] D4 - - -',false);
-  store.reset('undo-refresh');
-  assert.equal(store.status('undo-refresh').canUndo,true);
-  store.list([song('undo-refresh','새 원본',['[Am] E4 - - -'],4)]);
-  assert.equal(store.get('undo-refresh').title,'새 원본');
-  assert.equal(store.status('undo-refresh').canUndo,false);
-  assert.equal(store.undo('undo-refresh').measures[0].chord,'Am');
-});
-
-test('dirty drafts and blank drafts remain visible when sources disappear', function(){
-  const store = createScoreDraftStore();
-  store.list([song('persist','유지',['[C] C4 - - -'],4),song('clean','사라질 clean',['[C] E4 - - -'],4)]);
-  store.apply('persist',0,'[C] D4 - - -',false);
-  const blank = store.createBlank({title:'임시'});
+  const persist = song('persist','유지',['[C] C4 - - -'],4);
+  store.list([persist,song('clean','사라질 clean',['[C] E4 - - -'],4)]);
+  store.replaceScore(persist, ['[C] D4 - - -']);
+  const made = store.createFromScore({title:'임시',beats:4,bpm:64,lines:['[-] r r r r']});
   const results = store.list([]);
-  assert.deepEqual(results.map(item=>item.id),['persist',blank.id]);
+  assert.deepEqual(results.map(item=>item.id),['persist',made.id]);
   assert.equal(store.get('clean').title,'사라질 clean');
-  assert.equal(store.status(blank.id).temporary,true);
+  assert.equal(store.status(made.id).temporary,true);
 });
 
 test('createFromScore builds a temporary structured song with origin and rejects invalid text', function(){
@@ -229,8 +239,9 @@ test('createFromScore builds a temporary structured song with origin and rejects
   assert.equal(fromText.measures.length, 2);
   assert.equal(store.status(fromText.id).origin, null);
   assert.notEqual(fromText.id, made.id);
-  store.apply(made.id, 1, '[Am] A2@5+E4@1 r r r | "고침"', false);
+  store.replaceScore(made, ['[-] E4@1 - G4@1 - | ""', '[Am] A2@5+E4@1 r r r | "고침"'], {origin:'tab-input'});
   assert.equal(store.status(made.id).dirty, true, 'editing marks the created score dirty');
+  assert.equal(store.status(made.id).temporary, true);
   assert.equal(store.status(made.id).origin, 'tab-input');
   captureFailure(function(){ store.createFromScore({title:'틀림',beats:4,bpm:64,lines:['[-] Q9 r r r']}); });
 });
@@ -257,7 +268,7 @@ test('browser global export works in a VM without DOM or storage globals', funct
   assert.equal(vm.runInContext('typeof localStorage',context),'undefined');
   assert.equal(vm.runInContext('typeof indexedDB',context),'undefined');
   assert.equal(vm.runInContext('typeof createScoreDraftStore',context),'function');
-  assert.equal(vm.runInContext('createScoreDraftStore().createBlank({title:"VM",beats:2}).measures[0].beats.length',context),2);
+  assert.equal(vm.runInContext('createScoreDraftStore().createFromScore({title:"VM",beats:2,bpm:64,lines:["[-] r r"]}).measures[0].beats.length',context),2);
 });
 
 process.stdout.write('1..' + checks + '\n');

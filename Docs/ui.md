@@ -10,7 +10,8 @@
 - 2026-10-19 결정: 툴바가 여러 줄로 접히지 않게 640px 이상에서 `flex-wrap: nowrap`을 주고 `#scoreClickHint`를 숨겨. 원본 상태에서는 '원본 악보' 안내 줄을 없애고, 임시 악보·수정 초안이 아니면 `#scoreDraftControls` 전체를 숨겨 악보를 위로 붙여.
 - 2026-10-19 결정: `#rewindToFirstBtn`(Home)은 긴 악보를 스크롤하다 한 번에 처음으로 돌아가려고 둔 거야. `resetToFirstMeasure`가 커서를 첫 마디로 돌리고, 반복 구간 시작이 첫 마디를 벗어나 있으면 전체 곡 기준으로 맞추고, `#structuredScoreWrap`·`#imgStageScroll`를 맨 위로 부드럽게 스크롤해.
 
-- 2026-10-19 결정: 곡 선택 바의 `빈 악보 추가` 앞에 악보 입력 화면으로 가는 링크 `#openScoreInputLink`(`악보 입력`)를 둬. 악보를 새로 만드는 버튼들과 한 자리에 있어야 찾기 쉬워서야.
+- 2026-10-19 결정: 곡 선택 바에 악보 입력 화면으로 가는 링크 `#openScoreInputLink`(`악보 입력`)를 둬. 같은 날 `빈 악보 추가`를 지워서 새 악보는 이 링크로만 만들어.
+- 2026-10-19 결정: 악보 툴바의 `악보 복사` 옆에 `악보 편집`(`#editInInputBtn`, 텍스트 악보만)을 두고, 마디 머리의 `⋯` 메뉴는 `편집` 버튼(`.score-measure-edit`, 그 마디부터 편집) 하나로 바꿨어. 둘 다 악보 입력 화면으로 넘겨([개발 안내](development.md)의 초안과 저장).
 - 2026-10-19 결정: 곡 선택 목록(`#songSelect`, `#compactSongSelect`)은 내장곡을 레벨별 묶음(`Lv.1 입문` 등)으로 보여 줘. 두 목록 모두 `src/app.js`의 `appendBuiltinSongGroups` 하나로 만들어. 레벨 기준은 [내장곡 출처](builtin-sources.md)의 레벨 절에 있어.
 
 - 2026-10-19 결정: 악보 보기 단추(`#scoreModeSeg`)는 `타브`(`#scoreModeTabBtn`)·`둘 다`(`#scoreModeBothBtn`)·`오선`(`#scoreModeStaffBtn`)·`카드`(`#scoreModeCardBtn`) 넷이야. `둘 다`와 `오선`은 타브 카드 위에 오선을 띄워. 규칙과 이유는 [오선 미리보기](staff-notation.md)의 연습 화면 절에 있어.

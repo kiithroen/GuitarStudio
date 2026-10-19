@@ -406,16 +406,8 @@ function curCapo(){
         if (m.autoChord) chord.title = '멜로디 구성음과 곡의 조성을 분석해 자동 추론된 반주 코드입니다';
         head.appendChild(chord);
       }
-      if (scoreEditorHooks) scoreEditorHooks.appendMeasureMenu(head, mIdx);
+      if (scoreEditorHooks) scoreEditorHooks.appendMeasureEditButton(head, mIdx);
       card.appendChild(head);
-
-      if (scoreEditorHooks && scoreEditorHooks.isEditingMeasure(mIdx)){
-        scoreEditorHooks.renderInlineEditor(card, mIdx);
-        card.addEventListener('click', function(event){ event.stopPropagation(); });
-        grid.appendChild(card);
-        scoreEditorHooks.appendInsertDraftCard(grid, mIdx);
-        return;
-      }
 
       if (isTab){
         var staveWrap = document.createElement('div');
@@ -812,7 +804,6 @@ function curCapo(){
       });
 
       grid.appendChild(card);
-      if (scoreEditorHooks) scoreEditorHooks.appendInsertDraftCard(grid, mIdx);
     });
 
     renderChordCards(chordsSet);
@@ -1304,7 +1295,6 @@ function curCapo(){
 
   // ---------- 메트로놈 재생 루프 (카운트인 + 마디 진행 + 구간 반복 + 자동 가속)
   function startPractice(){
-    if (scoreEditorHooks && !scoreEditorHooks.beforeAction('연습 시작')) return;
     if (isPlaying) return;
     if (curSong && curSong.type === 'structured'){
       var validation = validateScore(serializeScoreMeasures(curSong.measures, '\n'), curSong.beats || appState.beats);
@@ -1765,7 +1755,7 @@ function curCapo(){
   window.addEventListener('keydown', function(e){
     var tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    if (!$('#audioOffsetModal').hidden || !$('#sheetSyncModal').hidden || !$('#backupModal').hidden || !$('#toneModal').hidden || !$('#blankScoreModal').hidden || ($('#helpModal') && !$('#helpModal').hidden)) return;
+    if (!$('#audioOffsetModal').hidden || !$('#sheetSyncModal').hidden || !$('#backupModal').hidden || !$('#toneModal').hidden || ($('#helpModal') && !$('#helpModal').hidden)) return;
 
     if (e.code === 'Space'){
       e.preventDefault();
@@ -2445,13 +2435,6 @@ function curCapo(){
   }
 
   function rebuildSongSelect(selectId){
-    if (scoreEditorHooks && scoreEditorHooks.deferRebuild()){
-      if (curSong){
-        if ($('#songSelect')) $('#songSelect').value = curSong.id;
-        if ($('#compactSongSelect')) $('#compactSongSelect').value = curSong.id;
-      }
-      return false;
-    }
     if (curSong) rememberCurrentSession();
     stopPractice();
     allSongs = scoreDrafts.list(BUILTIN_SONGS.concat(sheetSongs).concat(imageSongs));
@@ -2512,11 +2495,6 @@ function curCapo(){
   }
 
   function changeSongById(songId){
-    if (scoreEditorHooks && !scoreEditorHooks.beforeAction('곡 변경')){
-      if ($('#songSelect') && curSong) $('#songSelect').value = curSong.id;
-      if ($('#compactSongSelect') && curSong) $('#compactSongSelect').value = curSong.id;
-      return false;
-    }
     if (curSong) rememberCurrentSession();
     stopPractice();
     curMeasureIdx = 0;
@@ -2567,9 +2545,9 @@ function curCapo(){
     if (savedSheetUrl){
       await syncGoogleSheetSongs(savedSheetUrl, true);
     }
-    rebuildSongSelect(scoreEditorHooks.consumeTabInputHandoff() || appState.lastSongId);
+    rebuildSongSelect(scoreEditorHooks.consumeTabInputHandoff(BUILTIN_SONGS.concat(sheetSongs)) || appState.lastSongId);
   }).catch(function(){
     reportStorageError();
     imageSongs = [];
-    rebuildSongSelect(scoreEditorHooks.consumeTabInputHandoff() || appState.lastSongId);
+    rebuildSongSelect(scoreEditorHooks.consumeTabInputHandoff(BUILTIN_SONGS.concat(sheetSongs)) || appState.lastSongId);
   });

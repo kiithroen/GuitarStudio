@@ -176,170 +176,33 @@ async function waitForPageLoadAfter(client, previousLoadCount, timeoutMs = 10000
 
 async function testTemporaryScoreEditor(client){
   const setup = await client.evaluate(`(function(){
-    var groups = Array.from(document.querySelectorAll('.top-actions'));
-    var blank = document.getElementById('addBlankScoreBtn');
-    return { blankIsLastTopAction:!!blank && blank.parentElement === groups[1] && groups[1].lastElementChild === blank,
-      controlsRow:!!document.getElementById('scoreDraftControls') && document.getElementById('scoreDraftControls').contains(document.getElementById('scoreDraftStatus')) && document.getElementById('scoreDraftControls').contains(document.getElementById('undoScoreEditBtn')),
-      copyNextToCompact:!!document.getElementById('copyCurSongTsvBtn') && document.getElementById('copyCurSongTsvBtn').parentElement === document.getElementById('toggleCompactBtn').parentElement && document.getElementById('copyCurSongTsvBtn').nextElementSibling === document.getElementById('toggleCompactBtn') };
+    var edit = document.getElementById('editInInputBtn'), copy = document.getElementById('copyCurSongTsvBtn'), compact = document.getElementById('toggleCompactBtn');
+    var controls = document.getElementById('scoreDraftControls');
+    return {
+      removed:['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].every(function(id){ return !document.getElementById(id); }),
+      controlsRow:!!controls && controls.contains(document.getElementById('scoreDraftStatus')) && controls.contains(document.getElementById('resetScoreDraftBtn')),
+      editBeforeCopy:!!edit && edit.parentElement === compact.parentElement && edit.nextElementSibling === copy && copy.nextElementSibling === compact };
   })()`);
-  assert.deepEqual(setup, { blankIsLastTopAction:true, controlsRow:true, copyNextToCompact:true }, 'temporary score controls occupy their specified toolbar positions');
-
-  const initial = await client.evaluate(`(function(){
-    var button=document.getElementById('addBlankScoreBtn'); button.click();
-    var defaults=[document.getElementById('blankScoreTitle').value,document.getElementById('blankScoreBeats').value,document.getElementById('blankScoreBpm').value];
-    document.getElementById('cancelBlankScoreBtn').click();
-    return {defaults:defaults,hidden:document.getElementById('blankScoreModal').hidden,count:allSongs.length};
-  })()`);
-  assert.deepEqual(initial, { defaults:['빈 악보 1','4','64'], hidden:true, count:builtinSongCount }, 'blank modal cancel preserves the song list and shows configured defaults');
-
-  const editFlow = await client.evaluate(`(async function(){
-    function selectSong(id){var select=document.getElementById('songSelect');select.value=id;select.dispatchEvent(new Event('change',{bubbles:true}));}
-    function measureCard(index){return document.querySelector('#measuresGrid .measure-card[data-m="'+index+'"]');}
-    function choose(index,action){var card=measureCard(index);if(!card)throw new Error('measure card missing: '+index);var menuButton=card.querySelector('.score-measure-menu-button');if(!menuButton)throw new Error('measure menu button missing');menuButton.click();var actionButton=card.querySelector('.score-measure-menu [data-score-action="'+action+'"]');if(!actionButton)throw new Error('measure action missing: '+action);if(actionButton.disabled)throw new Error('measure action is unexpectedly disabled: '+action);actionButton.click();}
-    function measureText(song,label){return '[-] '+new Array(song.beats).fill('r').join(' ')+' | '+JSON.stringify(label);}
-    function typeAndApply(text){var textarea=document.getElementById('scoreMeasureText');textarea.value=text;textarea.dispatchEvent(new Event('input',{bubbles:true}));var apply=document.querySelector('#scoreMeasureEditor [data-score-action="apply"]');if(!apply)throw new Error('inline apply button missing');apply.click();}
-    function score(song){return serializeScoreMeasures(song.measures,'\\n');}
-    function openEdit(index){choose(index,'edit');if(!document.getElementById('scoreMeasureText'))throw new Error('actual measure menu click did not open inline editor');}
-    var sourceA=BUILTIN_SONGS.find(function(song){return song.id==='builtin-lv1-butterfly';});
-    var sourceB=BUILTIN_SONGS.find(function(song){return song.id!=='builtin-lv1-butterfly';});
-    if(!sourceA||!sourceB)throw new Error('expected builtin sources missing');
-    var originalA=score(sourceA),originalB=score(sourceB);
-    selectSong(sourceA.id);
-    var countA=curSong.measures.length;
-    curMeasureIdx=Math.min(2,countA-1);curBeatIdx=Math.min(1,curSong.beats-1);
-    appState.bpm=Math.max(30,Math.min(240,Number(curSong.bpm)||64));
-    var sourceBpm=Number(curSong.bpm)||64;
-    var savedBpm=Math.max(30,Math.min(240,sourceBpm+7)),savedMeasure=curMeasureIdx,savedBeat=curBeatIdx;
-    appState.bpm=savedBpm;appState.loopStart=countA>2?2:1;appState.loopEnd=countA>2?countA-1:countA;
-    var savedLoop=[appState.loopStart,appState.loopEnd];
-    openEdit(0);
-    var pendingCount=curSong.measures.length;
-    var pendingText=measureText(curSong,'browser-edit-a');
-    var textarea=document.getElementById('scoreMeasureText');textarea.value=pendingText;textarea.dispatchEvent(new Event('input',{bubbles:true}));
-    var pendingSongId=curSong.id;
-    selectSong(sourceB.id);
-    var songGuard=curSong.id===pendingSongId;
-    var status=document.getElementById('scoreDraftStatus').textContent;
-    var copied=0;var oldClipboard=Object.getOwnPropertyDescriptor(navigator,'clipboard');
-    try { Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:function(){copied++;return Promise.resolve();}}}); } catch(_){}
-    document.getElementById('copyCurSongTsvBtn').click();
-    document.getElementById('playBtn').click();
-    var actionGuards={song:songGuard,copy:copied===0,play:!isPlaying,status:document.getElementById('scoreDraftStatus').textContent};
-    if(oldClipboard)Object.defineProperty(navigator,'clipboard',oldClipboard);else try{delete navigator.clipboard;}catch(_){}
-    typeAndApply('[-] r');
-    var invalid={stillPending:!!document.getElementById('scoreMeasureText'),sameCount:curSong.measures.length===pendingCount,error:!!document.getElementById('scoreEditError').textContent};
-    var sessionBefore={bpm:savedBpm,measure:savedMeasure,beat:savedBeat,loopStart:savedLoop[0],loopEnd:savedLoop[1]};
-    var screenshotDir='test-artifacts/temp-score-editor/';
-    return { sourceA:sourceA.id,sourceB:sourceB.id,originalA:originalA,originalB:originalB,countA:countA,sourceBpm:sourceBpm,savedBpm:savedBpm,savedMeasure:savedMeasure,savedBeat:savedBeat,savedLoop:savedLoop,
-      actionGuards:actionGuards,invalid:invalid,pendingText:pendingText,sessionBefore:sessionBefore,screenshotDir:screenshotDir };
-  })()`);
-  assert.equal(editFlow.actionGuards.song, true, 'pending inline edit blocks song selection through the actual select control');
-  assert.equal(editFlow.actionGuards.copy, true, 'pending inline edit blocks TSV copy through its actual toolbar button');
-  assert.equal(editFlow.actionGuards.play, true, 'pending inline edit blocks practice through its actual play button');
-  assert.match(editFlow.actionGuards.status, /먼저 적용하거나 취소/, 'pending guards explain how to continue');
-  assert.deepEqual(editFlow.invalid, { stillPending:true, sameCount:true, error:true }, 'invalid full-score edit preserves original draft and pending text');
+  assert.deepEqual(setup, { removed:true, controlsRow:true, editBeforeCopy:true }, 'draft controls and the edit button occupy their specified toolbar positions');
 
   const screenshotDir = path.join(root,'test-artifacts','temp-score-editor');
   fs.mkdirSync(screenshotDir,{recursive:true});
   const screenshotRun = Date.now();
-  async function saveScreenshot(name,width,height,mobile,showEditor){
+  async function saveScreenshot(name,width,height,mobile){
     await client.send('Emulation.setDeviceMetricsOverride',{width:width,height:height,deviceScaleFactor:1,mobile:mobile});
-    if(showEditor){
-      await client.evaluate(`(function(){document.getElementById('scoreMeasureEditor').scrollIntoView({block:'center'});var r=document.getElementById('scoreMeasureEditor').getBoundingClientRect();return r.top<innerHeight&&r.bottom>0;})()`);
-      assert.equal(await client.evaluate(`(function(){var r=document.getElementById('scoreMeasureEditor').getBoundingClientRect();return r.top<innerHeight&&r.bottom>0;})()`),true,'editor screenshot includes inline edit controls');
-    } else await client.evaluate('window.scrollTo(0,0)');
+    await client.evaluate('window.scrollTo(0,0)');
     const shot=await client.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
     const target=path.join(screenshotDir,name.replace('.png','-'+screenshotRun+'.png'));
     fs.writeFileSync(target,Buffer.from(shot.data,'base64'));
     const header=fs.readFileSync(target).subarray(0,24);
-    assert.equal(header.readUInt32BE(16),width,'score editor screenshot width');
-    assert.equal(header.readUInt32BE(20),height,'score editor screenshot height');
+    assert.equal(header.readUInt32BE(16),width,'score toolbar screenshot width');
+    assert.equal(header.readUInt32BE(20),height,'score toolbar screenshot height');
     process.stdout.write('Artifact: '+target+'\n');
     return target;
   }
-  await saveScreenshot('toolbar-desktop.png',1280,900,false,false);
-  await saveScreenshot('editor-desktop.png',1280,900,false,true);
-  await saveScreenshot('toolbar-mobile.png',390,844,true,false);
-  await saveScreenshot('editor-mobile.png',390,844,true,true);
+  await saveScreenshot('toolbar-desktop.png',1280,900,false);
+  await saveScreenshot('toolbar-mobile.png',390,844,true);
   await client.send('Emulation.clearDeviceMetricsOverride');
-
-  await client.evaluate(`document.querySelector('#scoreMeasureEditor [data-score-action="cancel"]').click()`);
-  const menuClose = await client.evaluate(`(function(){
-    var saved={m:curMeasureIdx,b:curBeatIdx,ls:appState.loopStart,le:appState.loopEnd,lsv:$('#loopStart').value,lev:$('#loopEnd').value};
-    var c0=document.querySelector('#measuresGrid .measure-card[data-m="0"]');
-    var btn=c0.querySelector('.score-measure-menu-button'),menu=c0.querySelector('.score-measure-menu');
-    btn.click();var openedByTrigger=menu.hidden===false;
-    btn.click();var toggleCloses=menu.hidden===true;
-    btn.click();
-    var c1=document.querySelector('#measuresGrid .measure-card[data-m="1"]');
-    var other=c1.querySelector('.beat-cell')||c1;
-    other.click();
-    var outsideCloses=menu.hidden===true&&btn.getAttribute('aria-expanded')==='false';
-    if(!menu.hidden)btn.click();
-    btn.click();
-    var reopened=menu.hidden===false;
-    document.body.click();
-    var bodyCloses=reopened&&menu.hidden===true;
-    curMeasureIdx=saved.m;curBeatIdx=saved.b;appState.loopStart=saved.ls;appState.loopEnd=saved.le;
-    $('#loopStart').value=saved.lsv;$('#loopEnd').value=saved.lev;
-    updateLoopClasses();
-    return {openedByTrigger:openedByTrigger,toggleCloses:toggleCloses,outsideCloses:outsideCloses,bodyCloses:bodyCloses};
-  })()`);
-  assert.deepEqual(menuClose, {openedByTrigger:true, toggleCloses:true, outsideCloses:true, bodyCloses:true}, 'measure menu closes on toggle and on outside clicks');
-  const mutations = await client.evaluate(`(function(){
-    function selectSong(id){var select=document.getElementById('songSelect');select.value=id;select.dispatchEvent(new Event('change',{bubbles:true}));}
-    function card(index){return document.querySelector('#measuresGrid .measure-card[data-m="'+index+'"]');}
-    function action(index,name){var c=card(index);c.querySelector('.score-measure-menu-button').click();c.querySelector('.score-measure-menu [data-score-action="'+name+'"]').click();}
-    function text(song,label){return '[-] '+new Array(song.beats).fill('r').join(' ')+' | '+JSON.stringify(label);}
-    function apply(label){var t=document.getElementById('scoreMeasureText');t.value=text(curSong,label);t.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#scoreMeasureEditor [data-score-action="apply"]').click();}
-    function score(song){return serializeScoreMeasures(song.measures,'\\n');}
-    var a=editFlowSourceA(),b=editFlowSourceB();
-    selectSong(a.id);action(0,'edit');apply('browser-edit-a');
-    var appliedA=score(curSong)!==editFlowOriginalA();var sourceUnchangedA=score(a)===editFlowOriginalA();
-    var session={bpm:appState.bpm,measure:curMeasureIdx,beat:curBeatIdx,loopStart:appState.loopStart,loopEnd:appState.loopEnd};
-    selectSong(b.id);
-    var countB=curSong.measures.length;
-    appState.bpm=Math.max(30,Math.min(240,(Number(curSong.bpm)||64)+9));
-    appState.loopStart=countB>2?2:1;appState.loopEnd=countB>2?countB-1:countB;
-    curMeasureIdx=Math.min(2,countB-1);curBeatIdx=Math.min(1,curSong.beats-1);
-    var expectedB={bpm:appState.bpm,measure:curMeasureIdx,beat:curBeatIdx,loopStart:appState.loopStart,loopEnd:appState.loopEnd};
-    action(0,'edit');apply('browser-edit-b');
-    var appliedB=score(curSong)!==editFlowOriginalB();
-    var sessionB={bpm:appState.bpm,measure:curMeasureIdx,beat:curBeatIdx,loopStart:appState.loopStart,loopEnd:appState.loopEnd};
-    selectSong(a.id);document.getElementById('undoScoreEditBtn').click();
-    var undoA=score(curSong)===editFlowOriginalA();
-    selectSong(b.id);var bStillDirty=score(curSong)!==editFlowOriginalB()&&scoreDrafts.status(b.id).canUndo;
-    document.getElementById('undoScoreEditBtn').click();
-    var undoB=score(curSong)===editFlowOriginalB();
-    var undoSessionB={bpm:appState.bpm,measure:curMeasureIdx,beat:curBeatIdx,loopStart:appState.loopStart,loopEnd:appState.loopEnd};
-    selectSong(a.id);
-    var beforeInsert=curSong.measures.length;curMeasureIdx=Math.min(1,beforeInsert-1);curBeatIdx=0;var oldCursor=curMeasureIdx;
-    action(0,'insert');var previewUnapplied=curSong.measures.length===beforeInsert&&!!document.querySelector('.score-insert-draft');
-    apply('insert-rest');var inserted=curSong.measures.length===beforeInsert+1;var cursorMapped=curMeasureIdx===(oldCursor>=1?oldCursor+1:oldCursor);
-    document.getElementById('undoScoreEditBtn').click();var insertUndo=curSong.measures.length===beforeInsert;
-    action(0,'delete');var deleted=curSong.measures.length===beforeInsert-1;document.getElementById('undoScoreEditBtn').click();var deleteUndo=curSong.measures.length===beforeInsert;
-    var priorSheets=sheetSongs.slice();
-    var sheetSource=buildStructuredSong({id:'browser-sheet-draft-source',title:'Sheet draft source',badge:'Capo 2',bpm:77,beats:4,lines:['[C] C4 - - - | "sheet source memo"']});
-    sheetSource.fromSheet=true;sheetSongs=priorSheets.concat([sheetSource]);rebuildSongSelect(sheetSource.id);
-    var originalSheet=score(sheetSource);action(0,'edit');apply('browser-sheet-draft');
-    var sheetDraftIsolated=score(curSong)!==originalSheet&&score(sheetSource)===originalSheet;
-    scoreDrafts.reset(sheetSource.id);sheetSongs=priorSheets;rebuildSongSelect(a.id);
-    var sourceImmutable=score(a)===editFlowOriginalA()&&score(b)===editFlowOriginalB();
-    return {appliedA:appliedA,sourceUnchangedA:sourceUnchangedA,appliedB:appliedB,undoA:undoA,bStillDirty:bStillDirty,undoB:undoB,session:session,sessionB:sessionB,expectedB:expectedB,undoSessionB:undoSessionB,
-      previewUnapplied:previewUnapplied,inserted:inserted,cursorMapped:cursorMapped,insertUndo:insertUndo,deleted:deleted,deleteUndo:deleteUndo,sheetDraftIsolated:sheetDraftIsolated,sourceImmutable:sourceImmutable};
-    function editFlowSourceA(){return BUILTIN_SONGS.find(function(song){return song.id==='builtin-lv1-butterfly';});}
-    function editFlowSourceB(){return BUILTIN_SONGS.find(function(song){return song.id!== 'builtin-lv1-butterfly';});}
-    function editFlowOriginalA(){return ${JSON.stringify(editFlow.originalA)};}
-    function editFlowOriginalB(){return ${JSON.stringify(editFlow.originalB)};}
-  })()`);
-  for (const key of ['appliedA','sourceUnchangedA','appliedB','undoA','bStillDirty','undoB','previewUnapplied','inserted','cursorMapped','insertUndo','deleted','deleteUndo','sheetDraftIsolated','sourceImmutable']){
-    assert.equal(mutations[key],true,'temporary score editor flow: '+key);
-  }
-  assert.notEqual(editFlow.savedBpm,editFlow.sourceBpm,'edit fixture uses a BPM different from the built-in default');
-  assert.deepEqual(editFlow.sessionBefore,{bpm:editFlow.savedBpm,measure:editFlow.savedMeasure,beat:editFlow.savedBeat,loopStart:editFlow.savedLoop[0],loopEnd:editFlow.savedLoop[1]},'edit fixture uses non-default session values');
-  assert.deepEqual(mutations.session,editFlow.sessionBefore,'the non-default BPM, cursor, and loop survive the edit apply');
-  assert.deepEqual(mutations.sessionB,mutations.expectedB,'a second song keeps its own non-default BPM, cursor, and loop through editing');
-  assert.deepEqual(mutations.undoSessionB,mutations.expectedB,'undo restores the edited song session instead of another song snapshot');
 
   await client.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   const ordinaryMobile=await client.evaluate(`(function(){
@@ -347,13 +210,15 @@ async function testTemporaryScoreEditor(client){
     toolbar.scrollIntoView({block:'start'});
     var r=right.getBoundingClientRect(),p=panel.getBoundingClientRect();
     return {rightWithinPanel:r.right<=p.right+1,rightWithinViewport:r.right<=innerWidth+1,documentWithinViewport:document.documentElement.scrollWidth<=innerWidth+1,
-      copyVisible:document.getElementById('copyCurSongTsvBtn').getClientRects().length>0,compactVisible:document.getElementById('toggleCompactBtn').getClientRects().length>0};
+      copyVisible:document.getElementById('copyCurSongTsvBtn').getClientRects().length>0,compactVisible:document.getElementById('toggleCompactBtn').getClientRects().length>0,
+      editVisible:document.getElementById('editInInputBtn').getClientRects().length>0};
   })()`);
   assert.equal(ordinaryMobile.rightWithinPanel,true,'ordinary mobile score toolbar buttons stay inside the score panel');
   assert.equal(ordinaryMobile.rightWithinViewport,true,'ordinary mobile score toolbar stays within viewport');
   assert.equal(ordinaryMobile.documentWithinViewport,true,'ordinary mobile page has no document-wide horizontal overflow');
   assert.equal(ordinaryMobile.copyVisible,true,'ordinary mobile TSV copy control remains visible');
   assert.equal(ordinaryMobile.compactVisible,true,'ordinary mobile compact toggle remains visible');
+  assert.equal(ordinaryMobile.editVisible,true,'ordinary mobile edit control remains visible');
   async function captureMobileToolbar(name){
     await client.evaluate(`document.getElementById('scoreToolbar').scrollIntoView({block:'start',inline:'nearest'})`);
     const shot=await client.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
@@ -425,43 +290,6 @@ async function testTemporaryScoreEditor(client){
   await client.evaluate(`document.getElementById('toggleCompactBtn').click()`);
   await client.send('Emulation.clearDeviceMetricsOverride');
 
-  const persistence = await client.evaluate(`(async function(){
-    function card(index){return document.querySelector('#measuresGrid .measure-card[data-m="'+index+'"]');}
-    function menu(index,action){var c=card(index);c.querySelector('.score-measure-menu-button').click();c.querySelector('.score-measure-menu [data-score-action="'+action+'"]').click();}
-    function apply(label){var t=document.getElementById('scoreMeasureText');t.value='[-] '+new Array(curSong.beats).fill('r').join(' ')+' | '+JSON.stringify(label);t.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#scoreMeasureEditor [data-score-action="apply"]').click();}
-    var originalA=BUILTIN_SONGS.find(function(song){return song.id==='builtin-lv1-butterfly';});
-    var sourceText=serializeScoreMeasures(originalA.measures,'\\n');
-    document.getElementById('addBlankScoreBtn').click();
-    document.getElementById('blankScoreTitle').value='Browser temporary draft marker';
-    document.getElementById('blankScoreBeats').value='3';
-    document.getElementById('blankScoreBpm').value='88';
-    document.getElementById('createBlankScoreBtn').click();
-    var temporaryId=curSong.id;
-    var created={id:temporaryId,title:curSong.title,beats:curSong.beats,bpm:curSong.bpm,rests:curSong.measures[0].beats.every(function(beat){return beat.tok==='r';}),sourceUnchanged:serializeScoreMeasures(originalA.measures,'\\n')===sourceText};
-    var initialBlankLoop={count:curSong.measures.length,start:appState.loopStart,end:appState.loopEnd};
-    if(curSong.measures.length!==1)throw new Error('new blank score did not start with one measure');
-    menu(0,'insert');apply('blank-second-measure');
-    var blankInsert={count:curSong.measures.length,start:appState.loopStart,end:appState.loopEnd};
-    document.getElementById('undoScoreEditBtn').click();
-    var blankInsertUndo={count:curSong.measures.length,start:appState.loopStart,end:appState.loopEnd};
-    menu(0,'edit');apply('temporary dirty marker');
-    var db=await openDB();
-    var rows=await new Promise(function(resolve,reject){var tx=db.transaction('songs','readonly');var req=tx.objectStore('songs').getAll();req.onsuccess=function(){resolve(req.result);};req.onerror=function(){reject(req.error);};});
-    var localText=Object.keys(localStorage).map(function(key){return localStorage.getItem(key)||'';}).join('\\n');
-    var storage={rowsHaveNoTemp:rows.every(function(row){return !String(row.id).startsWith('temp-score-')&&row.type!=='structured';}),
-      noDraftTitle:!localText.includes(created.title)&&!rows.some(function(row){return JSON.stringify(row).includes(created.title);}),
-      imageRowsRemain:rows.every(function(row){return row.type==='image';})};
-    return {created:created,initialBlankLoop:initialBlankLoop,blankInsert:blankInsert,blankInsertUndo:blankInsertUndo,storage:storage,temporaryCount:allSongs.filter(function(song){return String(song.id).startsWith('temp-score-');}).length,
-      dirty:scoreDrafts.status(temporaryId).dirty,sourceText:sourceText};
-  })()`);
-  assert.deepEqual(persistence.created, { id:'temp-score-1',title:'Browser temporary draft marker',beats:3,bpm:88,rests:true,sourceUnchanged:true }, 'blank-score UI creates a rest-only temporary score without mutating built-ins');
-  assert.deepEqual(persistence.initialBlankLoop,{count:1,start:1,end:1},'new one-measure blank score starts with its full-measure loop');
-  assert.deepEqual(persistence.blankInsert,{count:2,start:1,end:2},'inserting into a one-measure blank score expands its full-song loop');
-  assert.deepEqual(persistence.blankInsertUndo,{count:1,start:1,end:1},'undo restores the one-measure blank score loop');
-  assert.deepEqual(persistence.storage,{rowsHaveNoTemp:true,noDraftTitle:true,imageRowsRemain:true},'temporary score text is absent from localStorage and IndexedDB while image rows remain');
-  assert.equal(persistence.temporaryCount,1,'created temporary score is listed in the current app session');
-  assert.equal(persistence.dirty,true,'applied temporary score edit remains an in-memory draft');
-
   const copiedDraft=await client.evaluate(`(async function(){
     var previous=curSong,oldClipboard=Object.getOwnPropertyDescriptor(navigator,'clipboard'),copied='';
     var parsed=parseScore('[C] !1C4@2:i E4@1:p r r | "copy memo"',4);
@@ -523,24 +351,302 @@ async function testTemporaryScoreEditor(client){
   const badgeAfterRestore=await client.evaluate(`document.getElementById('uncertainBadge').hidden`);
   assert.equal(badgeAfterRestore,true,'uncertain badge hides again on a score without marks');
 
+  // 입력 화면 출처(tab-input)가 아닌 초안은 떠날 때 경고하고, 새로고침하면 사라진다. 원본은 그대로다.
   let beforeUnloadDialogs=0;
   client.dialogHandler = async params => {
     if(params.type==='beforeunload') beforeUnloadDialogs++;
     await client.send('Page.handleJavaScriptDialog',{accept:true});
   };
-  await client.evaluate(`(function(){document.getElementById('addBlankScoreBtn').click();document.getElementById('cancelBlankScoreBtn').click();return true;})()`,{userGesture:true});
+  const sourceText = await client.evaluate(`(function(){
+    var source=BUILTIN_SONGS.find(function(song){return song.id==='builtin-lv1-butterfly';});
+    var text=serializeScoreMeasures(source.measures,'\\n');
+    var lines=text.split('\\n');
+    lines[lines.length-1]='[-] '+new Array(source.beats).fill('r').join(' ');
+    scoreDrafts.replaceScore(source,lines);
+    rebuildSongSelect(source.id);
+    document.body.click();
+    return text;
+  })()`,{userGesture:true});
+  assert.equal(await client.evaluate(`scoreDrafts.status('builtin-lv1-butterfly').dirty`),true,'a draft without the tab-input origin is dirty');
   const previousLoadCount=client.events.filter(event=>event.method==='Page.loadEventFired').length;
   await client.send('Page.reload',{ignoreCache:true});
   await waitForPageLoadAfter(client,previousLoadCount);
   await waitForCondition(client,'document.readyState === "complete" && window.allSongs && window.allSongs.length === '+builtinSongCount+' && window.curSong',8000);
   client.dialogHandler=null;
-  assert.equal(beforeUnloadDialogs,1,'dirty temporary draft raises the native beforeunload confirmation');
+  assert.equal(beforeUnloadDialogs,1,'dirty draft without the tab-input origin raises the native beforeunload confirmation');
   const reloadState=await client.evaluate(`({tempCount:allSongs.filter(function(song){return String(song.id).startsWith('temp-score-');}).length,
     dirty:scoreDrafts.status('builtin-lv1-butterfly').dirty,sourceScore:serializeScoreMeasures(BUILTIN_SONGS.find(function(song){return song.id==='builtin-lv1-butterfly';}).measures,'\\n')})`);
   assert.equal(reloadState.tempCount,0,'temporary scores disappear on reload');
   assert.equal(reloadState.dirty,false,'edited builtin draft disappears on reload');
-  assert.equal(reloadState.sourceScore,persistence.sourceText,'builtin source remains unchanged after reload');
-  process.stdout.write('Browser checkpoint: temporary score create/edit, guard, undo, session mapping, storage isolation, and reload loss passed\n');
+  assert.equal(reloadState.sourceScore,sourceText,'builtin source remains unchanged after reload');
+  process.stdout.write('Browser checkpoint: draft controls, toolbar geometry, TSV copy, prompts, uncertain marks, and draft loss on reload passed\n');
+}
+
+// 연습 화면의 편집은 악보 입력 화면으로 넘기고, 고쳐 돌아오면 원래 곡의 수정 초안이 된다.
+async function testEditHandoff(client, httpPort) {
+  const SONG_ID = 'builtin-lv1-butterfly';
+  const song = builtinSongsJson.find(item => item.id === SONG_ID);
+  const practiceUrl = `http://127.0.0.1:${httpPort}/index.html`;
+  const inputUrl = `http://127.0.0.1:${httpPort}/score-input.html`;
+  const practiceReady = 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= ' + builtinSongCount + ' && window.curSong != null';
+  const inputReady = 'document.readyState === "complete" && document.querySelectorAll("#tiMeasures .ti-measure").length >= 1';
+  const dialogs = [];
+  let confirmAnswer = true;
+  client.dialogHandler = async params => {
+    dialogs.push({ type: params.type, message: params.message });
+    await client.send('Page.handleJavaScriptDialog', { accept: params.type === 'confirm' ? confirmAnswer : true });
+  };
+  async function go(action, readyExpression) {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await action();
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, readyExpression, 8000);
+  }
+  const navigate = (url, ready) => go(() => client.send('Page.navigate', { url }), ready);
+  const clickAndLeave = (selector, ready) => go(() => client.evaluate(`document.querySelector(${JSON.stringify(selector)}).click(); true`, { userGesture: true }), ready);
+  const errorsBefore = client.consoleErrors.length;
+  const KEY_HELPER = `function key(k, code, mods){ document.body.dispatchEvent(new KeyboardEvent('keydown', Object.assign({ key:k, code:code, bubbles:true, cancelable:true }, mods || {}))); }`;
+  const clearInputKeys = `(function(){ Object.keys(localStorage).filter(function(key){ return key.indexOf('gs.tabInput.') === 0; }).forEach(function(key){ localStorage.removeItem(key); }); return true; })()`;
+  const originalText = `serializeScoreMeasures(BUILTIN_SONGS.find(function(item){ return item.id === ${JSON.stringify(SONG_ID)}; }).measures, '\\n')`;
+  async function selectSong() {
+    await client.evaluate(`changeSongById(${JSON.stringify(SONG_ID)}); true`);
+    assert.equal(await client.evaluate('curSong.id'), SONG_ID, 'the built-in song is selected');
+  }
+
+  // 1. 연습 화면: 지워진 편집 UI, 마디 머리 편집 단추, 툴바 악보 편집
+  await navigate(practiceUrl, practiceReady);
+  await client.evaluate(clearInputKeys);
+  await selectSong();
+  const practice = await client.evaluate(`(function(){
+    var cards = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .measure-card'));
+    var third = document.querySelector('#measuresGrid .measure-card[data-m="2"] .score-measure-edit');
+    var tool = document.getElementById('editInInputBtn');
+    return {
+      removed:['addBlankScoreBtn', 'blankScoreModal', 'undoScoreEditBtn'].map(function(id){ return !!document.getElementById(id); }),
+      oldMenus:document.querySelectorAll('.score-measure-menu, .score-measure-menu-button, .score-inline-editor').length,
+      cards:cards.length,
+      oneEditPerCard:cards.every(function(card){ return card.querySelectorAll('.m-head .score-measure-edit').length === 1; }),
+      third:{ text:third.textContent, title:third.title, aria:third.getAttribute('aria-label') },
+      tool:{ visible:!tool.hidden && tool.getClientRects().length > 0, text:tool.textContent.trim(), title:tool.title, before:tool.nextElementSibling === document.getElementById('copyCurSongTsvBtn') },
+      resetHidden:document.getElementById('resetScoreDraftBtn').hidden,
+      original:${originalText}
+    };
+  })()`);
+  assert.deepEqual(practice.removed, [false, false, false], 'the blank score button, its modal and the undo button are gone');
+  assert.equal(practice.oldMenus, 0, 'the measure menu and the inline editor are gone');
+  assert.ok(practice.cards >= 3, 'the fixture song has at least three measures');
+  assert.equal(practice.oneEditPerCard, true, 'every TAB card has exactly one edit button in its head');
+  assert.deepEqual(practice.third, { text: '편집', title: '이 마디부터 악보 입력에서 편집', aria: '3마디부터 편집' }, 'the measure edit button names the measure');
+  assert.deepEqual(practice.tool, { visible: true, text: '악보 편집', title: '악보 입력 화면에서 이 곡을 고칩니다', before: true }, 'the toolbar edit button shows for a text score');
+  assert.equal(practice.resetHidden, true, 'an untouched original has no revert button');
+  const imageToolbar = await client.evaluate(`(function(){
+    var previous = curSong;
+    try {
+      curSong = { id:'edit-link-image-fixture', title:'Image fixture', type:'image', badge:'fixture', bpm:77, imageDataUrl:'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=', systems:[{ x:0.1, y:0.1, w:0.8, h:0.3, bars:[{ chord:'C', note:'C4', memo:'', w:1 }] }] };
+      renderSong();
+      return document.getElementById('editInInputBtn').hidden;
+    } finally { curSong = previous; renderSong(); }
+  })()`);
+  assert.equal(imageToolbar, true, 'the toolbar edit button hides for an image score');
+  assert.equal(await client.evaluate('document.getElementById("editInInputBtn").hidden'), false, 'the toolbar edit button shows again for the text score');
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  async function shot(name, width, height) {
+    await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    const data = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    const target = path.join(root, 'test-artifacts', name);
+    fs.writeFileSync(target, Buffer.from(data.data, 'base64'));
+    const header = fs.readFileSync(target).subarray(0, 24);
+    assert.equal(header.readUInt32BE(16), width, name + ' width');
+    assert.equal(header.readUInt32BE(20), height, name + ' height');
+    process.stdout.write('Artifact: ' + target + '\n');
+    await client.send('Emulation.clearDeviceMetricsOverride');
+  }
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate('window.scrollTo(0, document.getElementById("scoreToolbar").getBoundingClientRect().top + window.scrollY - 8); true');
+  await shot('edit-link-practice.png', 1280, 900);
+
+  // 2. 3마디 편집 -> 악보 입력 화면이 그 곡을 3마디에서 연다
+  await clickAndLeave('#measuresGrid .measure-card[data-m="2"] .score-measure-edit', inputReady);
+  const input = await client.evaluate(`(function(){
+    var info = document.getElementById('tiSourceInfo');
+    return {
+      path:location.pathname,
+      title:document.getElementById('tiTitle').value,
+      measures:document.querySelectorAll('#tiMeasures .ti-measure').length,
+      expected:splitScoreMeasures(${JSON.stringify(song.lines)}.join('\\n')).length,
+      cursor:document.getElementById('tiCursorLabel').textContent,
+      sourceInfoShown:!info.hidden && info.getClientRects().length > 0,
+      sourceInfo:info.textContent,
+      status:document.getElementById('tiStatus').textContent,
+      openKeyLeft:localStorage.getItem('gs.tabInput.open'),
+      savedSourceId:JSON.parse(localStorage.getItem('gs.tabInput.doc')).sourceId
+    };
+  })()`);
+  assert.equal(input.path, '/score-input.html', 'the edit button goes to the score input screen');
+  assert.equal(input.title, song.title, 'the input screen opens the song title');
+  assert.equal(input.measures, input.expected, 'the input screen has the same number of measures');
+  assert.ok(input.cursor.startsWith('3마디 · '), 'the cursor starts at the measure the edit button belongs to (is ' + input.cursor + ')');
+  assert.equal(input.sourceInfoShown, true, 'the input screen says which song is being edited');
+  assert.match(input.sourceInfo, /연습 화면 곡을 고치는 중/);
+  assert.equal(input.status, '연습 화면에서 "' + song.title + '"을 열었어 · 3마디부터', 'the status line reports the opened song and measure');
+  assert.equal(input.openKeyLeft, null, 'the open key is consumed');
+  assert.equal(input.savedSourceId, SONG_ID, 'the auto saved work remembers the source song id');
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate(`(function(){ window.scrollTo(0, 0); var slot = document.querySelector('.ti-slot.is-cursor-slot'); if (slot) slot.scrollIntoView({ block: 'nearest' }); return true; })()`);
+  await shot('edit-link-input.png', 1280, 900);
+
+  // 3. 음 하나를 바꾸고 연습 화면에서 열기 -> 원래 곡의 수정 초안
+  const edited = await client.evaluate(`(function(){
+    ${KEY_HELPER}
+    function line(){ return document.getElementById('tiScoreText').value.split('\\n')[2]; }
+    var before = line();
+    key('5', 'Digit5');
+    if (line() === before) key('7', 'Digit7');
+    return { before:before, after:line() };
+  })()`);
+  assert.notEqual(edited.after, edited.before, 'the keyboard changed a note in measure 3');
+  await clickAndLeave('#tiOpenPracticeBtn', practiceReady);
+  const draft = await client.evaluate(`(function(){
+    var status = scoreDrafts.status(curSong.id);
+    var lines = serializeScoreMeasures(curSong.measures, '\\n').split('\\n');
+    var source = ${originalText}.split('\\n');
+    return {
+      path:location.pathname, id:curSong.id, selected:document.getElementById('songSelect').value, title:curSong.title, bpm:curSong.bpm,
+      status:{ dirty:status.dirty, temporary:status.temporary, origin:status.origin },
+      statusText:document.getElementById('scoreDraftStatus').textContent, resetShown:!document.getElementById('resetScoreDraftBtn').hidden,
+      line:lines[2], count:lines.length, sourceLine:source[2], sourceCount:source.length,
+      sourceUnchanged:source.join('\\n') === ${JSON.stringify(practice.original)}, handoffLeft:localStorage.getItem('gs.tabInput.handoff')
+    };
+  })()`);
+  assert.equal(draft.path, '/index.html', 'open-in-practice goes to the practice screen');
+  assert.equal(draft.id, SONG_ID, 'the edited song opens as the original song id');
+  assert.equal(draft.selected, SONG_ID, 'the original song is selected in the song list');
+  assert.deepEqual([draft.title, draft.bpm], [song.title, song.bpm], 'title and BPM stay the original ones');
+  assert.deepEqual(draft.status, { dirty: true, temporary: false, origin: 'tab-input' }, 'the song is a modified draft from the input screen');
+  assert.match(draft.statusText, /악보 입력에서 고친 수정 초안/, 'the status line names the draft');
+  assert.equal(draft.resetShown, true, 'the revert button shows for the draft');
+  assert.equal(draft.line, edited.after, 'the edited measure carries the typed note');
+  assert.notEqual(draft.line, draft.sourceLine, 'the draft measure differs from the original measure');
+  assert.equal(draft.count, draft.sourceCount, 'the draft keeps the measure count');
+  assert.equal(draft.sourceUnchanged, true, 'the built-in source is untouched');
+  assert.equal(draft.handoffLeft, null, 'the hand-off key is consumed');
+
+  // 4. 원본으로 되돌리기
+  await client.evaluate(`document.getElementById('resetScoreDraftBtn').click(); true`);
+  const reverted = await client.evaluate(`(function(){
+    var status = scoreDrafts.status(curSong.id);
+    return { text:serializeScoreMeasures(curSong.measures, '\\n'), dirty:status.dirty, origin:status.origin, resetHidden:document.getElementById('resetScoreDraftBtn').hidden, statusText:document.getElementById('scoreDraftStatus').textContent };
+  })()`);
+  assert.equal(reverted.text, practice.original, 'the revert button brings back the original measures');
+  assert.deepEqual([reverted.dirty, reverted.origin, reverted.resetHidden, reverted.statusText], [false, null, true, ''], 'the revert clears the draft state');
+
+  // 4-2. 마디 글은 그대로이고 조표만 바꿔 돌아오면 원래 곡의 수정 초안이다. 원본으로 되돌리면 조표도 원본대로다.
+  await client.evaluate(`localStorage.setItem('gs.tabInput.handoff', JSON.stringify({ sourceId:${JSON.stringify(SONG_ID)}, title:'not used', beats:${song.beats}, bpm:${song.bpm}, badge:'', lines:${originalText}.split('\\n'), key:1, savedAt:Date.now() })); true`);
+  await navigate(practiceUrl, practiceReady);
+  const keyOnly = await client.evaluate(`(function(){
+    var status = scoreDrafts.status(curSong.id);
+    var source = BUILTIN_SONGS.find(function(item){ return item.id === ${JSON.stringify(SONG_ID)}; });
+    return { id:curSong.id, key:curSong.key, sourceKey:source.key, dirty:status.dirty, origin:status.origin, temporary:status.temporary,
+      sameText:serializeScoreMeasures(curSong.measures, '\\n') === ${JSON.stringify(practice.original)}, resetShown:!document.getElementById('resetScoreDraftBtn').hidden };
+  })()`);
+  assert.equal(keyOnly.id, SONG_ID, 'a key-only change opens as the original song id');
+  assert.equal(keyOnly.sameText, true, 'the measures are the original ones');
+  assert.equal(keyOnly.key, 1, 'the key signature follows the hand-off');
+  assert.deepEqual([keyOnly.dirty, keyOnly.temporary, keyOnly.origin, keyOnly.resetShown], [true, false, 'tab-input', true], 'a key-only change is a modified draft with a revert button');
+  await client.evaluate(`document.getElementById('resetScoreDraftBtn').click(); true`);
+  const keyReverted = await client.evaluate(`({ key:curSong.key, dirty:scoreDrafts.status(curSong.id).dirty, resetHidden:document.getElementById('resetScoreDraftBtn').hidden })`);
+  assert.equal(keyReverted.key == null ? null : keyReverted.key, keyOnly.sourceKey == null ? null : keyOnly.sourceKey, 'reverting restores the original key');
+  assert.deepEqual([keyReverted.dirty, keyReverted.resetHidden], [false, true], 'reverting clears the draft state');
+
+  // 4-3. 입력 화면에서 칸 수를 바꿔 돌아오면 원래 곡 대신 새 임시 악보로 열고 알려 준다.
+  await selectSong();
+  await clickAndLeave('#editInInputBtn', inputReady);
+  const newBeats = song.beats === 3 ? '2' : '3';
+  await client.evaluate(`(function(){ var select = document.getElementById('tiBeats'); select.value = ${JSON.stringify(newBeats)}; select.dispatchEvent(new Event('change', { bubbles:true })); return true; })()`);
+  assert.equal(await client.evaluate('document.getElementById("tiBeats").value'), newBeats, 'the input screen changed the cell count');
+  await clickAndLeave('#tiOpenPracticeBtn', practiceReady);
+  const beatsChanged = await client.evaluate(`(function(){
+    var option = document.getElementById('songSelect').selectedOptions[0];
+    var status = document.getElementById('storageStatus');
+    return { id:curSong.id, title:curSong.title, beats:curSong.beats, group:option && option.parentElement ? option.parentElement.label : null,
+      notice:status.textContent, noticeHidden:status.hidden, sourceDirty:scoreDrafts.status(${JSON.stringify(SONG_ID)}).dirty };
+  })()`);
+  assert.ok(/^temp-score-\d+$/.test(beatsChanged.id), 'a changed cell count opens a new temporary score (is ' + beatsChanged.id + ')');
+  assert.equal(beatsChanged.beats, Number(newBeats), 'the temporary score has the new cell count');
+  assert.equal(beatsChanged.group, '임시 악보');
+  assert.equal(beatsChanged.noticeHidden, false, 'the storage status line is shown');
+  assert.equal(beatsChanged.notice, '칸 수가 바뀌어서 원래 곡 대신 새 임시 악보로 열었어.', 'the storage status line explains the new temporary score');
+  assert.equal(beatsChanged.sourceDirty, false, 'the original song gets no draft');
+
+  // 5. 입력 화면에 다른 작업이 있으면 바꿀지 묻는다
+  await navigate(inputUrl, inputReady);
+  await client.evaluate(`(function(){
+    window.confirm = function(){ return true; };
+    document.getElementById('tiNewBtn').click();
+    document.querySelector('.ti-slot[data-m="0"][data-c="0"][data-s="0"] .ti-pos[data-str="6"]').click();
+    document.querySelector('.ti-fret[data-str="6"][data-fret="0"]').click();
+    return true;
+  })()`);
+  const work = await client.evaluate(`({ text:document.getElementById('tiScoreText').value, title:document.getElementById('tiTitle').value })`);
+  assert.equal(work.text.split('\n')[0], '[-] E2@6 - - - | ""', 'the other work has a note');
+  await navigate(practiceUrl, practiceReady);
+  await selectSong();
+  dialogs.length = 0;
+  confirmAnswer = false;
+  await clickAndLeave('#editInInputBtn', inputReady);
+  const refused = await client.evaluate(`({ text:document.getElementById('tiScoreText').value, title:document.getElementById('tiTitle').value, sourceInfoHidden:document.getElementById('tiSourceInfo').hidden,
+    status:document.getElementById('tiStatus').textContent, openKeyLeft:localStorage.getItem('gs.tabInput.open') })`);
+  const confirms = dialogs.filter(item => item.type === 'confirm');
+  assert.equal(confirms.length, 1, 'one confirmation is asked when the input screen has other work');
+  assert.ok(confirms[0].message.includes(song.title) && confirms[0].message.includes('지금 작업'), 'the confirmation names the song and the current work');
+  assert.deepEqual([refused.text, refused.title, refused.sourceInfoHidden], [work.text, work.title, true], 'refusing keeps the current work');
+  assert.equal(refused.status, '연습 화면에서 넘긴 악보를 열지 않았어.', 'the status line says the score was not opened');
+  assert.equal(refused.openKeyLeft, null, 'a refused hand-off is consumed too');
+  await navigate(practiceUrl, practiceReady);
+  await selectSong();
+  dialogs.length = 0;
+  confirmAnswer = true;
+  await clickAndLeave('#editInInputBtn', inputReady);
+  const accepted = await client.evaluate(`({ title:document.getElementById('tiTitle').value, sourceInfoHidden:document.getElementById('tiSourceInfo').hidden, cursor:document.getElementById('tiCursorLabel').textContent,
+    status:document.getElementById('tiStatus').textContent, undoDisabled:document.getElementById('tiUndoBtn').disabled })`);
+  assert.equal(dialogs.filter(item => item.type === 'confirm').length, 1, 'accepting asks once');
+  assert.equal(accepted.title, song.title, 'accepting replaces the work with the song');
+  assert.equal(accepted.sourceInfoHidden, false, 'the replaced work shows the source info');
+  assert.equal(accepted.cursor, '1마디 · 1칸 · 1번 줄', 'the toolbar edit starts at the first measure');
+  assert.equal(accepted.status, '연습 화면에서 "' + song.title + '"을 열었어 · 1마디부터');
+  assert.equal(accepted.undoDisabled, false, 'the replacement can be undone');
+  await client.evaluate(`(function(){ ${KEY_HELPER} key('z', 'KeyZ', { ctrlKey:true }); return true; })()`);
+  const undone = await client.evaluate(`({ text:document.getElementById('tiScoreText').value, sourceInfoHidden:document.getElementById('tiSourceInfo').hidden })`);
+  assert.deepEqual([undone.text, undone.sourceInfoHidden], [work.text, true], 'undo brings the previous work back');
+
+  // 6. 떠날 때 경고, 넘기기 키, 모르는 원래 곡
+  await navigate(practiceUrl, practiceReady);
+  await selectSong();
+  dialogs.length = 0;
+  await clickAndLeave('#editInInputBtn', inputReady);
+  await client.evaluate(`(function(){ ${KEY_HELPER} key('5', 'Digit5'); document.body.click(); return true; })()`, { userGesture: true });
+  await clickAndLeave('#tiOpenPracticeBtn', practiceReady);
+  await client.evaluate('document.body.click(); true', { userGesture: true });
+  assert.equal(await client.evaluate(`scoreDrafts.status(${JSON.stringify(SONG_ID)}).origin`), 'tab-input', 'the draft came from the input screen');
+  const beforeLeave = dialogs.length;
+  await navigate(practiceUrl, practiceReady);
+  assert.equal(dialogs.slice(beforeLeave).filter(item => item.type === 'beforeunload').length, 0, 'leaving a draft from the input screen raises no beforeunload confirmation');
+  await client.evaluate(`localStorage.setItem('gs.tabInput.handoff', JSON.stringify({ sourceId:'no-such-song', title:'모르는 곡', beats:4, bpm:70, badge:'시험', lines:['[-] E4@1 - G4@1 -'], key:0, savedAt:Date.now() })); true`);
+  await navigate(practiceUrl, practiceReady);
+  const unknownSource = await client.evaluate(`(function(){
+    var option = document.getElementById('songSelect').selectedOptions[0];
+    return { title:curSong.title, group:option && option.parentElement ? option.parentElement.label : null, tempOrigin:scoreDrafts.status(curSong.id) };
+  })()`);
+  assert.equal(unknownSource.title, '모르는 곡', 'a hand-off with an unknown source id opens as a new temporary score');
+  assert.equal(unknownSource.group, '임시 악보');
+  assert.equal(unknownSource.tempOrigin.temporary, true);
+  const leftKeys = await client.evaluate(`({ open:localStorage.getItem('gs.tabInput.open'), handoff:localStorage.getItem('gs.tabInput.handoff') })`);
+  assert.deepEqual(leftKeys, { open: null, handoff: null }, 'both hand-off keys are gone after a reload');
+  assert.equal(dialogs.filter(item => item.type === 'beforeunload').length, 0, 'no beforeunload confirmation during the whole hand-off flow');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the hand-off flow raises no console errors');
+  await client.evaluate(clearInputKeys);
+  client.dialogHandler = null;
+  process.stdout.write('Browser checkpoint: edit hand-off to the score input screen and back (measure edit, toolbar edit, draft, revert, confirmation, no leave warning) passed\n');
 }
 
 async function testConcertHallRouting(client){
@@ -2047,8 +2153,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=no-tirando-1')), 'score-input.html scripts use the shared revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=no-tirando-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=edit-link-1')), 'score-input.html scripts use the shared revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=edit-link-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoInfo', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -3004,9 +3110,10 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=no-tirando-1')), 'all app scripts use the shared revision');
-  const htmlIds = ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
-  htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'temporary score UI includes #'+id);});
+  assert.ok(scriptTags.every(src => src.endsWith('?v=edit-link-1')), 'all app scripts use the shared revision');
+  const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
+  htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
+  ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
   assert.doesNotMatch(fs.readFileSync(path.join(root,'index.html'),'utf8'),/\.beat-cell\.arp-(?:melody|sub)\b/,'obsolete articulation color rules are removed from the score stylesheet');
   const browserBin = findBrowserBinary();
   if (!browserBin) {
@@ -3178,6 +3285,7 @@ async function main() {
       blankScoreButton:!!document.getElementById('addBlankScoreBtn'),
       blankScoreModal:!!document.getElementById('blankScoreModal'),
       undoScoreButton:!!document.getElementById('undoScoreEditBtn'),
+      editInInputButton:!!document.getElementById('editInInputBtn'),
       resetScoreButton:!!document.getElementById('resetScoreDraftBtn'),
       draftStatus:!!document.getElementById('scoreDraftStatus'),
       copyButtonInToolbar:!!(document.getElementById('copyCurSongTsvBtn')&&document.getElementById('copyCurSongTsvBtn').closest('.score-toolbar')),
@@ -3185,9 +3293,9 @@ async function main() {
       imageUpload:!!document.getElementById('uploadImgBtn'),
       barEditor:!!document.getElementById('barEditModal')
     })`);
-    assert.deepEqual(scoreEditorUi, { editorApi:'undefined', editorInit:'undefined', promptApi:'undefined', scoreEditorHooks:'object', blankScoreButton:true,
-      blankScoreModal:true, undoScoreButton:true, resetScoreButton:true, draftStatus:true, copyButtonInToolbar:true, imageConversion:false, imageUpload:true, barEditor:true },
-      'temporary score editor is present without restoring the removed converter');
+    assert.deepEqual(scoreEditorUi, { editorApi:'undefined', editorInit:'undefined', promptApi:'undefined', scoreEditorHooks:'object', blankScoreButton:false,
+      blankScoreModal:false, undoScoreButton:false, editInInputButton:true, resetScoreButton:true, draftStatus:true, copyButtonInToolbar:true, imageConversion:false, imageUpload:true, barEditor:true },
+      'draft controls are present without the removed in-page editor or converter');
     await testTemporaryScoreEditor(cdp);
 
     const imageScanSafety = await cdp.evaluate(`(async function(){
@@ -3483,6 +3591,7 @@ async function main() {
 
     await testPracticeStaffView(cdp);
     await testScoreInputScreen(cdp, httpPort);
+    await testEditHandoff(cdp, httpPort);
     await testScoreInputStaff(cdp, httpPort);
     await testStaffInputMode(cdp, httpPort);
     await testFretLabel(cdp, httpPort);
@@ -3490,7 +3599,7 @@ async function main() {
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');
 
-    process.stdout.write('Result: browser smoke passed (clean boot, songs loaded, temporary score editing, image library, Web Audio, 0 console errors)\n');
+    process.stdout.write('Result: browser smoke passed (clean boot, songs loaded, edit hand-off to the score input screen, image library, Web Audio, 0 console errors)\n');
   } finally {
     if (cdp) cdp.close();
     chromeProc.kill();

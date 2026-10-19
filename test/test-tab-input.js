@@ -544,4 +544,28 @@ test('key signature: accidental spelling follows the key, normalizeDoc fills and
   assert.equal(ti.buildHandoff(fresh(), 1).key, 0);
 });
 
+test('sourceId: default null, stored strings kept, legacy documents read as null, other types rejected, handoff carries it', function(){
+  assert.equal(fresh().sourceId, null);
+  assert.equal(ti.createDoc().sourceId, null);
+  assert.equal(fresh({ sourceId: 'builtin-x' }).sourceId, 'builtin-x');
+  assert.equal(ti.normalizeDoc(JSON.parse(JSON.stringify(fresh({ sourceId: 'builtin-x' })))).doc.sourceId, 'builtin-x');
+  const legacy = JSON.parse(JSON.stringify(fresh()));
+  delete legacy.sourceId;
+  const normalized = ti.normalizeDoc(legacy);
+  assert.equal(normalized.error, undefined);
+  assert.equal(normalized.doc.sourceId, null);
+  const explicitNull = JSON.parse(JSON.stringify(fresh()));
+  explicitNull.sourceId = null;
+  assert.equal(ti.normalizeDoc(explicitNull).doc.sourceId, null);
+  [7, true, {}, []].forEach(function(bad){
+    const raw = JSON.parse(JSON.stringify(fresh()));
+    raw.sourceId = bad;
+    assert.match(ti.normalizeDoc(raw).error, /원래 곡 id/);
+  });
+  assert.equal(ti.scoreToDoc({ beats: 4, raw: 'E4 - - -' }).doc.sourceId, null);
+  assert.equal(ti.parseImportText('E4 - - -').doc.sourceId, null);
+  assert.equal(ti.buildHandoff(fresh({ sourceId: 'builtin-x' }), 1).sourceId, 'builtin-x');
+  assert.equal(ti.buildHandoff(fresh(), 1).sourceId, null);
+});
+
 process.stdout.write('1..' + checks + '\n');

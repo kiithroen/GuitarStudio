@@ -11,6 +11,9 @@
   var DOC_KEY = 'gs.tabInput.doc';
   var UI_KEY = 'gs.tabInput.ui';
   var HANDOFF_KEY = 'gs.tabInput.handoff';
+  var OPEN_KEY = 'gs.tabInput.open';
+  var OPEN_MAX_AGE_MS = 600000;
+  var OPEN_MAX_FUTURE_MS = 60000;
   var STRING_LETTERS = ['E', 'B', 'G', 'D', 'A', 'E'];
   var BEATS_LABELS = { 2: '2/4', 3: '3/4', 4: '4/4', 6: '6/8', 8: '4/4 (8박 핑거스타일)', 9: '9/8 (8분음표 9칸)' };
   var CELL_SLOT_MIN = 26;   // score-input.html의 .ti-cell 기본 조각 폭과 같다
@@ -19,6 +22,7 @@
   var SAVE_DEBOUNCE_MS = 300;
   var CONFIRM_REPLACE = '지금 작업을 지우고 바꿀까? 되돌리기로 돌아올 수 있어.';
   var COPY_FAIL = '복사하지 못했어. 결과 칸에서 직접 복사해.';
+  var SOURCE_INFO = '연습 화면 곡을 고치는 중 · 연습 화면에서 열면 그 곡의 수정 초안이 돼';
 
   var doc;
   var history = T.createHistory(T.MAX_HISTORY);
@@ -387,6 +391,9 @@
     setValue($('tiDescription'), doc.description);
     setValue($('tiKeySelect'), keyOptionValue());
     refreshCapoInfo();
+    var sourceInfo = $('tiSourceInfo');
+    sourceInfo.hidden = !doc.sourceId;
+    sourceInfo.textContent = doc.sourceId ? SOURCE_INFO : '';
   }
 
   function refreshUndoRedo(){
@@ -1289,6 +1296,55 @@
     else setResultStatus('넘기지 못했어. 시트용 TSV로 복사해 연습 화면에서 불러와.');
   }
 
+  // ---------- 연습 화면에서 넘어온 악보
+
+  // 연습 화면이 gs.tabInput.open 에 쓴 값을 읽고 지운다. 없거나 10분이 지났거나 모양이 틀리면 null.
+  function takeOpenRequest(){
+    var request = ls.get(OPEN_KEY, null);
+    if (request == null) return null;
+    ls.remove(OPEN_KEY);
+    if (typeof request !== 'object' || Array.isArray(request) || typeof request.savedAt !== 'number') return null;
+    var age = Date.now() - request.savedAt;
+    if (!isFinite(age) || age > OPEN_MAX_AGE_MS || age < -OPEN_MAX_FUTURE_MS) return null;
+    return request;
+  }
+
+  function openFromPractice(){
+    var request = takeOpenRequest();
+    if (!request) return;
+    var title = typeof request.title === 'string' && request.title.trim() ? request.title.trim() : T.DEFAULT_TITLE;
+    var validLines = Array.isArray(request.lines) && request.lines.every(function(line){ return typeof line === 'string'; });
+    var failure = '연습 화면에서 넘긴 "' + title + '"을 열지 못했어: ';
+    if (!validLines){
+      setStatus(failure + '넘긴 내용의 모양이 틀렸어.');
+      return;
+    }
+    var result = T.scoreToDoc({
+      title: title,
+      beats: request.beats,
+      bpm: Math.max(30, Math.min(240, Math.round(Number(request.bpm) || T.DEFAULT_BPM))),
+      description: typeof request.badge === 'string' ? request.badge : '',
+      raw: request.lines.join('\n')
+    });
+    if (result.error){
+      setStatus(failure + result.error);
+      return;
+    }
+    var next = result.doc;
+    if (Number.isInteger(request.key) && request.key >= -5 && request.key <= 5) next.key = request.key;
+    next.sourceId = typeof request.sourceId === 'string' ? request.sourceId : null;
+    var differs = T.docScoreText(doc) !== T.docScoreText(next) || doc.sourceId !== next.sourceId;
+    if (T.hasContent(doc) && differs &&
+        !window.confirm('지금 작업을 "' + title + '"(으)로 바꿀까? 되돌리기로 돌아올 수 있지만, TSV로 보관하지 않은 지금 작업은 새로고침하면 못 돌아와.')){
+      setStatus('연습 화면에서 넘긴 악보를 열지 않았어.');
+      return;
+    }
+    var measure = Number.isInteger(request.measure) ? Math.max(0, Math.min(next.measures.length - 1, request.measure)) : 0;
+    replaceDoc(next);
+    setCursor({ m: measure, c: 0, s: 0, str: 1 }, true);
+    setStatus('연습 화면에서 "' + title + '"을 열었어 · ' + (measure + 1) + '마디부터');
+  }
+
   // ---------- 입력판 만들기
 
   function buildFretboard(){
@@ -1650,6 +1706,7 @@
     refreshDock();
     renderAll();
     if (loaded.notice) setStatus(loaded.notice);
+    openFromPractice();
   }
 
   init();

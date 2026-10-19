@@ -30,22 +30,6 @@
       return parser.serializeScoreMeasures(song && song.measures || []);
     }
 
-    function beatsFor(song){
-      return song && song.beats != null ? song.beats : 4;
-    }
-
-    function restMeasureScore(beats){
-      var missingBeats = beats == null || (typeof beats === 'string' && beats.trim() === '');
-      var numericBeats = missingBeats ? 4 : Number(beats);
-      if (!Number.isFinite(numericBeats) || !Number.isInteger(numericBeats) || numericBeats < 1 || numericBeats > 12){
-        var invalid = parser.parseScore('[-] r', beats).errors.filter(function(error){ return error.code === 'INVALID_BEATS'; });
-        throw draftError(invalid);
-      }
-      var parsed = parser.parseScore('[-] ' + Array(numericBeats).fill('r').join(' '), numericBeats);
-      if (parsed.errors.length) throw draftError(parsed.errors);
-      return parsed;
-    }
-
     function snapshotSource(song){
       return cloneValue(song);
     }
@@ -70,18 +54,22 @@
         song:cloneValue(song),
         original:cloneValue(song),
         originalCanonical:canonicalScore(song),
-        undoSnapshot:null,
         temporary:false,
         origin:null
       };
     }
 
-    function isDirty(state){ return canonicalScore(state.song) !== state.originalCanonical; }
+    // 조표 없음(key 없음)과 key 0은 같은 것으로 본다.
+    function keyOf(song){ return Number.isInteger(song && song.key) ? song.key : 0; }
+
+    function isDirty(state){
+      return canonicalScore(state.song) !== state.originalCanonical || keyOf(state.song) !== keyOf(state.original);
+    }
 
     function status(id){
       var state = entries.get(id);
-      if (!state) return {dirty:false,temporary:false,canUndo:false,origin:null};
-      return {dirty:isDirty(state),temporary:state.temporary,canUndo:!!state.undoSnapshot,origin:state.origin};
+      if (!state) return {dirty:false,temporary:false,origin:null};
+      return {dirty:isDirty(state),temporary:state.temporary,origin:state.origin};
     }
 
     function get(id){
@@ -106,7 +94,6 @@
           entries.set(id, state);
         } else if (!isDirty(state)){
           var refreshed = snapshotSource(source);
-          if (canonicalScore(state.original) !== canonicalScore(refreshed)) state.undoSnapshot = null;
           state.song = cloneValue(refreshed);
           state.original = cloneValue(refreshed);
           state.originalCanonical = canonicalScore(refreshed);
@@ -119,31 +106,6 @@
         if (state.temporary || isDirty(state)) result.push(state.song);
       });
       return result;
-    }
-
-    function createBlank(spec){
-      spec = spec || {};
-      var beats = spec.beats == null ? 4 : spec.beats;
-      var parsed = restMeasureScore(beats);
-      var id;
-      do { id = 'temp-score-' + nextTemporaryId++; }
-      while (entries.has(id));
-      var song = {
-        id:id,
-        title:spec.title,
-        badge:'임시 악보',
-        type:'structured',
-        builtin:false,
-        capo:0,
-        beats:parsed.beats,
-        bpm:spec.bpm,
-        measures:cloneValue(parsed.measures),
-        notationVersion:2
-      };
-      var state = stateFor(song);
-      state.temporary = true;
-      entries.set(id, state);
-      return state.song;
     }
 
     function createFromScore(spec){
@@ -174,71 +136,37 @@
       return state.song;
     }
 
-    function requireState(id, index){
-      var state = entries.get(id);
-      if (!state) throw draftError([{code:'UNKNOWN_DRAFT',measure:1,beat:null,message:'등록된 악보 작업본이 없어.'}]);
-      if (!Number.isInteger(index) || index < 0 || index >= state.song.measures.length){
-        throw draftError([{code:'INVALID_MEASURE_INDEX',measure:Number.isInteger(index) && index >= 0 ? index + 1 : 1,beat:null,message:'편집할 마디 위치가 올바르지 않아.'}]);
-      }
-      return state;
-    }
-
-    function currentLines(song){
-      return parser.splitScoreMeasures(parser.serializeScoreMeasures(song.measures));
-    }
-
-    function commitCandidate(state, candidateLines){
-      var parsed = parser.parseScore(candidateLines.join('\n'), beatsFor(state.song));
+    // 원래 곡(source)의 수정 초안을 만든다. 마디(와 조표)만 바꾸고 제목·BPM·배지는 원래 곡 그대로 둔다.
+    // 읽을 수 없는 줄이면 아무것도 바꾸지 않고 던진다.
+    function replaceScore(source, lines, opts){
+      opts = opts || {};
+      if (!source || source.type !== 'structured') throw draftError([{code:'UNKNOWN_DRAFT',measure:1,beat:null,message:'고칠 원래 악보가 없어.'}]);
+      var text = Array.isArray(lines) ? lines.join('\n') : String(lines == null ? '' : lines);
+      var parsed = parser.parseScore(text, source.beats);
       if (parsed.errors.length) throw draftError(parsed.errors);
-      var previous = cloneValue(state.song);
+      var state = entries.get(source.id);
+      if (!state){
+        state = stateFor(snapshotSource(source));
+        entries.set(source.id, state);
+      }
       var next = cloneValue(state.song);
       next.measures = cloneValue(parsed.measures);
-      state.undoSnapshot = previous;
+      if (Number.isInteger(opts.key) && opts.key >= -5 && opts.key <= 5) next.key = opts.key;
+      else delete next.key;
       state.song = next;
-      return state.song;
-    }
-
-    function apply(id, index, text, insert){
-      var state = requireState(id, index);
-      var measureText = text == null ? '' : String(text).trim();
-      var measureLines = parser.splitScoreMeasures(measureText);
-      if (measureLines.length !== 1){
-        throw draftError([{code:'ONE_MEASURE_REQUIRED',measure:index + 1,beat:null,message:'한 마디 텍스트만 적용할 수 있어.'}]);
-      }
-      var lines = currentLines(state.song);
-      if (insert) lines.splice(index + 1, 0, measureText);
-      else lines[index] = measureText;
-      return commitCandidate(state, lines);
-    }
-
-    function remove(id, index){
-      var state = requireState(id, index);
-      if (state.song.measures.length <= 1){
-        throw draftError([{code:'LAST_MEASURE',measure:index + 1,beat:null,message:'마지막 한 마디는 삭제할 수 없어.'}]);
-      }
-      var lines = currentLines(state.song);
-      lines.splice(index, 1);
-      return commitCandidate(state, lines);
-    }
-
-    function undo(id){
-      var state = entries.get(id);
-      if (!state || !state.undoSnapshot) return state ? state.song : null;
-      var previous = cloneValue(state.undoSnapshot);
-      state.undoSnapshot = null;
-      state.song = previous;
+      state.origin = opts.origin || null;
       return state.song;
     }
 
     function reset(id){
       var state = entries.get(id);
       if (!state) return null;
-      state.undoSnapshot = cloneValue(state.song);
       state.song = cloneValue(state.original);
+      state.origin = null;
       return state.song;
     }
 
-    return {list:list,get:get,status:status,createBlank:createBlank,createFromScore:createFromScore,apply:apply,remove:remove,undo:undo,reset:reset};
+    return {list:list,get:get,status:status,createFromScore:createFromScore,replaceScore:replaceScore,reset:reset};
   }
 
   return createScoreDraftStore;

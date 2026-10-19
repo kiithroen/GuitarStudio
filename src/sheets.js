@@ -221,7 +221,6 @@
     });
 
     $('#copyCurSongTsvBtn').addEventListener('click', async function(){
-      if (scoreEditorHooks && !scoreEditorHooks.beforeAction('악보 복사')) return;
       if (!curSong || curSong.type !== 'structured'){
         alert('구조화된(계이름) 악보가 선택되어 있을 때만 시트 행으로 복사할 수 있어요.');
         return;

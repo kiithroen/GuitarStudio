@@ -128,13 +128,17 @@
 
 연습 화면 툴바의 `악보 복사`가 이 형식의 TSV를 복사하니, 내장곡이나 시트 곡도 불러와서 고칠 수 있어. 불러온 뒤 내보내면 모든 음에 `@줄`이 붙고 쉼·유지 표기가 바뀔 수 있지만 소리는 같아(`test/test-tab-input.js`가 내장곡 전부로 확인해).
 
+## 연습 화면에서 가져오기
+
+2026-10-19 결정: 연습 화면의 `악보 편집`과 마디 `편집`은 `{sourceId, title, beats, bpm, badge, lines, key, measure, savedAt}`을 localStorage `gs.tabInput.open`에 쓰고 이 화면으로 와. 이 화면은 부팅 때 10분 안에 쓴 값이면 읽고 지운 뒤, 불러오기와 같은 규칙(`scoreToDoc`)으로 문서를 만들고 `sourceId`·조표를 붙여. 지금 작업에 내용이 있고 넘어온 악보와 다르면 바꿀지 물어보고(되돌리기 한 단계로 돌아올 수 있어), 커서를 넘어온 마디 첫 조각에 둬. 읽을 수 없는 악보(같은 줄 겹침 등)면 지금 작업을 그대로 두고 이유를 알려 줘. 곡 정보 아래에 어느 곡을 고치는 중인지(`#tiSourceInfo`) 보여 줘. `새 악보`와 `불러오기`는 `sourceId`를 지워.
+
 ## 저장과 넘기기
 
 - 2026-10-19 결정: 작업 중인 악보 하나를 localStorage `gs.tabInput.doc`에 자동 저장해(변경마다, 글자 입력은 0.3초 뒤). 연습 화면은 텍스트 악보를 저장하지 않는데, 그건 내장곡·시트 원본의 사본이 원본과 어긋나지 않게 하려는 거야. 입력 화면의 작업은 원본이 없는 새 글이고, 한 곡을 마우스로 찍는 데 오래 걸려서 새로고침 한 번에 날아가면 안 돼. 저장에 실패하면 곡 정보 줄에 알려 줘. 오래 둘 악보는 TSV로 복사해 시트에 넣어.
 - 저장된 값의 모양이 틀리면 새 악보로 시작하고 그렇다고 알려 줘.
 - 입력판 설정(`입력하면 다음 칸으로`, `소리`, 접기, 휴대폰 운지 펼침)은 `gs.tabInput.ui`에 둬.
 - `시트용 TSV 복사`는 공통 `formatSongToSheetTsv`로 5열 행을 만들어. 설명이 비면 `악보 입력`을 넣어.
-- `연습 화면에서 열기`는 `{title, beats, bpm, badge, lines, savedAt}`을 `gs.tabInput.handoff`에 쓰고 `index.html`로 가. 연습 화면은 부팅 때 10분 안에 쓴 값이면 읽고 지운 뒤, `scoreDrafts.createFromScore`로 임시 악보를 만들어 그 곡을 열어. 이 임시 악보는 출처가 `tab-input`이라, 연습 화면에서 고치지 않았으면 떠날 때 경고하지 않아(원본이 입력 화면에 저장돼 있어서야). 상태 줄에는 악보 입력에서 연 임시 악보라고 적어.
+- `연습 화면에서 열기`는 `{sourceId, title, beats, bpm, badge, lines, key, savedAt}`을 `gs.tabInput.handoff`에 쓰고 `index.html`로 가. 연습 화면은 부팅 때 10분 안에 쓴 값이면 읽고 지운 뒤, `sourceId`의 곡이 있으면 그 곡의 수정 초안(악보와 조표만 바꾸고 제목·BPM·설명은 원래 곡 것), 없으면 새 임시 악보를 만들어 열어. 출처가 `tab-input`이라 떠날 때 경고하지 않아(원본이 입력 화면에 저장돼 있어서야). 상태 줄에는 악보 입력에서 고친 초안이라고 적어.
 - 오류가 있으면 복사와 넘기기 버튼을 막아. 결과의 검사 목록은 오류가 없으면 `오류 없음`, 경고가 있으면 그 뒤에 `경고 · …` 줄을 붙여.
 
 ## 소리
@@ -159,7 +163,8 @@
 ### 문서 모양
 
 ```text
-doc = { version: 1, title, beats, bpm, description, accidentals: 'sharp' | 'flat', key: -5~5, measures: [measure] }
+doc = { version: 1, title, beats, bpm, description, accidentals: 'sharp' | 'flat', key: -5~5, sourceId: null|문자열, measures: [measure] }
+// sourceId가 없는 저장 문서는 null로 읽어(연습 화면에서 가져오기 전의 작업)
 // key가 없는 저장 문서는 0으로 읽어(2026-10-19 조표를 더하기 전 작업)
 measure = { chord, memo, cells: [cell] }          // cells 개수 = beats
 cell = { slots: [slot] }                          // slots 개수 = 나눈 수 1~4
