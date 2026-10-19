@@ -83,6 +83,17 @@ test('lengths: whole, dotted half, tied pieces and the syncopation rule', functi
   assert.deepEqual(briefs(layout('E4 r r r')), ['c:quarter 0.0/12', 'r:half. 1.0/36']);
 });
 
+test('dotted values that are not a whole number of cells stay one piece', function(){
+  // 4칸: 한 칸 반 길이는 점4분 하나, 붙임줄 없음.
+  const quarter = layout('r r E4 -/D4');
+  assert.deepEqual(briefs(quarter), ['r:half 0.0/24', 'c:quarter. 2.0/18', 'c:eighth 3.6/6']);
+  assert.equal(quarter.measures[0].items[1].tieToNext, false);
+  // 6칸(8분음표 칸): 3칸은 점4분, 1.5칸은 점8분 하나.
+  const six = layout('E4 - - D4 -/F4 r', 6);
+  assert.deepEqual(briefs(six), ['c:quarter. 0.0/36', 'c:eighth. 3.0/18', 'c:16th 4.6/6', 'r:eighth 5.0/12']);
+  six.measures[0].items.forEach(function(item){ assert.ok(!item.tieToNext, 'no ties'); });
+});
+
 test('syncopation rule is not used when the rest of the note would be unplayable', function(){
   // 둘째 칸 위치 6에서 시작해 셋째 칸 위치 8에서 끝나는 음: 12짜리를 먼저 떼면 2가 남는다.
   const result = layout('r/E4 -/-/r r r', 4);

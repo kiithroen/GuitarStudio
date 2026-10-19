@@ -24,7 +24,7 @@
     { q: 0.1875, base: '32nd', dots: 1 }, { q: 0.125, base: '32nd', dots: 0 }
   ];
   var BEAM_LEVEL = { eighth: 1, '16th': 2, '32nd': 3 };
-  var LONGEST_Q = [4, 3, 2, 1.5, 1, 0.5];
+  var LONGEST_Q = [4, 3, 2, 1.5, 1, 0.75, 0.5, 0.375, 0.25, 0.125];
 
   function fail(message){ throw new Error(message); }
 
@@ -100,11 +100,14 @@
         var endInCell = u + length;
         triplet = u === 4 || u === 8 || endInCell === 4 || endInCell === 8;
       } else {
-        var cells = Math.floor(rem / UNITS), best = 1, k;
-        for (k = cells; k >= 1; k--){
-          if (LONGEST_Q.some(function(q){ return Math.abs(k * cellQuarter - q) < 1e-9; })){ best = k; break; }
-        }
-        length = best * UNITS;
+        var best = UNITS;
+        LONGEST_Q.forEach(function(q){
+          var units = q / cellQuarter * UNITS;
+          if (Math.abs(units - Math.round(units)) > 1e-9) return;
+          units = Math.round(units);
+          if (units <= rem && units % 3 === 0 && units > best) best = units;
+        });
+        length = best;
       }
       if (triplet ? (length !== 4 && length !== 8) : (length % 3 !== 0)) return fail('음표로 그릴 수 없는 토막이야: 위치 ' + p + ', 길이 ' + length);
       out.push({ start: p, length: length, triplet: triplet });
