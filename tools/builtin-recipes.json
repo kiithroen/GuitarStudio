@@ -234,6 +234,24 @@
     "lineOverrides": []
   },
   {
+    "id": "builtin-romance-full",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/Anonymous/spanish-romance/spanish-romance.mid",
+    "file": "spanish-romance.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "measureRange": [
+        1,
+        32
+      ],
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
     "id": "builtin-beethoven-fur-elise",
     "sourceUrl": "https://www.mutopiaproject.org/ftp/BeethovenLv/WoO59/fur-elise-guitar-duo/fur-elise-guitar-duo.mid",
     "file": "fur-elise-guitar-duo.mid",

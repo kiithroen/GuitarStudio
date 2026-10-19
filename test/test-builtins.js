@@ -19,7 +19,7 @@ const convertedIds = [
   'builtin-mary-lamb', 'builtin-sor-op60-01', 'builtin-carulli-op241-01', 'builtin-carulli-op241-05',
   'builtin-giuliani-op50-01', 'builtin-carcassi-op60-03', 'builtin-carcassi-op60-07',
   'builtin-sor-op35-22', 'builtin-tarrega-adelita', 'builtin-greensleeves-bass',
-  'builtin-bach-minuet-g', 'builtin-beethoven-fur-elise', 'builtin-romance-part2'
+  'builtin-bach-minuet-g', 'builtin-beethoven-fur-elise', 'builtin-romance-part2', 'builtin-romance-full'
 ];
 
 assert.ok(songs.length > 0, 'catalog is not empty');
