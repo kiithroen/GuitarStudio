@@ -179,7 +179,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   <header class="topbar">
     <div class="brand">
       <h1>악보 입력</h1>
-      <span class="sub">타브를 찍어 텍스트 악보로 바꿔</span>
+      <span class="sub">타브 입력을 통한 텍스트 악보 생성</span>
     </div>
     <div class="top-actions">
       <a id="backToPracticeLink" class="btn sm" href="index.html">연습 화면으로</a>
@@ -254,7 +254,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <button id="tiDiv4" class="btn sm" type="button" aria-pressed="false" aria-label="4개로 나누기">4</button>
       </span>
       <button id="tiPlaySlotBtn" class="btn sm" type="button">들어보기</button>
-      <button id="tiAutoAdvance" class="btn sm" type="button" aria-pressed="false" data-mode="tab">입력하면 다음 칸으로</button>
+      <button id="tiAutoAdvance" class="btn sm" type="button" aria-pressed="false" data-mode="tab">입력 시 자동 이동</button>
       <button id="tiSoundToggle" class="btn sm" type="button" aria-pressed="true">소리</button>
       <button id="tiStaffToggle" class="btn sm" type="button" aria-pressed="true">오선 보기</button>
       <button id="tiAttrsToggle" class="btn sm" type="button" aria-pressed="false" data-mode="tab staff">운지</button>
@@ -293,8 +293,8 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <textarea id="tiTextEditor" class="ti-text-editor" spellcheck="false" wrap="off" autocomplete="off" autocapitalize="off" aria-label="악보 텍스트 (한 줄이 한 마디)"></textarea>
         <div class="ti-text-row">
           <span id="tiTextError" class="ti-text-error" role="status"></span>
-          <button id="tiTextRestoreBtn" class="btn sm" type="button" hidden>전에 치던 글 되살리기</button>
-          <span id="tiTextHint" class="hint ti-text-hint">한 줄이 한 마디 · 잠깐 멈추면 위 카드에 반영 · 친 글자는 그대로 둬</span>
+          <button id="tiTextRestoreBtn" class="btn sm" type="button" hidden>이전 입력 복원</button>
+          <span id="tiTextHint" class="hint ti-text-hint">한 줄이 한 마디 · 입력 멈춤 시 카드 자동 반영</span>
         </div>
       </div>
       <div id="tiAttrs" data-mode="tab staff">

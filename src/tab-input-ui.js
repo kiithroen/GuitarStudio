@@ -26,7 +26,7 @@
   var TEXT_LOCK_TITLE = '텍스트 모드에서는 아래 편집기에서 고쳐';
   var CONFIRM_REPLACE = '지금 작업을 지우고 바꿀까? 되돌리기로 돌아올 수 있어.';
   var COPY_FAIL = '복사하지 못했어. 결과 칸에서 직접 복사해.';
-  var SOURCE_INFO = '연습 화면 곡을 고치는 중 · 연습 화면에서 열면 그 곡의 수정 초안이 돼';
+  var SOURCE_INFO = '연습 화면 곡을 고치는 중 · 완료 후 연습 화면에서 열면 해당 곡의 수정 초안으로 반영됩니다.';
 
   var doc;
   var history = T.createHistory(T.MAX_HISTORY);

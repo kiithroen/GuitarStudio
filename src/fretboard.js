@@ -71,7 +71,7 @@ function initFretboard(){
     var btn = $('#toggleChordDotsBtn');
     if (btn){
       btn.classList.toggle('active', on);
-      btn.textContent = on ? '파란 코드 점: 켜짐' : '파란 코드 점: 숨김';
+      btn.textContent = '코드 운지점';
     }
   }
 

@@ -8,7 +8,7 @@
   var BUILTIN_LEVEL_NAMES = { 1: '입문', 2: '초급', 3: '초중급', 4: '중급', 5: '중상급' };
 
   // ---------- 저장 오류 안내
-  var STORAGE_ERROR_MESSAGE = '이 기기에 저장하지 못했어요. 저장 공간과 브라우저 설정을 확인한 뒤 다시 시도해 주세요.';
+  var STORAGE_ERROR_MESSAGE = '로컬 저장소에 저장하지 못했습니다. 브라우저 저장 공간 및 권한 설정을 확인하세요.';
   function reportStorageError(){
     var status = $('#storageStatus');
     if (status){
@@ -1387,7 +1387,7 @@ function curCapo(){
     }
     isPlaying = false;
     syncCompactPlayButtons();
-    $('#phaseTxt').textContent = '정지됨 · 마디를 클릭해 이어서 연습하세요';
+    $('#phaseTxt').textContent = '정지됨 · 마디를 클릭하여 계속 연습';
     setLeds(-1);
     saveAppState();
     playSession = null;
@@ -1946,7 +1946,7 @@ function curCapo(){
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         resolve(window.pdfjsLib);
       };
-      s.onerror = function(){ reject(new Error('PDF 라이브러리를 불러오지 못했어요.')); };
+      s.onerror = function(){ reject(new Error('PDF 라이브러리를 불러오지 못했습니다.')); };
       document.head.appendChild(s);
     });
   }
@@ -1969,7 +1969,7 @@ function curCapo(){
       }
       await createImageSong(title, pages[0], pages);
     } catch (err){
-      alert('PDF 변환 중 오류가 발생했어요. 악보를 캡처한 이미지(JPG/PNG)로 올려 주세요.');
+      alert('PDF 변환 중 오류가 발생했습니다. 악보 이미지 파일(JPG/PNG)로 다시 시도해 주세요.');
     }
   }
 
@@ -2004,7 +2004,7 @@ function curCapo(){
   $('#toggleEditGridBtn').addEventListener('click', function(){
     imgEditMode = !imgEditMode;
     $('#toggleEditGridBtn').classList.toggle('active', imgEditMode);
-    $('#toggleEditGridBtn').textContent = imgEditMode ? '마디 영역 편집 켜짐' : '마디 영역 편집 꺼짐';
+    $('#toggleEditGridBtn').textContent = '마디 편집';
     $('#imgContainer').classList.toggle('editing', imgEditMode);
     renderImageSystemsOverlay();
   });
@@ -2116,12 +2116,12 @@ function curCapo(){
         targetSys.w = +(boundaries[boundaries.length - 1] - boundaries[0]).toFixed(4);
         targetSys.bars = newBars;
         syncAfterImageGridChange();
-        alert('마디 영역만 추정했어요. 음표·코드는 인식하지 않았어요.');
+        alert('마디 영역만 추정되었습니다. (음표 및 코드는 별도 인식되지 않습니다)');
         return;
       }
-      alert('뚜렷한 검은 세로 마디선을 찾지 못했어요. 먼저 줄 박스를 악보 줄 위치에 대략 맞춘 뒤 다시 눌러 보세요.');
+      alert('마디선을 감지하지 못했습니다. 줄 영역 위치를 조절한 뒤 다시 시도하세요.');
     } catch (error){
-      alert('이미지 마디 영역을 분석하지 못했어요. 이미지와 줄 영역을 확인한 뒤 다시 시도해 주세요.');
+      alert('마디 영역을 분석하지 못했습니다. 이미지와 줄 영역 위치를 확인하세요.');
     }
   });
   // ---------- 이미지/PDF 악보 삭제

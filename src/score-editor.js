@@ -45,10 +45,10 @@ var scoreEditorHooks = (function(){
   }
 
   function draftMessage(status){
-    if (status.temporary && status.origin === 'tab-input' && !status.dirty) return '악보 입력에서 연 임시 악보야. 고치려면 악보 입력으로 돌아가.';
-    if (status.temporary) return '임시 악보 · 새로고침하면 사라져. 보관하려면 악보 복사해.';
-    if (status.dirty && status.origin === 'tab-input') return '악보 입력에서 고친 수정 초안이야. 원래대로 하려면 원본으로 되돌리기.';
-    if (status.dirty) return '임시 수정됨 · 새로고침하면 사라져. 보관하려면 악보 복사해.';
+    if (status.temporary && status.origin === 'tab-input' && !status.dirty) return '악보 입력에서 연 임시 악보입니다. 수정하려면 악보 입력 화면으로 이동하세요.';
+    if (status.temporary) return '임시 악보 · 새로고침 시 초기화됩니다. 보관 시 악보를 복사하세요.';
+    if (status.dirty && status.origin === 'tab-input') return '악보 입력에서 고친 수정 초안입니다. 원래 상태로 복원하려면 원본 복원을 누르세요.';
+    if (status.dirty) return '임시 수정됨 · 새로고침 시 초기화됩니다. 보관 시 악보를 복사하세요.';
     return '';
   }
 
@@ -112,7 +112,7 @@ var scoreEditorHooks = (function(){
       savedAt:Date.now()
     });
     if (ok) location.href = 'score-input.html';
-    else showStorageStatus('악보 입력으로 넘기지 못했어. 악보 복사로 옮겨 줘.');
+    else showStorageStatus('악보 입력 화면으로 전달하지 못했습니다. 악보 복사 기능을 이용하세요.');
   }
 
   function appendMeasureEditButton(head, index){
