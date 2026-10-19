@@ -14,11 +14,11 @@ function test(name, fn){
 const parse = parser.parseScore;
 assert.equal(global.GuitarParser, undefined, 'CommonJS loading does not write to the Node global');
 
-test('single notes retain English, Korean, octave, fingering, and string override', function(){
+test('single notes retain English, octave, fingering, and string override', function(){
   const english = parser.parseNoteToken('E4', 0);
   assert.equal(english.midi, 64);
   assert.equal(english.en, 'E4');
-  assert.equal(parser.parseNoteToken('3솔', 0).midi, 67);
+  assert.equal(parser.parseNoteToken('3G4', 0).midi, 67);
   assert.equal(parser.parseNoteToken('4D4', 0).pos.lh, 4);
   assert.equal(parser.parseNoteToken('C4', 0).pos.lh, null);
   assert.equal(parser.parseNoteToken('C4', 0).pos.rh, null);
@@ -28,9 +28,9 @@ test('single notes retain English, Korean, octave, fingering, and string overrid
   assert.equal(parser.midiInfo(61).pos.rh, null);
   assert.equal(parser.parseNoteToken('1C4', 0).customTok, '1C4');
   assert.equal(parser.parseNoteToken('0E4', 0).customTok, '0E4');
-  assert.equal(parser.parseNoteToken('3솔', 0).pos.lh, 3);
-  assert.equal(parser.parseNoteToken('3솔', 0).customTok, '3G4');
-  assert.equal(parser.parseNoteToken('도4', 0).pos.lh, null);
+  assert.equal(parser.parseNoteToken('3G4', 0).pos.lh, 3);
+  assert.equal(parser.parseNoteToken('3G4', 0).customTok, '3G4');
+  assert.equal(parser.parseNoteToken('도4', 0), null, 'Korean solfege names are rejected');
   assert.equal(parser.parseNoteToken('C3', 0).midi, 48);
   const overridden = parser.parseNoteToken('1E4@2', 0);
   assert.equal(overridden.pos.str, 2);
@@ -66,7 +66,7 @@ test('explicit right-hand suffixes stay attached to their written note only', fu
     assert.equal(note.customTok,'C4:'+finger);
     assert.equal(parser.getExplicitRightHand('C4:'+finger),finger);
   }
-  for (const token of ['1C4:i','!1C4@2:i','~E4:a','도4:m','D4(4):i']){
+  for (const token of ['1C4:i','!1C4@2:i','~E4:a']){
     assert.ok(parser.parseNoteToken(token,0),token);
     assert.equal(parser.getExplicitRightHand(token),token.slice(-1));
   }
@@ -88,14 +88,14 @@ test('explicit right-hand suffixes stay attached to their written note only', fu
   assert.equal(parser.parseScore('C4 D4:i r r',4).measures[0].beats[0].rh,null);
   assert.equal(parser.parseScore('C4:i - r r',4).measures[0].beats[1].rh,null);
   assert.equal(parser.parseScore('r:i C4 - -',4).errors.length>0,true);
-  for (const invalid of ['C4:P','C4:x','C4:','C4:im','C4:i:m','C4:i@2','r:i','-:p','C4:i!','C4!:i','C3:p+E4:i!','C3:p+E4:i~','H4:i','C2@1:i']){
+  for (const invalid of ['C4:P','C4:x','C4:','C4:im','C4:i:m','C4:i@2','r:i','-:p','C4:i!','C4!:i','C3:p+E4:i!','C3:p+E4:i~','H4:i','C2@1:i','도4:m','D4(4):i']){
     assert.equal(parser.parseNoteToken(invalid,0),null,invalid);
     assert.ok(parser.parseScore(invalid+' - - -',4).errors.length,invalid+' validates as an error');
   }
   for (const invalid of ['>C4','C4>','^C4','C4^']) assert.equal(parser.parseNoteToken(invalid,0),null,invalid);
-  const roundTrip=parser.parseScore('[C] E4:a+C3:p C4:i/D4:m 도4:p r | "hands"',4);
+  const roundTrip=parser.parseScore('[C] E4:a+C3:p C4:i/D4:m G4:p r | "hands"',4);
   const serialized=parser.serializeScoreMeasures(roundTrip.measures);
-  assert.match(serialized,/E4:a\+C3:p C4:i\/D4:m 도4:p/);
+  assert.match(serialized,/E4:a\+C3:p C4:i\/D4:m G4:p/);
   assert.deepEqual(parser.parseScore(serialized,4).measures[0].beats.map(b=>b.tok),roundTrip.measures[0].beats.map(b=>b.tok));
 });
 
@@ -116,8 +116,8 @@ test('bass plus melody and multi-note chords preserve roles and ascending arpegg
 });
 
 test('chord articulation belongs to its written component and canonical tokens retain it', function(){
-  assert.equal(parser.parseNoteToken('C4!', 0).articulation, 'apoyando', 'legacy single-note postfix apoyando remains accepted');
-  assert.equal(parser.parseNoteToken('C4~', 0).articulation, 'tirando', 'legacy single-note postfix tirando remains accepted');
+  assert.equal(parser.parseNoteToken('C4!', 0), null, 'postfix apoyando is rejected');
+  assert.equal(parser.parseNoteToken('C4~', 0), null, 'postfix tirando is rejected');
   const cases = [
     ['!C3+E4', [[48, 'apoyando', true], [64, null, false]], '!C3+E4'],
     ['C3+!E4', [[48, null, false], [64, 'apoyando', true]], 'C3+!E4'],
@@ -192,10 +192,10 @@ test('measure separators are newline, CRLF, and double slash; single slash remai
   assert.ok(parse('C4 - / D4 -', 4).errors.some(e => e.code === 'ISOLATED_SLASH'));
   assert.deepEqual(parser.splitScoreMeasures('C4 -//D4 -'), ['C4 -', 'D4 -']);
   assert.deepEqual(parser.splitScoreMeasures('a/b E3/G3'), ['a/b E3/G3']);
-  const grouped = parse('[C] C4,D4 (E4 F4) - -', 4).measures[0];
+  const grouped = parse('[C] C4/D4 E4/F4 - -', 4).measures[0];
   assert.deepEqual(grouped.beats.slice(0, 2).map(beat => beat.subNotes.length), [2, 2]);
   assert.deepEqual(grouped.beats.slice(0, 2).map(beat => beat.subNotes.map(note => note.midi)), [[60, 62], [64, 65]]);
-  const scoreData = parse('[C] 2E3/0G3 - - - | lyric a/b', 4);
+  const scoreData = parse('[C] 2E3/0G3 - - - | "lyric a/b"', 4);
   assert.equal(scoreData.measures.length, 1);
   assert.equal(scoreData.measures[0].beats[0].subNotes.length, 2);
   assert.equal(scoreData.measures[0].lyric, 'lyric a/b');
@@ -205,17 +205,17 @@ test('explicit, inferred, and absent chords retain their modes', function(){
   const explicit = parse('[G7] C4 D4 E4 G4', 4).measures[0];
   assert.equal(explicit.chord, 'G7');
   assert.equal(explicit.autoChord, false);
-  const automatic = parse('[자동] C4 E4 G4 C5', 4).measures[0];
+  const automatic = parse('[?] C4 E4 G4 C5', 4).measures[0];
   assert.ok(automatic.chord);
   assert.equal(automatic.autoChord, true);
-  const none = parse('[N.C.] C4 E4 G4 C5', 4).measures[0];
+  const none = parse('[-] C4 E4 G4 C5', 4).measures[0];
   assert.equal(none.chord, '');
   assert.equal(none.autoChord, false);
   assert.equal(none.needsInfer, false);
 });
 
 test('generic score parsing retains original beat tokens through serialization', function(){
-  const raw = '[C] 4D4 -/!3G4 0E2+4B4 - | line a/b';
+  const raw = '[C] 4D4 -/!3G4 0E2+4B4 - | "line a/b"';
   const parsed = parse(raw, 4);
   const measure = parsed.measures[0];
   assert.deepEqual(measure.beats.slice(0, 3).map(b => b.tok), ['4D4', '-/!3G4', '0E2+4B4']);
@@ -309,6 +309,59 @@ test('uncertain marks survive score serialization', function(){
   const text = parser.serializeScoreMeasures(measures.map(m => ({chord:m.chord || '-', autoChord:!!m.autoChord, notes:m.beats.map(b => b.tok), lyric:m.lyric || ''})), '\n');
   assert.ok(text.includes('E4?'));
   assert.ok(text.includes('r?'));
+});
+
+test('removed legacy notations are rejected and modern equivalents pass', function(){
+  const rejected = [
+    ['[-] E r r r', 'UNKNOWN_NOTE'],
+    ['[-] e4 r r r', 'UNKNOWN_NOTE'],
+    ['[-] F\u266F4 r r r', 'UNKNOWN_NOTE'],
+    ['[-] E4! r r r', 'UNKNOWN_NOTE'],
+    ['[-] E4~ r r r', 'UNKNOWN_NOTE'],
+    ['[-] 도4 r r r', 'UNKNOWN_NOTE'],
+    ['[-] 0솔 r r r', 'UNKNOWN_NOTE'],
+    ['[-] E4,F4 r r r', 'UNKNOWN_NOTE'],
+    ['[-] R r r r', 'UNKNOWN_NOTE'],
+    ['[-] E4 r r r | 메모', 'INVALID_LYRIC_QUOTE'],
+    ['[없음] E4 r r r', 'INVALID_CHORD'],
+    ['[N.C.] E4 r r r', 'INVALID_CHORD'],
+    ['[자동] E4 r r r', 'INVALID_CHORD'],
+    ['[(자동)] E4 r r r', 'INVALID_CHORD'],
+    ['[C(추정)] E4 r r r', 'INVALID_CHORD'],
+    ['[am] E4 r r r', 'INVALID_CHORD']
+  ];
+  for (const [text, code] of rejected){
+    const result = parser.validateScore(text, 4);
+    assert.ok(result.errors.some(e => e.code === code), text + ' reports ' + code);
+    assert.equal(parse(text, 4).errors.some(e => e.code === code), true, text + ' parseScore reports ' + code);
+  }
+  for (const text of ['[-] D4(4) r r r', '[-] (E4 F4) r r r']){
+    assert.ok(parser.validateScore(text, 4).errors.length >= 1, text + ' is rejected');
+  }
+  assert.equal(parser.validateScore('[am] E4 r r r', 4).warnings.some(w => w.code === 'UNSUPPORTED_CHORD'), false, 'an invalid chord header gets no unsupported-chord warning');
+  const accepted = [
+    '[-] !E4 4D4 E4/F4 r | "메모"',
+    '[C/G] E4 r r r',
+    '[F#m7b5] E4 r r r',
+    '[E7(9)] E4 r r r',
+    '[?] E4 r r r',
+    '[C?] E4 r r r',
+    'E4 r r r',
+    '[-] E4 r? ? r',
+    '[-] E4 r r r |'
+  ];
+  for (const text of accepted){
+    assert.deepEqual(parser.validateScore(text, 4).errors, [], text + ' has no errors');
+    assert.deepEqual(parse(text, 4).errors, [], text + ' parses without errors');
+  }
+  for (const text of rejected.map(item => item[0]).concat(accepted)){
+    const result = parser.validateScore(text, 4);
+    assert.equal(result.warnings.concat(result.errors).some(e => e.code === 'AMBIGUOUS_OCTAVE'), false, text + ' never reports AMBIGUOUS_OCTAVE');
+  }
+  assert.equal(parser.parseScore('[C?] E4 r r r', 4).measures[0].autoChord, true);
+  assert.equal(parser.parseScore('[-] E4 r r r', 4).measures[0].chord, '');
+  assert.equal(parser.lookupChord('am'), null);
+  assert.notEqual(parser.lookupChord('Am'), null);
 });
 
 process.stdout.write('1..' + checks + '\n');

@@ -82,9 +82,9 @@ await test('sync parses every sheet row without applying or changing legacy visi
   const cb = callbackName(h.scripts.at(-1));
   h.context[cb]({ table: { rows: [
     { c: [{ v: '곡 제목' }] },
-    { c: [{ v: 'Visible' }, { v: '4' }, { v: '90' }, { v: 'badge' }, { v: '[C] C4 - - - | one / lyric' }] },
-    { c: [{ v: 'Hidden' }, { v: '4' }, { v: '80' }, { v: 'badge' }, { v: '[G] G3 - - - | lyric/slash' }] },
-    { c: [{ v: 'Override me' }, { v: '[G] 2E3/0G3 - - - | lyric / slash' }] },
+    { c: [{ v: 'Visible' }, { v: '4' }, { v: '90' }, { v: 'badge' }, { v: '[C] C4 - - - | "one / lyric"' }] },
+    { c: [{ v: 'Hidden' }, { v: '4' }, { v: '80' }, { v: 'badge' }, { v: '[G] G3 - - - | "lyric/slash"' }] },
+    { c: [{ v: 'Override me' }, { v: '[G] 2E3/0G3 - - - | "lyric / slash"' }] },
     { c: [{ v: 'Right hand' }, { v: '[C] C4:i 1C4@2:i+E4:a - -' }] }
   ] } });
   assert.equal(await promise, true);

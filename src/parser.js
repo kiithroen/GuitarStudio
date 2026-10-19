@@ -74,17 +74,13 @@
 
   function cleanChordToken(rawName){
     if (!rawName) return '';
-    return String(rawName).replace(/\s*\(자동\)\s*|\s*\(추정\)\s*|\?+$/g, '').trim();
+    return String(rawName).replace(/\?+$/, '').trim();
   }
 
   function lookupChord(rawName){
     var s = cleanChordToken(rawName);
-    if (!s || s === '-' || s === '없음' || /^n\.?c\.?$/i.test(s)) return null;
-    if (CHORD_DB[s]) return CHORD_DB[s];
-    // 대소문자 오타 자동 보정 (예: am -> Am, e7 -> E7, f#m -> F#m)
-    var norm = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-    if (CHORD_DB[norm]) return CHORD_DB[norm];
-    return null;
+    if (!s || s === '-') return null;
+    return CHORD_DB[s] || null;
   }
 
   // 화성학 기반 코드 구성음 피치클래스(0=C ~ 11=B) 사전: [근음(1도), 3도, 5도, 7도(선택)]
@@ -331,64 +327,18 @@
     } else if (/^~/.test(tok)){
       explicitArtic = 'tirando';
       tok = tok.slice(1).trim();
-    } else if (/!$/.test(tok)){
-      explicitArtic = 'apoyando';
-      tok = tok.slice(0, -1).trim();
-    } else if (/~$/.test(tok)){
-      explicitArtic = 'tirando';
-      tok = tok.slice(0, -1).trim();
     }
     if (!tok || tok === '-' || tok === '.') return null;
 
-    // 괄호 표기 예: D4(4) -> 4D4 정규화
-    var parenMatch = tok.match(/^([A-Ga-g]#?[2-5]?|[가-힣]+#?[2-5]?)\(([0-4])\)$/);
-    if (parenMatch) tok = parenMatch[2] + parenMatch[1];
-
-    var koMap = {
-      '0솔': 55, '솔3': 55, '1솔#': 56, '솔#3': 56,
-      '2라': 57, '3라': 57, '라3': 57, '0시': 59, '시3': 59,
-      '1도': 60, '도': 60, '도4': 60,
-      '3레': 62, '4레': 62, '레': 62, '레4': 62,
-      '0미': 64, '미': 64, '미4': 64, '2미': 52, '미3': 52,
-      '1파': 65, '파': 65, '파4': 65, '3파': 53, '파3': 53,
-      '2파#': 66, '파#': 66, '파#4': 66, '4파#': 54, '파#3': 54,
-      '3솔': 67, '4솔': 67, '솔': 67, '솔4': 67,
-      '2라4': 69, '라': 69, '라4': 69,
-      '시': 71, '시4': 71, '도5': 72
-    };
-
-    var leadDigitMatch = tok.match(/^([0-4])(.+)$/);
-    var customLh = leadDigitMatch ? Number(leadDigitMatch[1]) : null;
-    var bareKo = leadDigitMatch ? leadDigitMatch[2] : tok;
     var articPfx = explicitArtic === 'apoyando' ? '!' : (explicitArtic === 'tirando' ? '~' : '');
 
-    var resolvedMidi = koMap[tok] != null ? koMap[tok] : (koMap[bareKo] != null ? koMap[bareKo] : null);
-    if (resolvedMidi != null){
-      var info = midiInfo(resolvedMidi);
-      if (info && info.pos){
-        var newPos = Object.assign({}, info.pos);
-        if (customLh != null) newPos.lh = customLh;
-        if (explicitRh) newPos.rh = explicitRh;
-        info.pos = newPos;
-        var baseKoTok = customLh != null ? customLh + info.en : info.en;
-        if (articPfx || customLh != null || explicitRh){
-          info.customTok = articPfx + baseKoTok + (explicitRh ? ':' + explicitRh : '');
-        }
-      }
-      if (explicitArtic){
-        info.articulation = explicitArtic;
-        info.explicitArticulation = true;
-      }
-      return info;
-    }
-
-    var m = tok.match(/^([0-4])?([A-Ga-g])([#b♯♭♮]?)([2-5])?(?:@([1-6]))?$/);
+    var m = tok.match(/^([0-4])?([A-G])([#b]?)([2-5])(?:@([1-6]))?$/);
     if (m){
       var lhOverride = m[1] !== undefined && m[1] !== '' ? Number(m[1]) : null;
-      var accidental = (m[3] || '').replace('♯','#').replace('♭','b').replace('♮','');
+      var accidental = m[3];
       var semitones = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
-      var pitch = semitones[m[2].toUpperCase()] + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0);
-      var oct = m[4] ? Number(m[4]) : 4;
+      var pitch = semitones[m[2]] + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0);
+      var oct = Number(m[4]);
       var strOverride = m[5] ? Number(m[5]) : null;
       if (pitch >= -1){
         var midi = (oct + 1) * 12 + pitch;
@@ -474,17 +424,14 @@
 
   function parseBracketChordSpec(rawChord){
     var s = (rawChord || '').trim();
-    if (s === '-' || s === '없음' || /^n\.?c\.?$/i.test(s)){
+    if (s === '-'){
       return { chord: '', autoChord: false, needsInfer: false };
     }
-    if (!s || s === '?' || s === '자동' || s === '(자동)'){
+    if (!s || s === '?'){
       return { chord: '', autoChord: true, needsInfer: true };
     }
-    var isMarkedAuto = /\(자동\)|\(추정\)|\?+$/.test(s);
+    var isMarkedAuto = /\?+$/.test(s);
     var cleaned = cleanChordToken(s);
-    // 대소문자 정규화
-    var norm = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-    if (CHORD_DB[norm]) cleaned = norm;
     return { chord: cleaned, autoChord: isMarkedAuto, needsInfer: false };
   }
 
@@ -516,7 +463,12 @@
       var decoded = GuitarNotation.decodeMeasureLine(line);
       if (decoded.chordRaw == null) return;
       var chord = parseBracketChordSpec(decoded.chordRaw);
-      if (chord.chord && !CHORD_DB[chord.chord]) result.warnings.push({
+      if (chord.chord && !/^[A-G][#b]?[A-Za-z0-9#+()\/-]*$/.test(chord.chord)){
+        result.errors.push({
+          code:'INVALID_CHORD', measure:index + 1, beat:null,
+          message:'코드 이름은 영문 코드 표기로 적어줘(예: [Am], [G7], [C/G]). 코드가 없으면 [-]: [' + decoded.chordRaw + ']'
+        });
+      } else if (chord.chord && !CHORD_DB[chord.chord]) result.warnings.push({
         code:'UNSUPPORTED_CHORD', measure:index + 1, beat:null,
         message:'코드 사전에 없는 코드 표기야: '+chord.chord+'.'
       });

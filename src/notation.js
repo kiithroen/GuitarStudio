@@ -10,7 +10,6 @@
     var out = [];
     var start = 0;
     var square = 0;
-    var paren = 0;
     var quoted = false;
     var escaped = false;
 
@@ -25,10 +24,8 @@
       if (c === '"'){ quoted = true; continue; }
       if (c === '[') square++;
       else if (c === ']' && square) square--;
-      else if (c === '(') paren++;
-      else if (c === ')' && paren) paren--;
 
-      if (square || paren) continue;
+      if (square) continue;
       if (splitBars && c === '|'){
         out.push({value:text.slice(start, i), index:i, separator:'|'});
         start = i + 1;
@@ -60,7 +57,6 @@
     var tokens = [];
     var token = '';
     var square = 0;
-    var paren = 0;
     var quoted = false;
     var escaped = false;
     text = String(text || '');
@@ -77,10 +73,8 @@
       if (c === '"'){ quoted = true; token += c; continue; }
       if (c === '[') square++;
       else if (c === ']' && square) square--;
-      else if (c === '(') paren++;
-      else if (c === ')' && paren) paren--;
 
-      if (/\s/.test(c) && !square && !paren){
+      if (/\s/.test(c) && !square){
         if (token){ tokens.push(token); token = ''; }
       } else token += c;
     }
@@ -90,12 +84,8 @@
 
   function splitBeatSubtokens(token){
     var body = String(token || '').trim();
-    if (body.charAt(0) === '(' && body.charAt(body.length - 1) === ')'){
-      body = body.slice(1, -1).trim();
-    }
     if (body.indexOf('/') >= 0) return body.split('/').map(function(part){ return part.trim(); });
-    if (body.indexOf(',') >= 0) return body.split(',').map(function(part){ return part.trim(); });
-    return body ? body.split(/\s+/).map(function(part){ return part.trim(); }) : [];
+    return body ? [body] : [];
   }
 
   function decodeMeasureLine(line){
@@ -122,14 +112,17 @@
           errors.push({code:'INVALID_LYRIC_QUOTE', message:'마디 메모·가사 JSON 문자열의 따옴표, escape 또는 닫힌 뒤 문자를 확인해줘.'});
           lyric = rawLyric;
         }
-      } else lyric = rawLyric;
+      } else {
+        if (rawLyric) errors.push({code:'INVALID_LYRIC_QUOTE', message:'마디 메모는 큰따옴표 JSON 문자열로 적어줘. 예: | "메모"'});
+        lyric = rawLyric;
+      }
     }
     return {notation:text, chordRaw:chordRaw, lyric:lyric, errors:errors};
   }
 
-  // 쉼 토큰 판별의 SSOT. 확인 표시가 붙은 r?, R?, 단독 ?도 쉼이다.
+  // 쉼 토큰 판별의 SSOT. 확인 표시가 붙은 r?, 단독 ?도 쉼이다.
   function isRestToken(tok){
-    return /^(?:[rR]\??|\?)$/.test(String(tok || '').trim());
+    return /^(?:r\??|\?)$/.test(String(tok || '').trim());
   }
 
   // 구성음 중 하나라도 ? 로 끝나면 확인 표시가 있는 토큰이다(단독 ? 포함).
@@ -241,9 +234,6 @@
             }
             if (!parsed.pos){
               add(errors, 'GUITAR_RANGE', measureNo, beatIndex + 1, '기타에서 연주할 수 없는 음역이야: ' + chordPart);
-            }
-            if (/^[!~]?[A-Ga-g][#b♯♭♮]?(?::[pima])?$/.test(plainChordPart)){
-              add(warnings, 'AMBIGUOUS_OCTAVE', measureNo, beatIndex + 1, '옥타브가 생략된 음표 ' + chordPart + ' 는 기본 옥타브 4로 해석돼.');
             }
             components.push({token:chordPart, note:parsed});
           });

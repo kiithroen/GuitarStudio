@@ -2032,7 +2032,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=uncertain-mark-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=no-legacy-1')), 'all app scripts use the shared revision');
   const htmlIds = ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'temporary score UI includes #'+id);});
   assert.doesNotMatch(fs.readFileSync(path.join(root,'index.html'),'utf8'),/\.beat-cell\.arp-(?:melody|sub)\b/,'obsolete articulation color rules are removed from the score stylesheet');
@@ -2150,7 +2150,7 @@ async function main() {
     process.stdout.write('Browser checkpoint: boot and initial DOM passed\n');
 
     const canonicalTsv = await cdp.evaluate(`window.formatSongToSheetTsv('slash lyric', 4, 90, 'badge', [
-      '[C] C4 - - - | 너 / 나',
+      '[C] C4 - - - | "너 / 나"',
       '[G] G3 - - - | "https://example.test/a|b"'
     ])`);
     const canonicalColumns = canonicalTsv.split('\t');
@@ -2158,6 +2158,8 @@ async function main() {
     assert.ok(canonicalColumns[4].includes(' // '), 'canonical TSV joins measures with //');
     assert.equal(canonicalColumns[4].includes('\n'), false, 'canonical TSV score stays on one row');
     assert.ok(canonicalColumns[4].includes('| "너 / 나"'), 'slash lyric is JSON quoted and preserved');
+    const unquotedMemoRejected = await cdp.evaluate(`(function(){ try { window.formatSongToSheetTsv('x', 4, 90, 'badge', ['[C] C4 - - - | 너 / 나']); return false; } catch (e) { return true; } })()`);
+    assert.equal(unquotedMemoRejected, true, 'an unquoted memo is rejected instead of normalized');
     assert.ok(canonicalColumns[4].includes('"https://example.test/a|b"'), 'URL and pipe lyric characters are preserved');
 
     const literalTextSafety = await cdp.evaluate(`(function(){

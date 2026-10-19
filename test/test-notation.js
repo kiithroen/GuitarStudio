@@ -8,20 +8,30 @@ function test(name, fn){ fn(); checks++; process.stdout.write('ok '+checks+' - '
 
 test('only newline and context-free double slash split measures', function(){
   assert.deepEqual(notation.splitScoreMeasures('A4//B4\r\nC4 / D4'), ['A4','B4','C4 / D4']);
-  assert.deepEqual(notation.splitScoreMeasures('[C/G] (C4//D4) - | "url // x"'), ['[C/G] (C4//D4) - | "url // x"']);
+  assert.deepEqual(notation.splitScoreMeasures('[C/G] C4/D4 - | "url // x"'), ['[C/G] C4/D4 - | "url // x"']);
 });
-test('beat tokenizer preserves chord slash, tuplets, and fingering suffix', function(){
-  assert.deepEqual(notation.tokenizeMeasureBeats('[C/G] (C4/D4) D4(4)'), ['[C/G]','(C4/D4)','D4(4)']);
-  assert.deepEqual(notation.splitBeatSubtokens('(C4 D4)'), ['C4','D4']);
+test('beat tokenizer preserves chord slash and tuplets and splits subdivisions on slash only', function(){
+  assert.deepEqual(notation.tokenizeMeasureBeats('[C/G] C4/D4 E4'), ['[C/G]','C4/D4','E4']);
+  assert.deepEqual(notation.splitBeatSubtokens('C4/D4'), ['C4','D4']);
+  assert.deepEqual(notation.splitBeatSubtokens('C4'), ['C4']);
+  assert.deepEqual(notation.splitBeatSubtokens('C4,D4'), ['C4,D4'], 'comma is not a split');
+  assert.deepEqual(notation.splitBeatSubtokens('(C4 D4)'), ['(C4 D4)'], 'parentheses are not unwrapped or split on spaces');
   assert.deepEqual(notation.splitBeatSubtokens('D4(4)'), ['D4(4)']);
+  assert.deepEqual(notation.tokenizeMeasureBeats('(C4 D4) E4'), ['(C4','D4)','E4'], 'parentheses do not group whitespace');
 });
-test('decoder protects JSON lyric delimiters and keeps unquoted single slash', function(){
+test('decoder protects JSON lyric delimiters and rejects unquoted memos', function(){
   const d=notation.decodeMeasureLine('[C] C4 | "https://x/y | \\\"a\\\""');
   assert.equal(d.lyric, 'https://x/y | "a"');
   assert.deepEqual(d.errors, []);
-  assert.equal(notation.decodeMeasureLine('[C] C4 | 너 / 나').lyric, '너 / 나');
+  assert.equal(notation.decodeMeasureLine('[C] C4 | "너 / 나"').lyric, '너 / 나');
+  const unquoted=notation.decodeMeasureLine('[C] C4 | 너 / 나');
+  assert.equal(unquoted.errors.length, 1);
+  assert.equal(unquoted.errors[0].code, 'INVALID_LYRIC_QUOTE');
+  assert.equal(unquoted.errors[0].message, '마디 메모는 큰따옴표 JSON 문자열로 적어줘. 예: | "메모"');
+  assert.deepEqual(notation.decodeMeasureLine('[C] C4 |').errors, [], 'an empty memo has no error');
+  assert.deepEqual(notation.decodeMeasureLine('[C] C4 |   ').errors, [], 'a blank memo has no error');
   assert.equal(notation.decodeMeasureLine('[C] C4 | "bad').errors[0].code, 'INVALID_LYRIC_QUOTE');
-  assert.equal(notation.decodeMeasureLine('[C] C4 - - - | https://example.com/a | x // y').lyric,
+  assert.equal(notation.decodeMeasureLine('[C] C4 - - - | "https://example.com/a | x // y"').lyric,
     'https://example.com/a | x // y');
 });
 test('serializer quotes lyrics and round trips pipes and slash characters', function(){
@@ -41,7 +51,8 @@ test('validation catches isolated slash, excess beats, unknown notes, empty part
 
 test('right-hand suffix validation preserves octave and string diagnostics', function(){
   const octave=parser.parseScore('C:i - - -',4);
-  assert.ok(octave.warnings.some(e=>e.code==='AMBIGUOUS_OCTAVE'));
+  assert.ok(octave.errors.some(e=>e.code==='UNKNOWN_NOTE'),'an omitted octave is an error');
+  assert.ok(!octave.warnings.some(e=>e.code==='AMBIGUOUS_OCTAVE'));
   const impossible=parser.parseScore('C2@1:i - - -',4);
   assert.ok(impossible.errors.some(e=>e.code==='INVALID_STRING_OVERRIDE'));
   for(const token of ['C4:P','C4:x','C4:im','C4:i:m','C4:i@2','r:i','-:p','C3:p+E4:i!','C3:p+E4:i~']){
@@ -79,22 +90,21 @@ test('removed duration postfix is rejected consistently by validation and parsin
   assert.ok(annotated[0].beats.every(beat=>!Object.hasOwn(beat,'explicitDurationSlots')));
   assert.ok(annotated[0].beats[0].chordNotes.every(note=>!Object.hasOwn(note,'explicitDurationSlots')));
 });
-test('parser and validator share grouped subdivision splitting', function(){
-  const result=parser.parseScore('[C] (C4 D4) - - -',4);
+test('parser and validator share slash subdivision splitting and reject parenthesis groups', function(){
+  const result=parser.parseScore('[C] C4/D4 - - -',4);
   assert.equal(result.errors.length,0);
   assert.deepEqual(result.measures[0].beats[0].subNotes.map(n=>n.midi),[60,62]);
-  const song=parser.buildStructuredSong({id:'tuple',lines:['[C] (C4 D4) - - -'],beats:4});
+  const song=parser.buildStructuredSong({id:'tuple',lines:['[C] C4/D4 - - -'],beats:4});
   assert.equal(song.measures[0].beats[0].subNotes.length,2);
+  for(const raw of ['[C] (C4 D4) - - -','[C] (C4/D4) - - -','[C] C4,D4 - - -']){
+    assert.ok(parser.parseScore(raw,4).errors.length>=1,raw+' is rejected');
+    assert.ok(parser.validateScore(raw,4).errors.length>=1,raw+' fails validation');
+  }
 });
-test('single-note groups parse their inner token and survive save serialization', function(){
-  for(const [token,midi] of [['(C4)',60],['(E4@2)',64]]){
-    const song=parser.buildStructuredSong({id:'group-'+token,lines:['[-] '+token+' - - -'],beats:4});
-    assert.equal(song.measures[0].beats[0].midi,midi);
-    assert.equal(song.measures[0].beats[0].tok,token);
-    const serialized=parser.serializeScoreMeasures(song.measures);
-    const restored=parser.buildStructuredSong({id:'restored',lines:[serialized],beats:4});
-    assert.equal(restored.measures[0].beats[0].midi,midi);
-    assert.equal(restored.measures[0].beats[0].tok,token);
+test('parenthesis-wrapped single notes are rejected', function(){
+  for(const token of ['(C4)','(E4@2)']){
+    assert.ok(parser.validateScore('[-] '+token+' - - -',4).errors.some(e=>e.code==='UNKNOWN_NOTE'),token);
+    assert.throws(()=>parser.buildStructuredSong({id:'group-'+token,lines:['[-] '+token+' - - -'],beats:4}),e=>e.name==='ScoreValidationError');
   }
 });
 test('string overrides preserve positions and explicit fingers without inferring fingers', function(){
@@ -122,9 +132,10 @@ test('explicit left-hand lookup reads only source token fingering', function(){
   assert.equal(getLH('솔3'),null);
   assert.equal(getLH('1C4'),1);
   assert.equal(getLH('0E4'),0);
-  assert.equal(getLH('3솔'),3);
-  assert.equal(getLH('D4(4)'),4);
-  assert.equal(getLH('(4D4@2)'),4);
+  assert.equal(getLH('3솔'),null);
+  assert.equal(getLH('D4(4)'),null);
+  assert.equal(getLH('(4D4@2)'),null);
+  assert.equal(getLH('4D4@2'),4);
   assert.equal(getLH('G3@3+C4@2',0),null);
   assert.equal(getLH('G3@3+C4@2',1),null);
   assert.equal(getLH('0G3@3+1C4@2',0),0);
@@ -133,7 +144,7 @@ test('explicit left-hand lookup reads only source token fingering', function(){
 });
 test('same-string collisions apply only inside a simultaneous chord', function(){
   assert.ok(parser.validateScore('[C] E4@1+F4@1 - - -',4).errors.some(e=>e.code==='STRING_COLLISION'));
-  assert.ok(parser.validateScore('[C] E4@1!+F4@1 - - -',4).errors.some(e=>e.code==='STRING_COLLISION'));
+  assert.ok(parser.validateScore('[C] !E4@1+F4@1 - - -',4).errors.some(e=>e.code==='STRING_COLLISION'));
   assert.ok(!parser.validateScore('[C] E4@1/F4@1 - - -',4).errors.some(e=>e.code==='STRING_COLLISION'));
   assert.ok(parser.validateScore('[C] C4+F5 - - -',4).errors.some(e=>e.code==='GUITAR_RANGE'));
 });
@@ -145,9 +156,9 @@ test('empty score and empty canonical measures are distinct from empty beat subd
   assert.ok(parser.validateScore('C4 - / D4 -',4).errors.some(e=>e.code==='ISOLATED_SLASH'));
   assert.equal(parser.validateScore('\n   \n',4).errors.filter(e=>e.code==='EMPTY_SCORE').length,1);
 });
-test('empty grouped beat is rejected as an empty subdivision', function(){
+test('empty parenthesis group is rejected', function(){
   const score=parser.parseScore('[-] () - - -',4);
-  assert.ok(score.errors.some(e=>e.code==='EMPTY_SUBDIVISION'));
+  assert.ok(score.errors.length>=1);
   assert.throws(()=>parser.buildStructuredSong({id:'empty-group',lines:['[-] () - - -'],beats:4}),e=>e.name==='ScoreValidationError');
 });
 test('beat counts are bounded finite integers with a safe four-beat preview fallback', function(){
@@ -165,7 +176,8 @@ test('beat counts are bounded finite integers with a safe four-beat preview fall
 });
 test('accidentals resolve to canonical MIDI and invalid plus components are not dropped', function(){
   const midi=t=>parser.parseNoteToken(t,0).midi;
-  assert.equal(midi('Bb4'),70); assert.equal(midi('E♭4'),63); assert.equal(midi('F♮4'),65);
+  assert.equal(midi('Bb4'),70); assert.equal(midi('Eb4'),63);
+  for(const legacy of ['E♭4','F♮4','F♯4']) assert.equal(parser.parseNoteToken(legacy,0),null,legacy+' is rejected');
   assert.equal(midi('E#4'),65); assert.equal(midi('B#4'),72); assert.equal(midi('Cb4'),59); assert.equal(midi('Fb4'),64);
   assert.equal(parser.parseNoteToken('C4+H4',0),null);
   assert.equal(parser.parseNoteToken('C4++D4',0),null);
@@ -176,6 +188,6 @@ test('score parsing returns diagnostics and structured save rejects invalid scor
   assert.ok(preview.errors.some(e=>e.code==='UNKNOWN_NOTE'));
   assert.throws(()=>parser.buildStructuredSong({id:'bad',lines:['[C] C4 H4 - -'],beats:4}),e=>e.name==='ScoreValidationError'&&e.errors.length>0);
   assert.equal(parser.buildStructuredSong({id:'ok',lines:['[-] C4 - - - | "lyric"'],beats:4}).notationVersion,2);
-  assert.ok(parser.validateScore('[H#maj] C4 - - -',4).warnings.some(e=>e.code==='UNSUPPORTED_CHORD'));
+  assert.ok(parser.validateScore('[C#maj13] C4 - - -',4).warnings.some(e=>e.code==='UNSUPPORTED_CHORD'));
 });
 process.stdout.write('1..'+checks+'\n');
