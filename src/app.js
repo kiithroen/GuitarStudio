@@ -181,9 +181,14 @@ function curCapo(){
       if (uncertainCount > 0) uncertainBadgeEl.textContent = '확인 ' + uncertainCount + '곳';
     }
     var songCapo = getSongCapo(curSong);
-    var capoBadgeTxt = (songCapo > 0 && !/(?:capo|카포)\s*[:.]?\s*(?:fret\s*)?\d/i.test(curSong.badge || '')) ? (' · Capo ' + songCapo) : '';
+    var capoBadgeEl = $('#capoBadge');
+    if (capoBadgeEl){
+      capoBadgeEl.hidden = songCapo === 0;
+      capoBadgeEl.textContent = '카포 ' + songCapo;
+      capoBadgeEl.title = '타브·지판은 카포 기준 프렛 · 소리 ' + songCapo + '반음 위';
+    }
     $('#scoreTitle').textContent = curSong.title;
-    $('#scoreTypeBadge').textContent = (curSong.badge || (curSong.type === 'image' ? '교본 사진/PDF 악보' : '텍스트 악보')) + capoBadgeTxt;
+    $('#scoreTypeBadge').textContent = curSong.badge || (curSong.type === 'image' ? '교본 사진/PDF 악보' : '텍스트 악보');
     var canRenameOrDelete = curSong.type === 'image';
     $('#deleteSongBtn').hidden = !canRenameOrDelete;
     $('#deleteSongBtn').textContent = '삭제';

@@ -439,6 +439,7 @@ async function testEditHandoff(client, httpPort) {
   assert.deepEqual(practice.third, { text: '편집', title: '이 마디부터 악보 입력에서 편집', aria: '3마디부터 편집' }, 'the measure edit button names the measure');
   assert.deepEqual(practice.tool, { visible: true, text: '악보 편집', title: '악보 입력 화면에서 이 곡을 고칩니다', before: true }, 'the toolbar edit button shows for a text score');
   assert.equal(practice.resetHidden, true, 'an untouched original has no revert button');
+  assert.equal(await client.evaluate(`(function(){ var el = document.getElementById('capoBadge'); return curCapo() === 0 && !!el && el.hidden && getComputedStyle(el).display === 'none'; })()`), true, 'a built-in song without a capo hides the capo badge');
   const imageToolbar = await client.evaluate(`(function(){
     var previous = curSong;
     try {
@@ -563,13 +564,39 @@ async function testEditHandoff(client, httpPort) {
   await clickAndLeave('#editInInputBtn', inputReady);
   await client.evaluate(`(function(){ var select = document.getElementById('tiCapoSelect'); select.value = '3'; select.dispatchEvent(new Event('change', { bubbles:true })); return true; })()`);
   await clickAndLeave('#tiOpenPracticeBtn', practiceReady);
-  const capoDraft = await client.evaluate(`({ id:curSong.id, capo:curCapo(), badge:document.getElementById('scoreTypeBadge').textContent, resetShown:!document.getElementById('resetScoreDraftBtn').hidden, dirty:scoreDrafts.status(curSong.id).dirty })`);
+  const capoBadgeProbe = `(function(){ var el = document.getElementById('capoBadge'); return { shown:!!el && getComputedStyle(el).display !== 'none' && el.getClientRects().length > 0, text:el ? el.textContent : null, title:el ? el.title : null }; })()`;
+  const capoDraft = await client.evaluate(`({ id:curSong.id, capo:curCapo(), badge:${capoBadgeProbe}, resetShown:!document.getElementById('resetScoreDraftBtn').hidden, dirty:scoreDrafts.status(curSong.id).dirty })`);
   assert.equal(capoDraft.id, SONG_ID, 'a capo-only change opens as the original song id');
   assert.equal(capoDraft.capo, 3, 'the practice screen plays the capo picked on the input screen');
-  assert.ok(capoDraft.badge.includes('Capo 3'), 'the song badge shows the new capo (' + capoDraft.badge + ')');
+  assert.equal(capoDraft.badge.shown, true, 'the practice toolbar shows the capo badge for a capo 3 draft');
+  assert.equal(capoDraft.badge.text, '카포 3', 'the capo badge names the capo');
+  assert.equal(capoDraft.badge.title, '타브·지판은 카포 기준 프렛 · 소리 3반음 위', 'the capo badge tooltip explains the capo');
   assert.deepEqual([capoDraft.resetShown, capoDraft.dirty], [true, true], 'a capo-only change is a modified draft with a revert button');
+  // 카포 배지가 보이는 상태에서도 툴바가 패널 안에 있고 페이지 가로 넘침이 없다.
+  const capoToolbarFit = `(function(){
+    var right = document.querySelector('.score-toolbar-right').getBoundingClientRect();
+    var panel = document.querySelector('section[aria-label="악보 및 메트로놈 커서"]').getBoundingClientRect();
+    return { rightWithinPanel:right.right <= panel.right + 1, rightWithinViewport:right.right <= innerWidth + 1, noDocumentOverflow:document.documentElement.scrollWidth <= innerWidth + 1 };
+  })()`;
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false });
+  assert.deepEqual(await client.evaluate(capoToolbarFit), { rightWithinPanel:true, rightWithinViewport:true, noDocumentOverflow:true }, '1024px toolbar with the capo badge stays inside the panel');
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  assert.deepEqual(await client.evaluate(capoToolbarFit), { rightWithinPanel:true, rightWithinViewport:true, noDocumentOverflow:true }, '390px toolbar with the capo badge stays inside the panel');
+  await client.evaluate(`setCompactPractice(true); true`);
+  const capoCompactMobile = await client.evaluate(`(function(){ var r = ${capoBadgeProbe}; r.noDocumentOverflow = document.documentElement.scrollWidth <= innerWidth + 1; r.compact = document.body.classList.contains('practice-compact'); return r; })()`);
+  assert.deepEqual([capoCompactMobile.compact, capoCompactMobile.shown, capoCompactMobile.text, capoCompactMobile.noDocumentOverflow], [true, true, '카포 3', true], '390px compact mode still shows the capo badge without page overflow');
+  await client.evaluate(`setCompactPractice(false); true`);
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate(`setCompactPractice(true); true`);
+  const capoCompactDesktop = await client.evaluate(`(function(){ var r = ${capoBadgeProbe}; r.compact = document.body.classList.contains('practice-compact'); return r; })()`);
+  assert.deepEqual([capoCompactDesktop.compact, capoCompactDesktop.shown, capoCompactDesktop.text], [true, true, '카포 3'], 'compact mode shows the capo badge for a capo 3 draft');
+  await client.evaluate(`setCompactPractice(false); true`);
+  assert.equal(await client.evaluate(`document.body.classList.contains('practice-compact')`), false, 'compact mode is off again');
+  await client.evaluate('window.scrollTo(0, document.getElementById("scoreToolbar").getBoundingClientRect().top + window.scrollY - 8); true');
+  await shot('practice-capo-badge.png', 1024, 768);
   await client.evaluate(`document.getElementById('resetScoreDraftBtn').click(); true`);
   assert.equal(await client.evaluate('curCapo()'), 0, 'reverting the draft restores the original capo');
+  assert.equal((await client.evaluate(capoBadgeProbe)).shown, false, 'reverting the draft hides the capo badge');
 
   // 4-3. 입력 화면에서 칸 수를 바꿔 돌아오면 원래 곡 대신 새 임시 악보로 열고 알려 준다.
   await selectSong();
@@ -3524,7 +3551,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=capo-select-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=capo-badge-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

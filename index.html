@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=capo-select-1">
+<link rel="stylesheet" href="src/base.css?v=capo-badge-1">
 <style>
 #sheetLoadStatus{margin-top:8px;padding:7px 11px;border-radius:8px;border:1px solid var(--off);background:var(--off-soft);color:var(--off);font-weight:600}
 
@@ -71,6 +71,8 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 #rewindToFirstBtn{display:inline-flex;align-items:center;justify-content:center;font-weight:600;padding:4px 9px;font-size:12px;border-radius:7px;white-space:nowrap;flex-shrink:0}
 #compactSongSelect{display:inline-block;min-width:120px;max-width:240px;height:30px;font-size:12.5px;font-weight:600;padding:2px 8px;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #compactStatusBadge{display:inline-flex;align-items:center;font-family:var(--font-num);font-weight:700;font-size:11.5px;padding:2px 7px;white-space:nowrap;flex-shrink:0}
+#capoBadge{display:inline-flex;align-items:center;font-size:11.5px;padding:2px 7px;white-space:nowrap;flex-shrink:0}
+#capoBadge[hidden]{display:none}
 #scoreTitle,#scoreTypeBadge,#scoreClickHint{display:none}
 @media (min-width: 640px){
   .score-toolbar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden}
@@ -561,6 +563,7 @@ body.practice-compact .fretboard{
           <button type="button" id="scoreModeCardBtn" role="tab" aria-selected="false" title="박자·음표 길이 및 계이름(친절한 오선지) 카드 뷰 (단축키: T)">카드</button>
         </div>
         <span class="badge" id="compactStatusBadge" style="font-family:var(--font-num);font-weight:700">64 BPM · 1마디</span>
+        <span class="badge accent" id="capoBadge" hidden>카포 0</span>
         <span class="badge warn" id="uncertainBadge" hidden title="?로 표시한 확인 필요 칸 수">확인 0곳</span>
       </div>
       <div class="score-toolbar-right">
@@ -884,23 +887,23 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=capo-select-1"></script>
-<script src="src/app-state.js?v=capo-select-1"></script>
-<script src="src/notation.js?v=capo-select-1"></script>
-<script src="src/rhythm.js?v=capo-select-1"></script>
-<script src="src/parser.js?v=capo-select-1"></script>
-<script src="src/staff-layout.js?v=capo-select-1"></script>
-<script src="src/staff-svg.js?v=capo-select-1"></script>
-<script src="src/score-drafts.js?v=capo-select-1"></script>
-<script src="src/score.js?v=capo-select-1"></script>
-<script src="src/audio.js?v=capo-select-1"></script>
-<script src="src/guide.js?v=capo-select-1"></script>
-<script src="src/image-analysis.js?v=capo-select-1"></script>
-<script src="src/fretboard.js?v=capo-select-1"></script>
-<script src="src/score-ui.js?v=capo-select-1"></script>
-<script src="src/sheets.js?v=capo-select-1"></script>
-<script src="src/score-prompt.js?v=capo-select-1"></script>
-<script src="src/score-editor.js?v=capo-select-1"></script>
-<script src="src/app.js?v=capo-select-1"></script>
+<script src="src/storage.js?v=capo-badge-1"></script>
+<script src="src/app-state.js?v=capo-badge-1"></script>
+<script src="src/notation.js?v=capo-badge-1"></script>
+<script src="src/rhythm.js?v=capo-badge-1"></script>
+<script src="src/parser.js?v=capo-badge-1"></script>
+<script src="src/staff-layout.js?v=capo-badge-1"></script>
+<script src="src/staff-svg.js?v=capo-badge-1"></script>
+<script src="src/score-drafts.js?v=capo-badge-1"></script>
+<script src="src/score.js?v=capo-badge-1"></script>
+<script src="src/audio.js?v=capo-badge-1"></script>
+<script src="src/guide.js?v=capo-badge-1"></script>
+<script src="src/image-analysis.js?v=capo-badge-1"></script>
+<script src="src/fretboard.js?v=capo-badge-1"></script>
+<script src="src/score-ui.js?v=capo-badge-1"></script>
+<script src="src/sheets.js?v=capo-badge-1"></script>
+<script src="src/score-prompt.js?v=capo-badge-1"></script>
+<script src="src/score-editor.js?v=capo-badge-1"></script>
+<script src="src/app.js?v=capo-badge-1"></script>
 </body>
 </html>

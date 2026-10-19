@@ -12,6 +12,7 @@
 
 - 2026-10-19 결정: 곡 선택 바에 악보 입력 화면으로 가는 링크 `#openScoreInputLink`(`악보 입력`)를 둬. 같은 날 `빈 악보 추가`를 지워서 새 악보는 이 링크로만 만들어.
 - 2026-10-19 결정: 악보 툴바의 `악보 복사` 옆에 `악보 편집`(`#editInInputBtn`, 텍스트 악보만)을 두고, 마디 머리의 `⋯` 메뉴는 `편집` 버튼(`.score-measure-edit`, 그 마디부터 편집) 하나로 바꿨어. 둘 다 악보 입력 화면으로 넘겨([개발 안내](development.md)의 초안과 저장).
+- 2026-10-19 결정: 곡에 카포가 있으면 툴바의 BPM 배지(`#compactStatusBadge`) 바로 뒤에 `카포 N` 배지(`#capoBadge`, 강조색)를 보여 줘. 카포 0이면 숨기고, 콤팩트 모드에서도 보여. 툴팁은 타브·지판이 카포 기준 프렛이고 소리가 N반음 위라는 뜻이야. 전에는 카포를 `#scoreTypeBadge` 글에 붙였는데 그 배지는 CSS로 늘 숨겨져 있어서, 사용자가 카포가 걸렸는지 알 수 없었어.
 - 2026-10-19 결정: 곡 선택 목록(`#songSelect`, `#compactSongSelect`)은 내장곡을 레벨별 묶음(`Lv.1 입문` 등)으로 보여 줘. 두 목록 모두 `src/app.js`의 `appendBuiltinSongGroups` 하나로 만들어. 레벨 기준은 [내장곡 출처](builtin-sources.md)의 레벨 절에 있어.
 
 - 2026-10-19 결정: 악보 보기 단추(`#scoreModeSeg`)는 `타브`(`#scoreModeTabBtn`)·`둘 다`(`#scoreModeBothBtn`)·`오선`(`#scoreModeStaffBtn`)·`카드`(`#scoreModeCardBtn`) 넷이야. `둘 다`와 `오선`은 타브 카드 위에 오선을 띄워. 규칙과 이유는 [오선 미리보기](staff-notation.md)의 연습 화면 절에 있어.
