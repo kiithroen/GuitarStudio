@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=fret-label-1">
+<link rel="stylesheet" href="src/base.css?v=staff-input-1">
 <style>
 /* 악보 입력 화면 전용. 색은 base.css 토큰만 쓴다. */
 body{padding-bottom:var(--ti-dock-h,0px)}
@@ -92,10 +92,13 @@ textarea.ti-input{height:auto;padding:8px 10px;font-family:var(--font-num);font-
 .ti-dock-inner{position:relative;max-width:1080px;margin:0 auto;padding:6px 16px;display:flex;flex-direction:column;gap:4px}
 .ti-dock-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 #tiDock .btn.sm{min-height:28px}
+/* 첫 줄: 모드 전환이 들어와도 타브 모드 1024px에서 한 줄에 들어가도록 단추 안쪽 여백과 간격을 줄인다 */
+.ti-dock-row{gap:4px}
+.ti-dock-row > .btn.sm,.ti-mode-group .btn.sm{padding:0 6px;font-size:12px}
 #tiAttrsToggle{display:none}
 #tiCursorLabel{font-weight:700;font-size:13.5px;margin-right:4px;white-space:nowrap}
-.ti-div-group{display:inline-flex;align-items:center;gap:4px}
-.ti-div-group .btn{min-width:32px;padding:0 8px}
+.ti-div-group{display:inline-flex;align-items:center;gap:3px}
+.ti-div-group .btn{min-width:26px;padding:0 5px}
 #tiDockBody{display:flex;flex-direction:column;gap:4px}
 .ti-fb-scroll{overflow-x:auto}
 .ti-fb{display:grid;grid-template-columns:22px repeat(13,minmax(32px,1fr));gap:1px 2px;min-width:480px}
@@ -110,6 +113,24 @@ textarea.ti-input{height:auto;padding:8px 10px;font-family:var(--font-num);font-
 .ti-attr-row{gap:4px 14px}
 #tiAttrs .btn{min-height:26px;padding:0 7px;font-size:12px}
 .ti-dock-hint{margin:0;font-size:11px;white-space:nowrap}
+.ti-mode-group{display:inline-flex;gap:4px}
+/* 오선 입력 모드: 음 고르는 오선과 길이·쉼표·반음 단추 */
+.ti-staff-panel{display:flex;gap:12px;align-items:flex-start;min-width:0;overflow-x:auto;scrollbar-width:thin}
+.ti-staff-panel > *{flex:none}
+.ti-pick-wrap{position:relative}
+#tiPitchPicker{display:block;color:var(--fg)}
+#tiPitchPicker .st-line{stroke:var(--fg)}
+.ti-pick-ledger{stroke:var(--muted);stroke-width:1;opacity:.5}
+.ti-pick-band{fill:transparent;cursor:pointer}
+.ti-pick-ghost{fill:currentColor;opacity:.35;pointer-events:none}
+.ti-pick-hint{position:absolute;top:0;left:2px;font-size:11.5px;font-weight:600;color:var(--muted);pointer-events:none;white-space:nowrap}
+.ti-staff-controls{display:flex;flex-direction:column;gap:4px;min-width:0;width:max-content;max-width:340px}
+.ti-staff-row{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.ti-staff-row:empty{display:none}
+.ti-staff-controls .btn.sm{padding:0 8px}
+/* 고른 음: 카드 오선의 머리와 타브 글자에 강조색 테두리(커서는 칸 띠와 칸 윤곽) */
+.st-head.is-selected{stroke:var(--accent);stroke-width:2.2}
+.ti-pos.is-selected .ti-pos-label{box-shadow:0 0 0 2px var(--accent);border-radius:4px}
 
 /* 불러오기 */
 dialog{width:calc(100% - 32px);max-width:560px;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--fg)}
@@ -120,7 +141,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 @media (min-width:640px){
   .ti-fret{height:22px}
   #tiDockBody{flex-direction:row;align-items:flex-start;gap:12px}
-  #tiDockBody .ti-fb-scroll{flex:1 1 0;min-width:0}
+  #tiDockBody .ti-fb-scroll,#tiDockBody .ti-staff-panel{flex:1 1 0;min-width:0}
   #tiAttrs{flex:none;width:272px;flex-direction:column;align-items:flex-start;gap:4px;padding-bottom:34px}
   .ti-attr-group,.ti-attr-row{flex-wrap:nowrap}
   .ti-attr-row{gap:4px 8px}
@@ -205,12 +226,16 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 <div id="tiDock" role="region" aria-label="입력판">
   <div class="ti-dock-inner">
     <div class="ti-dock-row">
+      <span class="ti-mode-group" role="group" aria-label="입력 방식">
+        <button id="tiModeTab" class="btn sm" type="button" aria-pressed="true">타브로 입력</button>
+        <button id="tiModeStaff" class="btn sm" type="button" aria-pressed="false">오선으로 입력</button>
+      </span>
       <span id="tiCursorLabel"></span>
       <button id="tiPrevBtn" class="btn sm" type="button" aria-label="앞 조각">◀</button>
       <button id="tiNextBtn" class="btn sm" type="button" aria-label="뒤 조각">▶</button>
-      <button id="tiRestBtn" class="btn sm" type="button" aria-pressed="false">쉼표</button>
-      <button id="tiClearSlotBtn" class="btn sm" type="button">칸 비우기</button>
-      <span class="ti-div-group">
+      <button id="tiRestBtn" class="btn sm" type="button" aria-pressed="false" data-mode="tab">쉼표</button>
+      <button id="tiClearSlotBtn" class="btn sm" type="button" data-mode="tab">칸 비우기</button>
+      <span class="ti-div-group" data-mode="tab">
         <span class="label">나누기</span>
         <button id="tiDiv1" class="btn sm" type="button" aria-pressed="true" aria-label="나누지 않음">1</button>
         <button id="tiDiv2" class="btn sm" type="button" aria-pressed="false" aria-label="2개로 나누기">2</button>
@@ -218,14 +243,41 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         <button id="tiDiv4" class="btn sm" type="button" aria-pressed="false" aria-label="4개로 나누기">4</button>
       </span>
       <button id="tiPlaySlotBtn" class="btn sm" type="button">들어보기</button>
-      <button id="tiAutoAdvance" class="btn sm" type="button" aria-pressed="false">입력하면 다음 칸으로</button>
+      <button id="tiAutoAdvance" class="btn sm" type="button" aria-pressed="false" data-mode="tab">입력하면 다음 칸으로</button>
       <button id="tiSoundToggle" class="btn sm" type="button" aria-pressed="true">소리</button>
       <button id="tiStaffToggle" class="btn sm" type="button" aria-pressed="true">오선 보기</button>
       <button id="tiAttrsToggle" class="btn sm" type="button" aria-pressed="false">운지</button>
       <button id="tiDockToggle" class="btn sm" type="button">입력판 접기</button>
     </div>
     <div id="tiDockBody">
-      <div class="ti-fb-scroll"><div id="tiFretboard" class="ti-fb"></div></div>
+      <div class="ti-fb-scroll" data-mode="tab"><div id="tiFretboard" class="ti-fb"></div></div>
+      <div id="tiStaffPanel" class="ti-staff-panel" hidden>
+        <div class="ti-pick-wrap">
+          <svg id="tiPitchPicker" class="ti-pick" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="음 고르는 오선"></svg>
+          <span id="tiPitchHint" class="ti-pick-hint" aria-live="off"></span>
+        </div>
+        <div class="ti-staff-controls">
+          <div class="ti-staff-row" role="group" aria-label="음표 길이">
+            <button class="btn sm" type="button" data-dur="whole" aria-pressed="false">온</button>
+            <button class="btn sm" type="button" data-dur="half" aria-pressed="false">2분</button>
+            <button class="btn sm" type="button" data-dur="quarter" aria-pressed="true">4분</button>
+            <button class="btn sm" type="button" data-dur="eighth" aria-pressed="false">8분</button>
+            <button class="btn sm" type="button" data-dur="16th" aria-pressed="false">16분</button>
+            <button class="btn sm" type="button" data-dur="32nd" aria-pressed="false">32분</button>
+          </div>
+          <div class="ti-staff-row">
+            <button id="tiDotBtn" class="btn sm" type="button" aria-pressed="false">점</button>
+            <button id="tiTripletBtn" class="btn sm" type="button" aria-pressed="false">셋잇단</button>
+            <button id="tiStaffRestBtn" class="btn sm" type="button">쉼표</button>
+          </div>
+          <div class="ti-staff-row">
+            <button id="tiSemiUpBtn" class="btn sm" type="button">♯ 반음 위</button>
+            <button id="tiSemiDownBtn" class="btn sm" type="button">♭ 반음 아래</button>
+            <button id="tiDurChangeBtn" class="btn sm" type="button">길이 바꾸기</button>
+          </div>
+          <div id="tiStringCands" class="ti-staff-row" role="group" aria-label="줄 후보"></div>
+        </div>
+      </div>
       <div id="tiAttrs">
         <span class="ti-attr-group"><span class="label">왼손</span>
           <button class="btn" type="button" data-attr="lh" data-value="">없음</button>
@@ -252,7 +304,8 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
         </span>
       </div>
     </div>
-    <p class="hint ti-dock-hint">숫자키 프렛 · 방향키 이동 · R 쉼표 · Del 지우기 · Space 들어보기 · Ctrl+Z 되돌리기 · 오른쪽 클릭 지우기</p>
+    <p id="tiTabHint" class="hint ti-dock-hint">숫자키 프렛 · 방향키 이동 · R 쉼표 · Del 지우기 · Space 들어보기 · Ctrl+Z 되돌리기 · 오른쪽 클릭 지우기</p>
+    <p id="tiStaffHint" class="hint ti-dock-hint" hidden>C~B 음 · Shift 화음 · 7~2 길이 · . 점 · T 셋잇단 · 0/R 쉼 · ↑↓ 반음 · Del 쉼으로</p>
   </div>
 </div>
 
@@ -268,17 +321,18 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   </div>
 </dialog>
 
-<script src="src/storage.js?v=fret-label-1"></script>
-<script src="src/app-state.js?v=fret-label-1"></script>
-<script src="src/notation.js?v=fret-label-1"></script>
-<script src="src/rhythm.js?v=fret-label-1"></script>
-<script src="src/parser.js?v=fret-label-1"></script>
-<script src="src/score-ui.js?v=fret-label-1"></script>
-<script src="src/score-prompt.js?v=fret-label-1"></script>
-<script src="src/audio.js?v=fret-label-1"></script>
-<script src="src/staff-layout.js?v=fret-label-1"></script>
-<script src="src/staff-svg.js?v=fret-label-1"></script>
-<script src="src/tab-input.js?v=fret-label-1"></script>
-<script src="src/tab-input-ui.js?v=fret-label-1"></script>
+<script src="src/storage.js?v=staff-input-1"></script>
+<script src="src/app-state.js?v=staff-input-1"></script>
+<script src="src/notation.js?v=staff-input-1"></script>
+<script src="src/rhythm.js?v=staff-input-1"></script>
+<script src="src/parser.js?v=staff-input-1"></script>
+<script src="src/score-ui.js?v=staff-input-1"></script>
+<script src="src/score-prompt.js?v=staff-input-1"></script>
+<script src="src/audio.js?v=staff-input-1"></script>
+<script src="src/staff-layout.js?v=staff-input-1"></script>
+<script src="src/staff-svg.js?v=staff-input-1"></script>
+<script src="src/tab-input.js?v=staff-input-1"></script>
+<script src="src/staff-input.js?v=staff-input-1"></script>
+<script src="src/tab-input-ui.js?v=staff-input-1"></script>
 </body>
 </html>

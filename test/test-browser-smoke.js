@@ -2046,9 +2046,9 @@ async function testInvalidStructuredPersistence(client) {
 async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
-  assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=fret-label-1')), 'score-input.html scripts use the shared revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=fret-label-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=staff-input-1')), 'score-input.html scripts use the shared revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=staff-input-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoInfo', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -2413,6 +2413,218 @@ async function testScoreInputStaff(client, httpPort) {
   await client.evaluate(clearStorage);
   client.dialogHandler = null;
   process.stdout.write('Browser checkpoint: staff preview drawing, key signature, toggle, head click, tab alignment, built-in song, and screenshots passed\n');
+}
+
+// 악보 입력 화면의 오선 입력 모드(음 고르는 오선, 길이 단추, 키보드): 규칙은 Docs/staff-input.md, 계산은 src/staff-input.js.
+async function testStaffInputMode(client, httpPort) {
+  client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
+  const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
+  ['tiModeTab', 'tiModeStaff', 'tiStaffPanel', 'tiPitchPicker', 'tiPitchHint', 'tiDotBtn', 'tiTripletBtn', 'tiStaffRestBtn', 'tiSemiUpBtn', 'tiSemiDownBtn', 'tiDurChangeBtn', 'tiStringCands'
+  ].forEach(id => assert.match(inputHtml, new RegExp('id="' + id + '"'), 'score-input.html includes #' + id));
+  ['whole', 'half', 'quarter', 'eighth', '16th', '32nd'].forEach(value => assert.match(inputHtml, new RegExp('data-dur="' + value + '"'), 'score-input.html has the ' + value + ' length button'));
+  const inputUrl = `http://127.0.0.1:${httpPort}/score-input.html`;
+  const inputReady = 'document.readyState === "complete" && document.querySelectorAll("#tiMeasures .ti-measure").length >= 1';
+  async function loadPage(action) {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await action();
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, inputReady, 8000);
+  }
+  async function installHelpers() {
+    await client.evaluate(`window.__tiTest = {
+      key: function(key, code, mods){ var event = new KeyboardEvent('keydown', Object.assign({ key:key, code:code || '', bubbles:true, cancelable:true }, mods || {})); document.body.dispatchEvent(event); return event.defaultPrevented; },
+      letter: function(letter, shift){ return this.key(shift ? letter.toUpperCase() : letter.toLowerCase(), 'Key' + letter.toUpperCase(), shift ? { shiftKey:true } : {}); },
+      band: function(step){ return document.querySelector('#tiPitchPicker [data-step="' + step + '"]'); },
+      clickBand: function(step, shift){ this.band(step).dispatchEvent(new MouseEvent('click', { bubbles:true, shiftKey:!!shift })); },
+      hoverBand: function(step){ this.band(step).dispatchEvent(new MouseEvent('mouseover', { bubbles:true })); return document.getElementById('tiPitchHint').textContent; },
+      text: function(){ return document.getElementById('tiScoreText').value; },
+      status: function(){ return document.getElementById('tiStatus').textContent; },
+      cursor: function(){ return document.getElementById('tiCursorLabel').textContent; },
+      pos: function(m, c, s, str){ return document.querySelector('.ti-slot[data-m="'+m+'"][data-c="'+c+'"][data-s="'+s+'"] .ti-pos[data-str="'+str+'"]'); },
+      setKey: function(value){ var select = document.getElementById('tiKeySelect'); select.value = value; select.dispatchEvent(new Event('change', { bubbles:true })); },
+      shown: function(id){ var node = document.getElementById(id); return node.getClientRects().length > 0; },
+      selectedMarks: function(){ return { tab: document.querySelectorAll('#tiMeasures .ti-pos.is-selected').length, staff: document.querySelectorAll('#tiMeasures .st-head.is-selected').length }; },
+      dock: function(){ return document.getElementById('tiDock').getBoundingClientRect().height; }
+    }; true`);
+  }
+  const text = () => client.evaluate('window.__tiTest.text()');
+  const line = async index => (await text()).split('\n')[index];
+  const clearStorage = `(function(){ Object.keys(localStorage).filter(function(key){ return key.indexOf('gs.tabInput.') === 0; }).forEach(function(key){ localStorage.removeItem(key); }); return true; })()`;
+
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate(clearStorage);
+  const errorsBefore = client.consoleErrors.length;
+  await loadPage(() => client.send('Page.navigate', { url: inputUrl }));
+  await installHelpers();
+
+  // 1. 모드 전환: 타브 모드가 기본이고, 오선으로 바꾸면 지판이 숨고 음 고르는 오선이 보이며 새로고침 뒤에도 유지된다.
+  const tabMode = await client.evaluate(`({ tab:document.getElementById('tiModeTab').getAttribute('aria-pressed'), staff:document.getElementById('tiModeStaff').getAttribute('aria-pressed'),
+    fretboard:__tiTest.shown('tiFretboard'), panel:__tiTest.shown('tiStaffPanel'), rest:__tiTest.shown('tiRestBtn') })`);
+  assert.deepEqual(tabMode, { tab: 'true', staff: 'false', fretboard: true, panel: false, rest: true }, 'the tab input mode is the default');
+  await client.evaluate(`document.getElementById('tiModeStaff').click(); true`);
+  const staffMode = await client.evaluate(`({ tab:document.getElementById('tiModeTab').getAttribute('aria-pressed'), staff:document.getElementById('tiModeStaff').getAttribute('aria-pressed'),
+    fretboard:__tiTest.shown('tiFretboard'), picker:__tiTest.shown('tiPitchPicker'),
+    hidden:['tiRestBtn', 'tiClearSlotBtn', 'tiDiv1', 'tiDiv2', 'tiDiv3', 'tiDiv4', 'tiAutoAdvance'].filter(function(id){ return __tiTest.shown(id); }),
+    kept:['tiPrevBtn', 'tiNextBtn', 'tiPlaySlotBtn', 'tiSoundToggle', 'tiStaffToggle', 'tiDockToggle', 'tiModeTab', 'tiModeStaff'].filter(function(id){ return !__tiTest.shown(id); }),
+    saved:JSON.parse(localStorage.getItem('gs.tabInput.ui')).inputMode,
+    dur:JSON.parse(localStorage.getItem('gs.tabInput.ui')).staffDur })`);
+  assert.deepEqual(staffMode, { tab: 'false', staff: 'true', fretboard: false, picker: true, hidden: [], kept: [], saved: 'staff', dur: { value: 'quarter', dotted: false, triplet: false } }, 'the staff input mode hides the fretboard and the tab-only buttons and shows the pitch picker');
+  assert.equal(await client.evaluate(`['eighth', 'quarter'].map(function(v){ return document.querySelector('[data-dur="' + v + '"]').getAttribute('aria-pressed'); }).join()`), 'false,true', 'a quarter note is the default length');
+  await loadPage(() => client.send('Page.reload', { ignoreCache: true }));
+  await installHelpers();
+  assert.equal(await client.evaluate(`__tiTest.shown('tiPitchPicker') && !__tiTest.shown('tiFretboard') && document.getElementById('tiModeStaff').getAttribute('aria-pressed')`), 'true', 'the staff input mode survives a reload');
+
+  // 2. 길이 키와 글자 키로 입력: 8분 E F, 4분 G, 2분 A. 끝난 뒤 커서는 2마디 첫 조각이다.
+  const keys = [['4', 'Digit4'], ['E'], ['F'], ['5', 'Digit5'], ['G'], ['6', 'Digit6'], ['A']];
+  for (const [value, code] of keys) {
+    if (code) await client.evaluate(`__tiTest.key('${value}', '${code}'); true`);
+    else assert.equal(await client.evaluate(`__tiTest.letter('${value}', false)`), true, value + ' key is handled');
+  }
+  assert.equal(await line(0), '[-] E4@1/F4@1 G4@1 A4@1 - | ""', 'length keys and letter keys write the first measure');
+  assert.ok((await client.evaluate('__tiTest.cursor()')).startsWith('2마디 · 1칸'), 'the cursor moves to the first slot of the second measure');
+  assert.deepEqual(await client.evaluate('__tiTest.selectedMarks()'), { tab: 1, staff: 1 }, 'the entered note is marked in the tab and in the card staff');
+  assert.equal(await client.evaluate(`document.querySelector('#tiMeasures .st-head.is-selected').dataset.str`), '1', 'the marked staff head is the entered note');
+  assert.equal(await client.evaluate(`getComputedStyle(document.querySelector('#tiMeasures .st-head.is-selected')).stroke !== getComputedStyle(document.querySelector('#tiMeasures .st-head:not(.is-selected)')).stroke`), true, 'the selected note head has an accent outline');
+
+  // 3. 음 고르는 오선의 가로띠: step 2(적는 G4)를 누르면 G3@3. 마우스를 올리면 이름과 위치가 보인다.
+  assert.equal(await client.evaluate('__tiTest.hoverBand(2)'), 'G3 · 3번 줄 0프렛', 'hovering a picker band shows the note name and the default guitar position');
+  assert.equal(await client.evaluate(`document.querySelector('#tiPitchPicker .ti-pick-ghost').getAttribute('visibility')`), 'visible', 'hovering a picker band shows a faint note head');
+  await client.evaluate('__tiTest.clickBand(2, false); true');
+  assert.ok((await line(1)).startsWith('[-] G3@3'), 'clicking a picker band writes the note at the cursor (' + await line(1) + ')');
+
+  // 4. Shift+글자는 방금 음에 화음을 더한다.
+  const beforeChord = await text();
+  await client.evaluate(`__tiTest.letter('E', true); true`);
+  assert.ok((await line(1)).includes('+'), 'Shift and a letter adds a chord note to the note just entered (' + await line(1) + ')');
+  assert.notEqual(await text(), beforeChord, 'the chord note changes the text');
+  assert.deepEqual(await client.evaluate('__tiTest.selectedMarks()'), { tab: 1, staff: 1 }, 'the added chord note is the marked note');
+
+  // 5. ArrowUp은 고른 음을 반음 올린다.
+  const beforeUp = await line(1);
+  await client.evaluate(`__tiTest.key('ArrowUp', 'ArrowUp'); true`);
+  const afterUp = await line(1);
+  assert.notEqual(afterUp, beforeUp, 'ArrowUp changes the selected note');
+  assert.ok(afterUp.includes('F3') && !afterUp.includes('E3'), 'ArrowUp raises the added E3 to F3 (' + afterUp + ')');
+  await client.evaluate(`__tiTest.key('ArrowDown', 'ArrowDown'); true`);
+  assert.equal(await line(1), beforeUp, 'ArrowDown lowers it back');
+
+  // 6. 조표 ♯ 1개: step 8(적는 F5)은 F#4. 조표 머리 그리기와 음역 밖 안내도 본다.
+  await client.evaluate(`__tiTest.setKey('1'); true`);
+  assert.equal(await client.evaluate(`document.querySelectorAll('#tiPitchPicker .st-key').length`), 1, 'the picker shows the key signature');
+  assert.equal(await client.evaluate('__tiTest.hoverBand(8)'), 'F#4 · 1번 줄 2프렛', 'the hint follows the key signature');
+  await client.evaluate('__tiTest.clickBand(8, false); true');
+  assert.ok((await text()).includes('F#4@1'), 'a key signature sharp is written for F5 (' + await text() + ')');
+  await client.evaluate(`__tiTest.setKey('-3'); true`);
+  assert.equal(await client.evaluate('__tiTest.hoverBand(-7)'), '음역 밖', 'a note below the guitar range says so');
+  await client.evaluate(`__tiTest.setKey('1'); true`);
+
+  // 7. 4칸에서 32분음표는 못 적는다: 오류가 상태줄에 나오고 문서는 그대로다.
+  const beforeShort = await text();
+  const undoBefore = await client.evaluate(`document.getElementById('tiUndoBtn').disabled`);
+  await client.evaluate(`__tiTest.key('2', 'Digit2'); __tiTest.letter('C', false); true`);
+  assert.ok((await client.evaluate('__tiTest.status()')).includes('8칸'), 'a 32nd note in four cells says to pick eight cells (' + await client.evaluate('__tiTest.status()') + ')');
+  assert.equal(await text(), beforeShort, 'a rejected length leaves the text alone');
+  assert.equal(await client.evaluate(`document.getElementById('tiUndoBtn').disabled`), undoBefore, 'a rejected length leaves the undo history alone');
+  await client.evaluate(`__tiTest.key('6', 'Digit6'); true`);
+
+  // 8. Delete는 커서 사건을 쉼으로 바꾸고 Ctrl+Z가 되돌린다.
+  await client.evaluate(`__tiTest.pos(1, 2, 0, 1).click(); true`);
+  assert.ok((await line(1)).includes('F#4@1'), 'the F# is on the third cell of the second measure');
+  const beforeDelete = await text();
+  await client.evaluate(`__tiTest.key('Delete', 'Delete'); true`);
+  const afterDelete = await line(1);
+  assert.ok(!afterDelete.includes('F#4@1') && afterDelete.split(' ').includes('r'), 'Delete turns the event into a rest (' + afterDelete + ')');
+  await client.evaluate(`__tiTest.key('z', 'KeyZ', { ctrlKey:true }); true`);
+  assert.equal(await text(), beforeDelete, 'Ctrl+Z undoes the delete');
+
+  // 8b. 저음(6번 줄)만 있는 조각을 지나 →로 갔다가 ←로 돌아오면 커서 줄에 음이 없어도 그 조각의 가장 높은 음(여기서는 그 저음)이 고른 음이 된다.
+  await client.evaluate(`__tiTest.pos(2, 0, 0, 1).click(); __tiTest.clickBand(-7, false); true`);
+  assert.ok((await line(2)).startsWith('[-] E2@6'), 'the low E is written on the sixth string (' + await line(2) + ')');
+  await client.evaluate(`__tiTest.pos(2, 2, 0, 1).click(); true`);
+  assert.equal(await client.evaluate('__tiTest.selectedMarks().tab'), 0, 'an empty slot has no selected note');
+  await client.evaluate(`__tiTest.key('ArrowRight', 'ArrowRight'); __tiTest.key('ArrowLeft', 'ArrowLeft'); __tiTest.key('ArrowLeft', 'ArrowLeft'); __tiTest.key('ArrowLeft', 'ArrowLeft'); true`);
+  assert.equal(await client.evaluate('__tiTest.cursor()'), '3마디 · 1칸 · 6번 줄', 'moving the cursor onto the bass slot also moves the cursor string to it');
+  assert.equal(await client.evaluate(`__tiTest.pos(2, 0, 0, 6).classList.contains('is-selected')`), true, 'the bass note is the selected note after moving back onto its slot');
+  await client.evaluate(`__tiTest.key('ArrowUp', 'ArrowUp'); true`);
+  assert.ok((await line(2)).startsWith('[-] F2@6'), 'ArrowUp raises the bass note (' + await line(2) + ')');
+  await client.evaluate(`__tiTest.key('ArrowDown', 'ArrowDown'); true`);
+
+  // 9. 줄 후보 단추: 같은 음을 다른 줄로 옮긴다.
+  await client.evaluate(`__tiTest.pos(1, 0, 0, 3).click(); true`);
+  const cands = await client.evaluate(`Array.prototype.map.call(document.querySelectorAll('#tiStringCands button'), function(b){ return { str:b.dataset.str, text:b.textContent, pressed:b.getAttribute('aria-pressed') }; })`);
+  assert.ok(cands.length >= 2, 'a G3 on the third string has other string candidates (' + JSON.stringify(cands) + ')');
+  assert.deepEqual(cands.filter(item => item.pressed === 'true').map(item => item.str), ['3'], 'the current string is pressed');
+  assert.match(cands[0].text, /^\d번 줄 \d+프렛$/, 'a candidate button reads string and fret');
+  const other = cands.find(item => item.pressed !== 'true');
+  await client.evaluate(`document.querySelector('#tiStringCands button[data-str="${other.str}"]').click(); true`);
+  assert.ok((await line(1)).includes('G3@' + other.str) && !(await line(1)).includes('G3@3'), 'a candidate button moves the note to its string (' + await line(1) + ')');
+  assert.equal(await client.evaluate(`document.querySelector('#tiStringCands button[aria-pressed="true"]').dataset.str`), other.str, 'the candidate list follows the moved note');
+
+  // 9b. 되돌리기·다시 하기는 커서도 그 작업 직전의 자리로 돌린다.
+  await client.evaluate(`__tiTest.key('5', 'Digit5'); document.getElementById('tiAddMeasureBtn').click(); true`);
+  const lastMeasure = (await client.evaluate(`document.querySelectorAll('#tiMeasures .ti-measure').length`)) - 1;
+  await client.evaluate(`__tiTest.pos(${lastMeasure}, 0, 0, 1).click(); true`);
+  const label0 = await client.evaluate('__tiTest.cursor()');
+  const emptyLine = await line(lastMeasure);
+  await client.evaluate(`__tiTest.letter('G', false); true`);
+  const label1 = await client.evaluate('__tiTest.cursor()');
+  await client.evaluate(`__tiTest.letter('A', false); true`);
+  assert.notEqual(label1, label0, 'entering a note moves the cursor');
+  const ctrlZ = `__tiTest.key('z', 'KeyZ', { ctrlKey:true }); true`;
+  await client.evaluate(ctrlZ);
+  await client.evaluate(ctrlZ);
+  assert.equal(await line(lastMeasure), emptyLine, 'two undos remove both notes');
+  assert.equal(await client.evaluate('__tiTest.cursor()'), label0, 'two undos put the cursor back where it was before the first note');
+  await client.evaluate(`__tiTest.key('y', 'KeyY', { ctrlKey:true }); true`);
+  assert.equal(await client.evaluate('__tiTest.cursor()'), label1, 'redo puts the cursor right after the first note');
+  await client.evaluate(ctrlZ);
+  await client.evaluate(`__tiTest.letter('G', false); true`);
+  assert.match(await line(lastMeasure), /^\[-\] G\d@\d/, 'typing after undo starts at the undone position (' + await line(lastMeasure) + ')');
+  assert.equal(await client.evaluate('__tiTest.cursor()'), label1, 'the cursor follows the new note from the undone position');
+
+  // 10. 높이, 오선 폭, 콘솔 오류, 스크린샷
+  await client.evaluate(`__tiTest.key('5', 'Digit5'); true`);
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate(`__tiTest.setKey('5'); window.scrollTo(0, 0); true`);
+  const tablet = await client.evaluate(`({ dock:__tiTest.dock(), info:document.getElementById('tiInfoPanel').getBoundingClientRect().height,
+    panel:(function(){ var p = document.getElementById('tiStaffPanel'); return { scroll:p.scrollWidth, client:p.clientWidth }; })(),
+    picker:(function(){ var r = document.getElementById('tiPitchPicker').getBoundingClientRect(), p = document.getElementById('tiDock').getBoundingClientRect(); return { top:r.top - p.top, bottom:p.bottom - r.bottom, height:r.height }; })(),
+    hint:getComputedStyle(document.getElementById('tiStaffHint')).display, tabHint:document.getElementById('tiTabHint').hidden })`);
+  assert.ok(tablet.dock <= 230, 'the 1024x768 staff input dock is at most 230px tall (is ' + tablet.dock + ')');
+  assert.ok(tablet.info <= 150, 'the 1024x768 song info panel is at most 150px tall (is ' + tablet.info + ')');
+  assert.ok(tablet.panel.scroll <= tablet.panel.client, 'the picker and buttons fit the dock at 1024px even with five sharps (' + JSON.stringify(tablet.panel) + ')');
+  assert.deepEqual([tablet.hint !== 'none', tablet.tabHint], [true, true], 'the staff shortcut hint replaces the tab hint at 900px and wider');
+  await client.evaluate(`__tiTest.setKey('1'); true`);
+  await client.evaluate(`document.getElementById('tiModeTab').click(); window.scrollTo(0, 0); true`);
+  const tabDock = await client.evaluate('__tiTest.dock()');
+  assert.ok(tabDock <= 210, 'the 1024x768 tab input dock stays at most 210px tall (is ' + tabDock + ')');
+  await client.evaluate(`document.getElementById('tiModeStaff').click(); true`);
+
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  async function shot(name, width, height, mobile) {
+    await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
+    await client.evaluate('window.scrollTo(0, 0); true');
+    const image = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    const target = path.join(root, 'test-artifacts', name);
+    fs.writeFileSync(target, Buffer.from(image.data, 'base64'));
+    const header = fs.readFileSync(target).subarray(0, 24);
+    assert.equal(header.readUInt32BE(16), width, name + ' width');
+    assert.equal(header.readUInt32BE(20), height, name + ' height');
+    process.stdout.write('Artifact: ' + target + '\n');
+    return client.evaluate('({ scroll:document.documentElement.scrollWidth, inner:window.innerWidth, dock:__tiTest.dock() })');
+  }
+  await client.evaluate(`(function(){ __tiTest.pos(1, 0, 0, 3).click(); __tiTest.hoverBand(5); return true; })()`);
+  const desktopShot = await shot('score-input-staff-mode.png', 1280, 900, false);
+  assert.ok(desktopShot.scroll <= desktopShot.inner, 'the desktop page in staff input mode does not overflow horizontally');
+  const mobileShot = await shot('score-input-staff-mode-mobile.png', 375, 812, true);
+  assert.ok(mobileShot.scroll <= mobileShot.inner, 'the 375px page in staff input mode does not overflow horizontally (scrollWidth ' + mobileShot.scroll + ' > ' + mobileShot.inner + ')');
+  assert.ok(mobileShot.dock <= 360, 'the 375x812 staff input dock is at most 360px tall (is ' + mobileShot.dock + ')');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the staff input mode runs without console errors');
+
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  await client.evaluate(clearStorage);
+  client.dialogHandler = null;
+  process.stdout.write('Browser checkpoint: staff input mode switch, length and letter keys, picker click, chord, semitone, key signature, length error, delete, string candidates, heights, and screenshots passed\n');
 }
 
 // 연습 화면의 오선 보기(타브·둘 다·오선·카드). 규칙은 Docs/staff-notation.md 의 연습 화면 절.
@@ -3273,6 +3485,7 @@ async function main() {
     await testPracticeStaffView(cdp);
     await testScoreInputScreen(cdp, httpPort);
     await testScoreInputStaff(cdp, httpPort);
+    await testStaffInputMode(cdp, httpPort);
     await testFretLabel(cdp, httpPort);
 
     // Verify no unhandled console errors occurred

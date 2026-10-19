@@ -1,6 +1,6 @@
 # Guitar Studio 에이전트 지침
 
-세션마다 통째로 읽히는 파일이라 규칙과 함정만 둔다. 내용과 결정은 문서에 있다: [사용](Docs/usage.md) · [악보 문법](Docs/score-format.md) · [모듈·저장·검증](Docs/development.md) · [리듬·오디오](Docs/beginner-rhythm.md) · [화면·조작](Docs/ui.md) · [악보 입력](Docs/tab-input.md) · [오선 미리보기](Docs/staff-notation.md) · [내장곡 출처](Docs/builtin-sources.md). 일하기 전에 해당 문서만 읽는다.
+세션마다 통째로 읽히는 파일이라 규칙과 함정만 둔다. 내용과 결정은 문서에 있다: [사용](Docs/usage.md) · [악보 문법](Docs/score-format.md) · [모듈·저장·검증](Docs/development.md) · [리듬·오디오](Docs/beginner-rhythm.md) · [화면·조작](Docs/ui.md) · [악보 입력](Docs/tab-input.md) · [오선 미리보기](Docs/staff-notation.md) · [오선 입력](Docs/staff-input.md) · [내장곡 출처](Docs/builtin-sources.md). 일하기 전에 해당 문서만 읽는다.
 
 ## 문서
 - 결정은 그 시스템 문서에 날짜(`YYYY-MM-DD`)와 이유를 달아 적는다. 화면·조작은 `ui.md`, 리듬·재생은 `beginner-rhythm.md`, 모듈·저장·검증은 `development.md`.
@@ -26,7 +26,7 @@
 
 ## 검증 (명령은 `Docs/development.md` 검증 절)
 - 커밋 전 모든 `src/*.js`, `test/*.js`, `tools/*.js`가 `node --check`를 통과해야 한다.
-- 파서 정규식·악보 구조·카포: `test-parser`. 음가·쉼·유지·재생: `test-rhythm`, `test-guide`, `test-audio`. 부팅·상태 저장: `test-app-smoke`. DOM·인터랙션·콘솔 에러: `test-browser-smoke`. 타브 입력 모델·변환: `test-tab-input`. 오선 배치·그리기: `test-staff-layout`, `test-staff-svg`.
+- 파서 정규식·악보 구조·카포: `test-parser`. 음가·쉼·유지·재생: `test-rhythm`, `test-guide`, `test-audio`. 부팅·상태 저장: `test-app-smoke`. DOM·인터랙션·콘솔 에러: `test-browser-smoke`. 타브 입력 모델·변환: `test-tab-input`. 오선 배치·그리기: `test-staff-layout`, `test-staff-svg`. 오선 입력 계산: `test-staff-input`.
 - 오선 미리보기의 음 길이는 `GuitarRhythm.annotate` 결과만 쓴다. 따로 길이를 계산하거나 성부를 나누지 않는다.
 
 ## 커밋

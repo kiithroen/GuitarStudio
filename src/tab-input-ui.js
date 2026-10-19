@@ -5,6 +5,8 @@
   var N = window.GuitarNotation;
   var Staff = window.GuitarStaffLayout;
   var StaffSvg = window.GuitarStaffSvg;
+  var S = window.GuitarStaffInput;
+  var P = window.GuitarParser;
 
   var DOC_KEY = 'gs.tabInput.doc';
   var UI_KEY = 'gs.tabInput.ui';
@@ -24,11 +26,18 @@
   var sel = null;          // {a, b} 마디 선택(a <= b)
   var selAnchor = null;    // Shift 범위의 기준 마디
   var clip = null;         // 복사한 마디들
-  var ui = { autoAdvance: false, sound: true, dockCollapsed: false, attrsOpen: false, staffOn: true };
+  var DUR_VALUES = ['whole', 'half', 'quarter', 'eighth', '16th', '32nd'];
+  var DUR_KEYS = { '7': 'whole', '6': 'half', '5': 'quarter', '4': 'eighth', '3': '16th', '2': '32nd' };
+  var NOTE_LETTERS = 'CDEFGAB';
+  var ui = { autoAdvance: false, sound: true, dockCollapsed: false, attrsOpen: false, staffOn: true,
+    inputMode: 'tab', staffDur: { value: 'quarter', dotted: false, triplet: false } };
   var textSnapshot = null; // 글자 칸 입력 전의 문서
   var saveTimer = null;
   var pending = null;      // 방금 누른 숫자 1: {t, m, c, s, str, timer}
   var staffLayout = null;  // 지금 오선 배치(layoutScore 결과). 오류거나 오선을 끄면 null
+  var noteSel = null;      // 오선 입력에서 고른 음 {pos:{m,c,s}, str}. 반음 옮기기·줄 후보가 이 음에 쓰인다
+  var lastEntry = null;    // 방금 넣은 사건 {pos}. 커서를 옮기면 지운다(화음 대상·기준 음)
+  var pickerKey;           // 음 고르는 오선을 그린 조표(바뀌면 다시 그린다)
   var fretButtons = [];
   var attrButtons = [];
 
@@ -104,12 +113,21 @@
 
   // ---------- 문서 바꾸기
 
+  // 되돌리기 기록은 문서와 그 시점의 커서를 함께 담는다(되돌리면 그 자리로 돌아간다).
+  function historyEntry(d, c){ return { doc: d, cursor: { m: c.m, c: c.c, s: c.s, str: c.str } }; }
+
+  function restoreEntry(entry){
+    doc = entry.doc;
+    var c = entry.cursor || cursor;
+    cursor = { m: c.m, c: c.c, s: c.s, str: c.str >= 1 && c.str <= T.STRING_COUNT ? c.str : 1 };
+  }
+
   function commitText(){
     if (!textSnapshot) return;
     var snapshot = textSnapshot;
     textSnapshot = null;
     if (JSON.stringify(snapshot) !== JSON.stringify(doc)){
-      history.record(snapshot);
+      history.record(historyEntry(snapshot, cursor));
       refreshUndoRedo();
     }
   }
@@ -135,6 +153,7 @@
     commitText();
     setStatus('');
     var before = T.cloneDoc(doc);
+    var beforeCursor = { m: cursor.m, c: cursor.c, s: cursor.s, str: cursor.str };
     var result;
     try {
       result = fn(doc);
@@ -145,7 +164,7 @@
       return null;
     }
     if (result && result.ok === false) return result;
-    history.record(before);
+    history.record(historyEntry(before, beforeCursor));
     if (o.onDone) o.onDone(result);
     var all = o.all || doc.measures.length !== before.measures.length;
     clampCursor();
@@ -159,36 +178,40 @@
 
   function replaceDoc(next){
     commitText();
-    history.record(doc);
+    history.record(historyEntry(doc, cursor));
     doc = next;
     cursor = { m: 0, c: 0, s: 0, str: 1 };
     sel = null;
     selAnchor = null;
+    lastEntry = null;
+    noteSel = null;
     saveNow();
     renderAll();
   }
 
   function undo(){
     commitText();
-    var prev = history.undo(doc);
+    var prev = history.undo(historyEntry(doc, cursor));
     if (!prev) return;
     setStatus('');
-    doc = prev;
+    restoreEntry(prev);
     afterHistory();
   }
 
   function redo(){
     commitText();
-    var next = history.redo(doc);
+    var next = history.redo(historyEntry(doc, cursor));
     if (!next) return;
     setStatus('');
-    doc = next;
+    restoreEntry(next);
     afterHistory();
   }
 
   function afterHistory(){
     clampCursor();
     clampSelection();
+    lastEntry = null;
+    noteSel = noteAtCursor();
     saveNow();
     renderAll();
   }
@@ -449,6 +472,7 @@
     var uncertain = $('tiUncertainBtn');
     uncertain.disabled = !(cursorNote || slot.rest);
     uncertain.setAttribute('aria-pressed', String(cursorNote ? cursorNote.uncertain : (slot.rest ? slot.restUncertain : false)));
+    refreshStaffMode();
   }
 
   // ---------- 오선 미리보기 (배치 src/staff-layout.js, 그리기 src/staff-svg.js, 규칙 Docs/staff-notation.md)
@@ -628,6 +652,8 @@
     cursor.c = next.c;
     cursor.s = next.s;
     if (next.str) cursor.str = next.str;
+    lastEntry = null;
+    noteSel = noteAtCursor();
     refreshCursorUI(scroll);
   }
 
@@ -638,6 +664,7 @@
 
   function moveString(delta){
     cursor.str = Math.max(1, Math.min(T.STRING_COUNT, cursor.str + delta));
+    noteSel = noteAtCursor();
     refreshCursorUI(false);
   }
 
@@ -754,6 +781,387 @@
   }
 
   function playSlot(){ playNotes(slotNotes(cursor)); }
+
+  // ---------- 오선 입력 (계산은 src/staff-input.js, 규칙은 Docs/staff-input.md)
+
+  var PICK_SCALE = 1.75;      // 음 고르는 오선은 src/staff-svg.js 좌표(줄 간격 8)를 1.75배로 그려 줄 간격 14px, 위치 한 칸 7px
+  var PICK_TOP = 14;          // 적는 E6
+  var PICK_BOTTOM = -7;       // 적는 E3
+  var PICK_BODY = 114;        // 머리(음자리표·조표) 오른쪽 음 누르는 자리의 폭(좌표)
+  var PICK_VIEW_TOP = 26;     // 보이는 세로 범위(좌표): 맨 위 음 머리와 맨 아래 음 머리가 잘리지 않게
+  var PICK_VIEW_BOTTOM = 121;
+  var PICK_LEDGERS = [-6, -4, -2, 10, 12, 14];
+
+  function copyPos(p){ return { m: p.m, c: p.c, s: p.s }; }
+
+  // 커서 조각의 고른 음. 커서 줄에 음이 있으면 그 음. 오선 모드에서는 없을 때 그 조각의 가장 높은 음을 고르고 cursor.str 도 그 줄로 맞춘다.
+  function noteAtCursor(){
+    var slot = T.getSlot(doc, cursor);
+    if (!slot) return null;
+    if (slot.notes[cursor.str - 1]) return { pos: copyPos(cursor), str: cursor.str };
+    if (ui.inputMode !== 'staff') return null;
+    var top = 0;
+    var topMidi = -Infinity;
+    slot.notes.forEach(function(note, index){
+      if (!note) return;
+      var midi = T.noteMidi(index + 1, note.fret);
+      if (midi > topMidi){ topMidi = midi; top = index + 1; }
+    });
+    if (!top) return null;
+    cursor.str = top;
+    return { pos: copyPos(cursor), str: top };
+  }
+
+  function noteSelNote(){
+    if (!noteSel) return null;
+    var slot = T.getSlot(doc, noteSel.pos);
+    return slot && slot.notes[noteSel.str - 1] ? slot.notes[noteSel.str - 1] : null;
+  }
+
+  // 오선 위치(step 0 = 적는 E4)에서 적는 음이름 글자와 옥타브. 옥타브*7 + 글자 번호(C=0)로 센 값이 E4에서 30이다.
+  function stepToWritten(step){
+    var d = step + 30;
+    return { letter: NOTE_LETTERS.charAt(d % 7), octave: Math.floor(d / 7) };
+  }
+
+  function setInputMode(mode){
+    if (ui.inputMode === mode) return;
+    flushPending(false);
+    ui.inputMode = mode;
+    lastEntry = null;
+    noteSel = noteAtCursor();
+    saveUi();
+    refreshCursorUI(false);
+  }
+
+  function pickerGeometry(){
+    var base = StaffSvg.BASE_Y;
+    var step = StaffSvg.LINE_GAP / 2;
+    return { base: base, step: step, yOf: function(st){ return base - st * step; } };
+  }
+
+  // 조표가 바뀌면 다시 그린다. 음자리표와 조표는 연습 화면 오선과 같은 StaffSvg.renderHeader.
+  function renderPicker(){
+    if (pickerKey === doc.key) return;
+    pickerKey = doc.key;
+    var svg = $('tiPitchPicker');
+    var header = { key: doc.key, time: null };
+    var hw = StaffSvg.headerWidth(header);
+    var width = hw + PICK_BODY;
+    var viewH = PICK_VIEW_BOTTOM - PICK_VIEW_TOP;
+    var g = pickerGeometry();
+    var headX = hw + PICK_BODY / 2;
+    var out = [];
+    var i;
+    for (i = 0; i < 5; i++){
+      out.push('<line class="st-line" x1="' + hw + '" y1="' + g.yOf(i * 2) + '" x2="' + width + '" y2="' + g.yOf(i * 2) + '" stroke="currentColor" stroke-width="1"/>');
+    }
+    PICK_LEDGERS.forEach(function(st){
+      out.push('<line class="ti-pick-ledger" x1="' + (headX - 10) + '" y1="' + g.yOf(st) + '" x2="' + (headX + 10) + '" y2="' + g.yOf(st) + '" stroke="currentColor"/>');
+    });
+    out.push(StaffSvg.renderHeader(header));
+    out.push('<ellipse class="ti-pick-ghost" cx="' + headX + '" cy="0" rx="5.4" ry="4" visibility="hidden"/>');
+    for (var st = PICK_TOP; st >= PICK_BOTTOM; st--){
+      out.push('<rect class="ti-pick-band" data-step="' + st + '" x="' + hw + '" y="' + (g.yOf(st) - g.step / 2) + '" width="' + PICK_BODY + '" height="' + g.step + '"/>');
+    }
+    svg.setAttribute('width', String(width * PICK_SCALE));
+    svg.setAttribute('height', String(viewH * PICK_SCALE));
+    svg.setAttribute('viewBox', '0 ' + PICK_VIEW_TOP + ' ' + width + ' ' + viewH);
+    svg.innerHTML = out.join('');
+  }
+
+  function showPitchHint(step){
+    var ghost = $('tiPitchPicker').querySelector('.ti-pick-ghost');
+    if (!ghost) return;
+    var g = pickerGeometry();
+    var cx = ghost.getAttribute('cx');
+    var cy = g.yOf(step);
+    ghost.setAttribute('cy', String(cy));
+    ghost.setAttribute('transform', 'rotate(-20 ' + cx + ' ' + cy + ')');
+    ghost.setAttribute('visibility', 'visible');
+    var written = stepToWritten(step);
+    var found = S.writtenToMidi(doc, cursor, written.letter, written.octave);
+    var text = '음역 밖';
+    if (!found.error){
+      var info = P.midiInfo(found.midi);
+      if (info && info.pos) text = T.noteLabel(doc, info.pos.str, info.pos.fret) + ' · ' + info.pos.str + '번 줄 ' + info.pos.fret + '프렛';
+    }
+    $('tiPitchHint').textContent = text;
+  }
+
+  function hidePitchHint(){
+    var ghost = $('tiPitchPicker').querySelector('.ti-pick-ghost');
+    if (ghost) ghost.setAttribute('visibility', 'hidden');
+    $('tiPitchHint').textContent = '';
+  }
+
+  // 고른 음의 강조: 타브 글자와 카드 오선의 음 머리. 오선 입력 모드에서만 칠한다.
+  function refreshNoteMarks(){
+    var box = $('tiMeasures');
+    Array.prototype.forEach.call(box.querySelectorAll('.ti-pos.is-selected, .st-head.is-selected'), function(node){
+      node.classList.remove('is-selected');
+    });
+    if (ui.inputMode !== 'staff' || !noteSel) return;
+    var p = noteSel.pos;
+    var posEl = box.querySelector('.ti-slot[data-m="' + p.m + '"][data-c="' + p.c + '"][data-s="' + p.s + '"] .ti-pos[data-str="' + noteSel.str + '"]');
+    if (posEl) posEl.classList.add('is-selected');
+    var card = box.children[p.m];
+    var measure = doc.measures[p.m];
+    if (!card || !measure) return;
+    var unit = p.s * 12 / measure.cells[p.c].slots.length;
+    var chords = card.querySelectorAll('.st-chord[data-cell="' + p.c + '"][data-unit="' + unit + '"]');
+    Array.prototype.forEach.call(chords, function(chord){
+      Array.prototype.forEach.call(chord.querySelectorAll('.st-head[data-str="' + noteSel.str + '"]'), function(head){
+        head.classList.add('is-selected');
+      });
+    });
+  }
+
+  function refreshStringCands(){
+    var box = $('tiStringCands');
+    box.textContent = '';
+    if (!noteSel) return;
+    S.stringCandidates(doc, noteSel.pos, noteSel.str).forEach(function(item){
+      var btn = el('button', 'btn sm', item.str + '번 줄 ' + item.fret + '프렛');
+      btn.type = 'button';
+      btn.dataset.str = String(item.str);
+      btn.setAttribute('aria-pressed', String(item.current));
+      box.appendChild(btn);
+    });
+  }
+
+  function refreshStaffMode(){
+    var staff = ui.inputMode === 'staff';
+    $('tiModeTab').setAttribute('aria-pressed', String(!staff));
+    $('tiModeStaff').setAttribute('aria-pressed', String(staff));
+    Array.prototype.forEach.call($('tiDock').querySelectorAll('[data-mode="tab"]'), function(node){ node.hidden = staff; });
+    $('tiFretboard').hidden = staff;
+    $('tiStaffPanel').hidden = !staff;
+    $('tiTabHint').hidden = staff;
+    $('tiStaffHint').hidden = !staff;
+    if (noteSel && !noteSelNote()) noteSel = null;
+    refreshNoteMarks();
+    if (!staff) return;
+    renderPicker();
+    Array.prototype.forEach.call($('tiStaffPanel').querySelectorAll('[data-dur]'), function(btn){
+      btn.setAttribute('aria-pressed', String(btn.dataset.dur === ui.staffDur.value));
+    });
+    $('tiDotBtn').setAttribute('aria-pressed', String(ui.staffDur.dotted));
+    $('tiTripletBtn').setAttribute('aria-pressed', String(ui.staffDur.triplet));
+    $('tiSemiUpBtn').disabled = !noteSel;
+    $('tiSemiDownBtn').disabled = !noteSel;
+    refreshStringCands();
+  }
+
+  function staffDuration(){
+    var d = ui.staffDur;
+    var result = S.durationUnits(doc.beats, d.value, d.dotted, d.triplet);
+    if (result.error){
+      setStatus(result.error);
+      return null;
+    }
+    return result.units;
+  }
+
+  function playNoteSel(){
+    var note = noteSelNote();
+    if (note) playNotes([{ str: noteSel.str, note: note }]);
+  }
+
+  // 커서 자리에 사건(음·쉼·길이 바꾸기)을 넣고 커서를 다음 조각으로 옮긴다. 실패하면 문서와 되돌리기 기록은 그대로.
+  function placeAtCursor(content){
+    setStatus('');
+    var units = staffDuration();
+    if (units == null) return;
+    var pos = copyPos(cursor);
+    var opts = {
+      measures: [pos.m],
+      onDone: function(result){
+        cursor.m = result.next.m;
+        cursor.c = result.next.c;
+        cursor.s = result.next.s;
+        opts.measures = [];
+        for (var m = pos.m; m <= cursor.m; m++) opts.measures.push(m);
+        lastEntry = null;
+        noteSel = null;
+        if (result.placed && result.placed.length){
+          lastEntry = { pos: pos };
+          noteSel = { pos: pos, str: result.placed[result.placed.length - 1].str };
+          cursor.str = noteSel.str;
+        }
+      }
+    };
+    var result = apply(function(d){ return S.placeEvent(d, pos, units, content); }, opts);
+    if (!result) return;
+    if (result.ok === false){
+      setStatus(result.error);
+      return;
+    }
+    refreshCursorUI(true);
+    playNoteSel();
+  }
+
+  function placeNote(midi){ placeAtCursor({ midis: [midi] }); }
+
+  // Shift 입력: 방금 넣은 사건의 조각(없으면 커서 조각)에 길이를 바꾸지 않고 음을 더한다.
+  function addChordNote(midi){
+    setStatus('');
+    var target = lastEntry && T.getSlot(doc, lastEntry.pos) ? lastEntry.pos : cursor;
+    var pos = copyPos(target);
+    var result = apply(function(d){ return S.addToChord(d, pos, midi); }, {
+      measures: [pos.m],
+      onDone: function(res){
+        lastEntry = { pos: pos };
+        noteSel = { pos: pos, str: res.str };
+        cursor.str = res.str;
+      }
+    });
+    if (!result) return;
+    if (result.ok === false){
+      setStatus(result.error);
+      return;
+    }
+    playNoteSel();
+  }
+
+  function enterLetter(letter, chord){
+    var ref = S.referenceMidi(doc, cursor, lastEntry);
+    var found = S.nearestMidi(doc, cursor, letter, ref);
+    if (found.error){
+      setStatus(found.error);
+      return;
+    }
+    if (chord) addChordNote(found.midi); else placeNote(found.midi);
+  }
+
+  function deleteToRest(){
+    var pos = copyPos(cursor);
+    var result = apply(function(d){ return S.noteToRest(d, pos); }, {
+      measures: [pos.m],
+      onDone: function(){ lastEntry = null; noteSel = null; }
+    });
+    if (result && result.ok === false) setStatus(result.error);
+  }
+
+  function transposeSelected(semitones){
+    if (!noteSel){
+      setStatus('고른 음이 없어.');
+      return;
+    }
+    var target = { pos: copyPos(noteSel.pos), str: noteSel.str };
+    var result = apply(function(d){ return S.transposeNote(d, target.pos, target.str, semitones); }, {
+      measures: [target.pos.m],
+      onDone: function(res){ noteSel = { pos: target.pos, str: res.str }; cursor.str = res.str; }
+    });
+    if (!result) return;
+    if (result.ok === false){
+      setStatus(result.error);
+      return;
+    }
+    playNoteSel();
+  }
+
+  function moveSelectedToString(toStr){
+    if (!noteSel || toStr === noteSel.str) return;
+    var target = { pos: copyPos(noteSel.pos), str: noteSel.str };
+    var result = apply(function(d){ return S.moveToString(d, target.pos, target.str, toStr); }, {
+      measures: [target.pos.m],
+      onDone: function(res){ noteSel = { pos: target.pos, str: res.str }; cursor.str = res.str; }
+    });
+    if (!result) return;
+    if (result.ok === false){
+      setStatus(result.error);
+      return;
+    }
+    playNoteSel();
+  }
+
+  function setStaffDur(change){
+    Object.keys(change).forEach(function(name){ ui.staffDur[name] = change[name]; });
+    setStatus('');
+    saveUi();
+    refreshCursorUI(false);
+  }
+
+  // 오선 모드 키(Docs/staff-input.md 키보드 표). 처리했으면 true. 글자는 event.code, 숫자와 점은 event.key.
+  function onStaffKey(event){
+    var key = event.key;
+    var code = event.code;
+    if (/^Key[A-G]$/.test(code)){
+      event.preventDefault();
+      if (!event.repeat) enterLetter(code.charAt(3), event.shiftKey);
+      return true;
+    }
+    if (code === 'KeyT'){
+      event.preventDefault();
+      if (!event.repeat) setStaffDur({ triplet: !ui.staffDur.triplet });
+      return true;
+    }
+    if (code === 'KeyR'){
+      event.preventDefault();
+      if (!event.repeat) placeAtCursor({ rest: true });
+      return true;
+    }
+    if (key === '.'){
+      event.preventDefault();
+      if (!event.repeat) setStaffDur({ dotted: !ui.staffDur.dotted });
+      return true;
+    }
+    if (key.length === 1 && key >= '0' && key <= '9'){
+      event.preventDefault();
+      if (event.repeat) return true;
+      if (key === '0') placeAtCursor({ rest: true });
+      else if (DUR_KEYS[key]) setStaffDur({ value: DUR_KEYS[key] });
+      return true;
+    }
+    if (key === 'ArrowUp' || key === 'ArrowDown'){
+      event.preventDefault();
+      transposeSelected(key === 'ArrowUp' ? 1 : -1);
+      return true;
+    }
+    if (key === 'Delete' || key === 'Backspace'){
+      event.preventDefault();
+      deleteToRest();
+      return true;
+    }
+    return false;
+  }
+
+  function bindStaffDock(){
+    $('tiModeTab').addEventListener('click', function(){ setInputMode('tab'); });
+    $('tiModeStaff').addEventListener('click', function(){ setInputMode('staff'); });
+    Array.prototype.forEach.call($('tiStaffPanel').querySelectorAll('[data-dur]'), function(btn){
+      btn.addEventListener('click', function(){ setStaffDur({ value: btn.dataset.dur }); });
+    });
+    $('tiDotBtn').addEventListener('click', function(){ setStaffDur({ dotted: !ui.staffDur.dotted }); });
+    $('tiTripletBtn').addEventListener('click', function(){ setStaffDur({ triplet: !ui.staffDur.triplet }); });
+    $('tiStaffRestBtn').addEventListener('click', function(){ placeAtCursor({ rest: true }); });
+    $('tiSemiUpBtn').addEventListener('click', function(){ transposeSelected(1); });
+    $('tiSemiDownBtn').addEventListener('click', function(){ transposeSelected(-1); });
+    $('tiDurChangeBtn').addEventListener('click', function(){ placeAtCursor({ keep: true }); });
+    $('tiStringCands').addEventListener('click', function(event){
+      var btn = event.target.closest('button');
+      if (btn) moveSelectedToString(Number(btn.dataset.str));
+    });
+    var picker = $('tiPitchPicker');
+    function bandOf(event){ return event.target.closest && event.target.closest('[data-step]'); }
+    picker.addEventListener('mouseover', function(event){
+      var band = bandOf(event);
+      if (band) showPitchHint(Number(band.dataset.step));
+    });
+    picker.addEventListener('mouseleave', hidePitchHint);
+    picker.addEventListener('click', function(event){
+      var band = bandOf(event);
+      if (!band) return;
+      var written = stepToWritten(Number(band.dataset.step));
+      var found = S.writtenToMidi(doc, cursor, written.letter, written.octave);
+      if (found.error){
+        setStatus(found.error);
+        return;
+      }
+      if (event.shiftKey) addChordNote(found.midi); else placeNote(found.midi);
+    });
+  }
 
   // ---------- 마디 선택과 연산
 
@@ -1092,6 +1500,7 @@
     $('tiCopyTextBtn').addEventListener('click', copyScoreText);
     $('tiCopyTsvBtn').addEventListener('click', copyScoreTsv);
     $('tiOpenPracticeBtn').addEventListener('click', openPractice);
+    bindStaffDock();
 
     var dock = $('tiDock');
     function syncDockHeight(){
@@ -1140,9 +1549,13 @@
         event.preventDefault();
         flushPending(false);
         redo();
+      } else if (ui.inputMode === 'staff' && (event.key === 'ArrowUp' || event.key === 'ArrowDown')){
+        event.preventDefault();
+        transposeSelected(event.key === 'ArrowUp' ? 12 : -12);
       }
       return;
     }
+    if (ui.inputMode === 'staff' && onStaffKey(event)) return;
     var key = event.key;
     var isDigit = key.length === 1 && key >= '0' && key <= '9';
     if (isDigit){
@@ -1207,6 +1620,11 @@
       if (typeof stored.dockCollapsed === 'boolean') ui.dockCollapsed = stored.dockCollapsed;
       if (typeof stored.attrsOpen === 'boolean') ui.attrsOpen = stored.attrsOpen;
       if (typeof stored.staffOn === 'boolean') ui.staffOn = stored.staffOn;
+      if (stored.inputMode === 'tab' || stored.inputMode === 'staff') ui.inputMode = stored.inputMode;
+      var dur = stored.staffDur;
+      if (dur && typeof dur === 'object' && DUR_VALUES.indexOf(dur.value) >= 0){
+        ui.staffDur = { value: dur.value, dotted: dur.dotted === true, triplet: dur.triplet === true };
+      }
     }
   }
 

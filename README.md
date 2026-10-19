@@ -24,6 +24,7 @@ python -m http.server 8765 --bind 127.0.0.1
 - [화면과 조작](Docs/ui.md): 툴바·음이름 표기·단축키·메트로놈 클릭 결정
 - [악보 입력](Docs/tab-input.md): 타브를 찍어 텍스트 악보를 만드는 화면
 - [오선 미리보기](Docs/staff-notation.md): 텍스트 악보를 기타 오선보로 그리는 규칙
+- [오선 입력](Docs/staff-input.md): 오선보를 보고 음높이와 음표 길이로 입력하는 방식
 - [에이전트 지침](AGENTS.md): 변경 범위와 필수 검증 규칙
 
 ## 초보 연습에 맞춘 기능
