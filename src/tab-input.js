@@ -628,6 +628,16 @@
     };
   }
 
+  // 텍스트 모드: 편집기 글로 마디만 바꾼 새 문서. 원래 doc은 바꾸지 않는다(Docs/tab-input.md 텍스트로 입력).
+  function replaceMeasuresFromText(doc, text){
+    var result = scoreToDoc({ title: doc.title, beats: doc.beats, bpm: doc.bpm, description: doc.description, raw: text });
+    if (result.error) return { error: result.error };
+    var next = cloneDoc(doc);
+    next.measures = result.doc.measures;
+    if (doc.key === 0) next.accidentals = result.doc.accidentals;
+    return { doc: next };
+  }
+
   function isIntegerText(text){ return /^[0-9]+$/.test(text); }
 
   function parseImportText(text, current){
@@ -680,7 +690,7 @@
     noteMidi: noteMidi, noteLabel: noteLabel, noteToken: noteToken,
     docToMeasureObjects: docToMeasureObjects, docToScoreLines: docToScoreLines, docScoreText: docScoreText,
     validateDoc: validateDoc, docCapo: docCapo, buildHandoff: buildHandoff,
-    scoreToDoc: scoreToDoc, parseImportText: parseImportText
+    scoreToDoc: scoreToDoc, parseImportText: parseImportText, replaceMeasuresFromText: replaceMeasuresFromText
   };
   if (typeof window !== 'undefined') window.GuitarTabInput = api;
   if (isNode) module.exports = api;

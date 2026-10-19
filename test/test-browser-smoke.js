@@ -2153,8 +2153,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=edit-link-1')), 'score-input.html scripts use the shared revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=edit-link-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=text-mode-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=text-mode-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoInfo', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -2731,6 +2731,186 @@ async function testStaffInputMode(client, httpPort) {
   await client.evaluate(clearStorage);
   client.dialogHandler = null;
   process.stdout.write('Browser checkpoint: staff input mode switch, length and letter keys, picker click, chord, semitone, key signature, length error, delete, string candidates, heights, and screenshots passed\n');
+}
+
+// 악보 입력 화면의 텍스트로 입력 모드. 규칙은 Docs/tab-input.md 의 텍스트로 입력 절.
+// 입력은 값 설정 뒤 input 이벤트, 글자 커서는 selectionStart 설정 뒤 keyup/click 으로 실제 사용자 경로를 탄다.
+// 0.3초 디바운스는 벽시계로 재지 않고 결과가 나타날 때까지 waitForCondition 으로 기다린다.
+async function testTextInputMode(client, httpPort) {
+  client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
+  const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
+  ['tiModeText', 'tiTextPanel', 'tiTextEditor', 'tiTextError', 'tiTextRestoreBtn'
+  ].forEach(id => assert.match(inputHtml, new RegExp('id="' + id + '"'), 'score-input.html includes #' + id));
+  const inputUrl = `http://127.0.0.1:${httpPort}/score-input.html`;
+  const inputReady = 'document.readyState === "complete" && document.querySelectorAll("#tiMeasures .ti-measure").length >= 1';
+  async function loadPage(action) {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await action();
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, inputReady, 8000);
+  }
+  async function installHelpers() {
+    await client.evaluate(`window.__tx = {
+      shown: function(id){ return document.getElementById(id).getClientRects().length > 0; },
+      editor: function(){ return document.getElementById('tiTextEditor'); },
+      value: function(){ return document.getElementById('tiTextEditor').value; },
+      result: function(){ return document.getElementById('tiScoreText').value; },
+      error: function(){ return document.getElementById('tiTextError').textContent; },
+      cursor: function(){ return document.getElementById('tiCursorLabel').textContent; },
+      cards: function(){ return document.querySelectorAll('#tiMeasures .ti-measure').length; },
+      pos: function(m, c, s, str){ return document.querySelector('.ti-slot[data-m="'+m+'"][data-c="'+c+'"][data-s="'+s+'"] .ti-pos[data-str="'+str+'"]'); },
+      type: function(value){ var e = this.editor(); e.focus(); e.value = value; e.dispatchEvent(new Event('input', { bubbles:true })); return true; },
+      caret: function(offset, eventName){ var e = this.editor(); e.focus(); e.selectionStart = offset; e.selectionEnd = offset; e.dispatchEvent(new Event(eventName, { bubbles:true })); return true; },
+      dock: function(){ return document.getElementById('tiDock').getBoundingClientRect().height; },
+      draft: function(){ return JSON.parse(localStorage.getItem('gs.tabInput.text')); }
+    }; true`);
+  }
+  const clearStorage = `(function(){ Object.keys(localStorage).filter(function(key){ return key.indexOf('gs.tabInput.') === 0; }).forEach(function(key){ localStorage.removeItem(key); }); return true; })()`;
+  const reflected = '__tx.error() === "미리보기에 반영됨"';
+
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate(clearStorage);
+  const errorsBefore = client.consoleErrors.length;
+  await loadPage(() => client.send('Page.navigate', { url: inputUrl }));
+  await installHelpers();
+
+  // 1. 텍스트 모드: 편집기가 지금 문서 텍스트이고 지판·음 고르는 오선·운지 열이 숨으며 새로고침 뒤에도 유지된다.
+  assert.equal(await client.evaluate('__tx.shown("tiTextPanel")'), false, 'the text panel is hidden in the default tab mode');
+  await client.evaluate(`document.getElementById('tiModeText').click(); true`);
+  const entered = await client.evaluate(`({ pressed:['tiModeTab', 'tiModeStaff', 'tiModeText'].map(function(id){ return document.getElementById(id).getAttribute('aria-pressed'); }).join(),
+    panel:__tx.shown('tiTextPanel'), editor:__tx.shown('tiTextEditor'), value:__tx.value(), result:__tx.result(),
+    hidden:['tiFretboard', 'tiStaffPanel', 'tiPitchPicker', 'tiAttrs', 'tiAttrsToggle', 'tiRestBtn', 'tiClearSlotBtn', 'tiDiv1', 'tiAutoAdvance', 'tiPrevBtn', 'tiNextBtn', 'tiTabHint', 'tiStaffHint'].filter(function(id){ return __tx.shown(id); }),
+    kept:['tiPlaySlotBtn', 'tiSoundToggle', 'tiStaffToggle', 'tiDockToggle', 'tiModeTab', 'tiModeStaff', 'tiModeText', 'tiCursorLabel'].filter(function(id){ return !__tx.shown(id); }),
+    restore:__tx.shown('tiTextRestoreBtn'), error:__tx.error(), saved:JSON.parse(localStorage.getItem('gs.tabInput.ui')).inputMode })`);
+  assert.deepEqual([entered.pressed, entered.panel, entered.editor, entered.restore, entered.error, entered.saved], ['false,false,true', true, true, false, '미리보기에 반영됨', 'text'], 'the text mode shows the editor and the reflected line');
+  assert.equal(entered.value, entered.result, 'the editor starts with the current document text');
+  assert.deepEqual(entered.hidden, [], 'the text mode hides the fretboard, the pitch picker, the fingering column and the tab-only buttons');
+  assert.deepEqual(entered.kept, [], 'the text mode keeps the shared buttons');
+  await loadPage(() => client.send('Page.reload', { ignoreCache: true }));
+  await installHelpers();
+  assert.deepEqual(await client.evaluate(`[document.getElementById('tiModeText').getAttribute('aria-pressed'), __tx.shown('tiTextEditor'), __tx.shown('tiFretboard'), __tx.value() === __tx.result()]`), ['true', true, false, true], 'the text mode survives a reload');
+
+  // 2. 끝에 한 마디를 더 치면 카드가 늘고, 결과는 앱 표준 꼴이지만 편집기 글자는 친 그대로다.
+  const base = await client.evaluate('__tx.value()');
+  await client.evaluate(`__tx.type(${JSON.stringify(base + '\n[-] G4 - - - | ""')})`);
+  await waitForCondition(client, '__tx.cards() === 2 && ' + reflected, 5000);
+  assert.equal(await client.evaluate(`__tx.pos(1, 0, 0, 1).textContent.trim()`), '3', 'the typed G4 shows as fret 3 on the first string of the new last card');
+  assert.ok((await client.evaluate('__tx.result()')).includes('G4@1'), 'the result text uses the app standard form (G4@1)');
+  const typed = await client.evaluate('__tx.value()');
+  assert.ok(typed.includes('G4 - - -') && !typed.includes('G4@1'), 'the editor keeps the typed characters as they are (' + typed + ')');
+  const draft2 = await client.evaluate('__tx.draft()');
+  assert.deepEqual([draft2.raw, draft2.valid, typeof draft2.baseText], [typed, true, 'string'], 'the typed text is saved as a valid draft');
+  assert.equal(await client.evaluate(`document.getElementById('tiUndoBtn').disabled`), false, 'the first reflect records an undo step');
+
+  // 3. 틀린 글: 오류 줄에 마디가 든 첫 오류가 나오고 카드는 그대로다.
+  const lines = typed.split('\n');
+  lines[1] = '[-] Q9 - - - | ""';
+  const wrong = lines.join('\n');
+  await client.evaluate(`__tx.type(${JSON.stringify(wrong)})`);
+  await waitForCondition(client, '__tx.error().indexOf("마디") >= 0', 5000);
+  assert.equal(await client.evaluate(`document.getElementById('tiTextError').classList.contains('is-error')`), true, 'the error line uses the warning style');
+  assert.deepEqual(await client.evaluate(`[__tx.cards(), __tx.pos(1, 0, 0, 1).textContent.trim(), __tx.result().includes('G4@1')]`), [2, '3', true], 'a wrong line leaves the cards on the last good document');
+  assert.equal(await client.evaluate('__tx.draft().valid'), false, 'the wrong text is saved as an invalid draft');
+
+  // 4. 오류 상태로 모드를 오가도, 새로고침해도 친 글자가 그대로 돌아온다.
+  await client.evaluate(`document.getElementById('tiModeTab').click(); true`);
+  assert.equal(await client.evaluate('__tx.shown("tiTextPanel")'), false, 'leaving the text mode hides the editor');
+  await client.evaluate(`document.getElementById('tiModeText').click(); true`);
+  assert.equal(await client.evaluate('__tx.value()'), wrong, 'coming back shows the characters typed before (Q9 kept)');
+  assert.ok((await client.evaluate('__tx.error()')).includes('마디'), 'coming back shows the error again');
+  assert.equal(await client.evaluate('__tx.shown("tiTextRestoreBtn")'), false, 'the restore button stays hidden while the draft still matches the document');
+  await loadPage(() => client.send('Page.reload', { ignoreCache: true }));
+  await installHelpers();
+  assert.equal(await client.evaluate('__tx.value()'), wrong, 'a reload keeps the wrong characters too');
+  assert.ok((await client.evaluate('__tx.error()')).includes('마디'), 'a reload shows the error again');
+
+  // 5. 오류 상태에서 타브로 문서를 바꾸면 돌아온 편집기는 지금 문서 텍스트이고, 되살리기 단추로 전에 치던 글이 돌아온다.
+  await client.evaluate(`document.getElementById('tiModeTab').click(); true`);
+  await client.evaluate(`__tx.pos(0, 1, 0, 2).click(); document.querySelector('.ti-fret[data-str="2"][data-fret="1"]').click(); true`);
+  const tabEdited = await client.evaluate('__tx.result()');
+  assert.ok(tabEdited.split('\n')[0].includes('C4@2'), 'a tab edit changed the first measure (' + tabEdited + ')');
+  await client.evaluate(`document.getElementById('tiModeText').click(); true`);
+  assert.equal(await client.evaluate('__tx.value()'), tabEdited, 'the editor shows the current document text after the document changed in another mode');
+  assert.ok(!(await client.evaluate('__tx.value()')).includes('Q9'), 'the wrong characters are not shown after the document changed');
+  assert.equal(await client.evaluate('__tx.shown("tiTextRestoreBtn")'), true, 'the restore button appears');
+  await client.evaluate(`document.getElementById('tiTextRestoreBtn').click(); true`);
+  assert.ok((await client.evaluate('__tx.value()')).includes('Q9'), 'the restore button brings the earlier characters back');
+  await waitForCondition(client, '__tx.error().indexOf("마디") >= 0', 5000);
+  assert.equal(await client.evaluate('__tx.shown("tiTextRestoreBtn")'), false, 'the restore button hides after use');
+
+  // 6. 글자 커서가 있는 줄이 문서 커서 마디가 된다(빈 줄은 세지 않는다).
+  await client.evaluate(`__tx.caret(0, 'keyup')`);
+  assert.ok((await client.evaluate('__tx.cursor()')).startsWith('1마디'), 'the caret on the first line puts the cursor on measure 1 (' + await client.evaluate('__tx.cursor()') + ')');
+  await client.evaluate(`__tx.caret(__tx.value().indexOf('\\n') + 3, 'click')`);
+  assert.ok((await client.evaluate('__tx.cursor()')).startsWith('2마디'), 'the caret on the second line puts the cursor on measure 2 (' + await client.evaluate('__tx.cursor()') + ')');
+  await client.evaluate(`__tx.caret(__tx.value().length, 'keyup')`);
+  assert.ok((await client.evaluate('__tx.cursor()')).startsWith('2마디'), 'the caret at the end of the last line keeps measure 2');
+
+  // 6b. 텍스트 모드에서 카드는 미리보기다: 코드·메모 칸은 읽기 전용, 오른쪽 클릭 지우기·선택 막대·마디 추가는 막히고, 카드 클릭은 글자 커서를 그 마디 줄로 보낸다.
+  const locked = await client.evaluate(`({ inputs:Array.prototype.map.call(document.querySelectorAll('#tiMeasures .ti-chord, #tiMeasures .ti-memo'), function(i){ return [i.readOnly, i.title]; }),
+    add:__tx.shown('tiAddMeasureBtn') })`);
+  assert.ok(locked.inputs.length >= 4 && locked.inputs.every(item => item[0] === true && item[1] === '텍스트 모드에서는 아래 편집기에서 고쳐'), 'the card chord and memo inputs are read-only with the editor hint in the text mode');
+  assert.equal(locked.add, false, 'the add-measure button is hidden in the text mode');
+  const beforeErase = await client.evaluate('__tx.result()');
+  await client.evaluate(`__tx.pos(0, 1, 0, 2).dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, cancelable:true })); true`);
+  assert.equal(await client.evaluate('__tx.result()'), beforeErase, 'a right click on a card tab position does not erase the note in the text mode');
+  assert.ok(beforeErase.split('\n')[0].includes('C4@2'), 'the note the right click aimed at exists');
+  await client.evaluate(`__tx.pos(1, 0, 0, 1).click(); true`);
+  assert.equal(await client.evaluate('__tx.editor().selectionStart'), (await client.evaluate('__tx.value()')).indexOf('\n') + 1, 'clicking a card puts the editor caret at the start of that measure line');
+  assert.ok((await client.evaluate('__tx.cursor()')).startsWith('2마디'), 'the card click moves the document cursor');
+  await client.evaluate(`document.querySelector('#tiMeasures .ti-measure[data-m="0"] .ti-measure-num').click(); true`);
+  assert.deepEqual(await client.evaluate(`[__tx.shown('tiSelectionBar'), __tx.editor().selectionStart, document.querySelectorAll('#tiMeasures .ti-measure.is-selected').length]`), [false, 0, 0], 'a measure number click opens no selection bar and sends the caret to that line');
+  await client.evaluate(`document.getElementById('tiModeTab').click(); true`);
+  assert.deepEqual(await client.evaluate(`({ inputs:Array.prototype.map.call(document.querySelectorAll('#tiMeasures .ti-chord, #tiMeasures .ti-memo'), function(i){ return [i.readOnly, i.hasAttribute('title')]; }), add:__tx.shown('tiAddMeasureBtn') })`).then(r => [r.inputs.every(item => item[0] === false && item[1] === false), r.add]), [true, true], 'the tab mode unlocks the card inputs and brings the add-measure button back');
+  await client.evaluate(`document.getElementById('tiModeText').click(); true`);
+
+  // 7. 맞는 글로 고친 흐름 전체(여러 번 반영)가 되돌리기 한 번으로 돌아가고 편집기는 문서 텍스트로 다시 채워진다.
+  const beforeFlow = await client.evaluate('__tx.result()');
+  const fixed = wrong.split('\n');
+  fixed[1] = '[-] A4 - - - | ""';
+  await client.evaluate(`__tx.type(${JSON.stringify(fixed.join('\n'))})`);
+  await waitForCondition(client, reflected + ' && __tx.result().includes("A4@1")', 5000);
+  fixed[1] = '[-] B4 - - - | ""';
+  await client.evaluate(`__tx.type(${JSON.stringify(fixed.join('\n'))})`);
+  await waitForCondition(client, reflected + ' && __tx.result().includes("B4@1")', 5000);
+  assert.ok(!(await client.evaluate('__tx.result()')).includes('A4@1'), 'the second reflect replaced the first one');
+  await client.evaluate(`document.getElementById('tiUndoBtn').click(); true`);
+  assert.equal(await client.evaluate('__tx.result()'), beforeFlow, 'one undo returns the whole text-edited flow');
+  assert.equal(await client.evaluate('__tx.value()'), beforeFlow, 'the editor is refilled with the document text after the undo');
+  assert.equal(await client.evaluate(`document.getElementById('tiRedoBtn').disabled`), false, 'the undone flow can be redone');
+  await client.evaluate(`document.getElementById('tiRedoBtn').click(); true`);
+  assert.ok((await client.evaluate('__tx.value()')).includes('B4@1'), 'redo brings the flow back and refills the editor');
+
+  // 8. 높이, 가로 넘침, 콘솔 오류, 스크린샷
+  await client.evaluate(`__tx.type(${JSON.stringify(wrong)})`);
+  await waitForCondition(client, '__tx.error().indexOf("마디") >= 0', 5000);
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate('window.scrollTo(0, 0); true');
+  const tablet = await client.evaluate(`({ dock:__tx.dock(), editor:__tx.editor().getBoundingClientRect().width, panel:document.getElementById('tiDock').getBoundingClientRect().width,
+    rows:document.getElementById('tiDock').querySelector('.ti-dock-row').getBoundingClientRect().height, hint:__tx.shown('tiTextHint') })`);
+  assert.ok(tablet.dock <= 230, 'the 1024x768 text input dock is at most 230px tall (is ' + tablet.dock + ')');
+  assert.ok(tablet.editor >= tablet.panel - 60, 'the editor takes almost the whole dock width (' + tablet.editor + ' of ' + tablet.panel + ')');
+  assert.equal(tablet.hint, true, 'the hint line shows at 900px and wider');
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  const image = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const target = path.join(root, 'test-artifacts', 'score-input-text-mode.png');
+  fs.writeFileSync(target, Buffer.from(image.data, 'base64'));
+  const header = fs.readFileSync(target).subarray(0, 24);
+  assert.equal(header.readUInt32BE(16), 1024, 'text mode screenshot width');
+  assert.equal(header.readUInt32BE(20), 768, 'text mode screenshot height');
+  process.stdout.write('Artifact: ' + target + '\n');
+
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: true });
+  await client.evaluate('window.scrollTo(0, 0); true');
+  const phone = await client.evaluate('({ scroll:document.documentElement.scrollWidth, inner:window.innerWidth, hint:__tx.shown("tiTextHint"), dock:__tx.dock() })');
+  assert.ok(phone.scroll <= phone.inner, 'the 375px page in text input mode does not overflow horizontally (scrollWidth ' + phone.scroll + ' > ' + phone.inner + ')');
+  assert.equal(phone.hint, false, 'the hint line is hidden below 900px');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the text input mode runs without console errors');
+
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  await client.evaluate(clearStorage);
+  client.dialogHandler = null;
+  process.stdout.write('Browser checkpoint: text input mode switch, debounced reflect with typed characters kept, error line, draft kept across modes and reload, restore button, caret to cursor, one-step undo, heights, and screenshot passed\n');
 }
 
 // 연습 화면의 오선 보기(타브·둘 다·오선·카드). 규칙은 Docs/staff-notation.md 의 연습 화면 절.
@@ -3594,6 +3774,7 @@ async function main() {
     await testEditHandoff(cdp, httpPort);
     await testScoreInputStaff(cdp, httpPort);
     await testStaffInputMode(cdp, httpPort);
+    await testTextInputMode(cdp, httpPort);
     await testFretLabel(cdp, httpPort);
 
     // Verify no unhandled console errors occurred

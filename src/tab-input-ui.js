@@ -12,6 +12,7 @@
   var UI_KEY = 'gs.tabInput.ui';
   var HANDOFF_KEY = 'gs.tabInput.handoff';
   var OPEN_KEY = 'gs.tabInput.open';
+  var TEXT_KEY = 'gs.tabInput.text';
   var OPEN_MAX_AGE_MS = 600000;
   var OPEN_MAX_FUTURE_MS = 60000;
   var STRING_LETTERS = ['E', 'B', 'G', 'D', 'A', 'E'];
@@ -20,6 +21,9 @@
   var CELL_SLOT_PAD = 6;
   var TEN_WINDOW_MS = 700;
   var SAVE_DEBOUNCE_MS = 300;
+  var TEXT_DEBOUNCE_MS = 300;
+  var TEXT_OK = '미리보기에 반영됨';
+  var TEXT_LOCK_TITLE = '텍스트 모드에서는 아래 편집기에서 고쳐';
   var CONFIRM_REPLACE = '지금 작업을 지우고 바꿀까? 되돌리기로 돌아올 수 있어.';
   var COPY_FAIL = '복사하지 못했어. 결과 칸에서 직접 복사해.';
   var SOURCE_INFO = '연습 화면 곡을 고치는 중 · 연습 화면에서 열면 그 곡의 수정 초안이 돼';
@@ -44,6 +48,10 @@
   var pickerKey;           // 음 고르는 오선을 그린 조표(바뀌면 다시 그린다)
   var fretButtons = [];
   var attrButtons = [];
+  var textDraft = null;    // 텍스트 모드 초안 {raw, baseText, valid}. 편집기에 친 글자 그대로(Docs/tab-input.md 텍스트로 입력)
+  var textTimer = null;    // 친 글을 문서에 반영하기 전의 디바운스
+  var textSession = false; // 이번 텍스트 세션에서 되돌리기 기록을 이미 남겼나
+  var restoreRaw = null;   // 되살릴 수 있는, 문서에 반영 못 했던 글
 
   function $(id){ return document.getElementById(id); }
   function el(tag, className, text){
@@ -127,6 +135,7 @@
   }
 
   function commitText(){
+    flushTextReflect();
     if (!textSnapshot) return;
     var snapshot = textSnapshot;
     textSnapshot = null;
@@ -177,6 +186,7 @@
     if (all) renderMeasures();
     else (o.measures || []).forEach(rebuildCard);
     refreshAfterEdit();
+    syncTextToDoc();
     return result || { ok: true };
   }
 
@@ -191,6 +201,7 @@
     noteSel = null;
     saveNow();
     renderAll();
+    syncTextToDoc();
   }
 
   function undo(){
@@ -218,6 +229,7 @@
     noteSel = noteAtCursor();
     saveNow();
     renderAll();
+    syncTextToDoc();
   }
 
   // ---------- 그리기: 마디 카드
@@ -259,6 +271,13 @@
     return slotEl;
   }
 
+  // 텍스트 모드에서 카드의 코드·메모 칸은 읽기 전용이다(편집기와 어긋나지 않게).
+  function lockCardInput(input, locked){
+    input.readOnly = locked;
+    if (locked) input.title = TEXT_LOCK_TITLE;
+    else input.removeAttribute('title');
+  }
+
   function buildCard(m){
     var measure = doc.measures[m];
     var card = el('article', 'ti-measure');
@@ -275,6 +294,7 @@
     chord.value = measure.chord;
     chord.setAttribute('aria-label', (m + 1) + '마디 코드');
     chord.autocomplete = 'off';
+    lockCardInput(chord, ui.inputMode === 'text');
     head.appendChild(num);
     head.appendChild(chord);
     card.appendChild(head);
@@ -315,6 +335,7 @@
     memo.value = measure.memo;
     memo.setAttribute('aria-label', (m + 1) + '마디 메모');
     memo.autocomplete = 'off';
+    lockCardInput(memo, ui.inputMode === 'text');
     card.appendChild(memo);
     card.appendChild(el('code', 'ti-line'));
     var error = el('div', 'ti-measure-error');
@@ -834,11 +855,16 @@
   function setInputMode(mode){
     if (ui.inputMode === mode) return;
     flushPending(false);
+    if (ui.inputMode === 'text') endTextSession();
     ui.inputMode = mode;
     lastEntry = null;
     noteSel = noteAtCursor();
     saveUi();
     refreshCursorUI(false);
+    if (mode === 'text'){
+      clearSelection();
+      enterTextMode(true);
+    }
   }
 
   function pickerGeometry(){
@@ -938,14 +964,24 @@
   }
 
   function refreshStaffMode(){
-    var staff = ui.inputMode === 'staff';
-    $('tiModeTab').setAttribute('aria-pressed', String(!staff));
+    var mode = ui.inputMode;
+    var staff = mode === 'staff';
+    $('tiModeTab').setAttribute('aria-pressed', String(mode === 'tab'));
     $('tiModeStaff').setAttribute('aria-pressed', String(staff));
-    Array.prototype.forEach.call($('tiDock').querySelectorAll('[data-mode="tab"]'), function(node){ node.hidden = staff; });
-    $('tiFretboard').hidden = staff;
+    $('tiModeText').setAttribute('aria-pressed', String(mode === 'text'));
+    // data-mode 는 그 요소가 보이는 입력 방식들(공백으로 구분)
+    Array.prototype.forEach.call($('tiDock').querySelectorAll('[data-mode]'), function(node){
+      node.hidden = node.dataset.mode.split(' ').indexOf(mode) < 0;
+    });
+    $('tiFretboard').hidden = mode !== 'tab';
     $('tiStaffPanel').hidden = !staff;
-    $('tiTabHint').hidden = staff;
+    $('tiTextPanel').hidden = mode !== 'text';
+    $('tiTabHint').hidden = mode !== 'tab';
     $('tiStaffHint').hidden = !staff;
+    // 텍스트 모드: 마디 추가 단추를 숨기고 카드 코드·메모 칸을 잠근다(선택 막대는 sel 이 없어 이미 숨는다)
+    var text = mode === 'text';
+    $('tiAddMeasureBtn').hidden = text;
+    Array.prototype.forEach.call($('tiMeasures').querySelectorAll('.ti-chord, .ti-memo'), function(input){ lockCardInput(input, text); });
     if (noteSel && !noteSelNote()) noteSel = null;
     refreshNoteMarks();
     if (!staff) return;
@@ -1137,6 +1173,7 @@
   function bindStaffDock(){
     $('tiModeTab').addEventListener('click', function(){ setInputMode('tab'); });
     $('tiModeStaff').addEventListener('click', function(){ setInputMode('staff'); });
+    $('tiModeText').addEventListener('click', function(){ setInputMode('text'); });
     Array.prototype.forEach.call($('tiStaffPanel').querySelectorAll('[data-dur]'), function(btn){
       btn.addEventListener('click', function(){ setStaffDur({ value: btn.dataset.dur }); });
     });
@@ -1231,6 +1268,181 @@
     } else if (kind === 'deselect'){
       clearSelection();
     }
+  }
+
+  // ---------- 텍스트로 입력 (규칙은 Docs/tab-input.md 텍스트로 입력)
+
+  function loadTextDraft(){
+    var stored = ls.get(TEXT_KEY, null);
+    if (stored && typeof stored === 'object' && typeof stored.raw === 'string' && typeof stored.baseText === 'string' && typeof stored.valid === 'boolean'){
+      textDraft = { raw: stored.raw, baseText: stored.baseText, valid: stored.valid };
+    }
+  }
+
+  function setTextDraft(raw, valid){
+    textDraft = { raw: raw, baseText: T.docScoreText(doc), valid: valid };
+    ls.set(TEXT_KEY, textDraft);
+  }
+
+  function endTextSession(){
+    flushTextReflect();
+    textSession = false;
+  }
+
+  function showTextStatus(error){
+    var node = $('tiTextError');
+    node.textContent = error || TEXT_OK;
+    node.title = error || '';
+    node.classList.toggle('is-error', !!error);
+    node.classList.toggle('is-ok', !error);
+  }
+
+  function refreshTextRestore(){
+    $('tiTextRestoreBtn').hidden = restoreRaw == null;
+  }
+
+  // 글자 커서가 있는 줄의 마디 번호(0부터). 빈 줄은 세지 않는다. 빈 줄 위에 있으면 바로 앞 글 줄의 마디.
+  function caretMeasure(editor){
+    var before = editor.value.slice(0, editor.selectionStart == null ? 0 : editor.selectionStart);
+    var lines = editor.value.split('\n');
+    var lineIndex = before.split('\n').length - 1;
+    var count = 0;
+    for (var i = 0; i <= lineIndex && i < lines.length; i++) if (lines[i].trim()) count++;
+    return Math.max(0, count - 1);
+  }
+
+  // m번째(0부터) 글 줄의 첫머리 위치. 그 줄이 없으면 맨 끝.
+  function measureLineStart(text, m){
+    var lines = text.split('\n');
+    var offset = 0;
+    var count = 0;
+    for (var i = 0; i < lines.length; i++){
+      if (lines[i].trim()){
+        if (count === m) return offset;
+        count++;
+      }
+      offset += lines[i].length + 1;
+    }
+    return text.length;
+  }
+
+  function placeCaretAtCursorMeasure(focus){
+    var editor = $('tiTextEditor');
+    var at = measureLineStart(editor.value, cursor.m);
+    if (focus) editor.focus();
+    editor.setSelectionRange(at, at);
+  }
+
+  // 글자 커서 줄의 마디로 문서 커서를 옮기고 그 카드가 보이게 한다.
+  function syncCursorFromCaret(){
+    if (ui.inputMode !== 'text') return;
+    var m = Math.min(caretMeasure($('tiTextEditor')), doc.measures.length - 1);
+    if (m === cursor.m) return;
+    setCursor({ m: m, c: 0, s: 0 }, true);
+  }
+
+  // 들어올 때 보여 줄 글을 고른다. 저장된 글이 지금 문서에서 나온 것이면 그 글, 아니면 지금 문서 텍스트.
+  function enterTextMode(focus){
+    var editor = $('tiTextEditor');
+    var current = T.docScoreText(doc);
+    restoreRaw = null;
+    textSession = false;
+    if (textDraft && textDraft.baseText === current){
+      editor.value = textDraft.raw;
+    } else {
+      editor.value = current;
+      if (textDraft && !textDraft.valid && textDraft.raw !== current) restoreRaw = textDraft.raw;
+      else setTextDraft(current, true);
+    }
+    var error = textDraft && !textDraft.valid && textDraft.baseText === current ? T.replaceMeasuresFromText(doc, editor.value).error : null;
+    showTextStatus(error);
+    refreshTextRestore();
+    placeCaretAtCursorMeasure(focus);
+  }
+
+  // 밖에서 문서가 바뀐 뒤(되돌리기, 칸 수, 불러오기 …) 텍스트 모드면 편집기를 지금 문서 텍스트로 다시 채운다.
+  // 문서 텍스트가 그대로면(BPM 같은 것만 바뀜) 친 글자를 건드리지 않는다.
+  function syncTextToDoc(){
+    if (ui.inputMode !== 'text') return;
+    var current = T.docScoreText(doc);
+    if (textDraft && textDraft.baseText === current) return;
+    clearTimeout(textTimer);
+    textTimer = null;
+    textSession = false;
+    if (textDraft && !textDraft.valid && textDraft.raw !== current) restoreRaw = textDraft.raw;
+    else {
+      restoreRaw = null;
+      setTextDraft(current, true);
+    }
+    $('tiTextEditor').value = current;
+    showTextStatus(null);
+    refreshTextRestore();
+    placeCaretAtCursorMeasure(false);
+  }
+
+  function scheduleTextReflect(){
+    clearTimeout(textTimer);
+    textTimer = setTimeout(reflectText, TEXT_DEBOUNCE_MS);
+  }
+
+  function flushTextReflect(){
+    if (textTimer) reflectText();
+  }
+
+  // 편집기 글을 문서에 반영한다. 맞으면 마디만 바꾸고 카드를 다시 그리며, 틀리면 문서는 그대로 두고 오류를 보인다.
+  function reflectText(){
+    clearTimeout(textTimer);
+    textTimer = null;
+    if (ui.inputMode !== 'text') return;
+    var editor = $('tiTextEditor');
+    var raw = editor.value;
+    var result = T.replaceMeasuresFromText(doc, raw);
+    if (result.error){
+      setTextDraft(raw, false);
+      showTextStatus(result.error);
+      syncCursorFromCaret();
+      return;
+    }
+    if (JSON.stringify(result.doc) !== JSON.stringify(doc)){
+      commitText();
+      if (!textSession){
+        history.record(historyEntry(doc, cursor));
+        textSession = true;
+      }
+      doc = result.doc;
+      lastEntry = null;
+      clampCursor();
+      clampSelection();
+      noteSel = noteAtCursor();
+      saveNow();
+      renderAll();
+    }
+    setTextDraft(raw, true);
+    showTextStatus(null);
+    syncCursorFromCaret();
+  }
+
+  function bindTextEditor(){
+    var editor = $('tiTextEditor');
+    editor.addEventListener('input', function(){
+      restoreRaw = null;
+      refreshTextRestore();
+      scheduleTextReflect();
+    });
+    ['keyup', 'click', 'focus'].forEach(function(name){
+      editor.addEventListener(name, syncCursorFromCaret);
+    });
+    editor.addEventListener('blur', endTextSession);
+    $('tiTextRestoreBtn').addEventListener('click', function(){
+      if (restoreRaw == null) return;
+      editor.value = restoreRaw;
+      restoreRaw = null;
+      refreshTextRestore();
+      reflectText();
+      editor.focus();
+    });
+    window.addEventListener('pagehide', flushTextReflect);
+    window.addEventListener('beforeunload', flushTextReflect);
   }
 
   // ---------- 불러오기와 새 악보
@@ -1457,12 +1669,26 @@
       var card = target.closest('.ti-measure');
       if (!card) return;
       var m = Number(card.dataset.m);
+      // 텍스트 모드에서 카드는 미리보기다: 클릭은 커서만 옮기고 편집기 글자 커서를 그 마디 줄로 보낸다(선택 막대도 열지 않는다).
+      var textMode = ui.inputMode === 'text';
       var num = target.closest('.ti-measure-num');
-      if (num){ selectMeasure(m, event.shiftKey); return; }
+      if (num){
+        if (textMode){ setCursor({ m: m, c: 0, s: 0 }, false); placeCaretAtCursorMeasure(false); }
+        else selectMeasure(m, event.shiftKey);
+        return;
+      }
       var staffHead = target.closest('.st-head');
-      if (staffHead){ staffHeadClick(staffHead, m); return; }
+      if (staffHead){
+        staffHeadClick(staffHead, m);
+        if (textMode) placeCaretAtCursorMeasure(false);
+        return;
+      }
       var head = target.closest('.ti-cell-head');
-      if (head){ setCursor({ m: m, c: Number(head.dataset.c), s: 0 }, false); return; }
+      if (head){
+        setCursor({ m: m, c: Number(head.dataset.c), s: 0 }, false);
+        if (textMode) placeCaretAtCursorMeasure(false);
+        return;
+      }
       var posEl = target.closest('.ti-pos');
       if (posEl){
         var slotEl = posEl.closest('.ti-slot');
@@ -1471,9 +1697,11 @@
         setCursor(next, false);
         var note = T.getSlot(doc, next).notes[str - 1];
         if (note) playNotes([{ str: str, note: note }]);
+        if (textMode) placeCaretAtCursorMeasure(false);
       }
     });
     box.addEventListener('contextmenu', function(event){
+      if (ui.inputMode === 'text') return;   // 텍스트 모드에서는 카드로 문서를 고치지 않는다
       var posEl = event.target.closest('.ti-pos');
       if (!posEl) return;
       event.preventDefault();
@@ -1611,6 +1839,7 @@
       }
       return;
     }
+    if (ui.inputMode === 'text') return;   // 텍스트 모드에서 편집기 밖의 키는 문서를 고치지 않는다
     if (ui.inputMode === 'staff' && onStaffKey(event)) return;
     var key = event.key;
     var isDigit = key.length === 1 && key >= '0' && key <= '9';
@@ -1676,7 +1905,7 @@
       if (typeof stored.dockCollapsed === 'boolean') ui.dockCollapsed = stored.dockCollapsed;
       if (typeof stored.attrsOpen === 'boolean') ui.attrsOpen = stored.attrsOpen;
       if (typeof stored.staffOn === 'boolean') ui.staffOn = stored.staffOn;
-      if (stored.inputMode === 'tab' || stored.inputMode === 'staff') ui.inputMode = stored.inputMode;
+      if (stored.inputMode === 'tab' || stored.inputMode === 'staff' || stored.inputMode === 'text') ui.inputMode = stored.inputMode;
       var dur = stored.staffDur;
       if (dur && typeof dur === 'object' && DUR_VALUES.indexOf(dur.value) >= 0){
         ui.staffDur = { value: dur.value, dotted: dur.dotted === true, triplet: dur.triplet === true };
@@ -1702,9 +1931,12 @@
     bindSelectionBar();
     bindMeasures();
     bindDock();
+    bindTextEditor();
     bindDocument();
     refreshDock();
     renderAll();
+    loadTextDraft();
+    if (ui.inputMode === 'text') enterTextMode(false);
     if (loaded.notice) setStatus(loaded.notice);
     openFromPractice();
   }

@@ -568,4 +568,42 @@ test('sourceId: default null, stored strings kept, legacy documents read as null
   assert.equal(ti.buildHandoff(fresh(), 1).sourceId, null);
 });
 
+test('replaceMeasuresFromText: keeps metadata, swaps only the measures, never touches the original, reports errors', function(){
+  const base = fresh({ title: '제목', beats: 4, bpm: 80, description: '설명 Capo 2', sourceId: 'builtin-x' });
+  base.key = 2;
+  base.accidentals = 'flat';
+  const before = JSON.stringify(base);
+  const replaced = ti.replaceMeasuresFromText(base, '[C] E4 - - - | "a"\n[-] G4@1 - - - | ""');
+  assert.equal(replaced.error, undefined);
+  assert.equal(JSON.stringify(base), before, 'the original document is not modified');
+  assert.notEqual(replaced.doc, base);
+  ['title', 'beats', 'bpm', 'description', 'key', 'sourceId'].forEach(function(field){
+    assert.equal(replaced.doc[field], base[field], field);
+  });
+  assert.equal(replaced.doc.measures.length, 2);
+  assert.equal(replaced.doc.measures[0].chord, 'C');
+  assert.equal(replaced.doc.measures[0].memo, 'a');
+  assert.equal(replaced.doc.measures[1].cells[0].slots[0].notes[0].fret, 3);
+  assert.equal(replaced.doc.accidentals, 'flat', 'key 1 or more keeps the original accidentals');
+  replaced.doc.measures[0].memo = 'changed';
+  assert.equal(JSON.stringify(base), before, 'the result does not share objects with the original');
+
+  const bad = ti.replaceMeasuresFromText(base, '[-] E4 - - - | ""\n[-] Q9 - - - | ""');
+  assert.equal(bad.doc, undefined);
+  assert.match(bad.error, /\(마디 2/);
+  assert.equal(JSON.stringify(base), before);
+
+  const short = ti.replaceMeasuresFromText(base, '[-] E4 - - | ""');
+  assert.ok(short.error, 'a line with the wrong number of beats is an error');
+  assert.equal(short.doc, undefined);
+  assert.equal(short.error, ti.scoreToDoc({ title: base.title, beats: 4, bpm: 80, description: base.description, raw: '[-] E4 - - | ""' }).error, 'the scoreToDoc message is passed through');
+
+  const noKey = fresh({ beats: 4 });
+  assert.equal(noKey.key, 0);
+  assert.equal(ti.replaceMeasuresFromText(noKey, '[-] Bb3 - - - | ""').doc.accidentals, 'flat');
+  assert.equal(ti.replaceMeasuresFromText(noKey, '[-] Bb3 - - - | ""\n[-] F#3 - - - | ""').doc.accidentals, 'sharp');
+  const flatBase = fresh({ beats: 4, accidentals: 'flat' });
+  assert.equal(ti.replaceMeasuresFromText(flatBase, '[-] E4 - - - | ""').doc.accidentals, 'sharp', 'with key 0 the accidentals follow the typed text');
+});
+
 process.stdout.write('1..' + checks + '\n');
