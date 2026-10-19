@@ -1507,7 +1507,7 @@ async function testSubdividedGuide(client) {
       renderSong();
       updateActiveCursor(0, 1, false);
       var oldMetadataPair = document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="1"]');
-      check(oldMetadataPair.querySelectorAll('.tab-cell-lh').length === 0 && !oldMetadataPair.querySelector('.tab-cell-rh'), 'old inferred lh/rh metadata is ignored when original pair token has no LH digits');
+      check(oldMetadataPair.querySelectorAll('.fret-lh').length === 0 && !oldMetadataPair.querySelector('.tab-cell-rh'), 'old inferred lh/rh metadata is ignored when original pair token has no LH digits');
       check(document.getElementById('guideLhTxt').textContent.indexOf('3줄 미지정 + 2줄 미지정') >= 0 && document.getElementById('guideRhTxt').textContent === '-', 'fretboard guide ignores old inferred hand metadata');
 
       var explicitHandText = '[C] 1C4 4D4@2 0E4 0G3@3+1C4@2';
@@ -1515,7 +1515,7 @@ async function testSubdividedGuide(client) {
       window.curSong = { id:'browser-explicit-left-hand', title:'Explicit LH', type:'structured', beats:4, measures:explicitHandScore.measures };
       renderSong();
       function pillLabels(beatIndex){
-        return Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="' + beatIndex + '"] .tab-fret-pill')).map(function(p){ return p.textContent.trim(); });
+        return Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell[data-b="' + beatIndex + '"] .tab-fret-pill')).map(function(p){ var lh = p.querySelector('sup.fret-lh'); return p.querySelector('.fret-label').firstChild.textContent + (lh ? '(' + lh.textContent + ')' : ''); });
       }
       check(pillLabels(0).join(',') === '1(1)' && pillLabels(1).join(',') === '3(4)' && pillLabels(2).join(',') === '0(0)' && pillLabels(3).join(',') === '0(0),1(1)', 'TAB displays only directly written LH digits, including zero, for single notes and pairs');
       updateActiveCursor(0, 0, false);
@@ -1530,7 +1530,7 @@ async function testSubdividedGuide(client) {
       renderSong();
       function rightHandPills(beatIndex){
         var cell = document.querySelector('#measuresGrid .beat-cell[data-b="' + beatIndex + '"]');
-        return Array.prototype.slice.call(cell.querySelectorAll('.tab-note-rh')).map(function(span){ return span.textContent; });
+        return Array.prototype.slice.call(cell.querySelectorAll('.fret-rh')).map(function(span){ return span.textContent; });
       }
       var actualPimaPills = [0,1,2,3].map(function(index){ return rightHandPills(index).join(','); });
       check(actualPimaPills.join('|') === 'i|p,a|p|i,m', 'TAB note-on pills show explicit pima by source component for single notes, MIDI-sorted chords, partial chords, and subdivisions: ' + JSON.stringify(actualPimaPills));
@@ -1692,7 +1692,7 @@ async function captureBuiltinRomanceScreenshots(client, browserBin){
       })()`);
       const boundsEvidence = await client.evaluate(`(function(){
         function measure(){
-          var markers=Array.from(document.querySelectorAll('#measuresGrid .tab-fret-pill.note-fret, #measuresGrid .tab-note-rh'));
+          var markers=Array.from(document.querySelectorAll('#measuresGrid .tab-fret-pill.note-fret, #measuresGrid .fret-rh'));
           var failures=[], samples=[];
           markers.forEach(function(marker){
             var cell=marker.closest('.tab-cell'), stave=marker.closest('.tab-stave-wrap');
@@ -1706,7 +1706,8 @@ async function captureBuiltinRomanceScreenshots(client, browserBin){
             if(bounds.left<cellBounds.left-1||bounds.right>cellBounds.right+1||bounds.left<staveBounds.left-1||bounds.right>staveBounds.right+1){
               failures.push({reason:'horizontal-bound',className:marker.className,left:bounds.left,right:bounds.right,cellLeft:cellBounds.left,cellRight:cellBounds.right,staveLeft:staveBounds.left,staveRight:staveBounds.right});
             }
-            if(bounds.top<staveBounds.top||bounds.bottom>=staveBounds.bottom||!(bottomGap>0)||lineDelta>2){
+            var isFinger=marker.classList.contains('fret-rh');
+            if(bounds.top<staveBounds.top||bounds.bottom>=staveBounds.bottom||!(bottomGap>0)||(!isFinger&&lineDelta>2)){
               failures.push({reason:'vertical-bound-or-line-alignment',className:marker.className,top:bounds.top,bottom:bounds.bottom,staveTop:staveBounds.top,staveBottom:staveBounds.bottom,bottomGap:bottomGap,lineDelta:lineDelta});
             }
           });
@@ -1724,7 +1725,7 @@ async function captureBuiltinRomanceScreenshots(client, browserBin){
       const pillBounds=boundsEvidence.actual;
       assert.ok(pillBounds.count>0, 'Lv.6 score renders fret pills and explicit right-hand markers');
       assert.deepEqual(pillBounds.failures, [], 'TAB fret pills and right-hand markers fit within their beat cells and stave');
-      assert.ok(pillBounds.samples.every(function(sample){return sample.bottomGap>0 && sample.lineDelta<=2;}), 'TAB pills align with string lines and keep positive bottom clearance: '+JSON.stringify(pillBounds.samples.slice(-8)));
+      assert.ok(pillBounds.samples.every(function(sample){return sample.bottomGap>0 && (sample.className.indexOf('fret-rh')>=0 || sample.lineDelta<=2);}), 'TAB pills align with string lines and keep positive bottom clearance: '+JSON.stringify(pillBounds.samples.slice(-8)));
       assert.ok(boundsEvidence.legacy.failures.length>0,'legacy TAB geometry mutation is caught by the same bounds checker: '+JSON.stringify(boundsEvidence.legacy.failures.slice(-6)));
       assert.ok(boundsEvidence.open6&&boundsEvidence.fret7,'TAB/fretboard screenshot shows the actual Lv.6 E2 open-6 and B4 fret-7 target markers');
       const image = await client.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
@@ -1834,7 +1835,7 @@ async function testBuiltinScores(client, browserBin){
       var first=romance.measures[0];
       if(!first||first.beats.length!==3||!first.beats.every(function(beat){return beat.subNotes&&beat.subNotes.length===3;})) throw new Error('Lv.6 first measure must have three beats split into three notes');
       var firstMeasure=document.querySelector('#measuresGrid .measure-card[data-m="0"]');
-      var fingers=firstMeasure?Array.from(firstMeasure.querySelectorAll('.tab-note-rh')).map(function(node){return node.textContent;}):[];
+      var fingers=firstMeasure?Array.from(firstMeasure.querySelectorAll('.fret-rh')).map(function(node){return node.textContent;}):[];
       if(fingers.slice(0,4).join('/')!=='p/a/m/i') throw new Error('Lv.6 first measure TAB does not show explicit p/a/m/i: '+fingers.join('/'));
       var tabCells=[0,1,2].map(function(index){return document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="'+index+'"]');});
       var tabLabels=tabCells.map(function(cell){return cell&&cell.querySelector('.tab-cell-en')?cell.querySelector('.tab-cell-en').textContent:null;});
@@ -2046,8 +2047,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=staff-preview-1')), 'score-input.html scripts use the shared revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=staff-preview-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=fret-label-1')), 'score-input.html scripts use the shared revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=fret-label-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoInfo', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -2108,7 +2109,7 @@ async function testScoreInputScreen(client, httpPort) {
   assert.equal(await firstLine(), '[-] E2@6/1E4@1:i? G2@6 E3@6 r | ""', 'the check mark attaches to the cursor note');
   assert.equal(await client.evaluate(`!!document.querySelector('.ti-slot[data-m="0"][data-c="0"][data-s="1"] .ti-pos[data-str="1"].is-uncertain')`), true, 'a checked note is marked in the tab');
   assert.equal(await client.evaluate(`document.querySelector('.ti-slot[data-m="0"][data-c="0"][data-s="1"] .ti-pos[data-str="1"]').textContent`), '01i', 'tab text shows the fret, then the left hand and right hand as small figures');
-  assert.deepEqual(await client.evaluate(`(function(){ var pos = document.querySelector('.ti-slot[data-m="0"][data-c="0"][data-s="1"] .ti-pos[data-str="1"]'); return [pos.querySelector('sup.ti-lh').textContent, pos.querySelector('sub.ti-rh').textContent, pos.querySelectorAll('.ti-fing').length]; })()`), ['1', 'i', 1], 'left hand is a superscript and right hand a subscript sharing one column');
+  assert.deepEqual(await client.evaluate(`(function(){ var pos = document.querySelector('.ti-slot[data-m="0"][data-c="0"][data-s="1"] .ti-pos[data-str="1"]'); return [pos.querySelector('sup.fret-lh').textContent, pos.querySelector('sub.fret-rh').textContent, pos.querySelectorAll('.fret-fing').length]; })()`), ['1', 'i', 1], 'left hand is a superscript and right hand a subscript sharing one column');
 
   // 4. 되돌리기와 다시 하기
   await client.evaluate(`__tiTest.key('z','KeyZ',{ctrlKey:true}); true`);
@@ -2641,11 +2642,158 @@ async function testPracticeStaffView(client) {
   process.stdout.write('Browser checkpoint: practice staff view layers, alignment, cursor click, staff-only, T cycle, reload, handoff key, toolbar, and screenshots passed\n');
 }
 
+// TAB 프렛 글자(buildFretLabel): 연습 화면과 악보 입력 화면이 같은 모양이고 주법은 글자 색으로만 나온다.
+async function testFretLabel(client, httpPort) {
+  client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
+  const errorsBefore = client.consoleErrors.length;
+  async function loadPage(url, readyExpression) {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await client.send('Page.navigate', { url });
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, readyExpression, 8000);
+  }
+  const probeColor = `function probeColor(name){ var probe = document.createElement('span'); probe.style.color = 'var(' + name + ')'; document.body.appendChild(probe); var color = getComputedStyle(probe).color; probe.remove(); return color; }`;
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  async function saveShot(name, width, height) {
+    const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    const target = path.join(root, 'test-artifacts', name);
+    fs.writeFileSync(target, Buffer.from(shot.data, 'base64'));
+    const header = fs.readFileSync(target).subarray(0, 24);
+    assert.equal(header.readUInt32BE(16), width * 2, name + ' width');
+    assert.equal(header.readUInt32BE(20), height * 2, name + ' height');
+    process.stdout.write('Artifact: ' + target + '\n');
+  }
+
+  // (1) 연습 화면: 로망스 1부 첫 마디의 알약
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false });
+  await loadPage(`http://127.0.0.1:${httpPort}/index.html`, 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= ' + builtinSongCount + ' && window.curSong != null');
+  const practice = await client.evaluate(`(function(){
+    ${probeColor}
+    changeSongById('builtin-lv6-romance-full');
+    document.getElementById('scoreModeBothBtn').click();
+    appState.clickMode = 'off';
+    curMeasureIdx = 1; curBeatIdx = 1;
+    updateActiveCursor(1, 1, false);
+    var cell = document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="0"]');
+    var pills = Array.prototype.slice.call(cell.querySelectorAll('.tab-fret-pill'));
+    function byTop(top){ return pills.filter(function(pill){ return pill.style.top === top; })[0]; }
+    var melody = byTop('0%'), bass = byTop('100%');
+    var inactive = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell.tab-cell:not(.active-beat) .fret-label.is-apoyando'))[0];
+    return {
+      melodyClass: melody && melody.querySelector('.fret-label').className,
+      melodyLh: melody && melody.querySelector('sup.fret-lh') && melody.querySelector('sup.fret-lh').textContent,
+      melodyRh: melody && melody.querySelector('sub.fret-rh') && melody.querySelector('sub.fret-rh').textContent,
+      melodyText: melody && melody.textContent,
+      bassClass: bass && bass.querySelector('.fret-label').className,
+      bassText: bass && bass.textContent,
+      bassHasFingering: !!(bass && bass.querySelector('.fret-fing')),
+      apoyandoColor: inactive && getComputedStyle(inactive).color, near: probeColor('--near'),
+      apoyandoWeight: inactive && getComputedStyle(inactive).fontWeight,
+      legacyNodes: document.querySelectorAll('#measuresGrid .tab-cell-lh, #measuresGrid .tab-note-rh').length,
+      anyGlyph: Array.prototype.some.call(document.querySelectorAll('#measuresGrid .tab-fret-pill'), function(pill){ return /[!~(]/.test(pill.textContent); })
+    };
+  })()`);
+  assert.ok(/\bfret-label\b/.test(practice.melodyClass) && /\bis-apoyando\b/.test(practice.melodyClass), 'the written apoyando makes the first-string pill is-apoyando: ' + practice.melodyClass);
+  assert.equal(practice.melodyLh, '4', 'the pill shows the left-hand finger as a superscript');
+  assert.equal(practice.melodyRh, 'a', 'the pill shows the right-hand finger as a subscript');
+  assert.ok(/^\d+4a$/.test(practice.melodyText), 'the pill text is the fret then the two small figures, with no ! or parentheses: ' + practice.melodyText);
+  assert.ok(/\bis-tirando\b/.test(practice.bassClass), 'the written tirando makes the sixth-string bass pill is-tirando: ' + practice.bassClass);
+  assert.equal(practice.bassHasFingering, true, 'the bass pill keeps its right-hand finger');
+  assert.ok(practice.bassText.indexOf('(') < 0 && practice.bassText.indexOf('~') < 0, 'the bass pill has no tilde or parentheses: ' + practice.bassText);
+  assert.equal(practice.anyGlyph, false, 'no TAB pill draws !, ~ or parentheses');
+  assert.equal(practice.legacyNodes, 0, 'the old parenthesis and right-hand nodes are gone');
+  assert.equal(practice.apoyandoColor, practice.near, 'an apoyando fret label is drawn in the --near color');
+  assert.equal(practice.apoyandoWeight, '700', 'an apoyando fret label is bold');
+
+  // (2) 재생 중 활성 박: 알약 안 글자가 알약 글자색을 따른다
+  const playing = await client.evaluate(`(async function(){
+    document.getElementById('compactPlayBtn').click();
+    var started = Date.now();
+    while (Date.now() - started < 6000 && !(curBeatIdx >= 1 || curMeasureIdx >= 1)) await new Promise(function(resolve){ setTimeout(resolve, 30); });
+    var pills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell.tab-cell.active-beat .tab-fret-pill'));
+    var result = pills.map(function(pill){
+      var pillColor = getComputedStyle(pill).color;
+      return Array.prototype.slice.call(pill.querySelectorAll('.fret-label, .fret-lh, .fret-rh')).map(function(node){ return getComputedStyle(node).color === pillColor; });
+    });
+    return { pillCount: pills.length, allFollow: result.every(function(list){ return list.length > 0 && list.every(Boolean); }), withArt: pills.filter(function(pill){ return !!pill.querySelector('.is-apoyando, .is-tirando'); }).length };
+  })()`);
+  assert.ok(playing.pillCount > 0 && playing.withArt > 0, 'a playing beat has pills with written articulation');
+  assert.equal(playing.allFollow, true, 'inside the active beat the fret label and its figures follow the pill text color');
+  await client.evaluate(`document.getElementById('scoreToolbar').scrollIntoView({ block: 'start', inline: 'nearest' }); true`);
+  await saveShot('practice-fret-label.png', 1280, 900);
+  await client.evaluate(`(function(){ if (isPlaying) document.getElementById('compactPlayBtn').click(); appState.clickMode = 'all'; return true; })()`);
+
+  // (3) 악보 입력 화면
+  const inputUrl = `http://127.0.0.1:${httpPort}/score-input.html`;
+  await client.evaluate(`(function(){ Object.keys(localStorage).filter(function(key){ return key.indexOf('gs.tabInput.') === 0; }).forEach(function(key){ localStorage.removeItem(key); }); return true; })()`);
+  await loadPage(inputUrl, 'document.readyState === "complete" && document.querySelectorAll("#tiMeasures .ti-measure").length >= 1');
+  await client.evaluate(`window.__tiTest = {
+    pos: function(m, c, s, str){ return document.querySelector('.ti-slot[data-m="'+m+'"][data-c="'+c+'"][data-s="'+s+'"] .ti-pos[data-str="'+str+'"]'); },
+    fret: function(str, fret){ return document.querySelector('.ti-fret[data-str="'+str+'"][data-fret="'+fret+'"]'); },
+    attr: function(name, value){ return document.querySelector('[data-attr="'+name+'"][data-value="'+value+'"]'); },
+    text: function(){ return document.getElementById('tiScoreText').value; }
+  }; true`);
+  const input = await client.evaluate(`(function(){
+    ${probeColor}
+    var t = __tiTest;
+    t.pos(0,0,0,1).click(); t.fret(1,3).click();
+    t.attr('lh','1').click(); t.attr('rh','i').click(); t.attr('art','!').click();
+    function label(){ return t.pos(0,0,0,1).querySelector('.ti-pos-label'); }
+    var apo = label();
+    var out = { apoClass: apo.className, apoText: apo.textContent, apoColor: getComputedStyle(apo).color, apoLh: apo.querySelector('sup.fret-lh').textContent, apoRh: apo.querySelector('sub.fret-rh').textContent,
+      near: probeColor('--near'), muted: probeColor('--muted'), off: probeColor('--off'), scoreText: t.text().split('\\n')[0] };
+    out.buttonApo = getComputedStyle(t.attr('art','!')).color;
+    out.buttonTir = getComputedStyle(t.attr('art','~')).color;
+    t.attr('art','~').click();
+    var tir = label();
+    out.tirClass = tir.className; out.tirColor = getComputedStyle(tir).color; out.tirText = tir.textContent; out.tirScoreText = t.text().split('\\n')[0];
+    t.attr('art','!').click();
+    document.getElementById('tiUncertainBtn').click();
+    var unsure = label();
+    out.unsureClass = unsure.className; out.unsureColor = getComputedStyle(unsure).color; out.unsureParent = t.pos(0,0,0,1).className;
+    document.getElementById('tiUncertainBtn').click();
+    return out;
+  })()`);
+  assert.ok(/\bis-apoyando\b/.test(input.apoClass) && /\bti-pos-label\b/.test(input.apoClass), 'choosing apoyando marks the tab label is-apoyando: ' + input.apoClass);
+  assert.ok(input.apoText.indexOf('!') < 0 && input.apoText.indexOf('~') < 0, 'the tab label has no articulation glyph: ' + input.apoText);
+  assert.deepEqual([input.apoLh, input.apoRh], ['1', 'i'], 'the tab label shows the left hand above and the right hand below');
+  assert.equal(input.apoColor, input.near, 'the apoyando label is drawn in the --near color');
+  assert.ok(input.scoreText.indexOf('!') >= 0, 'the score text still carries the ! mark: ' + input.scoreText);
+  assert.ok(/\bis-tirando\b/.test(input.tirClass) && input.tirColor === input.muted, 'tirando is drawn in the --muted color: ' + input.tirClass);
+  assert.ok(input.tirText.indexOf('~') < 0 && input.tirScoreText.indexOf('~') >= 0, 'tirando draws no glyph but the score text keeps ~');
+  assert.equal(input.buttonApo, input.near, 'the apoyando button text is drawn in the --near color');
+  assert.equal(input.buttonTir, input.muted, 'the tirando button text is drawn in the --muted color');
+  assert.ok(/\bis-apoyando\b/.test(input.unsureClass) && /\bis-uncertain\b/.test(input.unsureParent), 'a checked note keeps its articulation class');
+  assert.equal(input.unsureColor, input.off, 'a check mark (red) beats the articulation color');
+
+  // 입력 화면 스크린샷: 로망스 1부
+  const romance = builtinSongsJson.find(item => item.id === 'builtin-lv6-romance-full');
+  await client.evaluate(`(function(){
+    var song = ${JSON.stringify({ title: romance.title, beats: romance.beats, bpm: romance.bpm, badge: romance.badge, lines: romance.lines })};
+    var tsv = formatSongToSheetTsv(song.title, song.beats, song.bpm, song.badge || '', song.lines);
+    window.confirm = function(){ return true; };
+    document.getElementById('tiImportBtn').click();
+    var area = document.getElementById('tiImportText');
+    area.value = tsv;
+    area.dispatchEvent(new Event('input', { bubbles:true }));
+    document.getElementById('tiImportApplyBtn').click();
+    document.getElementById('tiMeasures').scrollIntoView({ block: 'start' });
+    return true;
+  })()`);
+  assert.equal(await client.evaluate(`document.getElementById('tiImportError').textContent`), '', 'the Romance import has no error');
+  assert.ok(await client.evaluate(`document.querySelectorAll('#tiMeasures .fret-label.is-apoyando').length > 0 && document.querySelectorAll('#tiMeasures .fret-label.is-tirando').length > 0`), 'the imported Romance shows both articulation colors');
+  await saveShot('score-input-fret-label.png', 1280, 900);
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the fret label steps run without console errors');
+  client.dialogHandler = null;
+  process.stdout.write('Browser checkpoint: shared fret label in practice and score input (articulation colors, active beat, check mark, screenshots) passed\n');
+}
+
 async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=staff-view-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=fret-label-1')), 'all app scripts use the shared revision');
   const htmlIds = ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'temporary score UI includes #'+id);});
   assert.doesNotMatch(fs.readFileSync(path.join(root,'index.html'),'utf8'),/\.beat-cell\.arp-(?:melody|sub)\b/,'obsolete articulation color rules are removed from the score stylesheet');
@@ -3125,6 +3273,7 @@ async function main() {
     await testPracticeStaffView(cdp);
     await testScoreInputScreen(cdp, httpPort);
     await testScoreInputStaff(cdp, httpPort);
+    await testFretLabel(cdp, httpPort);
 
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');

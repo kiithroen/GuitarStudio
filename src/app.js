@@ -336,6 +336,18 @@ function curCapo(){
     staffView.observer.observe(grid);
   }
 
+  // TAB 알약 안 프렛 글자. 왼손·오른손 운지와 주법은 원문에 적힌 것만 넣는다(buildFretLabel 이 모양을 만든다).
+  // 유지 알약(고스트)은 이미 친 음의 표시라 오른손 글자는 넣지 않는다(skipRightHand).
+  // 유지 알약(isHeld)은 다시 치지 않으니 오른손과 주법 색을 빼고 왼손만 남긴다.
+  function appendPillFretLabel(pill, note, token, componentIndex, isHeld){
+    pill.appendChild(buildFretLabel({
+      fret: note.fret != null ? note.fret : 0,
+      lh: getExplicitLeftHand(token, componentIndex),
+      rh: isHeld ? null : (getExplicitRightHand(token, componentIndex) || null),
+      art: !isHeld && note.explicitArticulation && (note.articulation === 'apoyando' || note.articulation === 'tirando') ? note.articulation : null
+    }));
+  }
+
   function renderStructuredMeasures(){
     var grid = $('#measuresGrid');
     grid.textContent = '';
@@ -513,15 +525,7 @@ function curCapo(){
                 var heldPill = document.createElement('span');
                 heldPill.className = 'tab-fret-pill note-fret tab-held-fret';
                 heldPill.style.top = ((heldNote.str - 1) * 20) + '%';
-                heldPill.textContent = String(heldNote.fret != null ? heldNote.fret : 0);
-                var heldToken = heldNote.tok || heldNote.customTok || heldNote.en;
-                var heldFinger = getExplicitLeftHand(heldToken);
-                if (heldFinger != null){
-                  var heldLh = document.createElement('span');
-                  heldLh.className = 'tab-cell-lh';
-                  heldLh.textContent = '(' + heldFinger + ')';
-                  heldPill.appendChild(heldLh);
-                }
+                appendPillFretLabel(heldPill, heldNote, heldNote.tok || heldNote.customTok || heldNote.en, undefined, true);
                 gridEl.appendChild(heldPill);
               });
             }
@@ -531,15 +535,7 @@ function curCapo(){
                 var cPill = document.createElement('span');
                 cPill.className = 'tab-fret-pill note-fret';
                 cPill.style.top = ((cn.str - 1) * 20) + '%';
-                cPill.textContent = String(cn.fret != null ? cn.fret : 0);
-                var explicitLH = getExplicitLeftHand(beatToken, cnIdx);
-                if (explicitLH != null){
-                  var clh = document.createElement('span');
-                  clh.className = 'tab-cell-lh';
-                  clh.textContent = '(' + explicitLH + ')';
-                  cPill.appendChild(clh);
-                }
-                appendExplicitRightHand(cPill, beatToken, cnIdx);
+                appendPillFretLabel(cPill, cn, beatToken, cnIdx);
                 gridEl.appendChild(cPill);
               }
             });
@@ -556,15 +552,7 @@ function curCapo(){
                 pill.style.top = ((note.str - 1) * 20) + '%';
                 pill.style.left = leftPct;
                 pill.style.transform = transform || 'translate(-50%, -50%)';
-                pill.textContent = String(note.fret != null ? note.fret : 0);
-                var explicitLH = getExplicitLeftHand(subToken, componentIndex);
-                if (explicitLH != null){
-                  var lh = document.createElement('span');
-                  lh.className = 'tab-cell-lh';
-                  lh.textContent = '(' + explicitLH + ')';
-                  pill.appendChild(lh);
-                }
-                appendExplicitRightHand(pill, subToken, componentIndex);
+                appendPillFretLabel(pill, note, subToken, componentIndex);
                 gridEl.appendChild(pill);
               }
               if (sn.kind === 'hold' || sn.kind === 'rest' || sn.tok === '-' || GuitarNotation.isRestToken(sn.tok)){
@@ -589,15 +577,7 @@ function curCapo(){
                     heldPill.style.top = ((heldNote.str - 1) * 20) + '%';
                     heldPill.style.left = leftPct;
                     heldPill.style.transform = 'translate(-50%, -50%)';
-                    heldPill.textContent = String(heldNote.fret != null ? heldNote.fret : 0);
-                    var heldToken = heldNote.tok || heldNote.customTok || heldNote.en;
-                    var heldFinger = getExplicitLeftHand(heldToken);
-                    if (heldFinger != null){
-                      var heldLh = document.createElement('span');
-                      heldLh.className = 'tab-cell-lh';
-                      heldLh.textContent = '(' + heldFinger + ')';
-                      heldPill.appendChild(heldLh);
-                    }
+                    appendPillFretLabel(heldPill, heldNote, heldNote.tok || heldNote.customTok || heldNote.en, undefined, true);
                     gridEl.appendChild(heldPill);
                   });
                 }
@@ -618,15 +598,7 @@ function curCapo(){
                 mPill.style.top = ((sn.str - 1) * 20) + '%';
                 mPill.style.left = leftPct;
                 mPill.style.transform = 'translate(-50%, -50%)';
-                mPill.textContent = String(sn.fret != null ? sn.fret : 0);
-                var explicitLH = getExplicitLeftHand(subToken, 0);
-                if (explicitLH != null){
-                  var mlh = document.createElement('span');
-                  mlh.className = 'tab-cell-lh';
-                  mlh.textContent = '(' + explicitLH + ')';
-                  mPill.appendChild(mlh);
-                }
-                appendExplicitRightHand(mPill, subToken, 0);
+                appendPillFretLabel(mPill, sn, subToken, 0);
                 gridEl.appendChild(mPill);
               }
             });
@@ -645,15 +617,7 @@ function curCapo(){
               if (diffFret){
                 bPill.style.left = '38%';
               }
-              bPill.textContent = String(effBass.fret != null ? effBass.fret : 0);
-              var bassLH = getExplicitLeftHand(beatToken, 0);
-              if (bassLH != null){
-                var blh = document.createElement('span');
-                blh.className = 'tab-cell-lh';
-                blh.textContent = '(' + bassLH + ')';
-                bPill.appendChild(blh);
-              }
-              appendExplicitRightHand(bPill, beatToken, 0);
+              appendPillFretLabel(bPill, effBass, beatToken, 0);
               gridEl.appendChild(bPill);
             }
 
@@ -666,15 +630,7 @@ function curCapo(){
                 if (diffFret){
                   mPill.style.left = '62%';
                 }
-                mPill.textContent = String(b.fret != null ? b.fret : 0);
-                var melodyLH = getExplicitLeftHand(beatToken, b.chordNotes && b.chordNotes.length >= 2 ? 1 : undefined);
-                if (melodyLH != null){
-                  var mlh = document.createElement('span');
-                  mlh.className = 'tab-cell-lh';
-                  mlh.textContent = '(' + melodyLH + ')';
-                  mPill.appendChild(mlh);
-                }
-                appendExplicitRightHand(mPill, beatToken, b.chordNotes && b.chordNotes.length >= 2 ? 1 : 0);
+                appendPillFretLabel(mPill, b, beatToken, b.chordNotes && b.chordNotes.length >= 2 ? 1 : 0);
                 gridEl.appendChild(mPill);
               }
             } else if (!hasMel && !hasBass){

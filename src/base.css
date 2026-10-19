@@ -79,3 +79,13 @@ h3{margin:0;font-size:14.5px;font-weight:600}
 .badge{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;display:inline-flex;align-items:center}
 .badge.accent{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
 .badge.warn{color:var(--off);border-color:var(--off);background:var(--off-soft);font-weight:700}
+
+/* TAB 프렛 글자(buildFretLabel): 프렛 숫자, 오른쪽 위 왼손 운지, 오른쪽 아래 오른손 글자. 주법은 글자 색. 규칙은 Docs/ui.md 의 TAB과 지판 */
+.fret-label{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+.fret-fing{display:inline-flex;flex-direction:column;justify-content:space-between;height:17px;margin-left:1px;line-height:1}
+.fret-lh,.fret-rh{vertical-align:baseline;font-weight:600;color:var(--muted)}
+.fret-lh{font-size:.65em;margin-bottom:auto}
+.fret-rh{font-size:9px;margin-top:auto}
+.fret-label.is-apoyando{color:var(--near);font-weight:700}
+.fret-label.is-tirando{color:var(--muted)}
+.fret-label.is-apoyando .fret-lh,.fret-label.is-apoyando .fret-rh,.fret-label.is-tirando .fret-lh,.fret-label.is-tirando .fret-rh{color:inherit}

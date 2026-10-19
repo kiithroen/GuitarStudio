@@ -211,16 +211,9 @@
     pos.classList.add('has-note');
     if (note.uncertain) pos.classList.add('is-uncertain');
     pos.title = noteTitle(str, note);
-    // 주법은 프렛 왼쪽 작은 글자, 왼손 운지는 오른쪽 위, 오른손은 오른쪽 아래. 위·아래 첨자는 같은 가로 자리에 쌓아 폭이 하나만큼만 는다.
-    var label = el('span', 'ti-pos-label');
-    if (note.art) label.appendChild(el('span', 'ti-art', note.art));
-    label.appendChild(document.createTextNode(String(note.fret)));
-    if (note.lh != null || note.rh){
-      var fing = el('span', 'ti-fing');
-      if (note.lh != null) fing.appendChild(el('sup', 'ti-lh', String(note.lh)));
-      if (note.rh) fing.appendChild(el('sub', 'ti-rh', note.rh));
-      label.appendChild(fing);
-    }
+    // 프렛 글자 모양은 연습 화면과 같은 buildFretLabel 이 만든다. 주법은 기호 대신 글자 색(아포얀도 주황 굵게, 티란도 회색).
+    var label = buildFretLabel({ fret: note.fret, lh: note.lh, rh: note.rh, art: articulationName(note.art) });
+    label.classList.add('ti-pos-label');
     pos.appendChild(label);
     return pos;
   }

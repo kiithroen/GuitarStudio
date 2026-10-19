@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=staff-view-1">
+<link rel="stylesheet" href="src/base.css?v=fret-label-1">
 <style>
 #sheetLoadStatus{margin-top:8px;padding:7px 11px;border-radius:8px;border:1px solid var(--off);background:var(--off-soft);color:var(--off);font-weight:600}
 
@@ -169,15 +169,13 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .tab-cell-en{font-family:var(--font-num);font-weight:800;color:var(--accent);font-size:11px;letter-spacing:-0.2px}
 .beat-cell.tab-cell.active-beat .tab-cell-solfege{color:var(--accent)}
 .beat-cell.tab-cell.active-beat .tab-cell-en{color:var(--accent);opacity:1}
-.beat-cell.tab-cell.active-beat .tab-note-rh{color:inherit}
 .tab-cell-rh{font-family:var(--font-num);font-weight:700;color:var(--near);font-size:9.5px}
-.tab-note-rh{color:var(--muted);font-size:10px;font-family:var(--font-num);margin-left:3px}
 .tab-cell-grid{position:relative;width:100%;height:90px;margin-top:8px;flex-shrink:0}
 .tab-fret-pill{position:absolute;left:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:16px;padding:0 2.5px;border-radius:4px;font-family:var(--font-num);font-size:11.5px;font-weight:800;line-height:1;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.08);z-index:2;white-space:nowrap}
 .tab-fret-pill.note-fret{color:var(--fg);border-color:rgba(45,76,155,.45)}
 .tab-fret-pill.tab-held-fret{opacity:.68;border-style:dashed;box-shadow:none}
 .beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret{background:var(--accent);color:#fff;border-color:var(--accent)}
-.tab-cell-lh{font-size:9px;font-weight:700;margin-left:1px;opacity:.85}
+.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret .fret-label,.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret .fret-lh,.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret .fret-rh{color:inherit}
 .tab-rest-dash{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:var(--font-num);font-size:13px;color:var(--muted);font-weight:700}
 .tab-staff-layer,.tab-staff-head{display:none}
 /* 오선 층(보기 '둘 다'·'오선'): 박 셀을 오선 높이(--staff-h)만큼 위로 늘리고 TAB 내용을 그만큼 아래로 민다. 규칙은 Docs/staff-notation.md 의 연습 화면 절 */
@@ -815,6 +813,7 @@ body.practice-compact .fretboard{
         <li><b>마디 클릭:</b> 해당 마디부터 연습 시작 위치 지정</li>
         <li><b>Shift + 마디 클릭:</b> 구간 반복의 끝 마디 지정</li>
         <li><b>박자(음표) 클릭:</b> 해당 박자의 기타 소리 미리 듣기 및 실시간 지판 운지 확인</li>
+        <li><b>타브 숫자 색:</b> 주황은 악보에 적힌 아포얀도(!), 회색은 티란도(~)</li>
       </ul>
     </div>
   </div>
@@ -921,23 +920,23 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=staff-view-1"></script>
-<script src="src/app-state.js?v=staff-view-1"></script>
-<script src="src/notation.js?v=staff-view-1"></script>
-<script src="src/rhythm.js?v=staff-view-1"></script>
-<script src="src/parser.js?v=staff-view-1"></script>
-<script src="src/staff-layout.js?v=staff-view-1"></script>
-<script src="src/staff-svg.js?v=staff-view-1"></script>
-<script src="src/score-drafts.js?v=staff-view-1"></script>
-<script src="src/score.js?v=staff-view-1"></script>
-<script src="src/audio.js?v=staff-view-1"></script>
-<script src="src/guide.js?v=staff-view-1"></script>
-<script src="src/image-analysis.js?v=staff-view-1"></script>
-<script src="src/fretboard.js?v=staff-view-1"></script>
-<script src="src/score-ui.js?v=staff-view-1"></script>
-<script src="src/sheets.js?v=staff-view-1"></script>
-<script src="src/score-prompt.js?v=staff-view-1"></script>
-<script src="src/score-editor.js?v=staff-view-1"></script>
-<script src="src/app.js?v=staff-view-1"></script>
+<script src="src/storage.js?v=fret-label-1"></script>
+<script src="src/app-state.js?v=fret-label-1"></script>
+<script src="src/notation.js?v=fret-label-1"></script>
+<script src="src/rhythm.js?v=fret-label-1"></script>
+<script src="src/parser.js?v=fret-label-1"></script>
+<script src="src/staff-layout.js?v=fret-label-1"></script>
+<script src="src/staff-svg.js?v=fret-label-1"></script>
+<script src="src/score-drafts.js?v=fret-label-1"></script>
+<script src="src/score.js?v=fret-label-1"></script>
+<script src="src/audio.js?v=fret-label-1"></script>
+<script src="src/guide.js?v=fret-label-1"></script>
+<script src="src/image-analysis.js?v=fret-label-1"></script>
+<script src="src/fretboard.js?v=fret-label-1"></script>
+<script src="src/score-ui.js?v=fret-label-1"></script>
+<script src="src/sheets.js?v=fret-label-1"></script>
+<script src="src/score-prompt.js?v=fret-label-1"></script>
+<script src="src/score-editor.js?v=fret-label-1"></script>
+<script src="src/app.js?v=fret-label-1"></script>
 </body>
 </html>

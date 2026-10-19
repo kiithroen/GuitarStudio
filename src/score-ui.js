@@ -2,14 +2,32 @@
 
 var RIGHT_HAND_NAMES = { p: '엄지', i: '검지', m: '중지', a: '약지' };
 
-function appendExplicitRightHand(parent, token, componentIndex){
-  var finger = getExplicitRightHand(token, componentIndex);
-  if (!finger) return;
-  var span = document.createElement('span');
-  span.className = 'tab-note-rh';
-  span.textContent = finger;
-  span.title = '오른손 ' + finger + ' (' + RIGHT_HAND_NAMES[finger] + ')';
-  parent.appendChild(span);
+// TAB 프렛 글자 하나. 연습 화면 알약과 악보 입력 화면 칸이 같이 쓰는 유일한 생성 함수다.
+// spec = {fret, lh: null|0~4, rh: null|'p'|'i'|'m'|'a', art: null|'apoyando'|'tirando'}
+function buildFretLabel(spec){
+  var label = document.createElement('span');
+  label.className = 'fret-label' + (spec.art === 'apoyando' ? ' is-apoyando' : (spec.art === 'tirando' ? ' is-tirando' : ''));
+  label.appendChild(document.createTextNode(String(spec.fret)));
+  var hasLh = spec.lh != null;
+  if (hasLh || spec.rh){
+    var fing = document.createElement('span');
+    fing.className = 'fret-fing';
+    if (hasLh){
+      var sup = document.createElement('sup');
+      sup.className = 'fret-lh';
+      sup.textContent = String(spec.lh);
+      fing.appendChild(sup);
+    }
+    if (spec.rh){
+      var sub = document.createElement('sub');
+      sub.className = 'fret-rh';
+      sub.textContent = spec.rh;
+      sub.title = '오른손 ' + spec.rh + ' (' + RIGHT_HAND_NAMES[spec.rh] + ')';
+      fing.appendChild(sub);
+    }
+    label.appendChild(fing);
+  }
+  return label;
 }
 
 function formatChordRightHandLabel(token, notes){
