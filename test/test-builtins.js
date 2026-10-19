@@ -14,6 +14,13 @@ const melodyPracticeIds = [
   'builtin-lv4-amazinggrace', 'builtin-lv4-greensleeves'
 ];
 
+// 원본 MIDI에서 변환한 곡: 운지·줄 번호가 없는 선율/저음 전사라서 아래 앱 운지 제안 검사 대상이 아니다.
+const convertedIds = [
+  'builtin-mary-lamb', 'builtin-sor-op60-01', 'builtin-carulli-op241-01', 'builtin-carulli-op241-05',
+  'builtin-giuliani-op50-01', 'builtin-carcassi-op60-03', 'builtin-carcassi-op60-07',
+  'builtin-sor-op35-22', 'builtin-tarrega-adelita'
+];
+
 assert.ok(songs.length > 0, 'catalog is not empty');
 assert.equal(new Set(songs.map(song => song.id)).size, songs.length, 'built-in ids are unique');
 assert.equal(songById.has('builtin-lv3-arirang'), false, 'Arirang is absent from the built-in catalog');
@@ -39,8 +46,9 @@ for (const song of songs){
   }
   const parsed = parser.parseScore(song.lines, song.beats);
   assert.deepEqual(parsed.errors, [], `${song.id} parses without score errors`);
-  assert.match(song.badge, /앱 (운지|연습용) 제안/, `${song.id} labels the app's fingering as a proposal`);
+  if (!convertedIds.includes(song.id)) assert.match(song.badge, /앱 (운지|연습용) 제안/, `${song.id} labels the app's fingering as a proposal`);
   assert.doesNotMatch(`${song.title} ${song.badge}`, /원곡 그대로|원곡 완곡|원곡 완결|정통 스코어|완벽 구현|전곡/, `${song.id} does not overstate source fidelity`);
+  if (convertedIds.includes(song.id)) continue;
   for (const line of song.lines){
     const scoreText = line.split('|', 1)[0].replace(/^\s*\[[^\]]*\]\s*/, '');
     for (const beat of parser.tokenizeMeasureBeats(scoreText)) for (const part of beat.split('/')){
@@ -53,6 +61,20 @@ for (const song of songs){
       }
     }
   }
+}
+
+for (const id of convertedIds){
+  const song = songById.get(id);
+  assert.ok(song, `converted score ${id} exists`);
+  assert.ok(Number.isInteger(song.level) && song.level >= 1 && song.level <= 5, `${id} level is between 1 and 5`);
+  const checked = parser.validateScore(song.lines.join('\n'), song.beats);
+  assert.deepEqual(checked.errors, [], `${id} has no score errors`);
+  assert.deepEqual(checked.warnings, [], `${id} has no score warnings`);
+  for (const line of song.lines) assert.ok(!line.split('|', 1)[0].includes('?'), `${id} has no confirmation mark: ${line}`);
+}
+const catalogLevels = songs.map(song => song.level);
+for (let index = 1; index < catalogLevels.length; index++){
+  assert.ok(catalogLevels[index] >= catalogLevels[index - 1], `songs.json keeps level order at ${songs[index].id}`);
 }
 
 for (const id of melodyPracticeIds){
