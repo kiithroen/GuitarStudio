@@ -154,6 +154,7 @@ const SNIPPETS = [
   { find: '`C4{lf 2}.4`', tex: HEADER + 'C4{lf 2}.4 |', check: function(score){ assert.equal(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].leftHandFinger, alphaTab.model.Fingers.IndexFinger); } },
   { find: '`(0.6 2.4).4 {ad ch "Am" txt "메모"}`', tex: HEADER + '(0.6 2.4).4 {ad ch "Am" txt "메모"} |', check: function(score){ assert.equal(score.tracks[0].staves[0].bars[0].voices[0].beats[0].text, '메모'); } },
   { find: '`0.1{h}.8 2.1.8`', tex: HEADER + '0.1{h}.8 2.1.8 |', check: function(score){ assert.equal(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].isHammerPullOrigin, true); } },
+  { find: '`0.1.4 0.1{t h}.4 2.1.2`', tex: HEADER + '0.1.4 0.1{t h}.4 2.1.2 |', check: function(score){ const beats = score.tracks[0].staves[0].bars[0].voices[0].beats; assert.equal(beats[0].notes[0].isHammerPullOrigin, false); assert.equal(beats[1].notes[0].isTieDestination, true); assert.equal(beats[1].notes[0].isHammerPullOrigin, true); assert.equal(beats[1].notes[0].hammerPullDestination, beats[2].notes[0]); } },
   { find: '`A3{slur s1}.16 G3{slur s1}.16`', tex: HEADER + 'A3{slur s1}.16 G3{slur s1}.16 C4.8 |', check: function(score){ const beats = score.tracks[0].staves[0].bars[0].voices[0].beats; assert.equal(beats[0].notes[0].isSlurOrigin, true); assert.equal(beats[1].notes[0].isSlurDestination, true); assert.equal(beats[1].notes[0].slurOrigin, beats[0].notes[0]); } },
   { find: '`\\displaytranspose 12`', tex: '\\title "t" \\tempo (60) \\ts (4 4)\n\\displaytranspose 12\nC4.1 |', check: function(score){ assert.equal(score.tracks[0].staves[0].displayTranspositionPitch, -12); assert.equal(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].realValue, 60); } },
   { find: '`3.2{sl}.4 5.2.4`', tex: HEADER + '3.2{sl}.4 5.2.4 |', check: function(score){ assert.equal(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].slideOutType, alphaTab.model.SlideOutType.Legato); } },
@@ -221,13 +222,14 @@ const REQUIRED = [
   ['\\title', 'title'], ['\\notices', 'notices'], [' · ', 'notices joiner'], ['\\tempo (', 'tempo'], ['4분음표 기준', 'tempo is quarter based'], ['\\tempo (64)', 'default tempo'], ['템포 표기 없음(64 가정)', 'default tempo note'],
   ['\\ts (', 'time signature'], ['\\capo', 'capo'], ['\\tuning', 'tuning'],
   // 3 마디
-  ['`|`로 나눠', 'bars split by |'], ['\\ro', 'repeat open'], ['\\rc', 'repeat close'], ['\\ae', 'alternate ending'], ['\\ac', 'anacrusis'], ['박자표가 바뀌면', 'a mid-song meter change is written with \\ts, not filled with rests'], ['\\section', 'section'], ['\\jump', 'jump'], ['펼치지 말고', 'do not expand repeats'], ['(with Repeat)·(반복 있음)', 'D.S. with Repeat'], ['세뇨 옆에 적혀 있어도', 'with Repeat beside the segno goes on the D.S. bar'], ['al Coda·al Fine이 인쇄되지 않아도', 'D.S. without al Coda still jumps to the coda'],
+  ['`|`로 나눠', 'bars split by |'], ['못갖춘마디(\\ac 를 단 첫 마디)와 원본에서 짧게 끝나는 마지막 마디는 적힌 길이대로 적고 쉼으로 채우지 마', 'the bar-length sum rule has an exception for the pickup bar and a short last bar'], ['\\ro', 'repeat open'], ['\\rc', 'repeat close'], ['\\ae', 'alternate ending'], ['\\ac', 'anacrusis'], ['박자표가 바뀌면', 'a mid-song meter change is written with \\ts, not filled with rests'], ['\\section', 'section'], ['\\jump', 'jump'], ['펼치지 말고', 'do not expand repeats'], ['(with Repeat)·(반복 있음)', 'D.S. with Repeat'], ['세뇨 옆에 적혀 있어도', 'with Repeat beside the segno goes on the D.S. bar'], ['al Coda·al Fine이 인쇄되지 않아도', 'D.S. without al Coda still jumps to the coda'],
   // 4 음
   ['프렛.줄', 'fret.string'], ['1번 줄이 가장 높은 줄', 'string 1 is the highest'], ['음이름+옥타브', 'note name plus octave'], ['한 옥타브 높게', 'guitar staff is written an octave up'], ['옥타브 숫자에서 1을 빼', 'minus one octave'], ['`#`·`b`', 'accidentals'], ['추측해서 만들지 마', 'do not guess strings'], ['섞지 마', 'do not mix fretted and named notes'],
   // 5 길이·묶음
   ['`.1` 온음표', 'whole note'], ['`.32` 32분음표', '32nd note'], ['`{d}`', 'dotted'], ['`{tu 3}`', 'triplet'], ['`{t}`', 'tie'], ['`\\voice`', 'voices'], ['첫째 성부에만', 'marks go to the first voice'],
   // 6 주법
   ['`{h}`', 'hammer-on/pull-off'], ['`{sl}`', 'slide'], ['`{nh}`', 'natural harmonic'], ['`{ad}`', 'roll down arrow'], ['`{slur s1}`', 'slur pair for named notes'], ['음이름 음에는', 'no {h} on named notes'], ['\\displaytranspose 12', 'display transpose for named-note songs'], ['두 성부의 그 박에 모두', 'a roll across two voices goes on both voices'], ['`{au}`', 'roll up arrow'], ['`{gr}`', 'grace note'], ['`{fermata medium}`', 'fermata'],
+  ['붙임줄의 마지막 토막에 달아', 'a hammer-on/pull-off/slide that starts from a tied note goes on the last piece of the tie'],
   ['`{lf 2}`~`{lf 5}`', 'left hand fingers'], ['`{rf 1}`~`{rf 4}`', 'right hand fingers'], ['`{ch "Am"}`', 'chord name'], ['글리산도 생략', 'glissando without a start note'], ['스트로크', 'strokes'],
   // 7 메모
   ['`{txt "…"}`', 'text memo'], ['`{txt "확인: 이유"}`', 'uncertain memo'], ['아포얀도 표시는 옮기지 마', 'no apoyando']
@@ -239,6 +241,32 @@ function requiredProblems(text){
 
 assert.deepEqual(requiredProblems(prompt), []);
 pass('the prompt keeps every rule sentence: output, header, bars and marks, notes, lengths, techniques, memos');
+
+// 마디 길이 합 규칙의 예외 문장은 [문법 4]와 [출력 전 점검] 둘 다에 있어야 한다.
+const LENGTH_EXCEPTION = '못갖춘마디(\\ac 를 단 첫 마디)와 원본에서 짧게 끝나는 마지막 마디는 적힌 길이대로 적고 쉼으로 채우지 마.';
+assert.equal(prompt.split(LENGTH_EXCEPTION).length - 1, 2, 'the exception is in both the length rule and the final check');
+promptLines.forEach(function(line){
+  if (/박자표와 같아/.test(line) && /한 마디의 길이 합|마디마다 길이 합/.test(line)) assert.ok(line.indexOf(LENGTH_EXCEPTION) >= 0, 'every bar-length rule line carries the exception: ' + line.slice(0, 40));
+});
+pass('both bar-length rules (grammar 4 and the final check) carry the pickup/short-last-bar exception');
+
+// 프로젝트 프롬프트의 새 문장: 받아쓰기 실수만 고치고 변환기가 설계상 거절하는 것은 .tex 를 바꾸지 않는다, 다른 곡의 .tsv 재생성은 괜찮다
+const PROJECT_REQUIRED = [
+  ['받아쓰기 실수', 'only transcription mistakes are fixed in the .tex'],
+  ['변환기가 설계상 거절하는 것', 'design refusals are not worked around'],
+  ['`.tex`를 원본과 다르게 바꾸지 말고 그대로 두고 채팅에 거절 이유를 적어', 'the .tex stays as the source and the refusal reason goes to the chat'],
+  ['build-scores 가 다른 곡의 .tsv 를 원본 .tex 에서 다시 만드는 것은 괜찮아', 'build-scores may rebuild other songs\' .tsv files'],
+  ['오류가 0이 되게 해', 'transcription errors are fixed until zero']
+];
+function projectRequiredProblems(text){
+  return PROJECT_REQUIRED.filter(function(entry){ return text.indexOf(entry[0]) < 0; }).map(function(entry){ return '규칙이 빠짐: ' + entry[1] + ' (' + entry[0] + ')'; });
+}
+assert.deepEqual(projectRequiredProblems(scorePrompt.buildProjectPrompt()), []);
+{
+  const lastLine = scorePrompt.PROJECT_PROMPT_LINES[scorePrompt.PROJECT_PROMPT_LINES.length - 1];
+  assert.ok(lastLine.indexOf('다시 만드는 것은 괜찮아.') >= 0 && lastLine.indexOf('다시 만드는 것은 괜찮아.') < lastLine.indexOf('그 안의 다른 파일을 지우거나 고치지 말고'), 'the allowance comes before the do-not-touch sentence in the last line');
+}
+pass('the project prompt tells the AI to fix only transcription mistakes, to leave design refusals in the chat, and allows build-scores to rebuild other songs\' .tsv files');
 
 assert.doesNotMatch(prompt, /\{\{/);
 pass('prompt has no unreplaced placeholder');
@@ -281,6 +309,18 @@ const droppedMeterRule = loadPromptMutant("    '- 곡 중간에 박자표가 바
 assert.notDeepEqual(requiredProblems(droppedMeterRule.buildScoreImagePrompt()), []);
 assert.notDeepEqual(snippetProblems(droppedMeterRule.buildScoreImagePrompt()), []);
 pass('mutants are caught: a misspelled jump name or unclosed brace in an example, a wrong effect in a rule snippet, a deleted rule row, a deleted meter-change rule');
+
+// 새 규칙 줄을 지운 사본도 걸린다: 붙임줄 마지막 토막 줄, [출력 전 점검]의 예외 문장, 프로젝트 프롬프트의 거절 문장과 허용 문장.
+const droppedTieRule = loadPromptMutant("    '- 붙임줄로 이어진 음에서 출발하는 해머링·풀링·슬라이드는 붙임줄의 마지막 토막에 달아: `0.1.4 0.1{t h}.4 2.1.2`',\n", "");
+assert.notDeepEqual(requiredProblems(droppedTieRule.buildScoreImagePrompt()), []);
+assert.notDeepEqual(snippetProblems(droppedTieRule.buildScoreImagePrompt()), []);
+const droppedCheckException = loadPromptMutant("마디마다 길이 합이 박자표와 같아? 단, 못갖춘마디(\\\\ac 를 단 첫 마디)와 원본에서 짧게 끝나는 마지막 마디는 적힌 길이대로 적고 쉼으로 채우지 마. 모든 마디가", "마디마다 길이 합이 박자표와 같아? 모든 마디가");
+assert.equal(droppedCheckException.buildScoreImagePrompt().split(LENGTH_EXCEPTION).length - 1, 1, 'the mutant keeps only the grammar-4 exception');
+const droppedRefusalRule = loadPromptMutant("변환기가 설계상 거절하는 것(비표준 조율, 격자보다 긴 마디, 표에 없는 박자 등)은 `.tex`를 원본과 다르게 바꾸지 말고 그대로 두고 채팅에 거절 이유를 적어.", "");
+assert.notDeepEqual(projectRequiredProblems(droppedRefusalRule.buildProjectPrompt()), []);
+const droppedAllowance = loadPromptMutant("build-scores 가 다른 곡의 .tsv 를 원본 .tex 에서 다시 만드는 것은 괜찮아. ", "");
+assert.notDeepEqual(projectRequiredProblems(droppedAllowance.buildProjectPrompt()), []);
+pass('mutants are caught: a deleted tied-piece rule, a deleted final-check exception, a deleted design-refusal sentence, a deleted build-scores allowance');
 
 // ---------- 우리 악보 예시(검사 도구·시트 가져오기 스크립트 시험 자료)와 음 길이 표
 

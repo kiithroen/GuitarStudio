@@ -5,6 +5,7 @@
 // 폴더 안(하위 폴더 제외) 곡.tex 마다 alphatab-to-score 변환을 돌려 곡.tsv 를 쓴다.
 // Guitar Pro 파일(곡.gp .gp3 .gp4 .gp5 .gpx)은 같은 이름의 곡.tex 가 없을 때만 첫 기타 트랙을 alphaTex 로 써서 곡.tex 를 만든 뒤 같은 길로 간다.
 // 곡.tex 가 이미 있으면 GP 는 건너뛰고(손본 원본을 덮지 않는다), GP 파일은 지우거나 고치지 않는다. --check 는 GP 도 메모리에서만 돌린다.
+// 곡.tex 가 없고 손으로 만든 곡.tsv 만 있는 GP 도 건너뛴다(곡.tex 를 만들면 이어서 곡.tsv 를 덮어쓰게 된다). 이미 있는 곡.tex 에서 만드는 곡.tsv 는 다시 쓴다.
 // TSV 한 행 6열: 제목, 칸 수, BPM, 설명, 악보, alphaTex 원본(한 줄로 편 것). --check 는 쓰지 않고 보고만 한다.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -130,6 +131,9 @@ function main(argv){
   entries.sort();
   const texNames = entries.filter(function(name){ return /\.tex$/i.test(name); });
   const texBases = new Set(texNames.map(function(name){ return path.basename(name, path.extname(name)); }));
+  // 같은 이름(확장자를 뺀 이름)의 .tsv 파일 이름. .tex 가 없는 .tsv 는 손으로 만든 것이다.
+  const tsvNames = new Map();
+  entries.filter(function(name){ return /\.tsv$/i.test(name); }).forEach(function(name){ tsvNames.set(path.basename(name, path.extname(name)), name); });
 
   let converted = 0;
   let failed = 0;
@@ -144,6 +148,11 @@ function main(argv){
     if (texBases.has(base)){
       skipped++;
       process.stdout.write('건너뜀: ' + name + ' (.tex 있음)\n');
+      return;
+    }
+    if (tsvNames.has(base)){
+      skipped++;
+      process.stdout.write('건너뜀: ' + name + ' (손으로 만든 ' + tsvNames.get(base) + ' 있음)\n');
       return;
     }
     let result;

@@ -857,11 +857,12 @@ test('command lines: score-to-alphatex and alphatab-to-score run as processes', 
 
     // 악보 검사에 걸리면 출력은 쓰되 종료 코드 1과 오류 목록
     const rangePath = path.join(dir, 'range.tex');
-    fs.writeFileSync(rangePath, '\\title "Range" \\tempo 80 \\ts (4 4)\n20.1.4 0.2.4 0.3.4 0.4.4 |\n', 'utf8');
+    // 같은 줄의 다른 프렛 화음은 STRING_COLLISION 이다(프렛 20 이상은 이제 오류가 아니라 줄 지정을 뗀 음이 된다).
+    fs.writeFileSync(rangePath, '\\title "Range" \\tempo 80 \\ts (4 4)\n(0.1 1.1).4 0.2.4 0.3.4 0.4.4 |\n', 'utf8');
     const range = run(TOOL_PATH, [rangePath]);
     assert.equal(range.code, 1);
     assert.equal(range.out.split('\t').length, 5);
-    assert.match(range.err, /GUITAR_RANGE/);
+    assert.match(range.err, /STRING_COLLISION/);
     const rangeOut = path.join(dir, 'range.tsv');
     const rangeFile = run(TOOL_PATH, [rangePath, '-o', rangeOut]);
     assert.equal(rangeFile.code, 1);
@@ -1067,11 +1068,29 @@ function gpScenarioFailures(buildScript, gpScript){
       const marked = tex.replace('\\title "두 트랙"', '\\title "손본 원본"');
       expect(marked !== tex, '표시 글을 넣을 자리가 없습니다');
       fs.writeFileSync(path.join(keepDir, '두 트랙.tex'), marked, 'utf8');
+      // 이미 있는 .tex 에서 만드는 .tsv 는 옛 것을 덮어 다시 쓴다
+      fs.writeFileSync(path.join(keepDir, '두 트랙.tsv'), 'OLD\n', 'utf8');
       const keepRun = runNode(buildScript, [keepDir]);
       expect(keepRun.out.indexOf('건너뜀: 두 트랙.gp (.tex 있음)') >= 0, '건너뜀 로그: ' + keepRun.out);
       expect(readTex(path.join(keepDir, '두 트랙.tex')) === marked, '이미 있는 .tex 가 바뀌었습니다');
       expect(keepRun.out.trimEnd().split('\n').pop() === '변환 1 · 오류 0 · 건너뜀 1', '건너뜀 판 마지막 줄: ' + keepRun.out);
+      const rewritten = readTex(path.join(keepDir, '두 트랙.tsv'));
+      expect(rewritten !== null && rewritten.indexOf('손본 원본') >= 0 && rewritten.indexOf('OLD') < 0, '.tex 에서 만드는 .tsv 는 다시 써야 합니다: ' + rewritten);
     }
+
+    // 3b) .tex 가 없고 손으로 만든 .tsv 만 있으면 .tex 를 만들지 않고 .tsv 도 건드리지 않는다
+    const handDir = path.join(root, 'hand');
+    fs.mkdirSync(handDir);
+    fs.writeFileSync(path.join(handDir, GP_NAME), GP_BYTES);
+    fs.writeFileSync(path.join(handDir, '두 트랙.tsv'), 'HAND-MADE\n', 'utf8');
+    const handRun = runNode(buildScript, [handDir]);
+    expect(handRun.out.indexOf('건너뜀: 두 트랙.gp (손으로 만든 두 트랙.tsv 있음)') >= 0, '손으로 만든 .tsv 건너뜀 로그: ' + handRun.out);
+    expect(!fs.existsSync(path.join(handDir, '두 트랙.tex')), '손으로 만든 .tsv 가 있는데 .tex 가 만들어졌습니다');
+    expect(readTex(path.join(handDir, '두 트랙.tsv')) === 'HAND-MADE\n', '손으로 만든 .tsv 가 바뀌었습니다');
+    expect(handRun.code === 0, '손으로 만든 .tsv 판 종료 코드 ' + handRun.code + ': ' + handRun.err);
+    expect(/건너뜀 [1-9]/.test(handRun.out.trimEnd().split('\n').pop()), '건너뜀 수에 더해야 합니다: ' + handRun.out);
+    const handCheck = runNode(buildScript, [handDir, '--check']);
+    expect(handCheck.out.indexOf('건너뜀: 두 트랙.gp (손으로 만든 두 트랙.tsv 있음)') >= 0 && handCheck.out.indexOf('확인: 두 트랙.gp') < 0, '--check 도 손으로 만든 .tsv 가 있으면 건너뜁니다: ' + handCheck.out);
 
     // 4) --check 는 새 파일을 만들지 않는다
     const checkDir = path.join(root, 'check');
@@ -1190,16 +1209,46 @@ test('mutant (다): overwriting an existing .tex is caught', function(){
   gpMutantFailures('overwrite', null, [['if (texBases.has(base)){', 'if (false){'], ["flag: 'wx'", "flag: 'w'"]]);
 });
 
+test('mutant (고): writing a .tex for a Guitar Pro file that has a hand-made .tsv is caught', function(){
+  gpMutantFailures('overwrites hand-made tsv', null, [['if (tsvNames.has(base)){', 'if (false){']]);
+});
+
 test('mid-song meter change: a bar shorter than the grid bar and a whole number of cells gets trailing skip cells; a longer bar or a bar that is not a whole number of cells is refused with its number and meter', function(){
   // 모자란 칸은 빈칸 _ (예제 short-bar, short-bar-rest, short-bar-repeat 가 줄 전체를 견준다). 여기서는 거절과 칸 수를 본다.
   const head = '\\title "M" \\tempo 80 \\ts (4 4)\n0.1.4 1.1.4 3.1.4 0.2.4 |\n';
   const longer = tool.convertScore(importCleanTex(head + '\\ts (5 4) 0.1.4 1.1.4 3.1.4 0.2.4 0.3.4 |\n', 'longer'), {});
   assert.equal(longer.ok, false);
   assert.match(longer.error, /곡 중간에 박자표가 바뀝니다\(2마디 5\/4\)/);
-  // 3/8 = 1.5 칸이라 칸 길이의 정수배가 아니다
-  const half = tool.convertScore(importCleanTex(head + '\\ts (3 8) 0.1.8 1.1.8 3.1.8 |\n', 'half'), {});
+  // 3/8 = 1.5 칸이라 4분음표 칸의 정수배가 아니다. 템포가 높아 8분음표 칸으로 다시 할 수 없으면(130 x 2 > 상한) 거절한다.
+  const fastHead = head.replace('\\tempo 80', '\\tempo 130');
+  const half = tool.convertScore(importCleanTex(fastHead + '\\ts (3 8) 0.1.8 1.1.8 3.1.8 |\n', 'half'), {});
   assert.equal(half.ok, false);
   assert.match(half.error, /곡 중간에 박자표가 바뀝니다\(2마디 3\/8\)/);
+  // 4/4 가 아닌 곡도 8칸으로 다시 하지 않는다
+  const threeFour = tool.convertScore(importCleanTex('\\title "T" \\tempo 80 \\ts (3 4)\n0.1.4 1.1.4 3.1.4 |\n\\ts (3 8) 0.1.8 1.1.8 3.1.8 |\n', 'three-four'), {});
+  assert.equal(threeFour.ok, false);
+  assert.match(threeFour.error, /곡 중간에 박자표가 바뀝니다\(2마디 3\/8\)/);
+  // 템포가 상한 안이면 4/4 곡의 3/8·5/8·7/8 마디는 8칸 격자로 다시 해서 받는다(8칸 설명 문구, 빈칸으로 채운 뒤쪽, 원본 박자 메모)
+  const eighths = convertTex(head + '\\ts (3 8) 0.1.8 1.1.8 3.1.8 | \\ts (5 8) 0.1.8 1.1.8 3.1.8 0.2.8 1.2.8 | \\ts (7 8) 0.1.8 1.1.8 3.1.8 0.2.8 1.2.8 3.2.8 0.3.8 |\n');
+  assert.equal(eighths.ok, true, eighths.error);
+  assert.equal(eighths.beats, 8);
+  assert.equal(eighths.bpm, 160);
+  assert.match(eighths.description, new RegExp(tool.MEMO.eightCells.replace(/[()]/g, '\\$&')));
+  assert.deepEqual(eighths.errors, []);
+  const eighthCells = function(index){ return eighths.measures[index].split(' | ')[0].replace('[-] ', '').split(' '); };
+  assert.deepEqual(eighthCells(1), [n(1, 0), n(1, 1), n(1, 3), '_', '_', '_', '_', '_']);
+  assert.deepEqual(eighthCells(2), [n(1, 0), n(1, 1), n(1, 3), n(2, 0), n(2, 1), '_', '_', '_']);
+  assert.deepEqual(eighthCells(3), [n(1, 0), n(1, 1), n(1, 3), n(2, 0), n(2, 1), n(2, 3), n(3, 0), '_']);
+  assert.match(eighths.measures[1], /원본 3\/8 마디/);
+  assert.match(eighths.measures[3], /원본 7\/8 마디/);
+  // 우리 악보 -> alphaTex -> 우리 악보: 8칸 곡의 가운데 7/8 마디(마지막 칸 빈칸)
+  const middle = converter.toAlphaTex({ title: 'M', beats: 8, bpm: 120, capo: 0, description: '', lines: ['[-] _ _ _ _ _ _ _ E4@1', '[-] E4@1 - - - - - - -', '[-] E4@1 - - - - - - _'] });
+  assert.equal(middle.error, undefined);
+  const middleBack = tool.convertScore(importCleanTex(middle.tex, 'middle'), { sourceName: 'middle.tex' });
+  assert.equal(middleBack.ok, true, middleBack.error);
+  assert.equal(middleBack.beats, 8);
+  assert.deepEqual(middleBack.errors, []);
+  assert.deepEqual(middleBack.measures.map(withoutConverterMemo), ['[-] _ _ _ _ _ _ _ E4@1', '[-] E4@1 - - - - - - -', '[-] E4@1 - - - - - - _']);
   // 3/4 마디는 4칸 중 3칸을 쓰고 1칸은 빈칸이다
   const three = convertTex(head + '\\ts (3 4) 0.1.4 1.1.4 3.1.4 |\n');
   assert.equal(three.ok, true, three.error);
@@ -1410,7 +1459,7 @@ test('mutant (k): dropping the fermata memo is caught', function(){
 });
 
 test('mutant (l): treating a string-less note in a 6-string track as stringed is caught', function(){
-  mutantCaught('stringed branch for every note', 'if (hasStrings && note.isStringed && note.string >= 1){', 'if (hasStrings){');
+  mutantCaught('stringed branch for every note', 'const stringed = hasStrings && note.isStringed && note.string >= 1;', 'const stringed = hasStrings;');
 });
 
 test('mutant (너): filling a pickup bar with rests instead of skip cells is caught', function(){
@@ -1439,6 +1488,127 @@ test('mutant (러): keeping the duplicate tokens of two voices is caught', funct
 
 test('mutant (머): writing a repeated beat text twice is caught', function(){
   mutantCaught('repeated text', '.filter(function(text, position, all){ return all.indexOf(text) === position; })', '');
+});
+
+// ---------- 리뷰에서 나온 변환기 고침(꾸밈음·쉼 뒤 슬러, n/8 마디, 붙임줄 첫 토막의 해머링, 끝마디 나머지, 높은 프렛)
+
+// 높은 프렛 음의 기대 토큰: 줄 지정 없이 음높이만 쓰고(음역 밖이면 옥타브를 옮긴다) 항상 ? 가 붙는다. 값은 파서의 개방현 표와 MAX_FRET 에서 셈한다.
+function highFretToken(str, fret){
+  let midi = parser.STRINGS[str - 1].midi + fret;
+  const highest = parser.STRINGS[0].midi + notation.MAX_FRET;
+  let shifted = false;
+  while (midi > highest){ midi -= 12; shifted = true; }
+  return { token: parser.noteNameForMidi(midi, false) + '?', shifted: shifted };
+}
+
+// 변환 결과가 기대와 어긋난 곳의 목록. 변환기(toolModule)를 바꿔 끼워 일부러 어긋난 사본을 넣을 수 있다.
+function reviewFixFailures(toolModule){
+  const failures = [];
+  const head = '\\title "R" \\tempo 80 \\ts (4 4)\n';
+  function convertText(tex){ return toolModule.convertScore(importCleanTex(tex, 'review'), { sourceName: 'review.tex' }); }
+  function expectBars(label, tex, want){
+    const result = convertText(tex);
+    if (!result.ok){ failures.push(label + ': 변환 실패 ' + result.error); return result; }
+    if (JSON.stringify(result.measures) !== JSON.stringify(want)) failures.push(label + ': 마디\n      기대 ' + want.join('\n           ') + '\n      결과 ' + result.measures.join('\n           '));
+    if (result.errors.length) failures.push(label + ': 검사 오류 ' + result.errors.map(function(error){ return error.code; }).join(','));
+    return result;
+  }
+
+  // (1) 꾸밈음이 출발점인 해머링·슬라이드: s·g 를 달지 않고 꾸밈음 메모만 남긴다(전에는 곡 처음의 s 로 INVALID_SLUR, 또는 엉뚱한 앞 음에서 출발한 슬러)
+  expectBars('꾸밈음 해머링, 마디 맨 앞', head + '3.2{h}.16 {gr} 5.2.4 0.1.4 0.1.2 |\n',
+    ['[-] ' + [n(2, 5), n(1, 0), n(1, 0), '-'].join(' ') + ' | "꾸밈음 생략"']);
+  expectBars('꾸밈음 해머링, 같은 줄 앞 음', head + '5.2.4 3.2{h}.16 {gr} 5.2.4 0.1.4 0.1.4 |\n',
+    ['[-] ' + [n(2, 5), n(2, 5), n(1, 0), n(1, 0)].join(' ') + ' | "꾸밈음 생략"']);
+  expectBars('꾸밈음 해머링, 다른 높이 앞 음', head + '1.2.4 3.2{h}.16 {gr} 5.2.4 0.1.4 0.1.4 |\n',
+    ['[-] ' + [n(2, 1), n(2, 5), n(1, 0), n(1, 0)].join(' ') + ' | "꾸밈음 생략"']);
+  expectBars('꾸밈음 슬라이드', head + '3.2{sl}.16 {gr} 5.2.4 0.1.4 0.1.4 0.1.8 r.8 |\n',
+    ['[-] ' + [n(2, 5), n(1, 0), n(1, 0), n(1, 0) + '/r'].join(' ') + ' | "꾸밈음 생략"']);
+  // 쉼 뒤 슬러·슬라이드는 앱이 잇지 못하니(INVALID_SLUR·INVALID_SLIDE) 그 s·g 만 빼고 메모를 남긴다. 파서가 같은 쌍에 오류를 내는 것도 같이 본다.
+  expectBars('쉼 뒤 해머링', head + '0.1{h}.4 r.4 2.1.4 0.1.4 |\n',
+    ['[-] ' + [n(1, 0), 'r', n(1, 2), n(1, 0)].join(' ') + ' | "슬러 생략"']);
+  expectBars('쉼 뒤 슬라이드', head + '3.2{sl}.4 r.4 5.2.4 0.1.4 |\n',
+    ['[-] ' + [n(2, 3), 'r', n(2, 5), n(1, 0)].join(' ') + ' | "슬라이드 생략"']);
+
+  // (5) 붙임줄 첫 토막에 단 {h}·{sl}: 도착이 같은 프렛 붙임줄 음이라 주법을 달지 못한다. 메모를 남긴다. 마지막 토막에 달면 s 가 된다.
+  expectBars('붙임줄 첫 토막의 해머링', head + '0.1{h}.2 0.1{t}.2 | 2.1.1 |\n',
+    ['[-] ' + [n(1, 0), '-', '-', '-'].join(' ') + ' | "슬러 생략"', '[-] ' + [n(1, 2), '-', '-', '-'].join(' ')]);
+  expectBars('붙임줄 첫 토막의 슬라이드', head + '0.1{sl}.2 0.1{t}.2 | 2.1.1 |\n',
+    ['[-] ' + [n(1, 0), '-', '-', '-'].join(' ') + ' | "슬라이드 생략"', '[-] ' + [n(1, 2), '-', '-', '-'].join(' ')]);
+  expectBars('붙임줄 마지막 토막의 해머링', head + '0.1.2 0.1{t h}.2 | 2.1.1 |\n',
+    ['[-] ' + [n(1, 0), '-', '-', '-'].join(' '), '[-] ' + ['s' + n(1, 2), '-', '-', '-'].join(' ')]);
+
+  // (6) 끝마디의 칸보다 작은 나머지: 마지막 음이 늘어나지 않고 그 칸 안의 쉼 r 이 된다
+  expectBars('4/4 끝마디의 8분음표 나머지', head + '0.1.4 0.1.4 0.1.4 0.1.4 |\n0.1.4 0.1.4 0.1.8 |\n',
+    ['[-] ' + [n(1, 0), n(1, 0), n(1, 0), n(1, 0)].join(' '), '[-] ' + [n(1, 0), n(1, 0), n(1, 0) + '/r', '_'].join(' ')]);
+  expectBars('2/4 끝마디의 8분음표 + 16분음표', '\\title "R" \\tempo 80 \\ts (2 4)\n0.1.4 0.1.4 |\n0.1.4 0.1.8 0.1.16 |\n',
+    ['[-] ' + [n(1, 0), n(1, 0)].join(' '), '[-] ' + [n(1, 0), [n(1, 0), '-', n(1, 0), 'r'].join('/')].join(' ')]);
+
+  // (7) 프렛이 음역(MAX_FRET)을 넘는 음: 줄 지정을 떼고 음높이만 쓰고 ? 와 메모를 남긴다. 걸린 슬러·하모닉스는 줄 없는 음 규칙대로 뺀다.
+  const over1 = notation.MAX_FRET + 1;
+  const over3 = notation.MAX_FRET + 2;
+  const a = highFretToken(1, over1);
+  const b = highFretToken(3, over3);
+  const highMemo = '높은 프렛 → 줄 지정 생략' + (a.shifted || b.shifted ? ' · 음역 밖 → 옥타브 옮김' : '');
+  expectBars('높은 프렛', head + over1 + '.1.4 ' + over3 + '.3.4 0.1.2 |\n', ['[-] ' + [a.token, b.token, n(1, 0), '-'].join(' ') + ' | "' + highMemo + '"']);
+  const withHammer = convertText(head + over1 + '.1{h}.4 5.1.4 12.2{nh}.4 0.1.4 |\n');
+  if (!withHammer.ok) failures.push('높은 프렛 해머링: 변환 실패 ' + withHammer.error);
+  else {
+    if (withHammer.errors.length) failures.push('높은 프렛 해머링: 검사 오류 ' + withHammer.errors[0].code);
+    if (/(^|[ +/~])s/.test(withHammer.measures[0].split(' | ')[0].replace('[-] ', ''))) failures.push('높은 프렛 해머링: s 가 남았습니다 ' + withHammer.measures[0]);
+    if (withHammer.measures[0].indexOf('슬러 생략') < 0) failures.push('높은 프렛 해머링: 슬러 생략 메모가 없습니다 ' + withHammer.measures[0]);
+  }
+
+  // (2) 4/4 곡 가운데의 n/8 마디: 4분음표 칸에선 정수 칸이 아니니 8분음표 칸 8칸으로 다시 한다
+  const eighths = convertText(head + '0.1.4 1.1.4 3.1.4 0.2.4 |\n\\ts (3 8) 0.1.8 1.1.8 3.1.8 | \\ts (5 8) 0.1.8 1.1.8 3.1.8 0.2.8 1.2.8 | \\ts (7 8) 0.1.8 1.1.8 3.1.8 0.2.8 1.2.8 3.2.8 0.3.8 |\n');
+  if (!eighths.ok) failures.push('n/8 마디: 변환 실패 ' + eighths.error);
+  else {
+    if (eighths.beats !== 8) failures.push('n/8 마디: 칸 수 ' + eighths.beats);
+    if (eighths.errors.length) failures.push('n/8 마디: 검사 오류 ' + eighths.errors[0].code);
+    if (eighths.description.indexOf(toolModule.MEMO.eightCells) < 0) failures.push('n/8 마디: 8칸 설명 문구가 없습니다');
+    const trailingBlanks = eighths.measures.slice(1).map(function(line){ return (line.split(' | ')[0].match(/ _/g) || []).length; });
+    if (JSON.stringify(trailingBlanks) !== JSON.stringify([5, 3, 1])) failures.push('n/8 마디: 빈칸 수 ' + trailingBlanks.join(','));
+  }
+  return failures;
+}
+
+test('review fixes: a grace note or rest before a slur/slide drops only that mark, n/8 bars in 4/4 use 8 cells, a hammer-on on a tie\'s first piece is noted, a short last bar keeps its small remainder as a rest, frets above MAX_FRET lose the string mark', function(){
+  const failures = reviewFixFailures(tool);
+  if (failures.length) process.stdout.write(failures.join('\n') + '\n');
+  assert.deepEqual(failures, []);
+  // 파서가 같은 쌍을 오류로 보는 것(변환기가 빼는 이유)
+  assert.ok(parser.validateScore('[-] sE4@1 r r r', 4).errors.some(function(error){ return error.code === 'INVALID_SLUR'; }));
+  assert.ok(parser.validateScore('[-] D4@2 r gE4@2 r', 4).errors.some(function(error){ return error.code === 'INVALID_SLIDE'; }));
+});
+
+function reviewMutantCaught(label, from, to){
+  const mutant = loadMutant(from, to);
+  const caught = reviewFixFailures(mutant);
+  assert.ok(caught.length > 0, label + ' 사본이 검사에 걸리지 않았습니다');
+  process.stdout.write('  ' + label + ': caught by ' + caught.length + ' failure(s), e.g. ' + caught[0].split('\n')[0] + '\n');
+}
+
+test('mutant (소): treating a grace note as the origin of a slur is caught', function(){
+  reviewMutantCaught('grace origin', 'if (isGraceNote(hammerOrigin)) memo(MEMO.grace);', 'if (false) memo(MEMO.grace);');
+});
+
+test('mutant (오): not re-trying a meter change with 8 cells is caught', function(){
+  reviewMutantCaught('no 8-cell retry for n/8', 'refusal.retryEightCells = !forcedGrid &&', 'refusal.retryEightCells = false &&');
+});
+
+test('mutant (조): not widening the slur fix to tokens with @ and to slides is caught', function(){
+  reviewMutantCaught('slur fix only for string-less s', "const letter = error.code === 'INVALID_SLUR' ? 's' : (error.code === 'INVALID_SLIDE' ? 'g' : '');", "const letter = error.code === 'INVALID_SLUR' && String(error.message).indexOf('@') < 0 ? 's' : '';");
+});
+
+test('mutant (초): judging the rest start by the content length instead of the filled length is caught', function(){
+  reviewMutantCaught('content length', 'const filledLen = anacrusis ? barLen : (grid.cells - blankCount) * grid.slotTicks;', 'const filledLen = barLen;');
+});
+
+test('mutant (코): keeping @string on a fret above MAX_FRET is caught', function(){
+  reviewMutantCaught('high fret keeps the string', '            highFret = note.fret > notation.MAX_FRET;', '            highFret = false;');
+});
+
+test('mutant (토): not noting a hammer-on whose destination has the same pitch is caught', function(){
+  reviewMutantCaught('silent same-pitch hammer-on', 'else if (stringedPitch(hammerOrigin) === midi) memo(MEMO.slur);', '');
 });
 
 process.stdout.write('1..' + checks + '\n');

@@ -39,6 +39,8 @@ const MEMO = {
   harmonicFret: '하모닉스 프렛 아님',
   harmonicArtificial: '인공 하모닉스 → 보통 음',
   slide: '슬라이드 생략',
+  slur: '슬러 생략',
+  highFret: '높은 프렛 → 줄 지정 생략',
   bend: '벤딩',
   vibrato: '비브라토',
   tremolo: '트레몰로 → 한 번',
@@ -134,7 +136,7 @@ function loadScoreFile(file){
 
 // ---------- 박자표·템포 → 칸
 
-// src/score-prompt.js [문법 5] 표. 박자표(분자/분모)와 한 칸의 길이를 정한다.
+// 박자표(분자/분모)와 한 칸의 길이를 정하는 규칙은 이 함수가 원본이다. 문서는 Docs/alphatab.md 가져오기 규칙의 칸 행.
 function chooseGrid(numerator, denominator, quarterTempo){
   const key = numerator + '/' + denominator;
   let cells;
@@ -379,6 +381,16 @@ function ourString(note, staff){
   return staff.tuning.length - note.string + 1;
 }
 
+// 꾸밈음 박의 음인가. 꾸밈음은 악보에서 빼므로 그 음이 슬러·슬라이드의 출발점이어도 짝이 없다.
+function isGraceNote(note){
+  return !!note && !!note.beat && note.beat.graceType !== model.GraceType.None;
+}
+
+// 프렛이 음역(MAX_FRET)을 넘는 줄 있는 음인가. 이 음은 @줄 없이 음높이만 적는다.
+function isHighFretNote(note){
+  return !!note && note.isStringed && note.string >= 1 && note.fret > notation.MAX_FRET;
+}
+
 function chordLabelName(name){
   return String(name || '').split(alphaTexApi.CHORD_NAME_PAD).join('').trim();
 }
@@ -487,7 +499,19 @@ function sortTokens(parts){
 function convertScore(score, options){
   try {
     const opts = options || {};
-    const first = convert(score, opts, null);
+    let first = null;
+    try {
+      first = convert(score, opts, null);
+    } catch (error) {
+      // 4/4 곡 가운데의 3/8·5/8·7/8 같은 마디는 4분음표 칸 격자에선 정수 칸이 아니다. 8분음표 칸 격자로 다시 해 보고, 되면 그 결과를 쓴다.
+      if (!(error instanceof Refusal) || !error.retryEightCells) throw error;
+      let retried = null;
+      try { retried = convert(score, opts, EIGHT_CELL_GRID); } catch (second) { if (!(second instanceof Refusal)) throw second; }
+      if (!retried) throw error;
+      delete retried.movedCount;
+      delete retried.eightCellsEligible;
+      return retried;
+    }
     let result = first;
     if (first.eightCellsEligible && first.movedCount > 0){
       let second = null;
@@ -528,7 +552,10 @@ function convert(score, opts, forcedGrid){
   meterChanges.forEach(function(masterBar){
     const ticks = signatureTicks(masterBar);
     if (masterBar.isAnacrusis || !(ticks < barTicks) || ticks % grid.slotTicks !== 0){
-      refuse('곡 중간에 박자표가 바뀝니다(' + (masterBar.index + 1) + '마디 ' + masterBar.timeSignatureNumerator + '/' + masterBar.timeSignatureDenominator + '). 변환하지 않습니다.');
+      const refusal = new Refusal('곡 중간에 박자표가 바뀝니다(' + (masterBar.index + 1) + '마디 ' + masterBar.timeSignatureNumerator + '/' + masterBar.timeSignatureDenominator + '). 변환하지 않습니다.');
+      // 4/4 곡이고 8분음표 칸으로 해도 템포가 상한 안이면 호출한 쪽이 8칸 격자로 다시 해 본다.
+      refusal.retryEightCells = !forcedGrid && meterKey === '4/4' && Math.round(quarterTempo * 2) <= BPM_MAX;
+      throw refusal;
     }
     shortBars.set(masterBar.index, { ticks: ticks, numerator: masterBar.timeSignatureNumerator, denominator: masterBar.timeSignatureDenominator });
   });
@@ -557,6 +584,13 @@ function convert(score, opts, forcedGrid){
     pad.push(masterBar.isAnacrusis ? Math.max(0, barTicks - span) : 0);
     cursor += span;
   });
+
+  // 줄 있는 음의 높이(카포는 넣지 않는다). 줄이 없으면 null.
+  function stringedPitch(other){
+    if (!other.isStringed || other.string < 1) return null;
+    const stringNo = ourString(other, staff);
+    return stringNo >= 1 && stringNo <= 6 ? STANDARD_TUNING[stringNo - 1] + other.fret : null;
+  }
 
   function beatAbsStart(beat){
     return barAbs[beat.voice.bar.index] + beat.playbackStart;
@@ -618,10 +652,17 @@ function convert(score, opts, forcedGrid){
           let harmonic = false;
           let articulation = '';
           let shifted = false;
+          let highFret = false;
           // 줄이 있는 음만 @줄을 붙인다. 6줄 트랙 안에서도 string 이 없는 음(음이름으로 적은 음)은 줄 정보 없는 트랙과 같은 규칙 하나(아래 else)를 쓴다.
-          if (hasStrings && note.isStringed && note.string >= 1){
-            str = ourString(note, staff);
-            if (str < 1 || str > 6) refuse('줄 번호가 6줄 범위를 벗어난 음이 있습니다(' + (index + 1) + '마디).');
+          // 프렛이 음역(MAX_FRET)을 넘는 음도 앱이 그 줄의 음으로 받지 않으니 같은 else 로 보낸다(음높이만 쓰고 `?` 와 메모를 남긴다).
+          const stringed = hasStrings && note.isStringed && note.string >= 1;
+          if (stringed){
+            const stringNo = ourString(note, staff);
+            if (stringNo < 1 || stringNo > 6) refuse('줄 번호가 6줄 범위를 벗어난 음이 있습니다(' + (index + 1) + '마디).');
+            highFret = note.fret > notation.MAX_FRET;
+            if (!highFret) str = stringNo;
+          }
+          if (stringed && !highFret){
             const open = STANDARD_TUNING[str - 1];
             midi = open + note.fret;
             if (note.harmonicType === model.HarmonicType.Natural){
@@ -632,29 +673,41 @@ function convert(score, opts, forcedGrid){
             } else if (note.harmonicType !== model.HarmonicType.None) memo(MEMO.harmonicArtificial);
 
             // 슬러·슬라이드는 도착 음에 단다(우리 문법은 뒤 음에 s·g).
+            // 출발 음이 꾸밈음(빼는 음)이거나 높은 프렛(@줄을 떼는 음)이면 s·g 를 달지 않고 메모만 남긴다. 높이가 같아 주법을 달지 못하는 해머링(붙임줄 첫 토막에 단 {h} 등)도 메모를 남긴다.
             const hammerOrigin = note.hammerPullOrigin;
-            if (hammerOrigin && hammerOrigin.string === note.string && hammerOrigin.fret !== note.fret && !harmonic) articulation = 's';
+            if (hammerOrigin && !harmonic){
+              if (isGraceNote(hammerOrigin)) memo(MEMO.grace);
+              else if (isHighFretNote(hammerOrigin)) memo(MEMO.slur);
+              else if (hammerOrigin.string === note.string && hammerOrigin.fret !== note.fret) articulation = 's';
+              else if (stringedPitch(hammerOrigin) === midi) memo(MEMO.slur);
+            }
             // {slur 이름} 짝의 도착 음도 같은 규칙이다. 다른 줄이면 슬러를 빼고 메모를 남긴다.
             const slurFrom = note.isSlurDestination ? note.slurOrigin : null;
             if (slurFrom && !articulation && !harmonic){
-              if (slurFrom.string !== note.string) memo(MEMO.slurOtherString);
+              if (isGraceNote(slurFrom)) memo(MEMO.grace);
+              else if (isHighFretNote(slurFrom)) memo(MEMO.slur);
+              else if (slurFrom.string !== note.string) memo(MEMO.slurOtherString);
               else if (slurFrom.fret !== note.fret) articulation = 's';
             }
             const slideOrigin = note.slideOrigin;
             if (slideOrigin && !articulation && !harmonic){
-              if (slideOrigin.string === note.string && slideOrigin.fret !== note.fret) articulation = 'g';
+              if (isGraceNote(slideOrigin)) memo(MEMO.grace);
+              else if (slideOrigin.string === note.string && slideOrigin.fret !== note.fret && !isHighFretNote(slideOrigin)) articulation = 'g';
               else memo(MEMO.slide);
             }
             if ((note.slideOutType !== model.SlideOutType.None && !note.slideTarget) || note.slideInType !== model.SlideInType.None) memo(MEMO.slide);
           } else {
-            // 줄 정보 없음(트랙 전체이거나 음 하나): 음높이만 쓰고 @줄은 붙이지 않는다(앱이 기본 위치를 고른다). 줄이 있어야 하는 주법은 뺀다.
-            midi = pitchOnly(note);
+            // 줄 정보 없음(트랙 전체이거나 음 하나)과 높은 프렛: 음높이만 쓰고 @줄은 붙이지 않는다(앱이 기본 위치를 고른다). 줄이 있어야 하는 주법은 뺀다.
+            // 높은 프렛은 카포를 넣지 않은 개방현 + 프렛으로 높이를 셈하고(줄 있는 음과 같다) `?` 와 메모를 남긴다.
+            midi = highFret ? STANDARD_TUNING[ourString(note, staff) - 1] + note.fret : pitchOnly(note);
             if (midi == null) return;
+            if (highFret) memo(MEMO.highFret);
             if (note.harmonicType !== model.HarmonicType.None) memo(MEMO.noStringHarmonic);
             // {slur 이름} 짝의 도착 음은 출발 음과 음높이가 다르면 s 로 옮긴다(같은 높이 짝은 주법 없이 둔다). 기본 줄 판정이 어긋나는 짝은 마디를 만든 뒤 걸러 낸다.
             const slurFrom = note.isSlurDestination ? note.slurOrigin : null;
             const slurFromMidi = slurFrom ? pitchOnly(slurFrom) : null;
-            if (slurFromMidi != null && slurFromMidi !== midi) articulation = 's';
+            if (slurFromMidi != null && isGraceNote(slurFrom)) memo(MEMO.grace);
+            else if (slurFromMidi != null && slurFromMidi !== midi) articulation = 's';
             if (note.isHammerPullOrigin || !!note.hammerPullOrigin || note.isEffectSlurOrigin || note.isEffectSlurDestination || (note.isSlurDestination && slurFromMidi == null)) memo(MEMO.noStringSlur);
             if (note.slideOutType !== model.SlideOutType.None || note.slideInType !== model.SlideInType.None) memo(MEMO.noStringSlide);
             while (midi < LOWEST_MIDI){ midi += 12; shifted = true; }
@@ -675,6 +728,7 @@ function convert(score, opts, forcedGrid){
             right: rightFinger(note),
             roll: roll,
             shifted: shifted,
+            highFret: highFret,
             start: start,
             endRel: chainEndAbs(note) - barAbs[index] + offset,
             continuation: continuation
@@ -690,7 +744,7 @@ function convert(score, opts, forcedGrid){
 
   function tokenText(record, moved){
     const name = parser.noteNameForMidi(record.midi, false);
-    return record.articulation + record.left + name + (record.str ? '@' + record.str : '') + (record.right ? ':' + record.right : '') + (moved || record.shifted ? '?' : '');
+    return record.articulation + record.left + name + (record.str ? '@' + record.str : '') + (record.right ? ':' + record.right : '') + (moved || record.shifted || record.highFret ? '?' : '');
   }
 
   let movedCount = 0;
@@ -764,11 +818,13 @@ function convert(score, opts, forcedGrid){
     const isBlankCell = function(c){ return blankCount > 0 && (anacrusis ? c < blankCount : c >= grid.cells - blankCount); };
 
     // 쉼이 시작하는 자리: 칸 안에서 음이 끝났는데 그 자리 뒤로 울리는 음(다른 성부, 붙임줄로 이어진 음, 앞 마디에서 이어진 음)이 하나도 없는 자리.
+    // 마디 끝은 내용 길이가 아니라 칸으로 채운 길이(뒤쪽 빈칸 앞까지)다. 짧은 끝마디의 칸보다 작은 나머지가 그 칸 안의 쉼 r 이 되려면 그래야 한다.
+    const filledLen = anacrusis ? barLen : (grid.cells - blankCount) * grid.slotTicks;
     const restsByCell = [];
     for (let c = 0; c < grid.cells; c++) restsByCell.push([]);
     collected.records.forEach(function(record){
       const end = record.endRel;
-      if (!(end > TOLERANCE_TICKS && end < barLen - TOLERANCE_TICKS)) return;
+      if (!(end > TOLERANCE_TICKS && end < filledLen - TOLERANCE_TICKS)) return;
       const cell = Math.floor(end / grid.slotTicks);
       const inCell = end - cell * grid.slotTicks;
       if (inCell <= TOLERANCE_TICKS || inCell >= grid.slotTicks - TOLERANCE_TICKS) return;
@@ -907,36 +963,40 @@ function convert(score, opts, forcedGrid){
       .join(' · ');
   // 앱은 카포를 제목·설명의 표기(getSongCapo)로만 읽는다. \capo 가 있는데 표기가 없으면(notices 만 있는 경우) 설명 끝에 붙인다.
   if (capo > 0 && parser.getSongCapo({ title: cleanTitle, badge: description }) !== capo) description += ' · Capo ' + capo;
-  // @줄 없는 슬러 음은 앱이 고른 기본 줄로 판정한다. 앞 음과 다른 줄이 잡혀 INVALID_SLUR 가 나면 그 마디의 그 s 만 빼고 메모를 남긴다.
-  // 판정은 parser.validateScore 하나로 하고, 오류 메시지 끝의 토큰으로 칸 안의 음을 찾는다.
+  // 슬러·슬라이드 잇기 오류(INVALID_SLUR·INVALID_SLIDE)는 그 칸의 그 s·g 만 빼고 메모를 남겨, 잇기 오류 하나로 곡 전체가 거절되지 않게 한다.
+  // @줄 없는 슬러 음은 앱이 고른 기본 줄로 판정하니 앞 음과 다른 줄이 잡혀 오류가 날 수 있다. @줄 있는 음도 앞 음이 쉼 뒤이거나 꾸밈음처럼 뺀 음이면 오류가 난다.
+  // 판정은 parser.validateScore 하나로 하고, 오류 메시지 끝의 토큰으로 칸 안의 음을 찾는다. 하나를 빼면 뒤 음의 판정이 바뀔 수 있어 오류가 없어질 때까지 되풀이한다.
   let measureTexts = buildMeasureTexts();
   let validation = parser.validateScore(measureTexts.join('\n'), grid.cells);
-  let slurFixed = false;
-  validation.errors.forEach(function(error){
-    if (error.code !== 'INVALID_SLUR') return;
-    const line = lines[error.measure - 1];
-    const token = String(error.message).slice(String(error.message).lastIndexOf(': ') + 2);
-    if (!line || !(error.beat >= 1) || token.charAt(0) !== 's' || token.indexOf('@') >= 0) return;
-    const pieces = line.cells[error.beat - 1].split('/').map(function(piece){
-      return piece.split('+').map(function(part){
-        const roll = part.charAt(0) === '~';
-        return { roll: roll, text: roll ? part.slice(1) : part };
+  for (let pass = 0; pass < 1000; pass++){
+    let fixed = false;
+    validation.errors.forEach(function(error){
+      const letter = error.code === 'INVALID_SLUR' ? 's' : (error.code === 'INVALID_SLIDE' ? 'g' : '');
+      if (!letter) return;
+      const line = lines[error.measure - 1];
+      const token = String(error.message).slice(String(error.message).lastIndexOf(': ') + 2);
+      if (!line || !(error.beat >= 1) || token.charAt(0) !== letter) return;
+      const pieces = line.cells[error.beat - 1].split('/').map(function(piece){
+        return piece.split('+').map(function(part){
+          const roll = part.charAt(0) === '~';
+          return { roll: roll, text: roll ? part.slice(1) : part };
+        });
       });
-    });
-    let done = false;
-    pieces.forEach(function(parts){
-      parts.forEach(function(part){
-        if (!done && part.text === token){ part.text = token.slice(1); done = true; }
+      let done = false;
+      pieces.forEach(function(parts){
+        parts.forEach(function(part){
+          if (!done && part.text === token){ part.text = token.slice(1); done = true; }
+        });
       });
+      if (!done) return;
+      line.cells[error.beat - 1] = pieces.map(function(parts){
+        return parts.map(function(part){ return (part.roll ? '~' : '') + part.text; }).join('+');
+      }).join('/');
+      const memoText = letter === 'g' ? MEMO.slide : (token.indexOf('@') >= 0 ? MEMO.slur : MEMO.noStringSlur);
+      if (line.memos.indexOf(memoText) < 0) line.memos.push(memoText);
+      fixed = true;
     });
-    if (!done) return;
-    line.cells[error.beat - 1] = pieces.map(function(parts){
-      return parts.map(function(part){ return (part.roll ? '~' : '') + part.text; }).join('+');
-    }).join('/');
-    if (line.memos.indexOf(MEMO.noStringSlur) < 0) line.memos.push(MEMO.noStringSlur);
-    slurFixed = true;
-  });
-  if (slurFixed){
+    if (!fixed) break;
     measureTexts = buildMeasureTexts();
     validation = parser.validateScore(measureTexts.join('\n'), grid.cells);
   }
