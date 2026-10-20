@@ -25,6 +25,7 @@
 - 음 끝 확인 표시 `?`는 오류·음높이·재생에 영향을 주지 않는다. 쉼 판별은 `GuitarNotation.isRestToken`(`r?`, 단독 `?` 포함) 하나로 한다. `/^[rR]$/`를 새로 쓰지 않는다.
 - 원본 MIDI에서 옮긴 내장곡(`tools/builtin-recipes.json`에 있는 곡)은 `songs.json`의 `lines`를 손으로 고치지 않는다. 레시피(`edits`, `lineOverrides`)를 고치고 `node tools/rebuild-builtins.js <원본 폴더>`로 일치를 확인한다.
 - 악보 문법을 바꾸면 `src/score-prompt.js`의 사진 변환 프롬프트 규칙과 예시도 같이 고치고 `test-score-prompt`를 돌린다.
+- 음 토큰 앞 기호(주법 `!`·`h`·`s`·`g`, 롤 `~`)를 새로 넣으면 `src/staff-layout.js`의 `parseComponent`·`notesForPart`도 고친다. 이 파일은 토큰을 따로 읽어서, 롤·슬라이드 때 두 번 오선 보기 오류를 냈다. `둘 다` 보기와 입력 카드 오선으로 확인한다.
 - 기타 음역(프렛 수)은 `GuitarNotation.MAX_FRET` 하나로 정한다. 12·19 같은 숫자를 새로 박지 않는다. 카포 0~12, 칸 수 12는 다른 뜻이다.
 
 ## 검증 (명령은 `Docs/development.md` 검증 절)

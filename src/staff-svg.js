@@ -39,6 +39,9 @@
   var ROLL_GAP = 5;                 // 물결선 가운데와 머리·임시표 사이
   var ROLL_AMP = 2.5;               // 물결 가로 진폭
   var ROLL_ACC_W = 9;               // 임시표 글자 폭(text-anchor end 기준 왼쪽으로)
+  // 슬라이드 직선
+  var SLIDE_PAD = 1.5;              // 직선 끝과 머리·임시표 사이
+  var SLIDE_HALF_RISE = 2 * STEP;   // 마디를 넘는 반쪽 직선이 방향 쪽으로 기우는 높이
 
   function yOf(step){ return BASE_Y - step * STEP; }
   function n(value){ return String(Math.round(value * 10) / 10); }
@@ -377,6 +380,10 @@
 
     // 슬러 곡선: 도착 음의 기둥이 위면 머리 아래, 아래면 머리 위. 마디를 넘는 슬러는 이 마디 쪽 반쪽만 그린다.
     (layout.slurs || []).forEach(function(slur){
+      if (slur.kind === 'slide'){
+        drawSlideEntry(out, slur, infos, width, leftPad);
+        return;
+      }
       var from = slur.fromEdge ? null : infos[slur.fromItem];
       var to = slur.toEdge ? null : infos[slur.toItem];
       var fromHead = from && from.heads[slur.fromHead];
@@ -396,6 +403,40 @@
 
     out.push('</svg>');
     return out.join('');
+  }
+
+  // 슬라이드 직선: 앞 음 머리 오른쪽에서 뒤 음 머리(임시표가 있으면 그 임시표) 왼쪽까지. 마디를 넘으면 이 마디 쪽 반쪽만 그린다.
+  function drawSlideEntry(out, slide, infos, width, leftPad){
+    var from = slide.fromEdge ? null : infos[slide.fromItem];
+    var to = slide.toEdge ? null : infos[slide.toItem];
+    var fromHead = from && from.heads[slide.fromHead];
+    var toHead = to && to.heads[slide.toHead];
+    if ((!fromHead && !slide.fromEdge) || (!toHead && !slide.toEdge)) return;
+    var sign = slide.dir === 'up' ? -1 : 1;   // 위로 가면 y가 줄어든다
+    var x1 = null, y1 = null, x2 = null, y2 = null;
+    if (fromHead){
+      x1 = fromHead.x + HEAD_RX + SLIDE_PAD;
+      y1 = fromHead.y;
+    }
+    if (toHead){
+      x2 = toHead.x - HEAD_RX - SLIDE_PAD;
+      accidentalColumns(to).forEach(function(entry){
+        if (entry.head === toHead) x2 = to.left - 3 - entry.col * 11 - ROLL_ACC_W - SLIDE_PAD;
+      });
+      y2 = toHead.y;
+    }
+    if (fromHead && toHead){
+      out.push(drawSlide(x1, y1, x2, y2, ''));
+    } else if (fromHead){
+      out.push(drawSlide(x1, y1, width - 2, y1 + sign * SLIDE_HALF_RISE, 'is-start'));
+    } else {
+      out.push(drawSlide(leftPad + 2, y2 - sign * SLIDE_HALF_RISE, x2, y2, 'is-end'));
+    }
+  }
+
+  function drawSlide(x1, y1, x2, y2, cls){
+    function cy(y){ return clamp(y, 2, STAFF_HEIGHT - 2); }
+    return line('st-slide' + (cls ? ' ' + cls : ''), x1, cy(y1), x2, cy(y2), 1.2);
   }
 
   function drawTie(x1, x2, y, below){
@@ -468,7 +509,8 @@
     STAFF_HEIGHT: STAFF_HEIGHT,
     BASE_Y: BASE_Y,
     LINE_GAP: LINE_GAP,
-    ROLL_GAP: ROLL_GAP, ROLL_AMP: ROLL_AMP, ROLL_ACC_W: ROLL_ACC_W
+    ROLL_GAP: ROLL_GAP, ROLL_AMP: ROLL_AMP, ROLL_ACC_W: ROLL_ACC_W,
+    SLIDE_PAD: SLIDE_PAD, SLIDE_HALF_RISE: SLIDE_HALF_RISE
   };
   if (typeof window !== 'undefined') window.GuitarStaffSvg = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

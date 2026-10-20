@@ -40,7 +40,7 @@ function count(svg, className){
 
 // 배치에서 센 기대값
 function expected(measure){
-  const out = { heads: 0, ledger: 0, acc: 0, ties: 0, slurs: (measure.slurs || []).length, rolls: 0, rests: 0, tuplets: measure.tuplets.length, beams: 0, flags: 0, stems: 0, uncertainHeads: 0, uncertainRests: 0, dots: 0 };
+  const out = { heads: 0, ledger: 0, acc: 0, ties: 0, slurs: (measure.slurs || []).filter(function(entry){ return entry.kind !== 'slide'; }).length, slides: (measure.slurs || []).filter(function(entry){ return entry.kind === 'slide'; }).length, rolls: 0, rests: 0, tuplets: measure.tuplets.length, beams: 0, flags: 0, stems: 0, uncertainHeads: 0, uncertainRests: 0, dots: 0 };
   const inBeam = new Set();
   measure.beams.forEach(function(beam){
     beam.items.forEach(function(index){ inBeam.add(index); });
@@ -83,6 +83,7 @@ function checkCounts(svg, measure, label){
   assert.equal(count(svg, 'st-acc'), want.acc, label + ': accidentals');
   assert.equal(count(svg, 'st-tie'), want.ties, label + ': ties');
   assert.equal(count(svg, 'st-slur'), want.slurs, label + ': slur curves');
+  assert.equal(count(svg, 'st-slide'), want.slides, label + ': slide lines');
   assert.equal(count(svg, 'st-roll'), want.rolls, label + ': roll waves');
   assert.equal(count(svg, 'st-rest'), want.rests, label + ': rests');
   assert.equal(count(svg, 'st-tuplet'), want.tuplets, label + ': tuplet numbers');
@@ -460,6 +461,119 @@ function chordFacts(group){
     waveTop: Math.min.apply(null, points.map(function(q){ return q.y; })), waveBottom: Math.max.apply(null, points.map(function(q){ return q.y; }))
   };
 }
+
+// 슬라이드 직선: 앞 음 머리 오른쪽에서 뒤 음 머리(임시표가 있으면 그 임시표) 왼쪽까지. 곡선 path.st-slur 는 그리지 않는다.
+function slideLines(svg){
+  return (svg.match(/<line class="st-slide[^"]*"[^>]*>/g) || []).map(function(tag){
+    const num = function(name){ return Number(tag.match(new RegExp(' ' + name + '="([-0-9.]+)"'))[1]); };
+    return { cls: tag.match(/class="([^"]*)"/)[1], x1: num('x1'), y1: num('y1'), x2: num('x2'), y2: num('y2') };
+  });
+}
+const TOL = 0.11;   // 좌표는 소수 한 자리로 반올림된다
+function svgWidth(svg){ return Number(svg.match(/^<svg [^>]*width="([0-9.]+)"/)[1]); }
+function insideSvg(l){
+  return [l.y1, l.y2].every(function(y){ return y >= 2 && y <= svgApi.STAFF_HEIGHT - 2; });
+}
+
+test('slide line: one line.st-slide per slide, no slur curve, and a slur draws no slide line', function(){
+  const slide = layout('E3@4 gG3@4 - -');
+  const svg = draw(slide);
+  checkCounts(svg, slide.measures[0], 'slide');
+  assert.equal(count(svg, 'st-slide'), 1);
+  assert.equal(count(svg, 'st-slur'), 0, 'a slide is not drawn as a curve');
+  assert.equal(slideLines(svg)[0].cls, 'st-slide', 'a slide inside the measure has no half class');
+  const slur = layout('E3@4 sG3@4 - -');
+  const slurSvg = draw(slur);
+  checkCounts(slurSvg, slur.measures[0], 'slur');
+  assert.equal(count(slurSvg, 'st-slide'), 0);
+  assert.equal(count(slurSvg, 'st-slur'), 1);
+  const chain = layout('E3@4 sG3@4 gA3@4 -');
+  const chainSvg = draw(chain);
+  checkCounts(chainSvg, chain.measures[0], 'slur then slide');
+  assert.equal(count(chainSvg, 'st-slide'), 1);
+  assert.equal(count(chainSvg, 'st-slur'), 1);
+  assert.equal(typeof svgApi.SLIDE_PAD, 'number');
+  assert.equal(svgApi.SLIDE_HALF_RISE, 2 * svgApi.LINE_GAP / 2, 'the half rise is two staff steps');
+});
+
+test('slide line in one measure: from the right of the source head to the left of the target head, at the head heights', function(){
+  [['E3@4 gG3@4 - -', 'up'], ['G3@4 gE3@4 - -', 'down']].forEach(function(pair){
+    const result = layout(pair[0]);
+    assert.equal(result.measures[0].slurs[0].dir, pair[1]);
+    const svg = draw(result);
+    const groups = chordGroups(svg).map(chordFacts);
+    const from = groups[0].heads[0], to = groups[1].heads[0];
+    const lines = slideLines(svg);
+    assert.equal(lines.length, 1);
+    assert.ok(Math.abs(lines[0].x1 - (from.x + from.rx + svgApi.SLIDE_PAD)) < TOL, pair[0] + ': starts SLIDE_PAD right of the source head');
+    assert.ok(Math.abs(lines[0].x2 - (to.x - to.rx - svgApi.SLIDE_PAD)) < TOL, pair[0] + ': ends SLIDE_PAD left of the target head');
+    assert.ok(lines[0].x1 > from.x + from.rx && lines[0].x2 < to.x - to.rx, pair[0] + ': the line clears both heads');
+    assert.ok(Math.abs(lines[0].y1 - from.y) < TOL && Math.abs(lines[0].y2 - to.y) < TOL, pair[0] + ': ends at the head heights');
+    assert.equal(lines[0].y2 < lines[0].y1, pair[1] === 'up', pair[0] + ': goes up on the page for up');
+  });
+});
+
+test('slide line stops left of the target accidental, and a chord uses the slid head only', function(){
+  const sharp = layout('E3@4 gF#3@4 - -');
+  assert.equal(sharp.measures[0].items[1].notes[0].accidental, 'sharp');
+  const svg = draw(sharp);
+  checkCounts(svg, sharp.measures[0], 'slide to an accidental');
+  const to = chordGroups(svg).map(chordFacts)[1];
+  assert.equal(to.accX.length, 1);
+  const accLeft = to.accX[0] - svgApi.ROLL_ACC_W;
+  const line = slideLines(svg)[0];
+  assert.ok(Math.abs(line.x2 - (accLeft - svgApi.SLIDE_PAD)) < TOL, 'ends SLIDE_PAD left of the accidental glyph');
+  assert.ok(line.x2 < accLeft && line.x2 < to.heads[0].x - to.heads[0].rx, 'the line does not reach the accidental or the head');
+  // 화음: 아래 머리(F#3, 임시표 있음)가 아니라 미끄러지는 머리(G3, 임시표 없음) 기준
+  const chord = layout('E3@4 F#3@5+gG3@4 - -');
+  const chordNotes = chord.measures[0].items[1].notes;
+  const slidHead = chordNotes.findIndex(function(note){ return note.name === 'G3'; });
+  assert.equal(chord.measures[0].slurs[0].toHead, slidHead);
+  assert.equal(chordNotes[slidHead].accidental, null);
+  assert.ok(chordNotes.some(function(note){ return note.accidental; }), 'the other head has an accidental');
+  const chordSvg = draw(chord);
+  const target = chordGroups(chordSvg).map(chordFacts)[1].heads[slidHead];
+  const chordLine = slideLines(chordSvg)[0];
+  assert.ok(Math.abs(chordLine.x2 - (target.x - target.rx - svgApi.SLIDE_PAD)) < TOL, 'a head without an accidental ends at the head even if another head has one');
+  assert.ok(Math.abs(chordLine.y2 - target.y) < TOL);
+});
+
+test('slide line across the barline: a half leaves through the right edge, a half enters from the left, tilted along the direction', function(){
+  [['r r r E3@4\ngG3@4 - - -', 'up'], ['r r r G3@4\ngE3@4 - - -', 'down']].forEach(function(pair){
+    const result = layout(pair[0]);
+    const first = draw(result, 0), second = draw(result, 1);
+    checkCounts(first, result.measures[0], 'source measure');
+    checkCounts(second, result.measures[1], 'target measure');
+    const out = slideLines(first), into = slideLines(second);
+    assert.equal(out.length, 1);
+    assert.equal(into.length, 1);
+    assert.equal(out[0].cls, 'st-slide is-start');
+    assert.equal(into[0].cls, 'st-slide is-end');
+    const sign = pair[1] === 'up' ? -1 : 1;
+    const fromHead = chordFacts(chordGroups(first)[0]).heads[0];
+    const toHead = chordFacts(chordGroups(second)[0]).heads[0];
+    assert.ok(Math.abs(out[0].x1 - (fromHead.x + fromHead.rx + svgApi.SLIDE_PAD)) < TOL);
+    assert.equal(out[0].x2, svgWidth(first) - 2, 'ends 2px before the right edge');
+    assert.ok(Math.abs(out[0].y1 - fromHead.y) < TOL);
+    assert.ok(Math.abs(out[0].y2 - (out[0].y1 + sign * svgApi.SLIDE_HALF_RISE)) < TOL, pair[1] + ': tilts SLIDE_HALF_RISE toward the direction');
+    assert.equal(into[0].x1, LEFT_PAD + 2, 'starts 2px after the left edge of the event area');
+    assert.ok(Math.abs(into[0].x2 - (toHead.x - toHead.rx - svgApi.SLIDE_PAD)) < TOL);
+    assert.ok(Math.abs(into[0].y2 - toHead.y) < TOL);
+    assert.ok(Math.abs(into[0].y1 - (into[0].y2 - sign * svgApi.SLIDE_HALF_RISE)) < TOL, pair[1] + ': comes in from the opposite side');
+    // 왼쪽에서 오른쪽으로 읽을 때 위로 가는 슬라이드는 y 가 줄어든다
+    assert.equal(out[0].y2 < out[0].y1, pair[1] === 'up');
+    assert.equal(into[0].y2 < into[0].y1, pair[1] === 'up');
+    assert.equal(count(first, 'st-slur') + count(second, 'st-slur'), 0);
+  });
+});
+
+test('slide line keeps every y inside the SVG, including the halves near the top and bottom of the staff', function(){
+  slideLines(draw(layout('A5 gB5 - -'))).forEach(function(l){ assert.ok(insideSvg(l)); });
+  const high = layout('r r r A5\ngB5 - - -');
+  slideLines(draw(high, 0)).concat(slideLines(draw(high, 1))).forEach(function(l){ assert.ok(insideSvg(l)); });
+  const low = layout('r r r F#3@4\ngE3@4 - - -');
+  slideLines(draw(low, 0)).concat(slideLines(draw(low, 1))).forEach(function(l){ assert.ok(insideSvg(l)); });
+});
 
 test('roll wave: one path.st-roll per rolled chord, none on plain chords or rests', function(){
   const result = layout('~E2@6+B3@2+G4@1 E2@6+B3@2+G4@1 ~E2@6+B3@2 r');

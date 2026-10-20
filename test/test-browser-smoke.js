@@ -2302,8 +2302,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=slide-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=slide-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=slide-2')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=slide-2">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -4235,11 +4235,24 @@ async function testSlideLabels(client, httpPort) {
       upFret: GuitarParser.parseNoteToken('F4@1', 0).pos.fret,
       plain: pills(0, 0), up: pills(0, 1), held: pills(0, 2), down: pills(0, 3),
       split: pills(1, 0), chord: pills(2, 1),
+      staffSlides: document.querySelectorAll('#measuresGrid .tab-staff-layer line.st-slide').length,
+      staffSlurs: document.querySelectorAll('#measuresGrid .tab-staff-layer path.st-slur').length,
+      staffHeads: document.querySelectorAll('#measuresGrid .tab-staff-layer .st-head').length,
       mark: (function(){ var el = document.querySelector('#measuresGrid .fret-slide'); var cs = getComputedStyle(el); var label = getComputedStyle(el.parentNode); return { fontSize: parseFloat(cs.fontSize), labelFontSize: parseFloat(label.fontSize), weight: cs.fontWeight, opacity: cs.opacity, color: cs.color, labelColor: label.color }; })()
     };
     updateActiveCursor(0, 0, false);
     return out;
   })()`);
+  const slideCount = (slideLines.join('\n').match(/g[A-G]/g) || []).length;
+  assert.equal(slideCount, 5, 'the test score has five slides');
+  assert.ok(practice.staffHeads > 0, 'the practice staff is drawn');
+  assert.equal(practice.staffSlides, slideCount, 'the practice staff draws one line per slide: ' + JSON.stringify(practice));
+  assert.equal(practice.staffSlurs, 0, 'a slide is not drawn as a slur curve on the staff');
+  const practiceShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  const practiceTarget = path.join(root, 'test-artifacts', 'practice-slide.png');
+  fs.writeFileSync(practiceTarget, Buffer.from(practiceShot.data, 'base64'));
+  process.stdout.write('Artifact: ' + practiceTarget + '\n');
   const open = String(practice.openFret);
   const up = String(practice.upFret);
   const upMark = '/';
@@ -4278,6 +4291,18 @@ async function testSlideLabels(client, httpPort) {
       text: document.getElementById('tiScoreText').value, errors: document.querySelectorAll('#tiDiagnostics .is-error').length };
   })()`);
   const labels = await readLabels();
+  const inputStaff = await client.evaluate(`({
+    slides: document.querySelectorAll('#tiMeasures .ti-staff-wrap svg line.st-slide').length,
+    slurs: document.querySelectorAll('#tiMeasures .ti-staff-wrap svg path.st-slur').length,
+    heads: document.querySelectorAll('#tiMeasures .ti-staff-wrap svg .st-head').length
+  })`);
+  assert.ok(inputStaff.heads > 0, 'the cards draw a staff');
+  assert.equal(inputStaff.slides, slideCount, 'the input cards draw one line per slide: ' + JSON.stringify(inputStaff));
+  assert.equal(inputStaff.slurs, 0, 'a slide is not drawn as a slur curve on the cards');
+  const inputShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const inputTarget = path.join(root, 'test-artifacts', 'score-input-slide.png');
+  fs.writeFileSync(inputTarget, Buffer.from(inputShot.data, 'base64'));
+  process.stdout.write('Artifact: ' + inputTarget + '\n');
   assert.equal(labels.plain, open);
   assert.equal(labels.up, upMark + up, 'the input card shows / before an upward slide: ' + JSON.stringify(labels));
   assert.equal(labels.down, downMark + open);
@@ -4651,7 +4676,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=slide-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=slide-2')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

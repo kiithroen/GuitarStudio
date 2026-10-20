@@ -282,7 +282,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=slide-1')), 'every app script uses the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=slide-2')), 'every app script uses the shared revision');
   for (const id of ['editInInputBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
     assert.match(html, new RegExp('id="' + id + '"'), 'draft UI includes #' + id);
   }

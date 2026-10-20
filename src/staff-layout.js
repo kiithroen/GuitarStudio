@@ -58,7 +58,7 @@
     // 하모닉스는 손 대는 자리의 음(줄 개방현 + 손 대는 프렛)으로 그린다. 이름은 그 음에서 다시 만든다(Docs/staff-notation.md).
     var harmonic = parsed.articulation === 'harmonic' && !!parsed.pos;
     var drawMidi = harmonic ? GuitarParser.STRINGS[parsed.pos.str - 1].midi + parsed.pos.fret : parsed.midi;
-    var core = harmonic ? GuitarParser.noteNameForMidi(drawMidi, false) : text.replace(/\?$/, '').replace(/^[!s]/, '');
+    var core = harmonic ? GuitarParser.noteNameForMidi(drawMidi, false) : text.replace(/\?$/, '').replace(/^[!sg]/, '');
     var m = core.match(/^[0-4]?([A-G])([#b]?)([2-5])/);
     if (!m) return fail('음이름을 읽을 수 없습니다: ' + text);
     var letter = m[1];
@@ -67,7 +67,7 @@
     var step = written * 7 + LETTER_INDEX[letter] - (4 * 7 + LETTER_INDEX.E);
     return {
       name: letter + m[2] + m[3], letter: letter, alter: alter, octave: written, step: step,
-      midi: drawMidi, soundMidi: parsed.midi, slur: parsed.articulation === 'slur', accidental: null, ledger: ledgerFor(step),
+      midi: drawMidi, soundMidi: parsed.midi, slur: parsed.articulation === 'slur', slide: parsed.articulation === 'slide', accidental: null, ledger: ledgerFor(step),
       str: parsed.pos ? parsed.pos.str : null, fret: parsed.pos ? parsed.pos.fret : null,
       uncertain: !!parsed.uncertain, harmonic: harmonic
     };
@@ -149,13 +149,14 @@
     return down > up ? 'up' : 'down';
   }
 
-  // 슬러 곡선: 판정은 GuitarNotation.linkSlurs 하나이고, 여기서는 그 결과를 마디별 배치에 싣기만 한다(Docs/staff-notation.md 슬러 곡선).
-  // 붙임줄로 나뉜 음은 곡선이 출발 음의 마지막 토막에서 나가 슬러 음의 첫 토막으로 들어간다.
+  // 슬러 곡선·슬라이드 직선: 판정은 GuitarNotation.linkSlurs 하나이고, 여기서는 그 결과를 마디별 배치에 싣기만 한다(Docs/staff-notation.md 슬러 곡선·슬라이드 직선).
+  // 붙임줄로 나뉜 음은 선이 출발 음의 마지막 토막에서 나가 도착 음의 첫 토막으로 들어간다.
+  // 모든 항목에 kind('slur'|'slide', 도착 음의 종류)를 싣고, 슬라이드는 방향 dir('up'|'down')도 싣는다.
   function attachSlurs(result, segments, spanOfSegment){
     var pieces = segments.map(function(segment){
       if (segment.kind === 'rest') return { rest: true, hold: false, notes: [] };
       return { rest: false, hold: false, notes: segment.baseNotes.map(function(note){
-        return { str: note.str, midi: note.soundMidi, slur: note.slur };
+        return { str: note.str, midi: note.soundMidi, slur: note.slur || note.slide, slide: note.slide };
       }) };
     });
     GuitarNotation.linkSlurs(pieces).forEach(function(results, pieceIndex){
@@ -163,11 +164,17 @@
         if (!link || !link.ok) return;
         var from = spanOfSegment.get(segments[link.from.piece]).last;
         var to = spanOfSegment.get(segments[pieceIndex]).first;
+        var slide = !!segments[pieceIndex].baseNotes[noteIndex].slide;
+        var extra = slide ? { kind: 'slide', dir: link.type === 'hammer' ? 'up' : 'down' } : { kind: 'slur' };
+        function add(entry){
+          Object.keys(extra).forEach(function(key){ entry[key] = extra[key]; });
+          return entry;
+        }
         if (from.measure === to.measure){
-          result[from.measure].slurs.push({ fromItem: from.item, fromHead: link.from.note, toItem: to.item, toHead: noteIndex });
+          result[from.measure].slurs.push(add({ fromItem: from.item, fromHead: link.from.note, toItem: to.item, toHead: noteIndex }));
         } else {
-          result[from.measure].slurs.push({ fromItem: from.item, fromHead: link.from.note, toEdge: true });
-          result[to.measure].slurs.push({ fromEdge: true, toItem: to.item, toHead: noteIndex });
+          result[from.measure].slurs.push(add({ fromItem: from.item, fromHead: link.from.note, toEdge: true }));
+          result[to.measure].slurs.push(add({ fromEdge: true, toItem: to.item, toHead: noteIndex }));
         }
       });
     });

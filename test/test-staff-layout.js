@@ -262,7 +262,8 @@ test('slur in one measure: one curve from the source head to the slurred head', 
   const slurs = result.measures[0].slurs;
   assert.equal(slurs.length, 1);
   const slur = slurs[0];
-  assert.deepEqual(Object.keys(slur).sort(), ['fromHead', 'fromItem', 'toHead', 'toItem']);
+  assert.deepEqual(Object.keys(slur).sort(), ['fromHead', 'fromItem', 'kind', 'toHead', 'toItem']);
+  assert.equal(slur.kind, 'slur');
   assert.equal(noteAt(result, 0, slur.fromItem, slur.fromHead).name, 'E4');
   assert.equal(noteAt(result, 0, slur.toItem, slur.toHead).name, 'F4');
   assert.equal(slur.toItem, slur.fromItem + 1);
@@ -274,8 +275,8 @@ test('slur in one measure: one curve from the source head to the slurred head', 
 
 test('slur across the barline: the source measure leaves through the right edge, the target measure enters from the left', function(){
   const result = layout('r r r E4\nsF4 - - -');
-  assert.deepEqual(result.measures[0].slurs.map(function(s){ return Object.keys(s).sort(); }), [['fromHead', 'fromItem', 'toEdge']]);
-  assert.deepEqual(result.measures[1].slurs.map(function(s){ return Object.keys(s).sort(); }), [['fromEdge', 'toHead', 'toItem']]);
+  assert.deepEqual(result.measures[0].slurs.map(function(s){ return Object.keys(s).sort(); }), [['fromHead', 'fromItem', 'kind', 'toEdge']]);
+  assert.deepEqual(result.measures[1].slurs.map(function(s){ return Object.keys(s).sort(); }), [['fromEdge', 'kind', 'toHead', 'toItem']]);
   const out = result.measures[0].slurs[0], into = result.measures[1].slurs[0];
   assert.equal(out.toEdge, true);
   assert.equal(into.fromEdge, true);
@@ -341,6 +342,51 @@ test('a source note split by ties curves from its last piece, and a split target
   const across = layout('E4 - - -\n- - - -\nsF4 - - -');
   assert.deepEqual(across.measures.map(function(m){ return m.slurs.length; }), [0, 1, 1]);
   assert.equal(across.measures[1].slurs[0].toEdge, true);
+});
+
+// 슬라이드(g): 슬러와 같은 linkSlurs 결과를 쓰고, 항목에 kind 'slide' 와 방향 dir 이 실린다.
+test('slide: an entry carries kind slide and a direction, a slur entry carries kind slur and no direction', function(){
+  const up = layout('E3@4 gF#3@4 - -').measures[0].slurs;
+  assert.equal(up.length, 1);
+  assert.equal(up[0].kind, 'slide');
+  assert.equal(up[0].dir, 'up');
+  assert.equal(up[0].toItem, up[0].fromItem + 1);
+  const down = layout('F#3@4 gE3@4 - -').measures[0].slurs;
+  assert.equal(down.length, 1);
+  assert.equal(down[0].kind, 'slide');
+  assert.equal(down[0].dir, 'down');
+  const slur = layout('E3@4 sF#3@4 - -').measures[0].slurs;
+  assert.equal(slur[0].kind, 'slur');
+  assert.ok(!('dir' in slur[0]), 'a slur has no direction');
+  const mixed = layout('E3@4 sF#3@4 gG3@4 -').measures[0].slurs;
+  assert.deepEqual(mixed.map(function(entry){ return entry.kind; }), ['slur', 'slide'], 'the kind follows the target note');
+});
+
+test('slide: laid out without an error as a plain note, a chord component, and in split cells', function(){
+  const plain = layout('E3@4 gF#3@4 - -');
+  assert.equal(noteAt(plain, 0, 1, 0).name, 'F#3', 'the articulation letter is not read as part of the note name');
+  const chord = layout('E3@4 A2@5+gG3@4 - -');
+  const chordSlides = chord.measures[0].slurs;
+  assert.equal(chordSlides.length, 1);
+  assert.equal(chordSlides[0].kind, 'slide');
+  assert.equal(noteAt(chord, 0, chordSlides[0].fromItem, chordSlides[0].fromHead).name, 'E3');
+  assert.equal(noteAt(chord, 0, chordSlides[0].toItem, chordSlides[0].toHead).name, 'G3');
+  const splitTo = layout('E3@4/gF#3@4 - - -').measures[0].slurs;
+  assert.equal(splitTo.length, 1);
+  assert.equal(splitTo[0].kind, 'slide');
+  const splitFrom = layout('E3@4 F#3@4/gG3@4 - -').measures[0].slurs;
+  assert.equal(splitFrom.length, 1);
+  assert.equal(splitFrom[0].kind, 'slide');
+  assert.equal(splitFrom[0].dir, 'up');
+});
+
+test('slide across the barline: both halves carry kind slide and the direction', function(){
+  const up = layout('r r r E3@4\ngF#3@4 - - -');
+  assert.deepEqual(up.measures[0].slurs.map(function(s){ return [s.kind, s.dir, !!s.toEdge]; }), [['slide', 'up', true]]);
+  assert.deepEqual(up.measures[1].slurs.map(function(s){ return [s.kind, s.dir, !!s.fromEdge]; }), [['slide', 'up', true]]);
+  const down = layout('r r r F#3@4\ngE3@4 - - -');
+  assert.equal(down.measures[0].slurs[0].dir, 'down');
+  assert.equal(down.measures[1].slurs[0].dir, 'down');
 });
 
 // 롤(~): 화음 item 의 roll 은 롤 사건의 첫 토막에만 true 다. 쉼 item 에는 roll 이 없다.
