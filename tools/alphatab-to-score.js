@@ -50,6 +50,7 @@ const MEMO = {
   overflow: '마디 길이를 넘는 음 생략',
   tempo: '템포 변화 생략',
   outOfRange: '음역 밖 → 옥타브 옮김',
+  slurOtherString: '다른 줄 슬러 생략',
   noStringSlur: '줄 정보 없음: 슬러 생략',
   noStringSlide: '줄 정보 없음: 슬라이드 생략',
   noStringHarmonic: '줄 정보 없음: 하모닉스 생략'
@@ -389,6 +390,27 @@ function isValidChordName(name){
   return chordValidity.get(name);
 }
 
+// 코드 사전에 없는 이름이면 괄호를 벗긴 이름, 7(9) 꼴이면 9 로 바꾼 이름 순으로 사전에 있는 첫 이름을 쓴다. 모두 없으면 원래 이름이다.
+function dictionaryChordName(name){
+  if (inChordDictionary(name)) return name;
+  const stripped = name.replace(/[()]/g, '');
+  const candidates = [stripped];
+  if (name.indexOf('7(9)') >= 0) candidates.push(name.replace('7(9)', '9').replace(/[()]/g, ''));
+  for (let i = 0; i < candidates.length; i++){
+    if (candidates[i] !== name && isValidChordName(candidates[i]) && inChordDictionary(candidates[i])) return candidates[i];
+  }
+  return name;
+}
+
+const dictionaryChecks = new Map();
+function inChordDictionary(name){
+  if (!dictionaryChecks.has(name)){
+    const result = parser.validateScore('[' + name + '] r', 1);
+    dictionaryChecks.set(name, !result.warnings.some(function(warning){ return warning.code === 'UNSUPPORTED_CHORD'; }));
+  }
+  return dictionaryChecks.get(name);
+}
+
 // ---------- 마디별 변환
 
 function barSpan(masterBar, sigTicks){
@@ -568,6 +590,12 @@ function convert(score, opts){
             // 슬러·슬라이드는 도착 음에 단다(우리 문법은 뒤 음에 s·g).
             const hammerOrigin = note.hammerPullOrigin;
             if (hammerOrigin && hammerOrigin.string === note.string && hammerOrigin.fret !== note.fret && !harmonic) articulation = 's';
+            // {slur 이름} 짝의 도착 음도 같은 규칙이다. 다른 줄이면 슬러를 빼고 메모를 남긴다.
+            const slurFrom = note.isSlurDestination ? note.slurOrigin : null;
+            if (slurFrom && !articulation && !harmonic){
+              if (slurFrom.string !== note.string) memo(MEMO.slurOtherString);
+              else if (slurFrom.fret !== note.fret) articulation = 's';
+            }
             const slideOrigin = note.slideOrigin;
             if (slideOrigin && !articulation && !harmonic){
               if (slideOrigin.string === note.string && slideOrigin.fret !== note.fret) articulation = 'g';
@@ -579,7 +607,11 @@ function convert(score, opts){
             midi = pitchOnly(note);
             if (midi == null) return;
             if (note.harmonicType !== model.HarmonicType.None) memo(MEMO.noStringHarmonic);
-            if (note.isHammerPullOrigin || !!note.hammerPullOrigin || note.isSlurOrigin || note.isSlurDestination || note.isEffectSlurOrigin || note.isEffectSlurDestination) memo(MEMO.noStringSlur);
+            // {slur 이름} 짝의 도착 음은 출발 음과 음높이가 다르면 s 로 옮긴다(같은 높이 짝은 주법 없이 둔다). 기본 줄 판정이 어긋나는 짝은 마디를 만든 뒤 걸러 낸다.
+            const slurFrom = note.isSlurDestination ? note.slurOrigin : null;
+            const slurFromMidi = slurFrom ? pitchOnly(slurFrom) : null;
+            if (slurFromMidi != null && slurFromMidi !== midi) articulation = 's';
+            if (note.isHammerPullOrigin || !!note.hammerPullOrigin || note.isEffectSlurOrigin || note.isEffectSlurDestination || (note.isSlurDestination && slurFromMidi == null)) memo(MEMO.noStringSlur);
             if (note.slideOutType !== model.SlideOutType.None || note.slideInType !== model.SlideInType.None) memo(MEMO.noStringSlide);
             while (midi < LOWEST_MIDI){ midi += 12; shifted = true; }
             while (midi > HIGHEST_MIDI){ midi -= 12; shifted = true; }
@@ -752,14 +784,18 @@ function convert(score, opts){
     let chordName = '-';
     if (collected.chords.length){
       const first = collected.chords[0];
-      if (isValidChordName(first.name)) chordName = first.name;
-      else memos.push('코드 이름 변환 불가: ' + first.name);
+      if (isValidChordName(first.name)){
+        const normalized = dictionaryChordName(first.name);
+        chordName = normalized;
+        if (normalized !== first.name) memos.push('원본 ' + first.name);
+      } else memos.push('코드 이름 변환 불가: ' + first.name);
       collected.chords.slice(1).forEach(function(entry){
         if (entry.name === first.name) return;
         const cellNumber = Math.min(grid.cells, Math.max(0, Math.floor((entry.start + TOLERANCE_TICKS) / grid.slotTicks))) + 1;
         memos.push(cellNumber + '박부터 ' + entry.name);
       });
-      endChord = collected.chords[collected.chords.length - 1].name;
+      const lastName = collected.chords[collected.chords.length - 1].name;
+      endChord = isValidChordName(lastName) ? dictionaryChordName(lastName) : lastName;
     } else if (isValidChordName(endChord)){
       // 교본은 같은 코드가 이어지는 마디에 코드 이름을 다시 적지 않는데, 앱의 코드 카드는 마디 머리표로 그려서 비우면 카드가 끊긴다.
       chordName = endChord;
@@ -773,10 +809,12 @@ function convert(score, opts){
   // 길이가 다른 음의 겹침 메모는 한 마디라도 해당하면 설명에 한 번만 적는다. 두 성부 곡은 거의 모든 마디가 해당해 마디 메모가 다른 메모를 가린다.
   if (lines.some(function(line){ return line.hasNotes && line.overlap; })) descriptionParts.push(MEMO.overlap);
 
-  const measureTexts = lines.map(function(line){
-    const memos = line.texts.concat(line.memos);
-    return '[' + line.chord + '] ' + line.cells.join(' ') + (memos.length ? ' | ' + JSON.stringify(memos.join(' · ')) : '');
-  });
+  function buildMeasureTexts(){
+    return lines.map(function(line){
+      const memos = line.texts.concat(line.memos);
+      return '[' + line.chord + '] ' + line.cells.join(' ') + (memos.length ? ' | ' + JSON.stringify(memos.join(' · ')) : '');
+    });
+  }
 
   const title = String(score.title || '').trim() || opts.fallbackTitle || '제목 없음';
   // 탭·줄바꿈은 시트 열을 깨니 공백으로 바꾼다(MusicXML 제목에는 줄 바꿈 없는 공백 U+00A0 이 섞여 나오기도 한다).
@@ -792,8 +830,40 @@ function convert(score, opts){
       .join(' · ');
   // 앱은 카포를 제목·설명의 표기(getSongCapo)로만 읽는다. \capo 가 있는데 표기가 없으면(notices 만 있는 경우) 설명 끝에 붙인다.
   if (capo > 0 && parser.getSongCapo({ title: cleanTitle, badge: description }) !== capo) description += ' · Capo ' + capo;
+  // @줄 없는 슬러 음은 앱이 고른 기본 줄로 판정한다. 앞 음과 다른 줄이 잡혀 INVALID_SLUR 가 나면 그 마디의 그 s 만 빼고 메모를 남긴다.
+  // 판정은 parser.validateScore 하나로 하고, 오류 메시지 끝의 토큰으로 칸 안의 음을 찾는다.
+  let measureTexts = buildMeasureTexts();
+  let validation = parser.validateScore(measureTexts.join('\n'), grid.cells);
+  let slurFixed = false;
+  validation.errors.forEach(function(error){
+    if (error.code !== 'INVALID_SLUR') return;
+    const line = lines[error.measure - 1];
+    const token = String(error.message).slice(String(error.message).lastIndexOf(': ') + 2);
+    if (!line || !(error.beat >= 1) || token.charAt(0) !== 's' || token.indexOf('@') >= 0) return;
+    const pieces = line.cells[error.beat - 1].split('/').map(function(piece){
+      return piece.split('+').map(function(part){
+        const roll = part.charAt(0) === '~';
+        return { roll: roll, text: roll ? part.slice(1) : part };
+      });
+    });
+    let done = false;
+    pieces.forEach(function(parts){
+      parts.forEach(function(part){
+        if (!done && part.text === token){ part.text = token.slice(1); done = true; }
+      });
+    });
+    if (!done) return;
+    line.cells[error.beat - 1] = pieces.map(function(parts){
+      return parts.map(function(part){ return (part.roll ? '~' : '') + part.text; }).join('+');
+    }).join('/');
+    if (line.memos.indexOf(MEMO.noStringSlur) < 0) line.memos.push(MEMO.noStringSlur);
+    slurFixed = true;
+  });
+  if (slurFixed){
+    measureTexts = buildMeasureTexts();
+    validation = parser.validateScore(measureTexts.join('\n'), grid.cells);
+  }
   const scoreText = measureTexts.join(' // ');
-  const validation = parser.validateScore(measureTexts.join('\n'), grid.cells);
   return {
     ok: true,
     title: cleanTitle,

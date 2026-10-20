@@ -275,7 +275,7 @@ const EXAMPLES = [
     // 오선만 있는 파트: 음역 밖 음(C2, C6)은 옥타브를 옮겨 ? 를 달고, 슬러는 빼고 메모, 화음은 + 로 묶는다.
     file: 'no-strings.musicxml', title: 'No Strings', beats: 4, bpm: 90, capo: 0, descriptionHas: ['줄 정보 없음(기본 위치)'],
     measures: [
-      '[-] ' + [pitchToken(midiOf('E', 4)), pitchToken(midiOf('F', 4) + 1), pitchToken(midiOf('C', 2)), pitchToken(midiOf('C', 6))].join(' ') + ' | "줄 정보 없음: 슬러 생략 · 음역 밖 → 옥타브 옮김"',
+      '[-] ' + [pitchToken(midiOf('E', 4)), 's' + pitchToken(midiOf('F', 4) + 1), pitchToken(midiOf('C', 2)), pitchToken(midiOf('C', 6))].join(' ') + ' | "음역 밖 → 옥타브 옮김"',
       '[-] ' + [pitchToken(midiOf('G', 3)) + '+' + pitchToken(midiOf('B', 3)), '-', pitchToken(midiOf('A', 3)), '-'].join(' ')
     ]
   },
@@ -609,6 +609,57 @@ test('chord names: a bar without a chord takes the chord that sounded at the end
   assert.doesNotMatch(out.measures[4], /\|/);
   assert.match(out.measures[6], /코드 이름 변환 불가: N\.C\./);
   assert.doesNotMatch(out.measures[7], /\|/, 'an unusable carried name leaves [-] with no memo');
+});
+
+test('slur pairs: a {slur} destination gets s, also on string-less notes; a default string the app would reject drops the s with a memo', function(){
+  const head = '\\title "S" \\tempo 80 \\ts (4 4)\n';
+  const tabs = '\\track "G" \\staff {tabs} \\tuning (E4 B3 G3 D3 A2 E2)\n';
+  const firstLine = function(out){ assert.equal(out.ok, true); assert.deepEqual(out.errors, []); return out.measures[0]; };
+  // 음이름 음: 기본 줄이 같으면 s, 같은 음높이 짝은 주법 없이 메모도 없다.
+  const named = firstLine(convertTex(head + 'A3{slur s1}.16 G3{slur s1}.16 r.8 C4{slur s2}.8 D4{slur s2}.8 r.2 |'));
+  assert.equal(named, '[-] A3/sG3/r/r C4/sD4 r r');
+  const same = firstLine(convertTex(head + 'C4{slur s1}.16 C4{slur s1}.16 r.8 r.2 r.4 |'));
+  assert.equal(same, '[-] C4/C4/r/r r r r');
+  // 기본 줄이 갈리는 짝(D4 는 2번 줄, E4 는 1번 줄)은 s 를 빼고 그 마디 메모를 남긴다. 파서가 같은 쌍에 INVALID_SLUR 를 내는 것도 같이 확인한다.
+  assert.ok(parser.validateScore('[-] D4 sE4 r r', 4).errors.some(function(error){ return error.code === 'INVALID_SLUR'; }));
+  const split = firstLine(convertTex(head + 'D4{slur s1}.16 E4{slur s1}.16 r.8 r.2 r.4 |'));
+  assert.equal(split, '[-] D4/E4/r/r r r r | "줄 정보 없음: 슬러 생략"');
+  // 프렛.줄 음: 같은 줄이면 s, 다른 줄이면 s 없이 메모.
+  const sameString = firstLine(convertTex(head + tabs + '\\voice\n3.2{slur s1}.4 5.2{slur s1}.4 r.2 |'));
+  assert.equal(sameString, '[-] ' + [n(2, 3), 's' + n(2, 5), 'r', 'r'].join(' '));
+  const otherString = firstLine(convertTex(head + tabs + '\\voice\n3.3{slur s1}.4 5.2{slur s1}.4 r.2 |'));
+  assert.equal(otherString, '[-] ' + [n(3, 3), n(2, 5), 'r', 'r'].join(' ') + ' | "다른 줄 슬러 생략"');
+});
+
+test('chord names: a name missing from the chord dictionary is rewritten (parentheses stripped, 7(9) to 9) with an original memo; carried bars keep the rewritten name without a memo', function(){
+  const bar = function(chord){
+    const beats = ['0.1.4', '0.2.4', '0.3.4', '0.4.4'];
+    if (chord) beats[0] += ' {ch "' + chord + '"}';
+    return beats.join(' ') + ' |\n';
+  };
+  const out = convertTex('\\title "Norm" \\tempo 80 \\ts (4 4)\n' + bar('F7(b5)') + bar() + bar('Am7(9)') + bar('Am') + bar('C7(9)') + bar() + bar('F#m7(b5)'));
+  assert.equal(out.ok, true);
+  const cells = ' ' + [n(1, 0), n(2, 0), n(3, 0), n(4, 0)].join(' ');
+  assert.deepEqual(out.measures, [
+    '[F7b5]' + cells + ' | "원본 F7(b5)"',
+    '[F7b5]' + cells,
+    '[Am9]' + cells + ' | "원본 Am7(9)"',
+    '[Am]' + cells,
+    '[C7(9)]' + cells,
+    '[C7(9)]' + cells,
+    '[F#m7b5]' + cells + ' | "원본 F#m7(b5)"'
+  ]);
+  const mid = convertTex('\\title "Mid" \\tempo 80 \\ts (4 4)\n0.1.4 {ch "F7(b5)"} 0.2.4 0.3.4 {ch "Am7(9)"} 0.4.4 |\n');
+  assert.match(mid.measures[0], /"원본 F7\(b5\) · 3박부터 Am7\(9\)"$/, 'a change inside the bar keeps the original name');
+});
+
+test('display transpose: \\displaytranspose 12 on a named-note song changes only the drawing height, not the converted result', function(){
+  const body = 'C4.4 E4.4 G4.4 C5.4 |\n';
+  const plain = convertTex('\\title "D" \\tempo 80 \\ts (4 4)\n' + body);
+  const shifted = convertTex('\\title "D" \\tempo 80 \\ts (4 4)\n\\displaytranspose 12\n' + body);
+  assert.equal(shifted.ok, true);
+  assert.deepEqual(shifted.measures, plain.measures);
+  assert.equal(shifted.description, plain.description);
 });
 
 test('voices: the long-note memo is written once in the description when only some bars have it, and never in a bar memo', function(){

@@ -111,6 +111,8 @@ assert.match(tabResult.description, /Capo 2/);
 assert.match(tabResult.measures[2], /꾸밈음 생략/);
 // 예시 2: 음이름 곡은 @줄 없이, 두 성부가 합쳐져 4마디, 못갖춘마디와 섹션
 assert.equal(staffResult.measures.length, 4);
+// 오선만 있는 곡 예시는 \displaytranspose 12 로 기타 오선보처럼 한 옥타브 위에 그린다(소리는 그대로).
+assert.equal(cleanScore(scorePrompt.ALPHATEX_EXAMPLES[1].lines.join('\n'), 'example 2').tracks[0].staves[0].displayTranspositionPitch, -12);
 staffResult.measures.forEach(function(line){ assert.doesNotMatch(line.split('|')[0], /@/); });
 assert.match(staffResult.measures[0], /못갖춘마디/);
 assert.match(staffResult.measures[1], / \| "A"$/, 'section text is the whole bar memo: the long-note memo is in the description only');
@@ -151,6 +153,8 @@ const SNIPPETS = [
   { find: '`C4{lf 2}.4`', tex: HEADER + 'C4{lf 2}.4 |', check: function(score){ assert.equal(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].leftHandFinger, alphaTab.model.Fingers.IndexFinger); } },
   { find: '`(0.6 2.4).4 {ad ch "Am" txt "메모"}`', tex: HEADER + '(0.6 2.4).4 {ad ch "Am" txt "메모"} |', check: function(score){ assert.equal(score.tracks[0].staves[0].bars[0].voices[0].beats[0].text, '메모'); } },
   { find: '`0.1{h}.8 2.1.8`', tex: HEADER + '0.1{h}.8 2.1.8 |', check: function(score){ assert.equal(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].isHammerPullOrigin, true); } },
+  { find: '`A3{slur s1}.16 G3{slur s1}.16`', tex: HEADER + 'A3{slur s1}.16 G3{slur s1}.16 C4.8 |', check: function(score){ const beats = score.tracks[0].staves[0].bars[0].voices[0].beats; assert.equal(beats[0].notes[0].isSlurOrigin, true); assert.equal(beats[1].notes[0].isSlurDestination, true); assert.equal(beats[1].notes[0].slurOrigin, beats[0].notes[0]); } },
+  { find: '`\\displaytranspose 12`', tex: '\\title "t" \\tempo (60) \\ts (4 4)\n\\displaytranspose 12\nC4.1 |', check: function(score){ assert.equal(score.tracks[0].staves[0].displayTranspositionPitch, -12); assert.equal(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].realValue, 60); } },
   { find: '`3.2{sl}.4 5.2.4`', tex: HEADER + '3.2{sl}.4 5.2.4 |', check: function(score){ assert.equal(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].slideOutType, alphaTab.model.SlideOutType.Legato); } },
   { find: '`12.1{nh}.4`', tex: HEADER + '12.1{nh}.4 |', check: function(score){ assert.equal(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].harmonicType, alphaTab.model.HarmonicType.Natural); } },
   { find: '`(0.6 2.4 2.3).4 {ad}`', tex: HEADER + '(0.6 2.4 2.3).4 {ad} (0.6 2.4 2.3).4 {au} |', check: function(score){ const beats = score.tracks[0].staves[0].bars[0].voices[0].beats; assert.equal(beats[0].brushType, alphaTab.model.BrushType.ArpeggioDown); assert.equal(beats[1].brushType, alphaTab.model.BrushType.ArpeggioUp); } },
@@ -222,7 +226,7 @@ const REQUIRED = [
   // 5 길이·묶음
   ['`.1` 온음표', 'whole note'], ['`.32` 32분음표', '32nd note'], ['`{d}`', 'dotted'], ['`{tu 3}`', 'triplet'], ['`{t}`', 'tie'], ['`\\voice`', 'voices'], ['첫째 성부에만', 'marks go to the first voice'],
   // 6 주법
-  ['`{h}`', 'hammer-on/pull-off'], ['`{sl}`', 'slide'], ['`{nh}`', 'natural harmonic'], ['`{ad}`', 'roll down arrow'], ['두 성부의 그 박에 모두', 'a roll across two voices goes on both voices'], ['`{au}`', 'roll up arrow'], ['`{gr}`', 'grace note'], ['`{fermata medium}`', 'fermata'],
+  ['`{h}`', 'hammer-on/pull-off'], ['`{sl}`', 'slide'], ['`{nh}`', 'natural harmonic'], ['`{ad}`', 'roll down arrow'], ['`{slur s1}`', 'slur pair for named notes'], ['음이름 음에는', 'no {h} on named notes'], ['\\displaytranspose 12', 'display transpose for named-note songs'], ['두 성부의 그 박에 모두', 'a roll across two voices goes on both voices'], ['`{au}`', 'roll up arrow'], ['`{gr}`', 'grace note'], ['`{fermata medium}`', 'fermata'],
   ['`{lf 2}`~`{lf 5}`', 'left hand fingers'], ['`{rf 1}`~`{rf 4}`', 'right hand fingers'], ['`{ch "Am"}`', 'chord name'], ['글리산도 생략', 'glissando without a start note'], ['스트로크', 'strokes'],
   // 7 메모
   ['`{txt "…"}`', 'text memo'], ['`{txt "확인: 이유"}`', 'uncertain memo'], ['아포얀도 표시는 옮기지 마', 'no apoyando']
