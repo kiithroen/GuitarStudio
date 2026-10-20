@@ -304,7 +304,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=click-vol-1')), 'every app script uses the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=review-fix-1')), 'every app script uses the shared revision');
   for (const id of ['editInInputBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
     assert.match(html, new RegExp('id="' + id + '"'), 'draft UI includes #' + id);
   }
@@ -434,11 +434,12 @@ async function main(){
     song: context.curSong, measure: context.curMeasureIdx, beat: context.curBeatIdx, actx: context.actx,
     playing: context.isPlaying, session: context.playSession,
     scheduleMetronomeClick: context.scheduleMetronomeClick, playGuitarNote: context.playGuitarNote,
-    stopGuitarNotes: context.stopGuitarNotes, highlightFretboard: context.highlightFretboard, ensureAudioCtx: context.ensureAudioCtx,
+    stopGuitarNotes: context.stopGuitarNotes, highlightFretboard: context.highlightFretboard, ensureAudioCtx: context.ensureAudioCtx, warmKsCache: context.warmKsCache,
     appState: { bpm: context.appState.bpm, beats: context.appState.beats, loopStart: context.appState.loopStart, loopEnd: context.appState.loopEnd,
       loopEnable: context.appState.loopEnable, guideSound: context.appState.guideSound, clickMode: context.appState.clickMode }
   };
   try {
+    context.warmKsCache = function(){};
     const skipParsed = context.parseScore('[-] _ _ _ E4\n[Am] G4 - _ _\n[C] A4 B4 C5 D5', 4);
     assert.equal(skipParsed.errors.length, 0, 'the skip-cell score parses without errors');
     const skipSong = { id: 'skip-test', title: '빈칸 시험', type: 'structured', builtin: false, bpm: 120, beats: 4, capo: 0, measures: skipParsed.measures, notationVersion: 2 };
@@ -467,6 +468,33 @@ async function main(){
     assert.equal(session.nextBeatTime, 1 + 7 * spb, 'the session clock moved only for the playable cells');
     for (const call of noteCalls) assert.equal(call.hardStopAt, 1 + 7 * spb, 'the remaining length to the song end leaves out the skip cells');
 
+    // 시작 칸이 빈칸이면 구간 안에서 다음 소리 나는 칸으로, 구간 끝까지 없으면 구간 시작으로 옮긴다
+    const startAt = function(text, loopStart, loopEnd, measureIdx, beatIdx){
+      const parsed = context.parseScore(text, 4);
+      assert.equal(parsed.errors.length, 0, 'the start-seek score parses: ' + text);
+      context.curSong = { id: 'skip-start', title: '빈칸 시작', type: 'structured', builtin: false, bpm: 120, beats: 4, capo: 0, measures: parsed.measures, notationVersion: 2 };
+      Object.assign(context.appState, { bpm: 120, beats: 4, loopStart, loopEnd, loopEnable: true, guideSound: true, clickMode: 'all' });
+      context.isPlaying = false;
+      context.playSession = null;
+      context.curMeasureIdx = measureIdx;
+      context.curBeatIdx = beatIdx;
+      context.startPractice();
+      const started = { m: context.playSession.mIdx, b: context.playSession.bIdx, curM: context.curMeasureIdx, curB: context.curBeatIdx, loops: context.playSession.loopCompleted };
+      context.isPlaying = false;
+      context.playSession = null;
+      return started;
+    };
+    assert.deepEqual(startAt('[C] C4 D4 E4 F4\n[C] G4 A4 _ _', 1, 2, 1, 2), { m: 0, b: 0, curM: 0, curB: 0, loops: 0 }, 'a start on the trailing skip cells of the last measure goes to the loop start');
+    assert.deepEqual(startAt('[C] C4 D4 E4 F4\n[C] G4 A4 _ _\n[C] E4 F4 G4 A4', 1, 3, 1, 2), { m: 2, b: 0, curM: 2, curB: 0, loops: 0 }, 'a start on a skip cell moves to the next sounding cell of the next measure inside the loop');
+    assert.deepEqual(startAt('[C] _ _ B4 C5', 1, 1, 0, 1), { m: 0, b: 2, curM: 0, curB: 2, loops: 0 }, 'a start on a skip cell moves to the next sounding cell of the same measure');
+    assert.deepEqual(startAt('[C] C4 D4 E4 F4\n[C] G4 A4 _ _\n[C] E4 F4 G4 A4', 1, 2, 1, 3), { m: 0, b: 0, curM: 0, curB: 0, loops: 0 }, 'the next sounding cell outside the loop end does not count');
+    assert.deepEqual(startAt('[C] C4 D4 E4 F4\n[C] G4 A4 _ _', 1, 2, 1, 1), { m: 1, b: 1, curM: 1, curB: 1, loops: 0 }, 'a start on a sounding cell stays');
+    // 아래 검사가 쓰던 상태로 되돌린다
+    context.curSong = skipSong;
+    Object.assign(context.appState, { bpm: 120, beats: 4, loopStart: 1, loopEnd: 3, loopEnable: false, guideSound: true, clickMode: 'all' });
+    context.playSession = session;
+    context.isPlaying = true;
+
     // 정지 상태 미리듣기: 빈칸 칸은 소리 없이 지나가고 다음 칸의 유지가 이어 울린다
     noteCalls.length = 0;
     context.appState.guideSound = true;
@@ -492,6 +520,7 @@ async function main(){
     context.stopGuitarNotes = savedSkip.stopGuitarNotes;
     context.highlightFretboard = savedSkip.highlightFretboard;
     context.ensureAudioCtx = savedSkip.ensureAudioCtx;
+    context.warmKsCache = savedSkip.warmKsCache;
     Object.assign(context.appState, savedSkip.appState);
     context.renderSong();
   }

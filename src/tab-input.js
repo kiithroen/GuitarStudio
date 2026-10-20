@@ -688,8 +688,15 @@
     return GuitarParser.getSongCapo({ title: doc.title, badge: doc.description });
   }
 
-  function buildHandoff(doc, now){
-    return {
+  // 연습 화면으로 넘기는 내용(제목·시각 제외)의 비교용 글. 입력 화면이 곡을 불러온 직후의 것을 기억해 두고, 넘길 때 같은지 본다.
+  // 내보낼 때 표기를 정규화하므로 원본 글이 아니라 내보낸 결과끼리 견준다.
+  function handoffSignature(doc){
+    return JSON.stringify([docToScoreLines(doc), doc.beats, doc.bpm, doc.description.trim(), doc.key, doc.sourceId == null ? null : doc.sourceId]);
+  }
+
+  // baseline: 곡을 불러온 직후의 handoffSignature. 지금 내보낸 결과가 같으면 unchanged:true 를 단다.
+  function buildHandoff(doc, now, baseline){
+    var handoff = {
       title: doc.title.trim() || DEFAULT_TITLE,
       beats: doc.beats,
       bpm: doc.bpm,
@@ -699,6 +706,8 @@
       sourceId: doc.sourceId == null ? null : doc.sourceId,
       savedAt: now
     };
+    if (typeof baseline === 'string' && baseline === handoffSignature(doc)) handoff.unchanged = true;
+    return handoff;
   }
 
   // ---------- 불러오기
@@ -863,7 +872,7 @@
     createHistory: createHistory,
     noteMidi: noteMidi, noteMidiOf: noteMidiOf, noteLabel: noteLabel, noteLabelOf: noteLabelOf, noteToken: noteToken,
     slotTokens: slotTokens, docToMeasureObjects: docToMeasureObjects, docToScoreLines: docToScoreLines, docScoreText: docScoreText,
-    slurLinks: slurLinks, slurCheck: slurCheck, slideCheck: slideCheck, linkCheck: linkCheck, LINK_ERRORS: LINK_ERRORS, validateDoc: validateDoc, docCapo: docCapo, buildHandoff: buildHandoff, isHarmonicFret: isHarmonicFret,
+    slurLinks: slurLinks, slurCheck: slurCheck, slideCheck: slideCheck, linkCheck: linkCheck, LINK_ERRORS: LINK_ERRORS, validateDoc: validateDoc, docCapo: docCapo, buildHandoff: buildHandoff, handoffSignature: handoffSignature, isHarmonicFret: isHarmonicFret,
     scoreToDoc: scoreToDoc, parseImportText: parseImportText, replaceMeasuresFromText: replaceMeasuresFromText
   };
   if (typeof window !== 'undefined') window.GuitarTabInput = api;

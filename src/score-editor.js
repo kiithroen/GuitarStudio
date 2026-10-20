@@ -214,11 +214,15 @@ var scoreEditorHooks = (function(){
         : null;
       // 원본이 alphaTex인 곡은 칸 수가 바뀌어 돌아와도 같은 사본 규칙이다(칸 수는 고친 악보의 것).
       if (source && hasAlphaTex(source)){
+        // 입력 화면에서 바꾼 카포(설명 글에 들어간다)·BPM·설명을 쓰고, 유효하지 않을 때만 원본 값으로 돌아간다.
+        // 고친 것이 없으면(입력 화면이 unchanged 를 달면) 사본을 만들지 않고 원본 곡으로 돌아간다.
+        if (handoff.unchanged === true) return source.id;
+        var handoffBpm = Math.round(Number(handoff.bpm));
         var copy = scoreDrafts.createFromScore({
           title:copyTitleFor(source.title, sources),
           beats:Number(handoff.beats),
-          bpm:Math.max(30, Math.min(240, Math.round(Number(source.bpm) || 64))),
-          badge:source.badge,
+          bpm:Math.max(30, Math.min(240, isFinite(handoffBpm) && handoffBpm > 0 ? handoffBpm : (Math.round(Number(source.bpm)) || 64))),
+          badge:typeof handoff.badge === 'string' ? handoff.badge : source.badge,
           lines:handoff.lines,
           key:validKey ? handoff.key : 0,
           origin:'tab-input'

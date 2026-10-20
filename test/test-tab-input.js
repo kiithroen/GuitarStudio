@@ -668,6 +668,36 @@ test('handoff fields and capo from the description', function(){
   assert.equal(ti.createDoc().bpm, ti.DEFAULT_BPM);
 });
 
+test('handoff unchanged: the signature taken right after loading marks an untouched export and nothing else', function(){
+  const loaded = ti.scoreToDoc({ title: '곡', beats: 4, bpm: 70, description: '설명', raw: '[C] C4 D4 E4 F4\n[G] G4 A4 _ _' });
+  assert.equal(loaded.error, undefined);
+  const doc = loaded.doc;
+  doc.sourceId = 'sheet-1';
+  const baseline = ti.handoffSignature(doc);
+  assert.equal(typeof baseline, 'string');
+  assert.equal(ti.buildHandoff(doc, 1).unchanged, undefined, 'without a baseline nothing is marked');
+  assert.equal(ti.buildHandoff(doc, 1, null).unchanged, undefined);
+  assert.equal(ti.buildHandoff(doc, 1, baseline).unchanged, true, 'the same export is unchanged');
+  assert.equal(ti.buildHandoff(doc, 2, baseline).unchanged, true, 'the time of saving is not compared');
+  const retitled = JSON.parse(JSON.stringify(doc));
+  retitled.title = '다른 제목';
+  assert.equal(ti.buildHandoff(retitled, 1, baseline).unchanged, true, 'the title is not compared (the copy title comes from the original)');
+  const edits = {
+    note: d => ti.setNote(d, pos(0, 0, 0), 1, 3),
+    capo: d => { d.description = '설명 Capo 2'; },
+    bpm: d => { d.bpm = 71; },
+    beats: d => { d.beats = 3; },
+    key: d => { d.key = 2; },
+    source: d => { d.sourceId = 'sheet-2'; }
+  };
+  Object.keys(edits).forEach(function(name){
+    const changed = JSON.parse(JSON.stringify(doc));
+    try { edits[name](changed); } catch (error) { /* beats 변경은 마디 모양이 안 맞아 던질 수 있다: 서명이 달라지는지만 본다 */ }
+    assert.notEqual(ti.handoffSignature(changed), baseline, name + ' changes the signature');
+    assert.equal(ti.buildHandoff(changed, 1, baseline).unchanged, undefined, name + ' is not marked unchanged');
+  });
+});
+
 test('key signature: accidental spelling follows the key, normalizeDoc fills and validates it', function(){
   function tokenAt33(options){
     const doc = fresh(options);

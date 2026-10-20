@@ -382,6 +382,8 @@ function curCapo(){
   function applyMeasureSpans(){
     var grid = $('#measuresGrid');
     if (!grid || !measureView.needs.length || !(measureView.base > 0)) return;
+    // 이미 붙은 span 이 암시 열을 만들어 열 수가 부풀어 보이니, 세기 전에 모든 걸침을 지운다.
+    for (var c = 0; c < grid.children.length; c++) grid.children[c].style.gridColumn = '';
     var cols = gridColumnCount(grid);
     measureView.cols = cols;
     grid.dataset.cols = cols;
@@ -1376,6 +1378,30 @@ function curCapo(){
     }
   }
 
+  // 재생 시작 칸이 빈칸(시간 0)이면 구간 안에서 다음 소리 나는 칸으로 옮기고, 구간 끝까지 없으면 구간 시작으로 간다.
+  // 빈칸에서 그대로 시작하면 남은 칸이 모두 빈칸일 때 소리 없이 끝나거나 완주 횟수만 올라간다.
+  function seekPastSkipBeats(startM, endM){
+    if (!curSong || curSong.type !== 'structured') return;
+    var isSkipAt = function(mIdx, bIdx){
+      var measure = curSong.measures[mIdx];
+      return !!(measure && GuitarRhythm.isSkipBeat(measure.beats[bIdx]));
+    };
+    if (!isSkipAt(curMeasureIdx, curBeatIdx)) return;
+    for (var m = curMeasureIdx; m <= endM; m++){
+      var measure = curSong.measures[m];
+      if (!measure) break;
+      for (var b = m === curMeasureIdx ? curBeatIdx + 1 : 0; b < measure.beats.length; b++){
+        if (!isSkipAt(m, b)){
+          curMeasureIdx = m;
+          curBeatIdx = b;
+          return;
+        }
+      }
+    }
+    curMeasureIdx = startM;
+    curBeatIdx = 0;
+  }
+
   // ---------- 메트로놈 재생 루프 (카운트인 + 마디 진행 + 구간 반복 + 자동 가속)
   function startPractice(){
     if (isPlaying) return;
@@ -1402,6 +1428,7 @@ function curCapo(){
     } else {
       curBeatIdx = Math.max(0, Math.min(bpb - 1, curBeatIdx || 0));
     }
+    seekPastSkipBeats(startM, endM);
 
     var countIn = appState.clickMode !== 'off';
     playSession = {

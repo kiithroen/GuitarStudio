@@ -1138,4 +1138,30 @@ test('event moves skip skip cells in both directions, and Delete on a skip cell 
   assert.deepEqual(snapshot(doc), before);
 });
 
+test('eventLength leaves the skip cells out of the real length, and a length that crosses them is still refused with the skip guide', function(){
+  const doc = fresh();
+  ti.setNote(doc, pos(0, 0), 1, 0);
+  ti.setNote(doc, pos(0, 1), 2, 0);
+  ti.setSkip(doc, pos(0, 2), true);
+  ti.setSkip(doc, pos(0, 3), true);
+  ti.insertEmptyMeasure(doc, 1);
+  ti.setNote(doc, pos(1, 1), 1, 1);
+  ti.setNote(doc, pos(1, 2), 1, 2);
+  ti.setNote(doc, pos(1, 3), 1, 3);
+  // 칸 1의 음은 칸 2·3이 빈칸이라 다음 마디 칸 0(유지)까지 2칸이다. eventEnd - 시작은 빈칸까지 4칸(48)이다.
+  assert.equal(si.eventEnd(doc, pos(0, 1)) - si.posToUnits(doc, pos(0, 1)), 48);
+  assert.equal(si.eventLength(doc, pos(0, 1)), 2 * si.UNITS_PER_CELL, 'the two skip cells are taken out');
+  assert.equal(si.eventLength(doc, pos(0, 0)), si.UNITS_PER_CELL, 'a plain event keeps its length');
+  assert.equal(si.eventLength(doc, pos(1, 3)), si.UNITS_PER_CELL * 1, 'the last event runs to the end of the score');
+  assert.equal(si.eventLength(doc, pos(0, 2)), null, 'a skip cell has no event');
+  // 같은 길이(2칸)는 실제 길이와 같다. 4칸(48)은 같지 않아 다시 넣게 되고 빈칸 안내와 함께 거절된다.
+  assert.notEqual(si.eventLength(doc, pos(0, 1)), 4 * si.UNITS_PER_CELL);
+  const before = snapshot(doc);
+  assert.deepEqual(si.placeEvent(doc, pos(0, 1), 3 * si.UNITS_PER_CELL, { keep: true }), { ok: false, error: SKIP_ERROR });
+  assert.deepEqual(si.placeEvent(doc, pos(0, 1), 4 * si.UNITS_PER_CELL, { keep: true }), { ok: false, error: SKIP_ERROR });
+  assert.deepEqual(snapshot(doc), before);
+  // 빈칸이 끝 칸 앞에 없는 사건은 eventEnd 와 같다
+  assert.equal(si.eventLength(doc, pos(1, 1)), si.eventEnd(doc, pos(1, 1)) - si.posToUnits(doc, pos(1, 1)));
+});
+
 process.stdout.write('1..' + checks + '\n');

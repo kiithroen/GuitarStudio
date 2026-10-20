@@ -55,6 +55,7 @@
   var textTimer = null;    // 친 글을 문서에 반영하기 전의 디바운스
   var textSession = false; // 이번 텍스트 세션에서 되돌리기 기록을 이미 남겼나
   var restoreRaw = null;   // 되살릴 수 있는, 문서에 반영 못 했던 글
+  var openedSignature = null; // 연습 화면에서 곡을 불러온 직후 내보낸 결과(T.handoffSignature). 넘길 때 같으면 handoff 에 unchanged 를 단다
 
   function $(id){ return document.getElementById(id); }
   function el(tag, className, text){
@@ -1324,7 +1325,7 @@
     if (!slot || !(slot.rest || slot.notes.some(function(note){ return !!note; }))) return;
     var units = staffDuration();
     if (units == null) return;
-    if (S.eventEnd(doc, cursor) - S.posToUnits(doc, cursor) === units) return;
+    if (S.eventLength(doc, cursor) === units) return;
     placeAtCursor({ keep: true });
   }
 
@@ -1704,7 +1705,7 @@
   function openPractice(){
     commitText();
     saveNow();
-    var ok = ls.set(HANDOFF_KEY, T.buildHandoff(doc, Date.now()));
+    var ok = ls.set(HANDOFF_KEY, T.buildHandoff(doc, Date.now(), openedSignature));
     if (ok) location.href = 'index.html';
     else setResultStatus('넘기지 못했습니다. 시트용 TSV로 복사해 연습 화면에서 불러오세요.');
   }
@@ -1754,6 +1755,7 @@
     }
     var measure = Number.isInteger(request.measure) ? Math.max(0, Math.min(next.measures.length - 1, request.measure)) : 0;
     replaceDoc(next);
+    openedSignature = T.handoffSignature(doc);
     setCursor({ m: measure, c: 0, s: 0, str: 1 }, true);
     setStatus('연습 화면에서 "' + title + '"을 열었습니다 · ' + (measure + 1) + '마디부터');
   }

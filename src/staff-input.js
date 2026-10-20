@@ -89,6 +89,19 @@
     return totalUnits(doc);
   }
 
+  // 사건의 실제 길이(1/12칸). eventEnd - 시작에서, 그 사이에 낀 빈칸 칸(시간 0)의 단위를 뺀다. 사건이 없으면 null.
+  function eventLength(doc, pos){
+    var end = eventEnd(doc, pos);
+    if (end === null) return null;
+    var start = posToUnits(doc, pos);
+    var length = end - start;
+    for (var ci = Math.floor(start / UNITS_PER_CELL); ci * UNITS_PER_CELL < end && ci < doc.measures.length * doc.beats; ci++){
+      if (ci * UNITS_PER_CELL < start) continue;
+      if (doc.measures[Math.floor(ci / doc.beats)].cells[ci % doc.beats].skip === true) length -= UNITS_PER_CELL;
+    }
+    return length;
+  }
+
   // ---------- 줄 정하기
 
   function playableStrings(slot, midi, ignoreStr){
@@ -544,7 +557,7 @@
 
   var api = {
     UNITS_PER_CELL: UNITS_PER_CELL, MIN_MIDI: MIN_MIDI, MAX_MIDI: MAX_MIDI,
-    durationUnits: durationUnits, totalUnits: totalUnits, posToUnits: posToUnits, unitsToPos: unitsToPos, eventEnd: eventEnd,
+    durationUnits: durationUnits, totalUnits: totalUnits, posToUnits: posToUnits, unitsToPos: unitsToPos, eventEnd: eventEnd, eventLength: eventLength,
     placeEvent: placeEvent, assignString: assignString, addToChord: addToChord,
     toggleChordNote: toggleChordNote, nextEventPos: nextEventPos, prevEventPos: prevEventPos,
     stringCandidates: stringCandidates, moveToString: moveToString,

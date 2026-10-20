@@ -30,7 +30,7 @@ note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}`, rest
 
 `getBeatGuideEvents`와 `scheduleBeatGuide`는 빈칸 beat에 빈 이벤트 목록을 돌려주고(`resumeHold`여도 같다), 아무것도 예약하지 않는다.
 
-재생 스케줄러(`schedulerTick`)는 칸마다 메트로놈 클릭, 가이드음, 화면 동기화를 예약하고 `nextBeatTime`에 칸 길이를 더한 뒤 다음 칸으로 간다. 칸이 빈칸이면 이 세 가지를 예약하지 않고 `nextBeatTime`도 더하지 않고 다음 칸으로 넘어간다. 마디 첫 칸이 빈칸이면 강박 표시 클릭도 없다(그 칸을 건너뛰니 다음 실제 칸은 강박 칸이 아니다). 카운트인은 그대로다. 빈칸에서 시작하는 재생·정지 상태 미리듣기는 소리 없이 다음 칸으로 가고, `resumeHold`는 소리가 나는 첫 칸에서 한 번 복원한다(`getSoundingNotes`가 그 칸의 실제 시간 위치로 찾는다).
+재생 스케줄러(`schedulerTick`)는 칸마다 메트로놈 클릭, 가이드음, 화면 동기화를 예약하고 `nextBeatTime`에 칸 길이를 더한 뒤 다음 칸으로 간다. 칸이 빈칸이면 이 세 가지를 예약하지 않고 `nextBeatTime`도 더하지 않고 다음 칸으로 넘어간다. 마디 첫 칸이 빈칸이면 강박 표시 클릭도 없다(그 칸을 건너뛰니 다음 실제 칸은 강박 칸이 아니다). 카운트인은 그대로다. 빈칸에서 시작하는 재생·정지 상태 미리듣기는 소리 없이 다음 칸으로 가고, `resumeHold`는 소리가 나는 첫 칸에서 한 번 복원한다(`getSoundingNotes`가 그 칸의 실제 시간 위치로 찾는다). 재생을 시작할 칸이 빈칸이면 `startPractice`가 `seekPastSkipBeats`로 구간 안의 다음 소리 나는 칸으로 옮기고, 구간 끝까지 없으면 구간 시작 마디의 첫 칸으로 간다. 2026-10-21 결정: 마지막 마디의 뒤쪽 빈칸을 눌러 재생하면 남은 칸이 모두 빈칸이라 소리 없이 끝나거나 완주 횟수만 올라갔다.
 
 `maxDurationSlots`는 현재 칸 시작부터 재생·루프 끝까지 남은 칸 수이고 빈칸은 세지 않는다(`GuitarRhythm.countPlayableSlots`). 분할 위치를 고려해 이벤트를 루프 경계에서 자른다. `getSubdividedGuideEvents`와 `scheduleSubdividedGuide`는 `subStep`을 `slotDuration = subStep * subNotes.length`로 바꿔 공통 경로를 사용한다. `getSubdividedGuideEvents` 반환값은 기존대로 note 이벤트만 포함한다.
 
