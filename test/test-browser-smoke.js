@@ -653,7 +653,17 @@ async function testEditHandoff(client, httpPort) {
       widths:rects.map(function(r){ return r.id + '=' + r.width; }).join(' '),
       statusShown:status.getClientRects().length > 0,
       capoShown:visible(capo) && capo.textContent === '카포 3',
-      scrollWidth:toolbar.scrollWidth, clientWidth:toolbar.clientWidth
+      scrollWidth:toolbar.scrollWidth, clientWidth:toolbar.clientWidth,
+      chordCards:document.querySelectorAll('#chordCards > *').length,
+      page:(function(){
+        // 코드가 많은 곡: 코드 카드 줄은 가로로 스크롤돼야지 페이지를 넓히면 안 된다
+        var cards = document.getElementById('chordCards');
+        var extra = [];
+        for (var k = 0; cards.firstElementChild && k < 12; k++) extra.push(cards.appendChild(cards.firstElementChild.cloneNode(true)));
+        var size = { scroll:document.documentElement.scrollWidth, client:document.documentElement.clientWidth };
+        extra.forEach(function(el){ el.remove(); });
+        return size;
+      })()
     };
   })()`;
   for (const fitWidth of [640, 768, 900, 984, 1092]) {
@@ -663,6 +673,9 @@ async function testEditHandoff(client, httpPort) {
     assert.equal(fit.statusShown, false, fitWidth + 'px normal mode hides the BPM badge');
     assert.equal(fit.capoShown, true, fitWidth + 'px toolbar shows the capo 3 badge');
     if (fitWidth >= 900) assert.ok(fit.scrollWidth <= fit.clientWidth + 1, fitWidth + 'px toolbar has no horizontal scroll (' + fit.scrollWidth + ' > ' + fit.clientWidth + ') [' + fit.widths + ']');
+    // 아래 두 칸(.two-col, 운지 가이드·유튜브)까지 페이지 전체가 가로로 넘치지 않는다
+    assert.ok(fit.chordCards > 0, fitWidth + 'px the loaded song shows chord cards to stretch');
+    assert.ok(fit.page.scroll <= fit.page.client + 1, fitWidth + 'px page with many chord cards has no horizontal scroll (' + fit.page.scroll + ' > ' + fit.page.client + ')');
   }
   await client.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 1000, deviceScaleFactor: 1, mobile: false });
   await client.evaluate(`setCompactPractice(true); true`);

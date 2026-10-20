@@ -221,8 +221,8 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .img-playhead{position:absolute;top:0;bottom:0;width:3px;background:#ff5252;box-shadow:0 0 8px #ff5252;pointer-events:none;z-index:4}
 
 /* 하단 2단 레이아웃: 지판/코드 운지 + 유튜브 레퍼런스 */
-.two-col{display:grid;grid-template-columns:1.15fr 0.85fr;gap:14px}
-@media (max-width:860px){.two-col{grid-template-columns:1fr}}
+.two-col{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,0.85fr);gap:14px}
+@media (max-width:860px){.two-col{grid-template-columns:minmax(0,1fr)}}
 
 /* 콤팩트 집중 연습 모드 (악보 2줄 + 실시간 지판) */
 body.practice-compact .topbar,
