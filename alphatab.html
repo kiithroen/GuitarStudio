@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#eceee9" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121614" media="(prefers-color-scheme: dark)">
 <title>alphaTab 보기 · 기타 스튜디오</title>
-<link rel="stylesheet" href="src/base.css?v=at-volume-1">
+<link rel="stylesheet" href="src/base.css?v=at-controls-1">
 <style>
 /* alphaTab 보기 창 전용. 색은 base.css 토큰만 쓴다. */
 .at-head{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 0;background:var(--bg);border-bottom:1px solid var(--line)}
@@ -14,6 +14,8 @@
 .at-source{flex:none;padding:1px 8px;border:1px solid var(--line);border-radius:999px;font-size:11.5px;line-height:18px;color:var(--muted);white-space:nowrap}
 .at-controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;min-width:0}
 .at-field{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.at-range{width:68px;margin:0}
+.at-value{min-width:4.2em;font-variant-numeric:tabular-nums;color:var(--fg)}
 .at-select{min-height:32px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg);font-size:12.5px}
 .at-status{margin:0;flex:1 1 100%;min-width:0;font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
 .at-status[data-state="error"]{color:var(--off)}
@@ -33,12 +35,9 @@
     <div class="at-controls">
       <button type="button" class="btn sm primary" id="atPlayBtn" disabled title="재생과 일시정지 (단축키: Space)">재생</button>
       <button type="button" class="btn sm" id="atRewindBtn" disabled title="처음 위치로 돌아갑니다">처음으로</button>
-      <label class="at-field" for="atSpeedSelect">빠르기
-        <select class="at-select" id="atSpeedSelect" disabled>
-          <option value="50">50%</option>
-          <option value="75">75%</option>
-          <option value="100" selected>100%</option>
-        </select>
+      <label class="at-field" for="atBpmRange" title="연습 화면과 같은 BPM(분당 칸 수)입니다. 곡 BPM에 대한 비율로 재생 속도를 바꿉니다">BPM
+        <input type="range" class="at-range" id="atBpmRange" min="1" max="100" step="1" value="64" disabled>
+        <span class="at-value" id="atBpmValue"></span>
       </label>
       <label class="at-field" for="atViewSelect">보기
         <select class="at-select" id="atViewSelect" disabled>
@@ -47,17 +46,28 @@
           <option value="score">오선</option>
         </select>
       </label>
+      <label class="at-field" for="atClickToggle" title="메트로놈 클릭과 시작 전 한 마디 카운트인을 켜고 끕니다">
+        <input type="checkbox" id="atClickToggle" checked> 클릭
+      </label>
+      <label class="at-field" for="atClickVolRange" title="메트로놈 클릭 볼륨 (0이면 클릭만 끕니다. 100%를 넘기면 기본보다 크게 납니다)">클릭음
+        <input type="range" class="at-range" id="atClickVolRange" min="0" max="200" step="5" value="100">
+      </label>
+      <label class="at-field" for="atGuitarVolRange" title="기타 연주음 볼륨 (낮추면 메트로놈 클릭이 더 잘 들립니다)">연주음
+        <input type="range" class="at-range" id="atGuitarVolRange" min="0" max="100" step="5" value="100">
+      </label>
     </div>
     <p class="at-status" id="atStatus" role="status" aria-live="polite" data-state="loading">불러오는 중</p>
   </header>
   <main class="at-host" id="atHost" aria-label="alphaTab 악보"></main>
 </div>
-<script src="src/notation.js?v=at-volume-1"></script>
-<script src="src/rhythm.js?v=at-volume-1"></script>
-<script src="src/parser.js?v=at-volume-1"></script>
-<script src="src/staff-layout.js?v=at-volume-1"></script>
-<script src="src/score-to-alphatex.js?v=at-volume-1"></script>
-<script src="vendor/alphatab/dist/alphaTab.min.js?v=at-volume-1"></script>
-<script src="src/alphatab-view.js?v=at-volume-1"></script>
+<script src="src/storage.js?v=at-controls-1"></script>
+<script src="src/app-state.js?v=at-controls-1"></script>
+<script src="src/notation.js?v=at-controls-1"></script>
+<script src="src/rhythm.js?v=at-controls-1"></script>
+<script src="src/parser.js?v=at-controls-1"></script>
+<script src="src/staff-layout.js?v=at-controls-1"></script>
+<script src="src/score-to-alphatex.js?v=at-controls-1"></script>
+<script src="vendor/alphatab/dist/alphaTab.min.js?v=at-controls-1"></script>
+<script src="src/alphatab-view.js?v=at-controls-1"></script>
 </body>
 </html>

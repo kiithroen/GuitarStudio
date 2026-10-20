@@ -2395,8 +2395,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=at-volume-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=at-volume-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=at-controls-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=at-controls-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -5362,6 +5362,18 @@ async function testRollInput(client, httpPort) {
 }
 
 // alphaTab 보기 창: 연습 화면 단추가 곡을 넘기고, 넘긴 곡을 alphatab.html이 alphaTab으로 그린다.
+// 보기 창의 BPM 슬라이더 범위 상수는 소스에서 읽는다(숫자를 테스트에 옮겨 적지 않는다).
+const alphaTabViewSource = fs.readFileSync(path.join(root, 'src', 'alphatab-view.js'), 'utf8');
+const BPM_RATIO_MIN = Number(alphaTabViewSource.match(/var BPM_RATIO_MIN = ([0-9.]+);/)[1]);
+const BPM_RATIO_MAX = Number(alphaTabViewSource.match(/var BPM_RATIO_MAX = ([0-9.]+);/)[1]);
+function expectedBpmSlider(base, practiceBpm) {
+  const min = Math.max(1, Math.ceil(base * BPM_RATIO_MIN));
+  const max = Math.max(min, Math.floor(base * BPM_RATIO_MAX));
+  const inRange = typeof practiceBpm === 'number' && practiceBpm >= min && practiceBpm <= max;
+  return { min, max, value: inRange ? practiceBpm : Math.max(min, Math.min(max, Math.round(base))) };
+}
+function bpmText(value, base) { return value + ' · ' + Math.round(value * 100 / base) + '%'; }
+
 async function testAlphaTabView(client, httpPort) {
   const SONG_ID = 'builtin-lv1-butterfly';
   const VIEW_KEY = 'gs.alphaTab.view';
@@ -5394,13 +5406,14 @@ async function testAlphaTabView(client, httpPort) {
   await client.evaluate(`document.getElementById('openAlphaTabBtn').click(); true`, { userGesture: true });
   const handoff = await client.evaluate(`(function(){
     var stored = JSON.parse(localStorage.getItem(${JSON.stringify(VIEW_KEY)}) || 'null');
-    return { stored: stored, opens: window.__alphaTabOpens, lines: serializeScoreMeasures(curSong.measures, '\\n').split('\\n'), title: curSong.title, beats: curSong.beats, bpm: curSong.bpm, capo: GuitarParser.getSongCapo(curSong) };
+    return { stored: stored, opens: window.__alphaTabOpens, lines: serializeScoreMeasures(curSong.measures, '\\n').split('\\n'), title: curSong.title, beats: curSong.beats, bpm: curSong.bpm, appBpm: appState.bpm, capo: GuitarParser.getSongCapo(curSong) };
   })()`);
   assert.ok(handoff.stored, 'clicking the alphaTab button writes ' + VIEW_KEY);
   assert.deepEqual(handoff.opens, [['alphatab.html', '_blank']], 'the button opens alphatab.html in a new tab');
   assert.equal(handoff.stored.title, handoff.title, 'handoff carries the song title');
   assert.equal(handoff.stored.beats, handoff.beats, 'handoff carries the cell count');
   assert.equal(handoff.stored.bpm, handoff.bpm, 'handoff carries the BPM');
+  assert.equal(handoff.stored.practiceBpm, handoff.appBpm, 'handoff carries the practice screen BPM at click time');
   assert.equal(handoff.stored.capo, handoff.capo, 'handoff carries the capo');
   assert.deepEqual(handoff.stored.lines, handoff.lines, 'handoff carries the current score lines');
   assert.equal(typeof handoff.stored.savedAt, 'number', 'handoff carries a save time');
@@ -5410,8 +5423,10 @@ async function testAlphaTabView(client, httpPort) {
   // 지금 곡이 초안·카포 곡이면 그 내용을 넘긴다
   const fixture = await client.evaluate(`(function(){
     var previous = curSong;
+    var previousBpm = appState.bpm;
     var parsed = parseScore('[C] !1C4@2:i E4@1:p r r | "copy memo"', 4);
     try {
+      appState.bpm = 91;
       curSong = { id:'alphatab-handoff-fixture', title:'Handoff fixture', badge:'Capo 2', type:'structured', beats:4, bpm:77, capo:0, measures:parsed.measures };
       scoreEditorHooks.refreshStatus();
       window.__alphaTabOpens.length = 0;
@@ -5422,9 +5437,10 @@ async function testAlphaTabView(client, httpPort) {
       scoreEditorHooks.refreshStatus();
       var hiddenForImage = document.getElementById('openAlphaTabBtn').hidden;
       return { stored: stored, opens: opens, hiddenForImage: hiddenForImage };
-    } finally { curSong = previous; scoreEditorHooks.refreshStatus(); renderSong(); }
+    } finally { curSong = previous; appState.bpm = previousBpm; scoreEditorHooks.refreshStatus(); renderSong(); }
   })()`);
   assert.equal(fixture.stored.title, 'Handoff fixture');
+  assert.equal(fixture.stored.practiceBpm, 91, 'the practice BPM is handed over even when it differs from the song BPM');
   assert.equal(fixture.stored.bpm, 77);
   assert.equal(fixture.stored.capo, 2, 'capo from the song title/badge is handed over');
   assert.deepEqual(fixture.stored.lines, ['[C] !1C4@2:i E4@1:p r r | "copy memo"'], 'a draft hands over its current content');
@@ -5476,17 +5492,20 @@ async function testAlphaTabView(client, httpPort) {
     var host = document.getElementById('atHost');
     return { svgs: host.querySelectorAll('svg').length, bars: host.getAttribute('data-bars'), renders: Number(host.getAttribute('data-renders')), profile: host.getAttribute('data-profile'), height: host.scrollHeight,
       playEnabled: !document.getElementById('atPlayBtn').disabled, rewindEnabled: !document.getElementById('atRewindBtn').disabled, playText: document.getElementById('atPlayBtn').textContent,
-      speeds: Array.prototype.map.call(document.getElementById('atSpeedSelect').options, function(o){ return o.value; }).join(','),
+      order: Array.prototype.map.call(document.querySelectorAll('.at-controls button, .at-controls input, .at-controls select'), function(node){ return node.id; }).join(','),
+      noSpeedSelect: document.getElementById('atSpeedSelect') === null,
       views: Array.prototype.map.call(document.getElementById('atViewSelect').options, function(o){ return o.textContent; }).join(','),
-      speedLabel: document.getElementById('atSpeedSelect').value };
+      bpm: { min: Number(document.getElementById('atBpmRange').min), max: Number(document.getElementById('atBpmRange').max), value: Number(document.getElementById('atBpmRange').value), text: document.getElementById('atBpmValue').textContent, disabled: document.getElementById('atBpmRange').disabled, speed: window.__alphaTabApi.playbackSpeed } };
   })()`);
   assert.ok(drawn.svgs >= 1, 'alphaTab drew SVG');
   assert.equal(drawn.bars, String(butterfly.lines.length), 'alphaTab loaded one bar per measure');
   assert.equal(drawn.profile, 'scoreTab');
   assert.equal(drawn.playEnabled && drawn.rewindEnabled, true, 'play and rewind are enabled once ready');
   assert.equal(drawn.playText, '재생');
-  assert.equal(drawn.speeds, '50,75,100');
-  assert.equal(drawn.speedLabel, '100');
+  assert.equal(drawn.noSpeedSelect, true, 'the speed select is replaced by the BPM slider');
+  assert.equal(drawn.order, 'atPlayBtn,atRewindBtn,atBpmRange,atViewSelect,atClickToggle,atClickVolRange,atGuitarVolRange', 'controls are in the order play, rewind, BPM, view, click, click volume, guitar volume');
+  const butterflyExpected = expectedBpmSlider(handoff.stored.bpm, handoff.stored.practiceBpm);
+  assert.deepEqual(drawn.bpm, { min: butterflyExpected.min, max: butterflyExpected.max, value: butterflyExpected.value, text: bpmText(butterflyExpected.value, handoff.stored.bpm), disabled: false, speed: butterflyExpected.value / handoff.stored.bpm }, 'the BPM slider starts at the practice BPM with the song-BPM ratio range');
   assert.equal(drawn.views, '오선+타브,타브,오선');
   assert.equal(await client.evaluate(`document.body.getAttribute('data-at-sound')`), 'idle', 'the sound font is not requested when the view opens');
   const programs = await client.evaluate(`document.getElementById('atHost').getAttribute('data-programs')`);
@@ -5514,36 +5533,7 @@ async function testAlphaTabView(client, httpPort) {
   const backHeight = await chooseView('scoreTab', scoreHeight);
   assert.ok(Math.abs(backHeight - drawn.height) <= 2, 'switching back restores the staff+tab layout');
 
-  // 재생 자동 스크롤: 지금 줄의 맨 위가 위에 붙은 머리 막대 아래에 온다(막대에 가려지지 않는다). 재생을 기다리지 않고 커서를 뒤쪽 줄로 옮긴 뒤 scrollToCursor로 스크롤시킨다.
-  await client.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 360, deviceScaleFactor: 1, mobile: false }); // 낮은 화면이라야 문서 끝에 막히지 않고 둘째 줄이 맨 위까지 올라간다
-  await navigate(viewUrl, viewSettled, 45000);
-  const systems = await client.evaluate(`window.__alphaTabApi.boundsLookup.staffSystems.length`);
-  assert.ok(systems >= 3, 'the 900px view has several systems to scroll between: ' + systems);
-  const scrollProbe = `(function(){
-    var api = window.__alphaTabApi;
-    var surface = document.querySelector('#atHost .at-surface').getBoundingClientRect();
-    var lineTop = surface.top + api.boundsLookup.staffSystems[1].realBounds.y;
-    var head = document.querySelector('.at-head').getBoundingClientRect();
-    return { scrollY: window.scrollY, maxScroll: document.documentElement.scrollHeight - innerHeight, lineTop: lineTop, headBottom: head.bottom, offset: api.settings.player.scrollOffsetY };
-  })()`;
-  const targetSystem = await client.evaluate(`(function(){
-    var api = window.__alphaTabApi;
-    var system = api.boundsLookup.staffSystems[1];
-    var masterBar = api.score.masterBars[system.bars[0].index];
-    api.tickPosition = masterBar.start;
-    return system.bars[0].index;
-  })()`);
-  // 커서가 둘째 줄로 옮겨 갈 때까지 기다린다(처음 커서는 첫 줄에 있다)
-  await waitForCondition(client, `(function(){ var bar = document.querySelector('#atHost .at-cursor-bar'); var surface = document.querySelector('#atHost .at-surface'); if (!bar || !surface) return false; return bar.getBoundingClientRect().top - surface.getBoundingClientRect().top >= window.__alphaTabApi.boundsLookup.staffSystems[1].realBounds.y - 1; })()`, 8000);
-  await client.evaluate(`window.__alphaTabApi.scrollToCursor(); true`);
-  await waitForCondition(client, `window.scrollY > 0`, 8000);
-  await new Promise(resolve => setTimeout(resolve, 1500)); // 부드러운 스크롤이 끝날 때까지
-  const scrolled = await client.evaluate(scrollProbe);
-  assert.ok(scrolled.scrollY > 0, 'the page scrolled to the cursor system (bar ' + targetSystem + ')');
-  assert.ok(scrolled.scrollY < scrolled.maxScroll - 1, 'the scroll was not stopped by the end of the page, so the cursor system top could reach the top: ' + JSON.stringify(scrolled));
-  assert.ok(scrolled.lineTop >= scrolled.headBottom && scrolled.lineTop <= scrolled.headBottom + 40, 'the cursor system top sits just below the sticky head bar instead of behind it: ' + JSON.stringify(scrolled));
-  await client.evaluate(`window.scrollTo(0, 0); true`);
-  await client.send('Emulation.clearDeviceMetricsOverride');
+  // 재생 자동 스크롤은 testAlphaTabScroll, 컨트롤(클릭·음량·BPM)은 testAlphaTabControls 가 본다.
 
   // 소리(사운드폰트)는 처음 재생을 누를 때 불러온다. 지금까지 보기 창을 여러 번 열었어도 요청이 없어야 한다.
   await new Promise(resolve => setTimeout(resolve, 1000));
@@ -5655,6 +5645,271 @@ async function testAlphaTabView(client, httpPort) {
   await navigate(practiceUrl, practiceReady);
   assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'no console errors on the practice button and the alphaTab view');
   process.stdout.write('Browser checkpoint: alphaTab view (practice button hand-off, alphatab.html render, view switch, play/pause, dark and 375px layout) passed\n');
+}
+
+// 재생 자동 스크롤: 아래 악보(다음 줄)가 모자랄 때나 지금 줄이 머리 막대에 가릴 때만 지금 줄을 머리 막대 바로 아래로 올린다.
+// 사용자 처리기(customScrollHandler)를 줄마다 첫 박의 bounds 로 직접 불러 본다. 기대 위치는 DOM 에서 따로 잰 줄 위치로 셈한다.
+async function testAlphaTabScroll(client, httpPort) {
+  const SONG_ID = 'builtin-bach-minuet-g'; // 오선+타브가 900px 폭에서 줄을 여럿 이루는 긴 곡
+  const VIEW_KEY = 'gs.alphaTab.view';
+  const viewUrl = `http://127.0.0.1:${httpPort}/alphatab.html`;
+  const practiceUrl = `http://127.0.0.1:${httpPort}/index.html`;
+  const viewSettled = 'document.readyState === "complete" && ["ready","empty","error"].indexOf(document.body.getAttribute("data-at-state")) >= 0';
+  const margin = Number(alphaTabViewSource.match(/var SCROLL_MARGIN = ([0-9.]+);/)[1]);
+  const errorsBefore = client.consoleErrors.length;
+  async function navigate(url, ready, timeoutMs) {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await client.send('Page.navigate', { url });
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, ready, timeoutMs || 8000);
+  }
+  const song = builtinSongsJson.find(item => item.id === SONG_ID);
+  assert.ok(song, SONG_ID + ' exists in songs.json');
+  await navigate(practiceUrl, 'document.readyState === "complete" && window.allSongs && window.curSong != null');
+  await client.evaluate(`localStorage.setItem(${JSON.stringify(VIEW_KEY)}, ${JSON.stringify(JSON.stringify({ title: song.title, beats: song.beats, bpm: song.bpm, capo: 0, lines: song.lines, savedAt: Date.now() }))}); true`);
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 700, deviceScaleFactor: 1, mobile: false });
+  await navigate(viewUrl, viewSettled, 45000);
+  await waitForCondition(client, `document.querySelectorAll('#atHost svg *[fill]').length > 0`, 15000);
+  assert.equal(await client.evaluate(`typeof window.__alphaTabApi.customScrollHandler.onBeatCursorUpdating + '/' + typeof window.__alphaTabApi.customScrollHandler.forceScrollTo`), 'function/function', 'the view installs its own scroll handler');
+  assert.equal(await client.evaluate(`window.__alphaTabApi.renderer.boundsLookup === window.__alphaTabApi.boundsLookup && window.__alphaTabApi.renderer.boundsLookup.staffSystems[0].boundsLookup === window.__alphaTabApi.boundsLookup`), true, 'the bounds lookup is reachable through api.renderer.boundsLookup and each staff system points back to it');
+
+  // alphaTab 은 나눠서 그리므로 문서 높이가 멈출 때까지 기다린다.
+  let lastHeight = -1, stableHeights = 0;
+  for (let i = 0; i < 100 && stableHeights < 6; i++) {
+    const now = await client.evaluate('document.documentElement.scrollHeight');
+    stableHeights = now === lastHeight ? stableHeights + 1 : 0;
+    lastHeight = now;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  assert.ok(stableHeights >= 6, 'the document height settled after drawing');
+
+  // 줄 위치(문서 안 y). 세 번째 줄까지 다 보이는 높이로 창을 줄인다.
+  const geometry = await client.evaluate(`(function(){
+    var api = window.__alphaTabApi;
+    var surface = document.querySelector('#atHost .at-surface').getBoundingClientRect();
+    var origin = surface.top + window.scrollY;
+    return { head: document.querySelector('.at-head').getBoundingClientRect().height, systems: api.renderer.boundsLookup.staffSystems.map(function(system){ return { top: origin + system.realBounds.y, bottom: origin + system.realBounds.y + system.realBounds.h }; }) };
+  })()`);
+  const systems = geometry.systems;
+  assert.ok(systems.length >= 5, 'the 900px view has several systems to scroll between: ' + systems.length);
+  const height = Math.ceil(systems[2].bottom) + 10;
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 900, height, deviceScaleFactor: 1, mobile: false });
+  await waitForCondition(client, `document.documentElement.clientHeight === ${height}`, 3000);
+  const frame = await client.evaluate(`({ clientHeight: document.documentElement.clientHeight, maxScroll: document.documentElement.scrollHeight - document.documentElement.clientHeight })`);
+  assert.ok(frame.maxScroll > systems[4].top, 'the page is long enough to scroll to the fifth system');
+
+  const scrollY = () => client.evaluate('window.scrollY');
+  async function settle() {
+    let last = -1, stable = 0;
+    const deadline = Date.now() + 5000;
+    await new Promise(resolve => setTimeout(resolve, 150));
+    while (Date.now() < deadline && stable < 3) {
+      const now = await scrollY();
+      stable = Math.abs(now - last) < 0.5 ? stable + 1 : 0;
+      last = now;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return last;
+  }
+  const beatOf = index => `window.__alphaTabApi.renderer.boundsLookup.staffSystems[${index}].bars[0].bars[0].beats[0]`;
+  const callUpdating = index => client.evaluate(`window.__alphaTabApi.customScrollHandler.onBeatCursorUpdating(${beatOf(index)}); true`);
+  const callForce = index => client.evaluate(`window.__alphaTabApi.customScrollHandler.forceScrollTo(${beatOf(index)}); true`);
+  const clamp = value => Math.max(0, Math.min(frame.maxScroll, value));
+
+  await client.evaluate('window.scrollTo(0, 0); true');
+  await settle();
+  const afterForward = [];
+  let kept = 0, moved = 0;
+  for (let i = 0; i < systems.length; i++) {
+    const before = await scrollY();
+    const next = systems[Math.min(i + 1, systems.length - 1)];
+    const fits = next.bottom <= before + frame.clientHeight;
+    const topVisible = systems[i].top >= before + geometry.head + margin;
+    await callUpdating(i);
+    const after = await settle();
+    afterForward.push(after);
+    if (fits && topVisible) {
+      kept++;
+      assert.ok(Math.abs(after - before) < 0.5, `system ${i}: the next system is fully visible, so the scroll stays (${before} -> ${after})`);
+    } else {
+      moved++;
+      const want = clamp(systems[i].top - geometry.head - margin);
+      assert.ok(Math.abs(after - want) <= 2, `system ${i}: the system top moves just below the head bar (scrollY ${after}, want ${want})`);
+    }
+  }
+  assert.ok(kept >= 1, 'at least one system was reached without scrolling (' + kept + ')');
+  assert.ok(moved >= 2, 'at least two systems needed scrolling (' + moved + ')');
+
+  // 화면 위로 지나간 줄로 돌아가면(도돌이) 그 줄이 같은 자리에 온다
+  const back = afterForward.findIndex((value, index) => index >= 2 && value > 0 && value < frame.maxScroll - 2 && Math.abs(value - (systems[index].top - geometry.head - margin)) <= 2);
+  assert.ok(back > 0, 'a middle system scrolled to the head bar position on the forward pass');
+  await callUpdating(systems.length - 1);
+  await settle();
+  await callUpdating(back);
+  const returned = await settle();
+  assert.ok(Math.abs(returned - afterForward[back]) <= 2, `going back to system ${back} lands where the forward pass put it (${afterForward[back]} -> ${returned})`);
+
+  // 같은 줄 안의 박 갱신은 다시 판정하지 않고, forceScrollTo 는 늘 판정한다
+  await client.evaluate('window.scrollTo(0, 0); true');
+  await settle();
+  await callUpdating(back);
+  assert.ok(Math.abs(await settle()) < 0.5, 'the same system again does not scroll');
+  await callForce(back);
+  const forced = await settle();
+  assert.ok(Math.abs(forced - afterForward[back]) <= 2, 'forceScrollTo judges again even for the same system (' + forced + ')');
+
+  await client.evaluate('window.scrollTo(0, 0); true');
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  await client.evaluate(`localStorage.removeItem(${JSON.stringify(VIEW_KEY)}); true`);
+  await navigate(practiceUrl, 'document.readyState === "complete" && window.allSongs && window.curSong != null');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'no console errors while checking the scroll handler');
+  process.stdout.write('Browser checkpoint: alphaTab auto scroll (scrolls only when the next system is cut off or the current one is hidden, goes back to the same place) passed\n');
+}
+
+// 보기 창 컨트롤: 클릭(메트로놈)·클릭음·연주음 값과 저장, BPM 슬라이더.
+async function testAlphaTabControls(client, httpPort) {
+  const VIEW_KEY = 'gs.alphaTab.view';
+  const PREFS_KEY = 'gs.alphaTab.prefs';
+  const viewUrl = `http://127.0.0.1:${httpPort}/alphatab.html`;
+  const practiceUrl = `http://127.0.0.1:${httpPort}/index.html`;
+  const practiceReady = 'document.readyState === "complete" && window.allSongs && window.curSong != null';
+  const viewSettled = 'document.readyState === "complete" && ["ready","empty","error"].indexOf(document.body.getAttribute("data-at-state")) >= 0';
+  const errorsBefore = client.consoleErrors.length;
+  const metronomeBase = Number(alphaTabViewSource.match(/var METRONOME_BASE_VOLUME = ([0-9.]+);/)[1]);
+  const masterVolume = Number(alphaTabViewSource.match(/var PLAYBACK_MASTER_VOLUME = ([0-9.]+);/)[1]);
+  async function navigate(url, ready, timeoutMs) {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await client.send('Page.navigate', { url });
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, ready, timeoutMs || 8000);
+  }
+  const butterfly = builtinSongsJson.find(item => item.id === 'builtin-lv1-butterfly');
+  const canon = builtinSongsJson.find(item => item.id === 'builtin-lv4-canon');
+  assert.equal(canon.beats, 8, 'builtin-lv4-canon is an 8-cell song');
+  const handoffOf = (song, extra) => Object.assign({ title: song.title, beats: song.beats, bpm: Number(song.bpm), capo: 0, lines: song.lines, savedAt: Date.now() }, extra || {});
+  const setLocal = (key, value) => client.evaluate(`localStorage.setItem(${JSON.stringify(key)}, ${JSON.stringify(typeof value === 'string' ? value : JSON.stringify(value))}); true`);
+  async function openView(handoff, prefs) {
+    await navigate(practiceUrl, practiceReady);
+    await client.evaluate(`localStorage.removeItem(${JSON.stringify(PREFS_KEY)}); true`);
+    if (prefs !== undefined) await setLocal(PREFS_KEY, prefs);
+    await setLocal(VIEW_KEY, handoff);
+    await navigate(viewUrl, viewSettled, 45000);
+    assert.equal(await client.evaluate(`document.body.getAttribute('data-at-state')`), 'ready', 'the view is ready');
+  }
+  const soundFacts = () => client.evaluate(`(function(){
+    var api = window.__alphaTabApi;
+    return { click: document.getElementById('atClickToggle').checked, clickVol: Number(document.getElementById('atClickVolRange').value), guitarVol: Number(document.getElementById('atGuitarVolRange').value),
+      metronome: api.metronomeVolume, countIn: api.countInVolume, master: api.masterVolume, guitar: document.body.getAttribute('data-at-guitar-volume'), stored: localStorage.getItem(${JSON.stringify(PREFS_KEY)}) };
+  })()`);
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const fire = (id, props, eventName) => client.evaluate(`(function(){ var n = document.getElementById(${JSON.stringify(id)}); Object.assign(n, ${JSON.stringify(props)}); n.dispatchEvent(new Event(${JSON.stringify(eventName)}, { bubbles: true })); return true; })()`);
+
+  // 1. 처음 값, 그리고 이 창이 gs.state 를 건드리지 않고 localStorage 에 아무것도 쓰지 않는다
+  await navigate(practiceUrl, practiceReady);
+  await client.evaluate(`localStorage.removeItem(${JSON.stringify(PREFS_KEY)}); localStorage.removeItem('gs.state'); true`);
+  await setLocal(VIEW_KEY, handoffOf(butterfly));
+  const spy = await client.send('Page.addScriptToEvaluateOnNewDocument', { source: `(function(){
+    window.__storageWrites = [];
+    ['setItem', 'removeItem', 'clear'].forEach(function(name){ var original = Storage.prototype[name]; Storage.prototype[name] = function(){ window.__storageWrites.push(name + ':' + arguments[0]); return original.apply(this, arguments); }; });
+  })();` });
+  try {
+    await navigate(viewUrl, viewSettled, 45000);
+  } finally {
+    await client.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: spy.identifier });
+  }
+  assert.deepEqual(await client.evaluate('window.__storageWrites'), [], 'opening the view (storage.js and app-state.js included) writes nothing to localStorage');
+  assert.equal(await client.evaluate(`localStorage.getItem('gs.state')`), null, 'the view does not write the practice screen state');
+  let facts = await soundFacts();
+  assert.deepEqual([facts.click, facts.clickVol, facts.guitarVol], [true, 100, 100], 'the controls start with click on, 100% and 100%');
+  assert.ok(near(facts.metronome, metronomeBase) && near(facts.countIn, metronomeBase), 'click and count-in volumes are METRONOME_BASE_VOLUME at 100%: ' + JSON.stringify(facts));
+  assert.ok(near(facts.master, masterVolume), 'the master volume stays PLAYBACK_MASTER_VOLUME');
+  assert.equal(facts.guitar, '1');
+  assert.equal(facts.stored, null, 'nothing is stored until a control changes');
+  const labels = await client.evaluate(`(function(){ var l = function(id){ return document.getElementById(id).closest('label'); }; return { click: l('atClickToggle').textContent.trim(), clickVol: l('atClickVolRange').textContent.trim(), guitarVol: l('atGuitarVolRange').textContent.trim(), clickTitle: !!l('atClickVolRange').title, guitarTitle: !!l('atGuitarVolRange').title, width: [document.getElementById('atClickVolRange'), document.getElementById('atGuitarVolRange')].map(function(n){ return Math.round(n.getBoundingClientRect().width); }) }; })()`);
+  assert.deepEqual([labels.click, labels.clickVol, labels.guitarVol, labels.clickTitle, labels.guitarTitle], ['클릭', '클릭음', '연주음', true, true], 'labels are 클릭, 클릭음, 연주음 with tooltips and no value text');
+  assert.deepEqual(labels.width, [68, 68], 'the volume sliders are as narrow as on the practice screen');
+  assert.deepEqual(await client.evaluate(`['atClickVolRange', 'atGuitarVolRange'].map(function(id){ var n = document.getElementById(id); return [n.min, n.max, n.step].join('/'); })`), ['0/200/5', '0/100/5'], 'slider ranges are 0-200% and 0-100% in steps of 5');
+
+  // 2. 컨트롤을 바꾸면 값이 적용되고 저장된다
+  await fire('atClickToggle', { checked: false }, 'change');
+  facts = await soundFacts();
+  assert.deepEqual([facts.metronome, facts.countIn], [0, 0], 'turning the click off silences the click and the count-in');
+  assert.deepEqual(JSON.parse(facts.stored), { click: false, clickVol: 1, guitarVol: 1 }, 'prefs are saved');
+  await fire('atClickVolRange', { value: '150' }, 'input');
+  facts = await soundFacts();
+  assert.deepEqual([facts.metronome, facts.countIn], [0, 0], 'the click stays silent while it is off');
+  await fire('atClickToggle', { checked: true }, 'change');
+  facts = await soundFacts();
+  assert.ok(near(facts.metronome, metronomeBase * 1.5) && near(facts.countIn, metronomeBase * 1.5), 'click and count-in follow METRONOME_BASE_VOLUME x click volume: ' + JSON.stringify(facts));
+  assert.ok(near(facts.master, masterVolume), 'the click volume does not touch the master volume');
+  await fire('atGuitarVolRange', { value: '50' }, 'input');
+  facts = await soundFacts();
+  assert.equal(facts.guitar, '0.5', 'the guitar volume is applied as a track volume');
+  assert.ok(near(facts.master, masterVolume) && near(facts.metronome, metronomeBase * 1.5), 'the guitar volume leaves the master volume and the click alone');
+  assert.deepEqual(JSON.parse(facts.stored), { click: true, clickVol: 1.5, guitarVol: 0.5 });
+  await fire('atClickToggle', { checked: false }, 'change');
+  // 새로 열면 저장한 값으로 시작한다
+  await navigate(viewUrl, viewSettled, 45000);
+  facts = await soundFacts();
+  assert.deepEqual([facts.click, facts.clickVol, facts.guitarVol, facts.metronome, facts.countIn, facts.guitar], [false, 150, 50, 0, 0, '0.5'], 'the saved prefs come back when the view is opened again');
+  assert.equal(await client.evaluate(`localStorage.getItem('gs.state')`), null, 'changing controls does not write the practice screen state');
+  // 틀린 값은 기본값
+  for (const bad of [{ click: 'yes', clickVol: 5, guitarVol: -1 }, '{not json', { click: true, clickVol: '1', guitarVol: 2 }, [1, 2]]) {
+    await openView(handoffOf(butterfly), bad);
+    facts = await soundFacts();
+    assert.deepEqual([facts.click, facts.clickVol, facts.guitarVol], [true, 100, 100], 'wrong prefs fall back to the defaults: ' + JSON.stringify(bad));
+  }
+  await openView(handoffOf(butterfly), { click: false, clickVol: 2, guitarVol: 0 });
+  facts = await soundFacts();
+  assert.deepEqual([facts.click, facts.clickVol, facts.guitarVol, facts.guitar], [false, 200, 0, '0'], 'the range ends are valid prefs');
+
+  // 3. BPM 슬라이더 (연습 화면과 같은 단위, 곡 BPM 에 대한 비율 범위)
+  const sliderFacts = () => client.evaluate(`(function(){ var r = document.getElementById('atBpmRange'); return { min: Number(r.min), max: Number(r.max), step: r.step, value: Number(r.value), text: document.getElementById('atBpmValue').textContent, speed: window.__alphaTabApi.playbackSpeed, tempo: window.__alphaTabApi.score.tempo, stored: localStorage.getItem(${JSON.stringify(PREFS_KEY)}) }; })()`);
+  const base = Number(butterfly.bpm);
+  const range = expectedBpmSlider(base, undefined);
+  await openView(handoffOf(butterfly, { practiceBpm: 48 }));
+  let slider = await sliderFacts();
+  assert.deepEqual([slider.min, slider.max, slider.step], [range.min, range.max, '1'], 'the range is the song BPM times the ratio constants, in steps of 1');
+  assert.deepEqual([slider.value, slider.text, slider.speed], [48, bpmText(48, base), 48 / base], 'the slider starts at the practice BPM');
+  for (const value of [range.min, Math.round((range.min + range.max) / 2) + 1, range.max]) {
+    await fire('atBpmRange', { value: String(value) }, 'input');
+    slider = await sliderFacts();
+    assert.deepEqual([slider.value, slider.text, slider.speed], [value, bpmText(value, base), value / base], 'slider value ' + value + ' sets playbackSpeed = value / song BPM');
+  }
+  assert.ok(near(slider.speed, BPM_RATIO_MAX), 'the upper end plays at the upper ratio');
+  await fire('atBpmRange', { value: String(range.min) }, 'input');
+  assert.ok(near((await sliderFacts()).speed, BPM_RATIO_MIN), 'the lower end plays at the lower ratio');
+  assert.equal(slider.stored, null, 'the BPM is not saved');
+  await fire('atClickToggle', { checked: false }, 'change');
+  assert.deepEqual(Object.keys(JSON.parse((await sliderFacts()).stored)).sort(), ['click', 'clickVol', 'guitarVol'], 'the prefs hold no BPM');
+  for (const practiceBpm of [range.max + 1, range.min - 1, 0, 'x', null, undefined]) {
+    await openView(handoffOf(butterfly, practiceBpm === undefined ? {} : { practiceBpm }));
+    slider = await sliderFacts();
+    assert.deepEqual([slider.value, slider.text, slider.speed], [base, bpmText(base, base), 1], 'an out-of-range or missing practice BPM (' + String(practiceBpm) + ') starts at the song BPM');
+  }
+  await openView(handoffOf(butterfly, { practiceBpm: range.min }));
+  assert.equal((await sliderFacts()).value, range.min, 'the range ends are accepted as the start value');
+  await openView(handoffOf(butterfly, { practiceBpm: range.max }));
+  assert.equal((await sliderFacts()).value, range.max);
+  // 곡 BPM 이 잘못이면 악보의 템포로
+  const TEX = '\\title "Tempo only" \\tempo 90 \\ts (4 4)\n0.1.4 0.2.4 0.3.4 0.4.4 |\n0.1.1 |\n';
+  await openView(handoffOf(butterfly, { bpm: 0, alphaTex: TEX }));
+  slider = await sliderFacts();
+  assert.equal(slider.tempo, 90);
+  assert.deepEqual([slider.value, slider.text, slider.speed], [90, bpmText(90, 90), 1], 'an invalid song BPM falls back to the score tempo');
+  // 8칸 곡: 숫자는 연습 화면의 단위(분당 칸 수)이고 alphaTab 템포(4분음표)와 다르다
+  await openView(handoffOf(canon));
+  slider = await sliderFacts();
+  assert.deepEqual([slider.value, slider.text, slider.speed], [Number(canon.bpm), bpmText(Number(canon.bpm), Number(canon.bpm)), 1], 'the 8-cell song starts at 100% showing the song BPM');
+  assert.equal(slider.tempo * 2, Number(canon.bpm), 'alphaTab tempo is per quarter note, half of the cell BPM for an 8-cell song');
+  await fire('atBpmRange', { value: String(Math.round(Number(canon.bpm) * 0.5)) }, 'input');
+  slider = await sliderFacts();
+  assert.ok(near(slider.speed, Math.round(Number(canon.bpm) * 0.5) / Number(canon.bpm)), 'the 8-cell song speed is the ratio of the practice-screen numbers');
+
+  await client.evaluate(`localStorage.removeItem(${JSON.stringify(VIEW_KEY)}); localStorage.removeItem(${JSON.stringify(PREFS_KEY)}); true`);
+  await navigate(practiceUrl, practiceReady);
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'no console errors on the alphaTab controls (storage.js and app-state.js load cleanly)');
+  process.stdout.write('Browser checkpoint: alphaTab controls (click, click volume, guitar volume, saved prefs, BPM slider, no localStorage writes on load) passed\n');
 }
 
 // 원본 alphaTex가 있는 곡(시트 6열): 보기 창이 그 alphaTex를 그대로 그리고, 앱에서 고치면 제자리 초안이 아니라 우리 악보 사본이 된다.
@@ -6006,6 +6261,8 @@ const LOUDNESS_TAP_SOURCE = `(function(){
 async function testPlaybackLoudness(client, httpPort) {
   const SONG_IDS = ['builtin-lv1-butterfly', 'builtin-romanza-accomp']; // 가장 성긴 한 줄 선율 곡과 가장 빽빽한 곡(동시음 6개, 최대값이 가장 큼)
   const VIEW_KEY = 'gs.alphaTab.view';
+  const PREFS_KEY = 'gs.alphaTab.prefs';
+  const CLICK_SONG_ID = 'builtin-lv1-butterfly'; // 한 칸 = 4분음표(4/4)라 연습 화면과 alphaTab 의 클릭 수가 같다
   const TOLERANCE_DB = 3;
   const practiceUrl = `http://127.0.0.1:${httpPort}/index.html`;
   const viewUrl = `http://127.0.0.1:${httpPort}/alphatab.html`;
@@ -6022,6 +6279,7 @@ async function testPlaybackLoudness(client, httpPort) {
   }
   const tapScript = await client.send('Page.addScriptToEvaluateOnNewDocument', { source: LOUDNESS_TAP_SOURCE });
   const measurements = [];
+  let clickMeasurement = null, maxMeasurement = null;
   try {
     for (const songId of SONG_IDS) {
       const song = builtinSongsJson.find(item => item.id === songId);
@@ -6041,6 +6299,7 @@ async function testPlaybackLoudness(client, httpPort) {
         appState.loopStart = 1; appState.loopEnd = getMeasureCount(curSong);
         curMeasureIdx = 0; curBeatIdx = 0;
         document.getElementById('openAlphaTabBtn').click();
+        localStorage.setItem(${JSON.stringify(PREFS_KEY)}, JSON.stringify({ click: false, clickVol: 1, guitarVol: 1 }));
         var view = JSON.parse(localStorage.getItem(${JSON.stringify(VIEW_KEY)}));
         var bpm = appState.bpm;
         window.__loudnessTap.reset();
@@ -6078,16 +6337,75 @@ async function testPlaybackLoudness(client, httpPort) {
       assert.ok(alpha.started && Number.isFinite(alpha.rmsDb), songId + ': alphaTab produced sound above the silence gate: ' + JSON.stringify({ contexts: alpha.contexts, blocks: alpha.blocks, gated: alpha.gated }));
       measurements.push({ id: songId, app, alpha, masterVolume: viewSide.masterVolume, masterVolumeAfter: afterRead });
     }
+    // 메트로놈 클릭: 기타 소리 없이 클릭만 재서 같은 곡의 두 플레이어를 견준다(METRONOME_BASE_VOLUME 이 맞추는 값)
+    const clickSong = builtinSongsJson.find(item => item.id === CLICK_SONG_ID);
+    await navigate(practiceUrl, practiceReady);
+    const clickAppSide = await client.evaluate(`(async function(){
+      var savedSongId = curSong.id;
+      var saved = { synthEngine:appState.synthEngine, acousticFx:appState.acousticFx, guitarVol:appState.guitarVol, vol:appState.vol, clickMode:appState.clickMode, loopStart:appState.loopStart, loopEnd:appState.loopEnd };
+      window.open = function(){ return {}; };
+      changeSongById(${JSON.stringify(CLICK_SONG_ID)});
+      appState.synthEngine = 'ks'; appState.acousticFx = true; appState.guitarVol = 0; appState.vol = 1; appState.clickMode = 'all';
+      ensureAudioCtx();
+      if (actx.state !== 'running') await actx.resume();
+      updateGuitarVolume();
+      appState.loopStart = 1; appState.loopEnd = getMeasureCount(curSong);
+      curMeasureIdx = 0; curBeatIdx = 0;
+      document.getElementById('openAlphaTabBtn').click();
+      localStorage.setItem(${JSON.stringify(PREFS_KEY)}, JSON.stringify({ click: true, clickVol: 1, guitarVol: 0 }));
+      window.__loudnessTap.reset();
+      startPractice();
+      return { saved: saved, savedSongId: savedSongId, playing: isPlaying };
+    })()`, { userGesture: true });
+    assert.equal(clickAppSide.playing, true, 'click: the practice screen started playing');
+    await waitForCondition(client, `window.__loudnessTap.result().done === true`, 40000);
+    const clickApp = await client.evaluate(`window.__loudnessTap.result()`);
+    await client.evaluate(`(function(){
+      stopPractice();
+      var saved = ${JSON.stringify(clickAppSide.saved)};
+      changeSongById(${JSON.stringify(clickAppSide.savedSongId)});
+      Object.keys(saved).forEach(function(key){ appState[key] = saved[key]; });
+      updateGuitarVolume(); saveAppState(); return true;
+    })()`);
+    assert.ok(clickApp.started && Number.isFinite(clickApp.rmsDb), 'click: the practice screen click is above the silence gate');
+    async function playView(label) {
+      await navigate(viewUrl, viewSettled, 45000);
+      assert.equal((await client.evaluate(`document.body.getAttribute('data-at-state')`)), 'ready', label + ': the alphaTab view is ready');
+      await client.evaluate(`window.__loudnessTap.reset(); document.getElementById('atPlayBtn').click(); true`, { userGesture: true });
+      await waitForCondition(client, `window.__loudnessTap.result().done === true`, 120000);
+      const result = await client.evaluate(`window.__loudnessTap.result()`);
+      await client.evaluate(`document.getElementById('atPlayBtn').click(); true`, { userGesture: true });
+      await waitForCondition(client, `document.getElementById('atPlayBtn').textContent === '재생'`, 8000);
+      assert.ok(result.started && Number.isFinite(result.rmsDb), label + ': alphaTab produced sound above the silence gate');
+      return result;
+    }
+    const clickAlpha = await playView('click');
+    clickMeasurement = { id: CLICK_SONG_ID, app: clickApp, alpha: clickAlpha };
+
+    // 보기 창 최대 설정(클릭음 200%, 연주음 100%)에서 가장 빽빽한 곡의 표본 최대값
+    const PEAK_SONG_ID = SONG_IDS[1];
+    const peakSong = builtinSongsJson.find(item => item.id === PEAK_SONG_ID);
+    await navigate(practiceUrl, practiceReady);
+    await client.evaluate(`localStorage.setItem(${JSON.stringify(VIEW_KEY)}, ${JSON.stringify(JSON.stringify({ title: peakSong.title, beats: peakSong.beats, bpm: Number(peakSong.bpm), capo: 0, lines: peakSong.lines, savedAt: Date.now() }))}); localStorage.setItem(${JSON.stringify(PREFS_KEY)}, JSON.stringify({ click: true, clickVol: 2, guitarVol: 1 })); true`);
+    const peakAlpha = await playView('max');
+    maxMeasurement = { id: PEAK_SONG_ID, alpha: peakAlpha };
   } finally {
     await client.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: tapScript.identifier });
   }
   await navigate(practiceUrl, practiceReady);
-  await client.evaluate(`localStorage.removeItem(${JSON.stringify(VIEW_KEY)}); true`);
+  await client.evaluate(`localStorage.removeItem(${JSON.stringify(VIEW_KEY)}); localStorage.removeItem(${JSON.stringify(PREFS_KEY)}); true`);
 
   measurements.forEach(item => {
     const diff = item.app.rmsDb - item.alpha.rmsDb;
     process.stdout.write('Loudness ' + item.id + ': app ' + item.app.rmsDb.toFixed(1) + ' dBFS, alphaTab ' + item.alpha.rmsDb.toFixed(1) + ' dBFS (diff ' + diff.toFixed(1) + ' dB, alphaTab peak ' + item.alpha.peak.toFixed(3) + ')\n');
   });
+  {
+    const clickDiff = clickMeasurement.app.rmsDb - clickMeasurement.alpha.rmsDb;
+    process.stdout.write('Loudness click ' + clickMeasurement.id + ': app ' + clickMeasurement.app.rmsDb.toFixed(1) + ' dBFS, alphaTab ' + clickMeasurement.alpha.rmsDb.toFixed(1) + ' dBFS (diff ' + clickDiff.toFixed(1) + ' dB, alphaTab peak ' + clickMeasurement.alpha.peak.toFixed(3) + ')\n');
+    process.stdout.write('Loudness max (click 200%, guitar 100%) ' + maxMeasurement.id + ': alphaTab peak ' + maxMeasurement.alpha.peak.toFixed(3) + ', ' + maxMeasurement.alpha.rmsDb.toFixed(1) + ' dBFS\n');
+    assert.ok(Math.abs(clickDiff) <= TOLERANCE_DB, 'the practice screen click and the alphaTab click (METRONOME_BASE_VOLUME) play within ' + TOLERANCE_DB + ' dB of each other (diff ' + clickDiff.toFixed(1) + ' dB)');
+    assert.ok(maxMeasurement.alpha.peak < 1, 'the alphaTab output does not clip at click volume 200% and guitar volume 100% (peak ' + maxMeasurement.alpha.peak.toFixed(3) + ')');
+  }
   process.stdout.write('Loudness alphaTab masterVolume read back: ' + measurements.map(item => item.masterVolume + '/' + item.masterVolumeAfter).join(' ; ') + '\n');
   if (volumeMatch) {
     const expected = Number(volumeMatch[1]);
@@ -6148,7 +6466,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=at-volume-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=at-controls-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -6674,6 +6992,8 @@ async function main() {
     await testSkipInput(cdp, httpPort);
     await testMeasureWidth(cdp, httpPort);
     await testAlphaTabView(cdp, httpPort);
+    await testAlphaTabScroll(cdp, httpPort);
+    await testAlphaTabControls(cdp, httpPort);
     await testPlaybackLoudness(cdp, httpPort);
     await testAlphaTexSongs(cdp, httpPort);
 

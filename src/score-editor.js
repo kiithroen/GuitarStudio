@@ -148,6 +148,7 @@ var scoreEditorHooks = (function(){
       title:curSong.title,
       beats:curSong.beats,
       bpm:Math.max(30, Math.min(240, Math.round(Number(curSong.bpm) || 64))),
+      practiceBpm:appState.bpm, // 연습 화면이 지금 쓰는 BPM. 보기 창의 BPM 슬라이더가 이 값으로 시작한다
       capo:GuitarParser.getSongCapo(curSong),
       description:curSong.badge || '',
       lines:serializeScoreMeasures(curSong.measures, '\n').split('\n'),

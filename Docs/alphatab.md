@@ -7,7 +7,7 @@
 | 파일 | 역할 |
 |---|---|
 | `src/score-to-alphatex.js` | 우리 악보 → alphaTex 변환기(`GuitarAlphaTex.toAlphaTex`). DOM 없는 순수 함수이고 Node에서도 돈다 |
-| `alphatab.html`, `src/alphatab-view.js` | 보기 창. `app.js`를 불러오지 않는다. 변환하고 alphaTab 플레이어를 띄운다 |
+| `alphatab.html`, `src/alphatab-view.js` | 보기 창. `app.js`를 불러오지 않는다. 변환하고 alphaTab 플레이어를 띄운다. 소리 설정을 읽고 쓰려고 `src/storage.js`(`ls`)와 `src/app-state.js`(`normalizeVolume`)를 불러온다 |
 | `vendor/alphatab/` | alphaTab 1.8.4(MPL-2.0). 브라우저 UMD(`dist/alphaTab.min.js`, 전역 `alphaTab`), worker·worklet, Bravura 글꼴, sonivox 사운드폰트(`dist/soundfont/sonivox.sf2`, 받은 그대로 두고 코드에서 쓰지 않는다) |
 | `vendor/musescore-general/` | 보기 창의 사운드폰트 `MuseScore_General.sf3`. 출처 https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General/ , 버전 0.2.0, 39,900,972바이트, SHA-256 `5b85b6c2c61d10b2b91cddd41efcce7b25cd31c8271d511c73afafbef20b6fa3`, MIT. 저작권 고지는 같은 폴더의 `MuseScore_General_License.md`. 받은 그대로 두고 고치지 않는다 |
 | `test/test-score-to-alphatex.js` | 변환기 테스트. vendor의 alphaTab을 `require`해서 변환 결과를 가져온 모델 필드까지 확인한다 |
@@ -51,7 +51,16 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 
 1. 연습 화면 머리의 `alphaTab` 단추(`#openAlphaTabBtn`, `단축키 안내` 옆, 구조화 곡일 때만 보인다)를 누른다. 지금 곡(수정 초안이면 초안 내용)을 localStorage `gs.alphaTab.view`에 `{ title, beats, bpm, capo, description, lines, savedAt }`로 넣고 `alphatab.html`을 새 탭으로 연다. `description`은 곡의 `badge`(시트 설명 열)다. 곡에 원본 `alphaTex`가 있고 고친 초안이 아니면(`scoreDrafts.status`의 `dirty`·`temporary`가 모두 거짓이면) `alphaTex`도 넣는다. 연습은 멈추지 않는다.
 2. 보기 창은 그 값을 읽어 그린다. `alphaTex`가 있으면 변환하지 않고 그대로 읽어 그리며 머리의 작은 꼬리표(`#atSource`)에 `원본 alphaTex`가 보인다. 없으면 우리 악보를 변환해 그리고 꼬리표는 `우리 악보에서 만든 미리보기`다. 원본 alphaTex를 alphaTab이 읽지 못하면 상태 줄에 알리고 변환 미리보기로 대신 그린다. 값을 지우지 않아서 새로고침해도 같은 곡이다. 값이 없거나 모양이 틀리면 상태 줄에 안내만 한다. 변환이나 alphaTab 읽기가 실패하면 이유를 상태 줄에 보인다.
-3. 조작은 머리 한 줄에 있다: 곡 제목, `재생`/`일시정지`(Space), `처음으로`, 빠르기(50·75·100%), 보기(`오선+타브`·`타브`·`오선`), 상태 줄. 보기를 바꾸면 다시 그린다.
+3. 조작은 머리 한 줄에 있다: 곡 제목, `재생`/`일시정지`(Space), `처음으로`, `BPM` 슬라이더, 보기(`오선+타브`·`타브`·`오선`), `클릭` 체크, `클릭음`·`연주음` 슬라이더, 상태 줄. 보기를 바꾸면 다시 그린다. 컨트롤은 이 순서로 놓고 슬라이더는 연습 화면처럼 좁다.
+
+| 컨트롤 | 범위 | 처음 값 | 저장 | alphaTab에 주는 값 |
+|---|---|---|---|---|
+| `BPM` | 곡 BPM의 `BPM_RATIO_MIN`~`BPM_RATIO_MAX`배, 1 단위 | 연습 화면이 열 때 쓰던 BPM(`practiceBpm`). 범위 밖이거나 없으면 곡 BPM | 안 한다. 열 때마다 처음 값 | `api.playbackSpeed` = 값 / 곡 BPM |
+| `클릭` | 켬/끔 | 켬 | `gs.alphaTab.prefs` | `api.metronomeVolume`·`api.countInVolume` |
+| `클릭음` | 0~200%, 5 단위 | 100% | `gs.alphaTab.prefs` | `METRONOME_BASE_VOLUME` × 클릭음 |
+| `연주음` | 0~100%, 5 단위 | 100% | `gs.alphaTab.prefs` | 트랙 음량(`api.changeTrackVolume`) |
+
+BPM 값 글은 `BPM 값 · 비율%`(예: `48 · 75%`)이고 클릭음·연주음에는 값 글이 없다(연습 화면처럼 `title` 툴팁만 있다).
 
 색은 `src/base.css` 토큰(`--fg`, `--muted`)에서 읽어 alphaTab 표시 색(`mainGlyphColor`, `staffLineColor` 등)에 넣고, 시스템 색 구성이 바뀌면 다시 읽는다. 소리는 alphaTab의 사운드폰트라 앱의 합성음과 다르다.
 
@@ -63,7 +72,13 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 - 악기는 악보를 읽은 뒤 그리기 전에 모든 트랙의 `track.playbackInfo.program`을 24(General MIDI Acoustic Guitar (nylon))로 바꾼다. 원본 alphaTex와 우리 악보에서 만든 미리보기가 같다. 악보 글자는 바꾸지 않는다. 바뀐 값은 `#atHost`의 `data-programs`에 읽은 모델에서 다시 읽어 적는다.
 - 사운드폰트 상태는 `body`의 `data-at-sound`(`idle` · `loading` · `loaded` · `failed`)에 적는다.
 - 마스터 음량 `api.masterVolume`은 `PLAYBACK_MASTER_VOLUME`(`src/alphatab-view.js`)이다. api를 만든 직후와 `playerReady` 때 한 번씩 준다. 값은 연습 화면 합성음과 비슷한 크기가 되는 값을, 가장 빽빽한 내장곡(`builtin-romanza-accomp`, 동시음 6개)의 표본 최대값이 1.0 아래가 되게 낮춘 것이다. alphaTab의 출력 경로에는 압축기가 없어서 1.0을 넘는 표본은 잘린다. 브라우저 스모크의 `testPlaybackLoudness`가 그 크기를 다시 잰다. 출력 쪽 `AudioDestinationNode`로 가는 연결을 `AudioNode.prototype.connect`를 바꿔 가로채(탭) 두 채널의 모든 표본을 세고, 400ms 블록(표본 수)의 평균 제곱 가운데 -60 dBFS를 넘는 블록만 모아 RMS(dBFS)로 낸다. 재생을 시작해 첫 문턱 위 블록부터 오디오 표본 시간으로 8초를 모으고(벽시계로 재지 않는다) 표본 최대값도 같이 본다. 곡은 내장곡 `builtin-lv1-butterfly`(가장 성긴 한 줄 선율)와 `builtin-romanza-accomp`(가장 빽빽한 곡) 둘이다. 연습 화면은 기본 음색(KS, 어쿠스틱 효과 켬, 연주음 100%)에 클릭과 카운트인을 끄고 1마디 첫 칸에서, 보기 창은 연습 화면 단추가 넘긴 값으로 `재생`을 눌러 같은 BPM으로 잰다. 두 곡 모두 두 플레이어의 차이가 ±3 dB 안이고 alphaTab 표본 최대값이 1 미만이어야 통과한다. 다시 재는 명령은 `node test/test-browser-smoke.js`이고 출력의 `Loudness <곡 id>: app … dBFS, alphaTab … dBFS (diff … dB, alphaTab peak …)` 줄이 결과다.
-- 재생 자동 스크롤은 `settings.player.scrollOffsetY`에 위에 붙은 머리(`.at-head`)의 실제 높이와 여유(`SCROLL_MARGIN`)를 음수로 준다. 스크롤하는 요소는 기본값 `html,body`(문서 전체)이고, alphaTab이 스크롤할 때마다 이 값을 읽어서 `updateSettings`는 부르지 않는다. 머리 높이는 `ResizeObserver`와 `resize`로 다시 잰다. 시험은 `window.__alphaTabApi`로 커서를 옮겨 본다.
+- 재생 자동 스크롤은 `api.customScrollHandler`(`createScrollHandler`)가 한다. 줄(staffSystem)이 바뀔 때(`onBeatCursorUpdating`. `forceScrollTo`는 늘 판정한다) 지금 줄의 위가 머리 막대(`.at-head`) 아래 여유(`SCROLL_MARGIN`)보다 위에 있거나, 다음 줄(마지막 줄이면 지금 줄)의 아래가 화면 아래보다 아래에 있을 때만 지금 줄의 위를 머리 막대 바로 아래로 올린다. 그 밖에는 스크롤하지 않는다. 처리기에 넘어오는 첫 인자는 `BeatBounds`이고 줄은 `barBounds.masterBarBounds.staffSystemBounds`, 다음 줄은 같은 `boundsLookup`(`api.renderer.boundsLookup`)의 `staffSystems[index + 1]`이다. 좌표는 줄의 `realBounds`에 그리기 면(`api.canvasElement`, `.at-surface`)의 문서 안 위치를 더한 값이다. 컨테이너(`api.container`)를 기준으로 하면 호스트의 패딩·테두리만큼 어긋난다. 시험은 `testAlphaTabScroll`이 줄마다 첫 박의 bounds로 처리기를 불러 본다.
+- 클릭(메트로놈)은 체크박스 `클릭`이 켜고 끈다. 켜면 `api.metronomeVolume`과 `api.countInVolume`(alphaTab이 첫 마디 앞에 한 마디 세는 카운트인)을 `METRONOME_BASE_VOLUME` × 클릭음으로, 끄면 둘 다 0으로 준다. alphaTab 클릭은 박자표의 박마다 울리고 강박 구분이 없다(`MetronomeKey`). 그래서 칸마다 울리는 연습 화면과 다를 수 있다. 8칸 곡은 alphaTex 박자표가 4/4로 바뀌므로 마디에 네 번 울린다.
+- 연주음은 `api.masterVolume`이 아니라 트랙 음량으로 준다. 마스터 음량은 클릭에도 곱해져서 연주음을 줄이면 클릭까지 작아지기 때문이다. 값은 연주음 × 트랙의 기본 채널 음량(`playbackInfo.volume / 16`, alphaTab이 플레이어가 준비될 때 주는 값)이다. 연주음 100%가 그 기본값이라야 위 마스터 음량 보정이 그대로 맞는다.
+- 소리 값(마스터 음량, 트랙 음량, 클릭, 카운트인)은 `applySound` 한 곳이 준다. 트랙 음량은 작업자가 준비되기 전에는 버려지고 alphaTab이 준비될 때 기본값으로 되돌리기도 해서, api를 만든 직후, 작업자 준비(`player.ready`), `scoreLoaded`, `soundFontLoaded`, `playerReady`, 재생 시작, 컨트롤 변경 때마다 다시 준다. 연주음은 `body`의 `data-at-guitar-volume`에 적는다.
+- 클릭·클릭음·연주음은 보기 창만의 localStorage 키 `gs.alphaTab.prefs`(`{ click, clickVol, guitarVol }`)에 `ls`로 저장한다. 읽을 때 형식이나 범위가 틀리면 기본값이고, 범위 맞추기는 `normalizeVolume`(`src/app-state.js`)이다. 연습 화면의 `gs.state` 값은 쓰지 않는다(소리 엔진이 달라 같은 %라도 크기가 다르다). `app-state.js`는 불러올 때 `gs.state`를 읽기만 하고 아무것도 쓰지 않는다. 브라우저 스모크(`testAlphaTabControls`)가 창을 여는 동안 localStorage 쓰기가 없는 것을 본다.
+- BPM 슬라이더는 연습 화면과 같은 단위(분당 칸 수)다. 곡 BPM(넘기기 값 `bpm`)이 기준이고 범위는 `ceil(곡 BPM × BPM_RATIO_MIN)`~`floor(곡 BPM × BPM_RATIO_MAX)`(최소 1)다. 곡 BPM이 숫자가 아니거나 0 이하이면 악보의 템포를 반올림한 값을 기준으로 한다. 연습 화면 BPM 슬라이더의 범위는 `index.html` 마크업과 `app.js`의 숫자뿐이라 보기 창이 읽을 수 없어 쓰지 않는다. 시험은 `testAlphaTabControls`가 처음 값, 범위 양 끝과 가운데 값의 `playbackSpeed`, 값 글, 8칸 곡에서 100%가 곡 BPM인 것을 본다.
+- `METRONOME_BASE_VOLUME`은 클릭음 100%의 alphaTab 클릭이 연습 화면 클릭(`clickMode` 전부, 클릭음 100%)과 같은 크기가 되게 잰 값이다. `testPlaybackLoudness`가 같은 곡(`builtin-lv1-butterfly`. 한 칸이 4분음표인 4/4라 클릭 수가 같다)을 기타 소리 없이(연습 화면 연주음 0%, 보기 창 연주음 0%) 8초 재서 게이트 RMS 차이가 ±3 dB 안인지 보고 `Loudness click …` 줄을 낸다. 같은 테스트가 클릭음 200%·연주음 100%에서 가장 빽빽한 곡(`builtin-romanza-accomp`)의 표본 최대값이 1 미만인지도 본다. 위 기타 소리 비교에서는 보기 창의 클릭을 꺼 둔다. 다시 잴 명령은 `node test/test-browser-smoke.js`다.
 
 ## 변환 규칙
 
@@ -104,15 +119,21 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 
 ## 결정
 
-- 2026-10-20 결정: 연습 기능과 소리는 우리 앱이 맡고, alphaTab은 눈으로 비교하는 미리보기로만 둔다. alphaTab을 앱의 연주 엔진으로 바꾸는 실험은 `codex/alphatab-player` 브랜치에 남아 있고 main은 기존 엔진을 쓴다.
+- 2026-10-20 결정: 연습 기능과 소리는 우리 앱이 맡고, alphaTab은 눈으로 비교하는 미리보기로만 둔다. alphaTab을 앱의 연주 엔진으로 바꾸는 실험은 `codex/alphatab-player` 브랜치에 남아 있고 main은 기존 엔진을 쓴다. (보기 창의 쓰임은 바로 아래 결정으로 넓어졌다)
+- 2026-10-21 결정: 보기 창은 곡 전체를 처음부터 끝까지 치는 연습에도 쓴다(전체 악보를 펼치고 클릭만 켠다). 마디 몇 개를 되풀이하는 연습은 연습 화면이 맡는다(칸마다 클릭, 구간 반복, 마디별 편집). 그래서 보기 창에 클릭·음량·BPM 슬라이더와 아래 악보가 모자랄 때만 넘기는 스크롤을 두었다. 구간 반복·마디 편집은 보기 창에 넣지 않고, alphaTab 을 연습 화면의 연주 엔진으로 바꾸지도 않는다.
 - 2026-10-20 결정: 변환은 `layoutScore` 결과 하나만 쓴다. 음 길이·점·붙임줄·셋잇단·슬러/슬라이드 항목·롤 첫 토막을 변환기에서 다시 셈하면 오선 미리보기와 어긋나는 곳이 생기고, 오선 미리보기가 음 길이를 `GuitarRhythm.annotate` 결과 하나로만 쓰는 이유([오선 미리보기](staff-notation.md))와 같다. 배치가 오류면 그 오류를 그대로 돌려준다.
 - 2026-10-20 결정: 롤은 `au`가 아니라 `ad`로 옮긴다. 이름이 반대로 보이지만, alphaTab의 `ad`(ArpeggioDown)가 아래 줄(낮은 소리)부터 굴린다. `ad`와 `au`를 같은 화음에 달고 alphaTab이 만든 MIDI 이벤트의 시작 순서를 보면 `ad`는 낮은 음부터, `au`는 높은 음부터였고(`test/test-score-to-alphatex.js`), 화면에서도 `ad`의 화살표가 위를 가리켰다(낮은 줄에서 높은 줄로, 우리 롤과 같은 방향).
 - 2026-10-20 결정: `alphaTab` 단추는 악보 툴바(`악보 편집` 앞)가 아니라 머리 줄(`단축키 안내` 옆)에 둔다. 툴바에 넣으면 640px 폭 검사에서 `보기 선택`·`카포 배지`와 겹쳤다([화면과 조작](ui.md)).
 - 2026-10-20 결정: 폭 500px 미만에서는 alphaTab 배율을 낮춰(`NARROW_SCALE`) 그린다. 배율은 불러올 때만 정한다. 375px에서도 가로로 넘치지 않지만 긴 곡 제목이 악보 머리의 제목 줄에서 잘린다(보기 창 안에서 가로 스크롤). 제목은 머리 줄에도 있다.
 - 2026-10-21 결정: 보기 창의 소리를 sonivox.sf2(1.3MB)에서 MuseScore_General.sf3(MIT, 약 38MB)로 바꿨다. sonivox 의 기타 소리가 연습에 듣기 힘들 만큼 나빴다. 파일은 vendor/musescore-general 에 받은 그대로 두고, 크기 때문에 창을 열 때가 아니라 처음 재생할 때 불러온다(악보만 볼 때는 내려받지 않는다). sonivox.sf2 는 vendor/alphatab 을 받은 그대로 두려고 지우지 않았고 쓰지 않는다.
 - 2026-10-21 결정: 보기 창은 모든 트랙을 나일론 기타(GM 24)로 재생한다. 클래식 기타 연습 앱이고, Guitar Pro 에서 온 곡은 스틸 기타(GM 25)로 적혀 있는 일이 많다. 원본 alphaTex 글자는 바꾸지 않고 재생 직전에 모델에서만 바꾼다.
-- 2026-10-21 결정: 재생 자동 스크롤에 머리 높이만큼의 오프셋을 준다. alphaTab 은 지금 줄의 맨 위를 화면 맨 위에 맞춰 스크롤해서 위에 붙은 머리 막대에 오선 윗부분이 가려졌다. 머리 높이는 줄바꿈으로 바뀌어 실제 높이를 재고 크기가 바뀌면 다시 잰다.
-- 2026-10-21 결정: 보기 창의 MuseScore General 나일론 기타가 기본 마스터 음량에서 연습 화면 합성음보다 훨씬 작게 들렸다. 두 플레이어를 같은 곡으로 재생해 잰 크기 차이만큼 alphaTab 마스터 음량을 올렸다(PLAYBACK_MASTER_VOLUME). 연습 화면의 연주음 슬라이더는 보기 창에 반영하지 않는다(보기 창은 클릭이 없는 비교용이다). 같은 크기로 맞추면 6음 화음이 이어지는 곡(로만자 반주)이 1.0을 넘어 잘려서, 그 곡이 넘지 않을 만큼 낮췄다. 그래서 다른 곡은 연습 화면보다 조금 작다.
+- 2026-10-21 결정: 재생 자동 스크롤에 머리 높이만큼의 오프셋을 준다. alphaTab 은 지금 줄의 맨 위를 화면 맨 위에 맞춰 스크롤해서 위에 붙은 머리 막대에 오선 윗부분이 가려졌다. 머리 높이는 줄바꿈으로 바뀌어 실제 높이를 재고 크기가 바뀌면 다시 잰다. (아래 결정으로 바뀌었다)
+- 2026-10-21 결정: 보기 창의 MuseScore General 나일론 기타가 기본 마스터 음량에서 연습 화면 합성음보다 훨씬 작게 들렸다. 두 플레이어를 같은 곡으로 재생해 잰 크기 차이만큼 alphaTab 마스터 음량을 올렸다(PLAYBACK_MASTER_VOLUME). 연습 화면의 연주음 슬라이더는 이때는 보기 창에 반영하지 않았다(아래 결정으로 보기 창에 따로 두었다). 같은 크기로 맞추면 6음 화음이 이어지는 곡(로만자 반주)이 1.0을 넘어 잘려서, 그 곡이 넘지 않을 만큼 낮췄다. 그래서 다른 곡은 연습 화면보다 조금 작다.
+- 2026-10-21 결정: 재생 중 줄이 바뀔 때 다음 줄이 화면 아래에 다 보이지 않거나 지금 줄이 머리 막대에 가릴 때만 지금 줄을 머리 막대 바로 아래로 올린다. 전에는 줄이 바뀔 때마다 지금 줄을 맨 위로 올려 눈을 늘 화면 맨 위에 둬야 했다. alphaTab 의 OffScreen 모드는 악보 요소의 위치와 머리 막대를 셈에 넣지 않아 customScrollHandler 로 직접 한다.
+- 2026-10-21 결정: 보기 창에도 클릭(메트로놈, 처음 켬, 한 마디 카운트인)과 클릭음·연주음 슬라이더를 둔다. 값은 보기 창만 기억한다(gs.alphaTab.prefs). 소리 엔진이 달라 연습 화면과 같은 %라도 크기가 달라서다. 연주음은 트랙 음량으로 줘서 클릭 크기에 영향을 주지 않는다. 빠르기는 연습 화면과 같은 BPM(분당 칸 수) 슬라이더이고 연습 화면에서 쓰던 BPM으로 시작한다. alphaTab 에는 곡 BPM 에 대한 비율(playbackSpeed)로 준다. alphaTab 템포는 4분음표 기준이라 8칸 곡이면 숫자가 연습 화면과 달라서다.
+- 2026-10-21 결정: BPM 슬라이더 범위는 연습 화면의 BPM 범위가 아니라 곡 BPM 의 BPM_RATIO_MIN~BPM_RATIO_MAX 배다. 연습 화면의 범위는 index.html 마크업과 app.js 의 숫자 리터럴이라 보기 창이 읽을 수 없고, 복사하면 두 곳이 어긋나기 쉬워서다.
+- 함정: 연주음 100%를 트랙 음량 1.0 으로 주면 alphaTab 이 준비될 때 주는 기본 채널 음량(playbackInfo.volume / 16)보다 커져 마스터 음량 보정이 깨진다(가장 빽빽한 곡의 표본 최대값이 1.0 을 넘었다). 트랙마다 기본 음량을 곱해 준다.
+- 함정: 줄 bounds 의 좌표 기준은 컨테이너가 아니라 그 안의 그리기 면(.at-surface)이다. 컨테이너 기준으로 셈하면 호스트의 패딩·테두리만큼 줄 위치가 어긋난다.
 - 틀린 길: 처음에는 롤을 `au`로 옮기려 했다. 이름만 보고 정한 것이었고 위 확인으로 바로잡았다.
 - 알려진 것: 재생을 시작하자마자 바로 멈추면 alphaTab 내부(`pause`)에서 `InvalidStateError`가 콘솔에 난다(소리가 실제로 시작되기 전에 멈출 때). `test/test-browser-smoke.js`는 재생 뒤 잠시 기다렸다 멈춘다. 이 오류는 vendor 코드 안이라 고치지 않았다.
 - 안 돌려 본 것: 실제 폰(갤럭시 폴드7)에서의 보기·재생. 소리 품질은 확인하지 않았다.
@@ -255,4 +276,4 @@ node test/test-score-prompt.js
 node test/test-browser-smoke.js
 ```
 
-`test-score-to-alphatex`는 `songs.json`의 모든 곡을 변환해 alphaTab 가져오기 진단이 0인지, 마디 수와 마디마다 박 길이 합(tick)이 박자표와 같은지, 줄·프렛·실음이 배치와 같은지 확인하고, 합성 악보로 위 표의 효과를 하나씩 모델 필드로 확인한다. 빈칸 악보는 첫 마디 앞쪽 빈칸의 `\ac`, 가운데 짧은 마디의 `\ts (2 4)`와 다음 마디의 `\ts (4 4)`, 끝마디의 `\ts`, 8분음표 칸 곡의 `\ts (n 8)`, 마디마다 박 길이 합이 빈칸을 뺀 칸 수와 같은지, 전체 길이가 리듬 길이와 같은지를 보고, 빈칸을 4분쉼으로 내보내는 사본이 걸리는지도 본다. 기대값은 우리 파서·상수에서 셈한다. 브라우저 스모크는 연습 화면 단추의 넘기기, 보기 창의 그리기·보기 전환·재생·다크와 375px 폭을 확인한다. 소리는 창을 여는 동안 사운드폰트 요청이 없는 것(서버가 받은 경로로 센다), 처음 재생을 누르면 `재생`이 꺼지고 상태 줄에 불러오는 중 문구와 진행률이 보였다가 재생 상태가 되는 것, 그다음 재생이 다시 요청하지 않는 것, 없는 파일을 요청하면 실패 문구와 함께 단추가 다시 켜지는 것, 두 악보 경로(원본 alphaTex, 우리 악보 미리보기)의 모든 트랙이 프로그램 24인 것을 확인한다. 자동 스크롤은 폭 900px·낮은 화면에서 커서를 둘째 줄로 옮기고 `scrollToCursor`를 부른 뒤 그 줄의 맨 위가 머리 막대 바로 아래에 오는지 본다(재생을 기다리지 않는다). 원본 alphaTex 곡은 테스트 안에서 시트 곡처럼 만들어, 보기 창이 alphaTex를 그대로 그리는지(우리 악보와 마디 수가 다른 alphaTex로 구별), 고친 초안이면 alphaTex를 넘기지 않는지, 입력 화면에서 고쳐 돌아오면(칸 수를 바꿔 돌아오는 경우 포함) `(사본)`·`(사본 2)` 곡이 생기고 원본이 그대로인지, alphaTex가 없는 곡은 제자리 초안으로 남는지, 원본이 alphaTab 오류일 때 변환 미리보기로 대신 그리는지 본다. 스크린샷 `test-artifacts/alphatab-view.png`를 남긴다.
+`test-score-to-alphatex`는 `songs.json`의 모든 곡을 변환해 alphaTab 가져오기 진단이 0인지, 마디 수와 마디마다 박 길이 합(tick)이 박자표와 같은지, 줄·프렛·실음이 배치와 같은지 확인하고, 합성 악보로 위 표의 효과를 하나씩 모델 필드로 확인한다. 빈칸 악보는 첫 마디 앞쪽 빈칸의 `\ac`, 가운데 짧은 마디의 `\ts (2 4)`와 다음 마디의 `\ts (4 4)`, 끝마디의 `\ts`, 8분음표 칸 곡의 `\ts (n 8)`, 마디마다 박 길이 합이 빈칸을 뺀 칸 수와 같은지, 전체 길이가 리듬 길이와 같은지를 보고, 빈칸을 4분쉼으로 내보내는 사본이 걸리는지도 본다. 기대값은 우리 파서·상수에서 셈한다. 브라우저 스모크는 연습 화면 단추의 넘기기, 보기 창의 그리기·보기 전환·재생·다크와 375px 폭을 확인한다. 소리는 창을 여는 동안 사운드폰트 요청이 없는 것(서버가 받은 경로로 센다), 처음 재생을 누르면 `재생`이 꺼지고 상태 줄에 불러오는 중 문구와 진행률이 보였다가 재생 상태가 되는 것, 그다음 재생이 다시 요청하지 않는 것, 없는 파일을 요청하면 실패 문구와 함께 단추가 다시 켜지는 것, 두 악보 경로(원본 alphaTex, 우리 악보 미리보기)의 모든 트랙이 프로그램 24인 것을 확인한다. 자동 스크롤(`testAlphaTabScroll`)은 폭 900px에서 세 번째 줄까지만 다 보이는 높이로 줄이고, 줄마다 첫 박의 bounds로 사용자 처리기를 불러 다음 줄이 다 보이는 동안은 스크롤이 그대로인지, 잘리는 줄에서는 지금 줄의 위가 머리 막대 아래 여유에 오는지, 화면 위로 지나간 줄로 돌아가면 같은 자리에 오는지, 같은 줄의 박 갱신은 다시 판정하지 않고 `forceScrollTo`는 늘 판정하는지 본다(재생을 기다리지 않는다). 컨트롤(`testAlphaTabControls`)은 컨트롤 순서, 클릭·클릭음·연주음이 `api.metronomeVolume`·`api.countInVolume`·`api.masterVolume`·`data-at-guitar-volume`에 반영되는 것, `gs.alphaTab.prefs` 저장과 틀린 값의 기본값, 창을 여는 동안 localStorage 쓰기가 없고 `gs.state`를 건드리지 않는 것, BPM 슬라이더(처음 값, 양 끝과 가운데 값의 `playbackSpeed`, 값 글, 8칸 곡)를 확인한다. 원본 alphaTex 곡은 테스트 안에서 시트 곡처럼 만들어, 보기 창이 alphaTex를 그대로 그리는지(우리 악보와 마디 수가 다른 alphaTex로 구별), 고친 초안이면 alphaTex를 넘기지 않는지, 입력 화면에서 고쳐 돌아오면(칸 수를 바꿔 돌아오는 경우 포함) `(사본)`·`(사본 2)` 곡이 생기고 원본이 그대로인지, alphaTex가 없는 곡은 제자리 초안으로 남는지, 원본이 alphaTab 오류일 때 변환 미리보기로 대신 그리는지 본다. 스크린샷 `test-artifacts/alphatab-view.png`를 남긴다.
