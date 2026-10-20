@@ -53,7 +53,8 @@ const MEMO = {
   slurOtherString: '다른 줄 슬러 생략',
   noStringSlur: '줄 정보 없음: 슬러 생략',
   noStringSlide: '줄 정보 없음: 슬라이드 생략',
-  noStringHarmonic: '줄 정보 없음: 하모닉스 생략'
+  noStringHarmonic: '줄 정보 없음: 하모닉스 생략',
+  eightCells: '8칸(8분음표 칸): 4칸으로는 맞지 않는 리듬이 있음'
 };
 
 // alphaTab 의 이동 표시(Direction 중 Jump 로 시작하는 것)의 이름. 이동해서 다시 들어온 첫 마디의 메모는 이름 + JUMP_SUFFIX 다.
@@ -151,6 +152,9 @@ function chooseGrid(numerator, denominator, quarterTempo){
   if (notation.SHEET_BEAT_COUNTS.indexOf(cells) < 0) refuse('칸 수를 시트가 받지 않습니다: ' + cells);
   return { cells: cells, slotQuarter: slotQuarter, slotTicks: TICKS_PER_QUARTER * slotQuarter };
 }
+
+// 4/4 곡을 8분음표 8칸으로 다시 변환할 때 쓰는 격자
+const EIGHT_CELL_GRID = { cells: 8, slotQuarter: 0.5, slotTicks: TICKS_PER_QUARTER * 0.5 };
 
 // ---------- 트랙 고르기
 
@@ -458,37 +462,76 @@ function fitDivision(offsets, division, slotTicks){
   return { division: division, positions: positions, total: total, exact: exact };
 }
 
+// 한 조각(같은 칸·같은 분할 자리)에 같은 줄·같은 음높이(줄 없는 음이면 같은 음높이)의 음이 둘 이상이면 하나만 남긴다.
+// 남기는 것은 끝이 가장 늦은 것이고, 비어 있는 운지·주법은 버린 것에서 가져온다. 두 성부가 같은 음을 치면 이런 기록이 둘 나온다.
+function dedupeRecords(records){
+  const kept = [];
+  records.forEach(function(record){
+    const index = kept.findIndex(function(other){ return other.str === record.str && other.midi === record.midi; });
+    if (index < 0){ kept.push(record); return; }
+    const other = kept[index];
+    const winner = record.endRel > other.endRel ? record : other;
+    const loser = winner === record ? other : record;
+    ['left', 'right', 'articulation'].forEach(function(field){ if (!winner[field] && loser[field]) winner[field] = loser[field]; });
+    kept[index] = winner;
+  });
+  return kept;
+}
+
 function sortTokens(parts){
   return parts.slice().sort(function(a, b){ return b.str - a.str || a.midi - b.midi; });
 }
 
+// 4/4 곡이 4칸 격자에 맞지 않는 리듬을 가지면(옮긴 음이 있으면) 8칸(8분음표 칸)으로 다시 변환해 보고, 옮긴 음이 줄면 8칸 결과를 쓴다.
+// 2/4·3/4 등은 칸을 늘리면 앱이 박자를 다르게 읽어서 바꾸지 않는다.
 function convertScore(score, options){
   try {
-    return convert(score, options || {});
+    const opts = options || {};
+    const first = convert(score, opts, null);
+    let result = first;
+    if (first.eightCellsEligible && first.movedCount > 0){
+      let second = null;
+      try { second = convert(score, opts, EIGHT_CELL_GRID); } catch (error) { if (!(error instanceof Refusal)) throw error; }
+      if (second && second.movedCount < first.movedCount) result = second;
+    }
+    delete result.movedCount;
+    delete result.eightCellsEligible;
+    return result;
   } catch (error) {
     if (error instanceof Refusal) return { ok: false, error: error.message };
     throw error;
   }
 }
 
-function convert(score, opts){
+// forcedGrid 가 있으면 박자표로 고르지 않고 그 격자를 쓴다(4/4 곡의 8칸 다시 변환).
+function convert(score, opts, forcedGrid){
   if (!score || !score.masterBars || !score.masterBars.length) refuse('마디가 없는 악보입니다.');
   const picked = selectStaff(score, opts.trackNumber);
   const staff = picked.staff;
   const hasStrings = picked.hasStrings;
   const masterBars = score.masterBars;
 
-  // 박자표: 첫 마디(못갖춘마디면 그 다음)가 곡의 박자표이고, 다른 박자표가 나오면 변환하지 않는다.
+  // 박자표: 첫 마디(못갖춘마디면 그 다음)가 곡의 박자표다. 다른 박자표가 나오면 변환하지 않는다.
+  // 예외: 격자 마디보다 짧고 칸 길이의 정수배인 마디는 변환한다(모자란 칸은 아래에서 채운다).
   const signatureBar = masterBars.find(function(masterBar){ return !masterBar.isAnacrusis; }) || masterBars[0];
-  masterBars.forEach(function(masterBar){
-    if (masterBar.timeSignatureNumerator !== signatureBar.timeSignatureNumerator || masterBar.timeSignatureDenominator !== signatureBar.timeSignatureDenominator){
-      refuse('곡 중간에 박자표가 바뀝니다(' + (masterBar.index + 1) + '마디 ' + masterBar.timeSignatureNumerator + '/' + masterBar.timeSignatureDenominator + '). 변환하지 않습니다.');
-    }
+  const meterChanges = masterBars.filter(function(masterBar){
+    return masterBar.timeSignatureNumerator !== signatureBar.timeSignatureNumerator || masterBar.timeSignatureDenominator !== signatureBar.timeSignatureDenominator;
   });
   const quarterTempo = score.tempo;
   if (!(quarterTempo > 0)) refuse('템포를 읽을 수 없습니다.');
-  const grid = chooseGrid(signatureBar.timeSignatureNumerator, signatureBar.timeSignatureDenominator, quarterTempo);
+  const meterKey = signatureBar.timeSignatureNumerator + '/' + signatureBar.timeSignatureDenominator;
+  const grid = forcedGrid || chooseGrid(signatureBar.timeSignatureNumerator, signatureBar.timeSignatureDenominator, quarterTempo);
   const barTicks = grid.cells * grid.slotTicks;
+  // 박자표가 다른 마디: 못갖춘마디가 아니고, 격자 마디보다 짧고, 칸 길이의 정수배여야 한다. 아니면 변환하지 않는다.
+  // shortBars[마디 index] = { ticks, used(원래 내용이 차지하는 칸 수), numerator, denominator }
+  const shortBars = new Map();
+  meterChanges.forEach(function(masterBar){
+    const ticks = signatureTicks(masterBar);
+    if (masterBar.isAnacrusis || !(ticks < barTicks) || ticks % grid.slotTicks !== 0){
+      refuse('곡 중간에 박자표가 바뀝니다(' + (masterBar.index + 1) + '마디 ' + masterBar.timeSignatureNumerator + '/' + masterBar.timeSignatureDenominator + '). 변환하지 않습니다.');
+    }
+    shortBars.set(masterBar.index, { ticks: ticks, used: ticks / grid.slotTicks, numerator: masterBar.timeSignatureNumerator, denominator: masterBar.timeSignatureDenominator });
+  });
 
   const rawBpm = quarterTempo / grid.slotQuarter;
   let bpm = Math.round(rawBpm);
@@ -497,6 +540,7 @@ function convert(score, opts){
     descriptionParts.push('BPM 자름(원래 값 ' + bpm + ')');
     bpm = Math.min(BPM_MAX, Math.max(BPM_MIN, bpm));
   }
+  if (forcedGrid) descriptionParts.push(MEMO.eightCells);
 
   if (!hasStrings) descriptionParts.push('줄 정보 없음(기본 위치)');
 
@@ -639,7 +683,9 @@ function convert(score, opts){
       });
     });
     texts.sort(function(a, b){ return a.start - b.start; });
-    return { records: records, memos: memos, texts: texts.map(function(entry){ return entry.text; }), chords: chords };
+    // 두 성부에 같은 박 글이 있으면 마디 메모에 한 번만 쓴다.
+    const uniqueTexts = texts.map(function(entry){ return entry.text; }).filter(function(text, position, all){ return all.indexOf(text) === position; });
+    return { records: records, memos: memos, texts: uniqueTexts, chords: chords };
   }
 
   function tokenText(record, moved){
@@ -647,6 +693,7 @@ function convert(score, opts){
     return record.articulation + record.left + name + (record.str ? '@' + record.str : '') + (record.right ? ':' + record.right : '') + (moved || record.shifted ? '?' : '');
   }
 
+  let movedCount = 0;
   const order = playOrder(score, staff);
   const counts = new Map();
   order.forEach(function(index){ counts.set(index, (counts.get(index) || 0) + 1); });
@@ -661,6 +708,9 @@ function convert(score, opts){
     const occurrence = seen.has(index) ? seen.get(index) : 0;
     seen.set(index, occurrence + 1);
     const collected = collectBar(index);
+    const shortBar = shortBars.get(index) || null;
+    // 이 마디의 원래 길이(짧은 마디는 채우기 전 길이)
+    const barLen = shortBar ? shortBar.ticks : barTicks;
     const memos = collected.memos.slice();
     if (masterBar.isAnacrusis) memos.push(MEMO.anacrusis);
     // 이동 표시(D.S. 등)가 붙은 마디 다음에 순서대로가 아닌 마디가 오고 그 마디가 그 이동의 도착지면, 이동해서 들어온 첫 마디다.
@@ -698,7 +748,7 @@ function convert(score, opts){
     for (let c = 0; c < grid.cells; c++) restsByCell.push([]);
     collected.records.forEach(function(record){
       const end = record.endRel;
-      if (!(end > TOLERANCE_TICKS && end < barTicks - TOLERANCE_TICKS)) return;
+      if (!(end > TOLERANCE_TICKS && end < barLen - TOLERANCE_TICKS)) return;
       const cell = Math.floor(end / grid.slotTicks);
       const inCell = end - cell * grid.slotTicks;
       if (inCell <= TOLERANCE_TICKS || inCell >= grid.slotTicks - TOLERANCE_TICKS) return;
@@ -734,16 +784,27 @@ function convert(score, opts){
     });
 
     // 2차: 조각 문자열 만들기
+    let fillKind = '';
     plan.forEach(function(cellPlan, c){
+      // 짧은 마디의 모자란 칸: 마지막 조각이 음이나 유지면 `-`, 쉼이거나 음이 없는 마디면 `r`
+      if (shortBar && c >= shortBar.used){
+        if (!fillKind) fillKind = collected.records.length && lastPiece !== null && lastPiece !== 'rest' ? '-' : 'r';
+        cellTexts.push(fillKind);
+        lastPiece = fillKind === '-' ? 'hold' : 'rest';
+        return;
+      }
       const pieces = [];
       for (let k = 0; k < cellPlan.division; k++){
         const time = c * grid.slotTicks + k * grid.slotTicks / cellPlan.division;
         const here = cellPlan.byPosition[k];
         let text;
         if (here.length){
-          const parts = sortTokens(here.map(function(record){ return { str: record.str, midi: record.midi, record: record }; }));
+          const rollAny = here.some(function(record){ return record.roll; });
+          const distinct = dedupeRecords(here);
+          distinct.forEach(function(record){ if (record.moved) movedCount++; });
+          const parts = sortTokens(distinct.map(function(record){ return { str: record.str, midi: record.midi, record: record }; }));
           const tokens = parts.map(function(part){ return tokenText(part.record, part.record.moved); });
-          const rolled = tokens.length > 1 && here.some(function(record){ return record.roll; });
+          const rolled = tokens.length > 1 && rollAny;
           text = (rolled ? '~' : '') + tokens.join('+');
           lastPiece = 'note';
         } else {
@@ -759,6 +820,9 @@ function convert(score, opts){
       }
       cellTexts.push(pieces.join('/'));
     });
+    if (shortBar){
+      memos.push('원본 ' + shortBar.numerator + '/' + shortBar.denominator + ' 마디 → 뒤 ' + (grid.cells - shortBar.used) + '칸 ' + (fillKind === '-' ? '유지' : '쉼'));
+    }
 
     // 길이가 다른 음이 겹치는지(둘 이상의 성부가 있을 때)
     let overlap = false;
@@ -777,7 +841,7 @@ function convert(score, opts){
     // 다음 마디로 이어지는 소리
     let maxEnd = 0;
     collected.records.forEach(function(record){ if (record.endRel > maxEnd) maxEnd = record.endRel; });
-    carry = Math.max(0, Math.max(carry, maxEnd) - barTicks);
+    carry = Math.max(0, Math.max(carry, maxEnd) - barLen);
 
     // 코드 이름: 마디 안 첫 코드를 머리표에, 그 뒤에 바뀌는 코드는 메모에
     collected.chords.sort(function(a, b){ return a.start - b.start; });
@@ -876,7 +940,9 @@ function convert(score, opts){
     tsv: [cleanTitle, String(grid.cells), String(bpm), description, scoreText].join('\t'),
     trackNumber: picked.track.index + 1,
     errors: validation.errors,
-    warnings: validation.warnings
+    warnings: validation.warnings,
+    movedCount: movedCount,
+    eightCellsEligible: !forcedGrid && meterKey === '4/4' && Math.round(quarterTempo * 2) <= BPM_MAX
   };
 }
 

@@ -204,6 +204,9 @@ function unstring(score, bar, beat, noteIndex, midi){
 }
 
 const SOURCE_MEMO = '원본: ';
+// 곡 중간의 짧은 마디 메모와 4/4 곡의 8칸 설명 문구(채운 칸 수와 종류가 뒤에 붙는다)
+const SHORT_BAR_MEMO = '원본 2/4 마디 → 뒤 2칸 ';
+const EIGHT_CELLS_NOTE = '8칸(8분음표 칸): 4칸으로는 맞지 않는 리듬이 있음';
 const EXAMPLES = [
   {
     file: 'two-voices.tex', title: 'Two Voices', beats: 4, bpm: 80, capo: 0, descriptionHas: ['긴 음은 시작만 적음'],
@@ -350,6 +353,54 @@ const EXAMPLES = [
     file: 'ds-with-repeat.tex', title: 'DS With Repeat', beats: 4, bpm: 80, capo: 0, descriptionHas: [], editsModel: true,
     transformText: function(text){ return text.replace('b34 with Repeat', 'b34'); },
     measures: skeletonMeasures(false)
+  },
+  {
+    // 4/4 곡 가운데 2/4 마디(끝이 음): 4칸으로 만들고 뒤 2칸은 앞 음을 이어 `-` 로 채운다.
+    file: 'short-bar.tex', title: 'Short Bar', beats: 4, bpm: 80, capo: 0, descriptionHas: [],
+    measures: [
+      '[-] ' + [n(1, 0), n(1, 1), n(1, 3), n(2, 0)].join(' '),
+      '[-] ' + [n(3, 0), n(4, 0), '-', '-'].join(' ') + ' | "' + SHORT_BAR_MEMO + '유지"',
+      '[-] ' + [n(3, 1), n(3, 3), n(4, 0), n(4, 1)].join(' ')
+    ]
+  },
+  {
+    // 2/4 마디의 끝이 쉼이면 `r` 로 채우고 메모는 `쉼`
+    file: 'short-bar-rest.tex', title: 'Short Bar Rest', beats: 4, bpm: 80, capo: 0, descriptionHas: [],
+    measures: [
+      '[-] ' + [n(1, 0), n(1, 1), n(1, 3), n(2, 0)].join(' '),
+      '[-] ' + [n(3, 0), 'r', 'r', 'r'].join(' ') + ' | "' + SHORT_BAR_MEMO + '쉼"',
+      '[-] ' + [n(3, 1), n(3, 3), n(4, 0), n(4, 1)].join(' ')
+    ]
+  },
+  {
+    // 도돌이 안의 짧은 마디는 펼친 사본마다 같은 채움과 메모를 단다.
+    file: 'short-bar-repeat.tex', title: 'Short Bar Repeat', beats: 4, bpm: 80, capo: 0, descriptionHas: [],
+    measures: [
+      '[-] ' + [n(1, 0), n(1, 1), n(1, 3), n(2, 0)].join(' ') + ' | "도돌이 펼침"',
+      '[-] ' + [n(3, 0), n(4, 0), '-', '-'].join(' ') + ' | "' + SHORT_BAR_MEMO + '유지"',
+      '[-] ' + [n(1, 0), n(1, 1), n(1, 3), n(2, 0)].join(' '),
+      '[-] ' + [n(3, 0), n(4, 0), '-', '-'].join(' ') + ' | "' + SHORT_BAR_MEMO + '유지"',
+      '[-] ' + [n(3, 1), n(3, 3), n(4, 0), n(4, 1)].join(' ')
+    ]
+  },
+  {
+    // 4/4·템포 60 에 32분음표: 4칸에서는 옮긴 음이 생기므로 8분음표 8칸(BPM 은 4분음표 템포의 두 배)으로 바꾸고, 옮긴 음(?)이 없다.
+    file: 'thirty-second.tex', title: 'Thirty Second', beats: 8, bpm: 120, capo: 0, descriptionHas: [EIGHT_CELLS_NOTE],
+    measures: [
+      '[-] ' + [
+        [n(1, 0), n(1, 1), n(1, 3), n(2, 0)].join('/'), [n(2, 1), n(2, 3), n(3, 0), n(3, 1)].join('/'),
+        [n(1, 0), n(1, 1), n(1, 3), n(2, 0)].join('/'), [n(2, 1), n(2, 3), n(3, 0), n(3, 1)].join('/'),
+        n(4, 0), '-', n(3, 0), '-'
+      ].join(' '),
+      '[-] ' + [n(1, 0), '-', n(2, 0), '-', n(3, 0), '-', n(4, 0), '-'].join(' ')
+    ]
+  },
+  {
+    // 두 성부가 같은 순간 같은 줄의 같은 음을 치면 토큰 하나, 같은 박 글(rit.)은 마디 메모에 한 번
+    file: 'same-note-voices.tex', title: 'Same Note Voices', beats: 4, bpm: 80, capo: 0, descriptionHas: [],
+    measures: [
+      '[-] ' + [n(5, 0), '-', [n(5, 3), n(1, 0)].join('+'), '-'].join(' ') + ' | "rit."'
+    ]
   }
 ];
 
@@ -518,7 +569,7 @@ test('refusals: unsupported meter, non-standard tuning, meter change, non-guitar
   const dropD = tool.convertScore(importCleanTex(readFixture('drop-d.tex'), 'drop-d'), {});
   assert.equal(dropD.ok, false);
   assert.match(dropD.error, /표준 조율/);
-  const change = tool.convertScore(importCleanTex('\\title "C" \\tempo 100 \\ts (4 4)\n0.1.1 | \\ts (3 4) 0.1.2 {d} |\n', 'change'), {});
+  const change = tool.convertScore(importCleanTex('\\title "C" \\tempo 100 \\ts (4 4)\n0.1.1 | \\ts (5 4) 0.1.1 0.1.4 |\n', 'change'), {});
   assert.equal(change.ok, false);
   assert.match(change.error, /박자표가 바뀝니다/);
   const bass = tool.convertScore(importCleanTex('\\title "B" \\tempo 100 \\ts (4 4)\n\\track "Bass" \\staff {tabs} \\tuning (G2 D2 A1 E1)\n0.4.1 |\n', 'bass'), {});
@@ -949,6 +1000,79 @@ test('build-scores: writes 6-column TSV with BOM, keeps TSV files without .tex, 
   }
 });
 
+test('mid-song meter change: a bar shorter than the grid bar and a whole number of cells is filled; a longer bar or a bar that is not a whole number of cells is refused with its number and meter', function(){
+  // 끝이 음이면 유지, 끝이 쉼이면 r (예제 short-bar, short-bar-rest, short-bar-repeat 가 줄 전체를 견준다). 여기서는 거절과 칸 수를 본다.
+  const head = '\\title "M" \\tempo 80 \\ts (4 4)\n0.1.4 1.1.4 3.1.4 0.2.4 |\n';
+  const longer = tool.convertScore(importCleanTex(head + '\\ts (5 4) 0.1.4 1.1.4 3.1.4 0.2.4 0.3.4 |\n', 'longer'), {});
+  assert.equal(longer.ok, false);
+  assert.match(longer.error, /곡 중간에 박자표가 바뀝니다\(2마디 5\/4\)/);
+  // 3/8 = 1.5 칸이라 칸 길이의 정수배가 아니다
+  const half = tool.convertScore(importCleanTex(head + '\\ts (3 8) 0.1.8 1.1.8 3.1.8 |\n', 'half'), {});
+  assert.equal(half.ok, false);
+  assert.match(half.error, /곡 중간에 박자표가 바뀝니다\(2마디 3\/8\)/);
+  // 3/4 마디는 4칸 중 3칸을 쓰고 1칸을 채운다
+  const three = convertTex(head + '\\ts (3 4) 0.1.4 1.1.4 3.1.4 |\n');
+  assert.equal(three.ok, true, three.error);
+  assert.equal(three.measures[1], '[-] ' + [n(1, 0), n(1, 1), n(1, 3), '-'].join(' ') + ' | "원본 3/4 마디 → 뒤 1칸 유지"');
+  // 메모는 변환기 근사 메모 쪽이라 박의 글 뒤에 붙는다
+  const withText = convertTex(head + '\\ts (2 4) 0.1.4 {txt "글"} 1.1.4 |\n');
+  assert.equal(withText.measures[1], '[-] ' + [n(1, 0), n(1, 1), '-', '-'].join(' ') + ' | "글 · 원본 2/4 마디 → 뒤 2칸 유지"');
+  // 박자표 변경이 없는 곡 끝의 짧은 마디는 지금처럼 이 메모 없이 r 로 채운다
+  const tail = convertTex(head + '0.1.4 1.1.4 |\n');
+  assert.equal(tail.ok, true, tail.error);
+  assert.equal(tail.measures[1].indexOf('원본 '), -1);
+});
+
+test('eight cells: a 4/4 song with rhythm the 4-cell grid cannot hold uses 8 cells only when it moves fewer notes and the doubled BPM stays within the limit; other meters keep their cells', function(){
+  const bar16 = ':16 0.1 1.1 3.1 0.2 0.1 1.1 3.1 0.2 0.1 1.1 3.1 0.2 0.1 1.1 3.1 0.2 |\n';
+  const bar32 = ':32 0.1 1.1 3.1 0.2 1.2 3.2 0.3 1.3 0.1 1.1 3.1 0.2 1.2 3.2 0.3 1.3 :4 0.4 0.3 |\n';
+  const fast = convertTex('\\title "F" \\tempo 130 \\ts (4 4)\n' + bar32);
+  assert.equal(fast.ok, true);
+  assert.equal(fast.beats, 4, '130 x 2 is over the BPM limit');
+  assert.equal(fast.bpm, 130);
+  assert.doesNotMatch(fast.description, /8칸/);
+  assert.match(fast.measures[0], /\?/);
+  assert.match(fast.measures[0], /칸 분할에 맞지 않는 리듬 → 가까운 자리/);
+  const edge = convertTex('\\title "E" \\tempo 120 \\ts (4 4)\n' + bar32);
+  assert.equal(edge.beats, 8, '120 x 2 is exactly the BPM limit');
+  assert.equal(edge.bpm, 240);
+  const sixteenths = convertTex('\\title "S" \\tempo 60 \\ts (4 4)\n' + bar16);
+  assert.equal(sixteenths.ok, true);
+  assert.equal(sixteenths.beats, 4, 'sixteenth notes fit the 4-cell grid');
+  assert.doesNotMatch(sixteenths.description, /8칸/);
+  assert.doesNotMatch(sixteenths.measures[0], /\?/);
+  // 4/4 가 아닌 박자는 칸을 바꾸지 않는다(2/4 에 32분음표 8개 = 1박)
+  const duple = convertTex('\\title "D" \\tempo 60 \\ts (2 4)\n:32 0.1 1.1 3.1 0.2 1.2 3.2 0.3 1.3 :4 0.4 |\n');
+  assert.equal(duple.ok, true);
+  assert.equal(duple.beats, 2);
+  assert.doesNotMatch(duple.description, /8칸/);
+  // 5잇단은 8칸에서도 옮긴 음이 줄지 않아 4칸을 유지한다
+  const quintuplet = convertTex('\\title "Q" \\tempo 60 \\ts (4 4)\n0.1.8 {tu 5} 1.1.8 {tu 5} 3.1.8 {tu 5} 0.2.8 {tu 5} 1.2.8 {tu 5} 0.3.4 0.4.4 |\n');
+  assert.equal(quintuplet.beats, 4);
+  assert.doesNotMatch(quintuplet.description, /8칸/);
+});
+
+test('same note in two voices: one token, empty fingers are taken from the dropped note, a different string keeps both, a repeated beat text is written once', function(){
+  const head = '\\title "V" \\tempo 80 \\ts (4 4)\n\\track "Guitar" \\staff {tabs} \\tuning (E4 B3 G3 D3 A2 E2)\n';
+  const second = function(out){ return out.measures[0].split(' ')[1]; };
+  // 위 성부의 짧은 음에만 왼손 운지가 있고 아래 성부의 긴 음에는 없다: 긴 음 하나가 남고 운지를 가져온다(lf 2 = 검지 = 1)
+  const merged = convertTex(head + '\\voice\n0.5{lf 2}.4 r.4 r.2 |\n\\voice\n0.5.2 r.2 |\n');
+  assert.equal(merged.ok, true, merged.error);
+  assert.equal(merged.measures[0].split(' ')[0], '[-]');
+  assert.equal(second(merged), '1' + n(5, 0));
+  const fingers = convertTex(head + '\\voice\n0.5{rf 1}.2 r.2 |\n\\voice\n0.5{lf 3}.2 r.2 |\n');
+  assert.equal(fingers.ok, true, fingers.error);
+  assert.equal(second(fingers), '2' + n(5, 0) + ':p');
+  // 줄이 다르면 같은 음높이여도 둘 다 남는다(5번 줄 5프렛 = 4번 줄 개방)
+  const strings = convertTex(head + '\\voice\n5.5.2 r.2 |\n\\voice\n0.4.2 r.2 |\n');
+  assert.equal(second(strings), [n(5, 5), n(4, 0)].join('+'));
+  // 박 글
+  const sameText = convertTex(head + '\\voice\n0.5.2 {txt "rit."} r.2 |\n\\voice\n0.5.2 {txt "rit."} r.2 |\n');
+  assert.match(sameText.measures[0], / \| "rit\."$/);
+  const otherText = convertTex(head + '\\voice\n0.5.2 {txt "a"} r.2 |\n\\voice\n0.5.2 {txt "b"} r.2 |\n');
+  assert.match(otherText.measures[0], / \| "a · b"$/);
+});
+
 // 새 검사가 실제로 잡는지: 일부러 어긋난 사본을 같은 검사에 넣어 사본에서만 새로 생기는 실패가 있어야 한다.
 function mutantCaught(label, from, to){
   const baseline = new Set(roundTripFailures(tool).concat(allExampleFailures(tool)));
@@ -1021,6 +1145,22 @@ test('mutant (k): dropping the fermata memo is caught', function(){
 
 test('mutant (l): treating a string-less note in a 6-string track as stringed is caught', function(){
   mutantCaught('stringed branch for every note', 'if (hasStrings && note.isStringed && note.string >= 1){', 'if (hasStrings){');
+});
+
+test('mutant (너): filling a short bar with rests only is caught', function(){
+  mutantCaught('short bar filled with r', "if (!fillKind) fillKind = collected.records.length && lastPiece !== null && lastPiece !== 'rest' ? '-' : 'r';", "if (!fillKind) fillKind = 'r';");
+});
+
+test('mutant (더): never switching a 4/4 song to 8 cells is caught', function(){
+  mutantCaught('no 8 cells', 'if (first.eightCellsEligible && first.movedCount > 0){', 'if (false){');
+});
+
+test('mutant (러): keeping the duplicate tokens of two voices is caught', function(){
+  mutantCaught('no duplicate removal', 'const distinct = dedupeRecords(here);', 'const distinct = here;');
+});
+
+test('mutant (머): writing a repeated beat text twice is caught', function(){
+  mutantCaught('repeated text', '.filter(function(text, position, all){ return all.indexOf(text) === position; })', '');
 });
 
 process.stdout.write('1..' + checks + '\n');
