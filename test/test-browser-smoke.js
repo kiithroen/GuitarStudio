@@ -2395,8 +2395,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=review-fix-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=review-fix-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=at-volume-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=at-volume-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -5908,6 +5908,202 @@ async function testAlphaTexSongs(client, httpPort) {
   process.stdout.write('Browser checkpoint: alphaTex songs (original alphaTex drawn as is, copy instead of draft, numbered copies, in-place draft without alphaTex, fallback preview) passed\n');
 }
 
+// 연습 화면 합성음과 alphaTab 보기 창의 실제 출력 크기를 같은 곡으로 재서 견준다.
+// 출력 쪽 AudioDestinationNode 로 가는 연결을 가로채(탭) 두 채널의 모든 표본을 센다. 크기는 400ms 블록(표본 수)의 평균 제곱을 -60 dBFS 문턱으로 거른 RMS 와 표본 최대값이다.
+// 재생을 시작하고 첫 문턱 위 블록부터 오디오 표본 시간으로 8초를 모은다(벽시계로 재지 않는다).
+const LOUDNESS_TAP_SOURCE = `(function(){
+  if (window.__loudnessTap) return;
+  var BLOCK_SECONDS = 0.4, WINDOW_SECONDS = 8, GATE_DB = -60;
+  var originalConnect = AudioNode.prototype.connect;
+  var originalDisconnect = AudioNode.prototype.disconnect;
+  var tapOf = new WeakMap();
+  var tap = { contexts: [], active: false, reset: function(){ tap.active = true; tap.contexts.forEach(function(state){ state.reset(); }); } };
+  window.__loudnessTap = tap;
+  function createState(ctx){
+    var state = { rate: ctx.sampleRate, blockLen: Math.round(BLOCK_SECONDS * ctx.sampleRate), windowBlocks: Math.round(WINDOW_SECONDS / BLOCK_SECONDS) };
+    state.reset = function(){
+      state.fill = 0; state.sum = 0; state.blockPeak = 0; state.started = false; state.blocks = 0; state.gated = 0; state.gatedSum = 0; state.peak = 0; state.done = false; state.levels = [];
+    };
+    state.reset();
+    var gain = ctx.createGain();
+    var processor = ctx.createScriptProcessor(4096, 2, 2);
+    var zero = ctx.createGain();
+    zero.gain.value = 0;
+    originalConnect.call(gain, ctx.destination);
+    originalConnect.call(gain, processor);
+    originalConnect.call(processor, zero);
+    originalConnect.call(zero, ctx.destination);
+    processor.onaudioprocess = function(event){
+      if (!tap.active || state.done) return;
+      var input = event.inputBuffer, channels = [];
+      for (var c = 0; c < input.numberOfChannels && c < 2; c++) channels.push(input.getChannelData(c));
+      var length = input.length;
+      for (var i = 0; i < length && !state.done; i++){
+        for (var k = 0; k < channels.length; k++){
+          var v = channels[k][i];
+          state.sum += v * v;
+          var a = v < 0 ? -v : v;
+          if (a > state.blockPeak) state.blockPeak = a;
+        }
+        if (++state.fill === state.blockLen){
+          var meanSquare = state.sum / (2 * state.blockLen);
+          var db = meanSquare > 0 ? 10 * Math.log10(meanSquare) : -Infinity;
+          if (!state.started && db > GATE_DB) state.started = true;
+          if (state.started){
+            state.blocks++;
+            state.levels.push(db);
+            if (state.blockPeak > state.peak) state.peak = state.blockPeak;
+            if (db > GATE_DB){ state.gated++; state.gatedSum += meanSquare; }
+            if (state.blocks >= state.windowBlocks) state.done = true;
+          }
+          state.fill = 0; state.sum = 0; state.blockPeak = 0;
+        }
+      }
+    };
+    state.gain = gain;
+    tap.contexts.push(state);
+    return state;
+  }
+  function stateFor(dest){
+    var ctx = dest.context;
+    if (typeof OfflineAudioContext !== 'undefined' && ctx instanceof OfflineAudioContext) return null;
+    var state = tapOf.get(ctx);
+    if (!state){ state = createState(ctx); tapOf.set(ctx, state); }
+    return state;
+  }
+  AudioNode.prototype.connect = function(dest){
+    if (typeof AudioDestinationNode !== 'undefined' && dest instanceof AudioDestinationNode){
+      var state = stateFor(dest);
+      if (state){
+        var args = Array.prototype.slice.call(arguments);
+        args[0] = state.gain;
+        originalConnect.apply(this, args);
+        return dest;
+      }
+    }
+    return originalConnect.apply(this, arguments);
+  };
+  AudioNode.prototype.disconnect = function(dest){
+    if (typeof AudioDestinationNode !== 'undefined' && dest instanceof AudioDestinationNode){
+      var state = stateFor(dest);
+      if (state){
+        var args = Array.prototype.slice.call(arguments);
+        args[0] = state.gain;
+        return originalDisconnect.apply(this, args);
+      }
+    }
+    return originalDisconnect.apply(this, arguments);
+  };
+  tap.result = function(){
+    var best = null;
+    tap.contexts.forEach(function(state){ if (!best || state.blocks > best.blocks) best = state; });
+    if (!best) return { contexts: 0 };
+    return { contexts: tap.contexts.length, rate: best.rate, done: best.done, started: best.started, blocks: best.blocks, gated: best.gated,
+      rmsDb: best.gated ? 10 * Math.log10(best.gatedSum / best.gated) : -Infinity, peak: best.peak, levels: best.levels };
+  };
+})();`;
+
+async function testPlaybackLoudness(client, httpPort) {
+  const SONG_IDS = ['builtin-lv1-butterfly', 'builtin-romanza-accomp']; // 가장 성긴 한 줄 선율 곡과 가장 빽빽한 곡(동시음 6개, 최대값이 가장 큼)
+  const VIEW_KEY = 'gs.alphaTab.view';
+  const TOLERANCE_DB = 3;
+  const practiceUrl = `http://127.0.0.1:${httpPort}/index.html`;
+  const viewUrl = `http://127.0.0.1:${httpPort}/alphatab.html`;
+  const practiceReady = 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= ' + builtinSongCount + ' && window.curSong != null';
+  const viewSettled = 'document.readyState === "complete" && ["ready","empty","error"].indexOf(document.body.getAttribute("data-at-state")) >= 0';
+  const errorsBefore = client.consoleErrors.length;
+  const viewSource = fs.readFileSync(path.join(root, 'src', 'alphatab-view.js'), 'utf8');
+  const volumeMatch = viewSource.match(/var PLAYBACK_MASTER_VOLUME = ([0-9.]+);/);
+  async function navigate(url, ready, timeoutMs) {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await client.send('Page.navigate', { url });
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, ready, timeoutMs || 8000);
+  }
+  const tapScript = await client.send('Page.addScriptToEvaluateOnNewDocument', { source: LOUDNESS_TAP_SOURCE });
+  const measurements = [];
+  try {
+    for (const songId of SONG_IDS) {
+      const song = builtinSongsJson.find(item => item.id === songId);
+      assert.ok(song, songId + ' exists in songs.json');
+
+      // 연습 화면: 기본 음색(KS, 어쿠스틱 효과 켬, 연주음 100%), 클릭·카운트인 없음, 1마디 첫 칸부터 BPM 은 곡의 값
+      await navigate(practiceUrl, practiceReady);
+      const appSide = await client.evaluate(`(async function(){
+        var savedSongId = curSong.id;
+        var saved = { synthEngine:appState.synthEngine, acousticFx:appState.acousticFx, guitarVol:appState.guitarVol, clickMode:appState.clickMode, loopStart:appState.loopStart, loopEnd:appState.loopEnd };
+        window.open = function(){ return {}; };
+        changeSongById(${JSON.stringify(songId)});
+        appState.synthEngine = 'ks'; appState.acousticFx = true; appState.guitarVol = 1; appState.clickMode = 'off';
+        ensureAudioCtx();
+        if (actx.state !== 'running') await actx.resume();
+        updateGuitarVolume();
+        appState.loopStart = 1; appState.loopEnd = getMeasureCount(curSong);
+        curMeasureIdx = 0; curBeatIdx = 0;
+        document.getElementById('openAlphaTabBtn').click();
+        var view = JSON.parse(localStorage.getItem(${JSON.stringify(VIEW_KEY)}));
+        var bpm = appState.bpm;
+        window.__loudnessTap.reset();
+        startPractice();
+        return { saved: saved, savedSongId: savedSongId, bpm: bpm, handoffBpm: view && view.bpm, playing: isPlaying, ctxState: actx.state };
+      })()`, { userGesture: true });
+      assert.equal(appSide.playing, true, songId + ': the practice screen started playing');
+      assert.equal(appSide.bpm, Number(song.bpm), songId + ': the practice screen plays at the song BPM');
+      await waitForCondition(client, `window.__loudnessTap.result().done === true`, 40000);
+      const app = await client.evaluate(`window.__loudnessTap.result()`);
+      await client.evaluate(`(function(){
+        stopPractice();
+        var saved = ${JSON.stringify(appSide.saved)};
+        changeSongById(${JSON.stringify(appSide.savedSongId)});
+        Object.keys(saved).forEach(function(key){ appState[key] = saved[key]; });
+        updateGuitarVolume(); saveAppState(); return true;
+      })()`);
+      assert.ok(app.contexts >= 1, songId + ': the tap caught the practice screen output context');
+      assert.ok(app.started && Number.isFinite(app.rmsDb), songId + ': the practice screen produced sound above the silence gate: ' + JSON.stringify({ contexts: app.contexts, blocks: app.blocks, gated: app.gated }));
+
+      // alphaTab 보기 창: 연습 화면 단추가 넘긴 값 그대로 열고 재생(처음 재생이 사운드폰트를 불러온다)
+      await navigate(viewUrl, viewSettled, 45000);
+      assert.equal((await client.evaluate(`document.body.getAttribute('data-at-state')`)), 'ready', songId + ': the alphaTab view is ready');
+      const viewSide = await client.evaluate(`(function(){
+        window.__loudnessTap.reset();
+        document.getElementById('atPlayBtn').click();
+        return { masterVolume: window.__alphaTabApi.masterVolume };
+      })()`, { userGesture: true });
+      await waitForCondition(client, `window.__loudnessTap.result().done === true`, 120000);
+      const alpha = await client.evaluate(`window.__loudnessTap.result()`);
+      const afterRead = await client.evaluate(`window.__alphaTabApi.masterVolume`);
+      await client.evaluate(`document.getElementById('atPlayBtn').click(); true`, { userGesture: true });
+      await waitForCondition(client, `document.getElementById('atPlayBtn').textContent === '재생'`, 8000);
+      assert.ok(alpha.contexts >= 1, songId + ': the tap caught the alphaTab output context (worklet output goes through AudioContext.destination)');
+      assert.ok(alpha.started && Number.isFinite(alpha.rmsDb), songId + ': alphaTab produced sound above the silence gate: ' + JSON.stringify({ contexts: alpha.contexts, blocks: alpha.blocks, gated: alpha.gated }));
+      measurements.push({ id: songId, app, alpha, masterVolume: viewSide.masterVolume, masterVolumeAfter: afterRead });
+    }
+  } finally {
+    await client.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: tapScript.identifier });
+  }
+  await navigate(practiceUrl, practiceReady);
+  await client.evaluate(`localStorage.removeItem(${JSON.stringify(VIEW_KEY)}); true`);
+
+  measurements.forEach(item => {
+    const diff = item.app.rmsDb - item.alpha.rmsDb;
+    process.stdout.write('Loudness ' + item.id + ': app ' + item.app.rmsDb.toFixed(1) + ' dBFS, alphaTab ' + item.alpha.rmsDb.toFixed(1) + ' dBFS (diff ' + diff.toFixed(1) + ' dB, alphaTab peak ' + item.alpha.peak.toFixed(3) + ')\n');
+  });
+  process.stdout.write('Loudness alphaTab masterVolume read back: ' + measurements.map(item => item.masterVolume + '/' + item.masterVolumeAfter).join(' ; ') + '\n');
+  if (volumeMatch) {
+    const expected = Number(volumeMatch[1]);
+    measurements.forEach(item => {
+      assert.ok(Math.abs(item.masterVolume - expected) < 1e-6 && Math.abs(item.masterVolumeAfter - expected) < 1e-6, item.id + ': api.masterVolume is PLAYBACK_MASTER_VOLUME (' + item.masterVolume + ' / ' + item.masterVolumeAfter + ' vs ' + expected + ')');
+    });
+  }
+  measurements.forEach(item => {
+    const diff = item.app.rmsDb - item.alpha.rmsDb;
+    assert.ok(Math.abs(diff) <= TOLERANCE_DB, item.id + ': the practice screen and the alphaTab view play within ' + TOLERANCE_DB + ' dB of each other (diff ' + diff.toFixed(1) + ' dB)');
+    assert.ok(item.alpha.peak < 1, item.id + ': the alphaTab output does not clip (peak ' + item.alpha.peak.toFixed(3) + ')');
+  });
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'no console errors while measuring playback loudness');
+  process.stdout.write('Browser checkpoint: playback loudness (practice screen vs alphaTab view, gated RMS over 400ms blocks, 8 seconds, two built-in songs) passed\n');
+}
+
 const TEMP_PROFILE_PREFIX = 'gs-browser-smoke-';
 
 function removeTempProfile(dir) {
@@ -5952,7 +6148,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=review-fix-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=at-volume-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -6478,6 +6674,7 @@ async function main() {
     await testSkipInput(cdp, httpPort);
     await testMeasureWidth(cdp, httpPort);
     await testAlphaTabView(cdp, httpPort);
+    await testPlaybackLoudness(cdp, httpPort);
     await testAlphaTexSongs(cdp, httpPort);
 
     // Verify no unhandled console errors occurred

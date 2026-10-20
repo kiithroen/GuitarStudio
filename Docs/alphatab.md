@@ -62,6 +62,7 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 - 실패하면(`api.error`) 상태 줄에 `소리를 불러오지 못했습니다. 네트워크를 확인하세요.`를 보이고 `재생`을 다시 켠다. 다시 누르면 처음부터 불러온다.
 - 악기는 악보를 읽은 뒤 그리기 전에 모든 트랙의 `track.playbackInfo.program`을 24(General MIDI Acoustic Guitar (nylon))로 바꾼다. 원본 alphaTex와 우리 악보에서 만든 미리보기가 같다. 악보 글자는 바꾸지 않는다. 바뀐 값은 `#atHost`의 `data-programs`에 읽은 모델에서 다시 읽어 적는다.
 - 사운드폰트 상태는 `body`의 `data-at-sound`(`idle` · `loading` · `loaded` · `failed`)에 적는다.
+- 마스터 음량 `api.masterVolume`은 `PLAYBACK_MASTER_VOLUME`(`src/alphatab-view.js`)이다. api를 만든 직후와 `playerReady` 때 한 번씩 준다. 값은 연습 화면 합성음과 비슷한 크기가 되는 값을, 가장 빽빽한 내장곡(`builtin-romanza-accomp`, 동시음 6개)의 표본 최대값이 1.0 아래가 되게 낮춘 것이다. alphaTab의 출력 경로에는 압축기가 없어서 1.0을 넘는 표본은 잘린다. 브라우저 스모크의 `testPlaybackLoudness`가 그 크기를 다시 잰다. 출력 쪽 `AudioDestinationNode`로 가는 연결을 `AudioNode.prototype.connect`를 바꿔 가로채(탭) 두 채널의 모든 표본을 세고, 400ms 블록(표본 수)의 평균 제곱 가운데 -60 dBFS를 넘는 블록만 모아 RMS(dBFS)로 낸다. 재생을 시작해 첫 문턱 위 블록부터 오디오 표본 시간으로 8초를 모으고(벽시계로 재지 않는다) 표본 최대값도 같이 본다. 곡은 내장곡 `builtin-lv1-butterfly`(가장 성긴 한 줄 선율)와 `builtin-romanza-accomp`(가장 빽빽한 곡) 둘이다. 연습 화면은 기본 음색(KS, 어쿠스틱 효과 켬, 연주음 100%)에 클릭과 카운트인을 끄고 1마디 첫 칸에서, 보기 창은 연습 화면 단추가 넘긴 값으로 `재생`을 눌러 같은 BPM으로 잰다. 두 곡 모두 두 플레이어의 차이가 ±3 dB 안이고 alphaTab 표본 최대값이 1 미만이어야 통과한다. 다시 재는 명령은 `node test/test-browser-smoke.js`이고 출력의 `Loudness <곡 id>: app … dBFS, alphaTab … dBFS (diff … dB, alphaTab peak …)` 줄이 결과다.
 - 재생 자동 스크롤은 `settings.player.scrollOffsetY`에 위에 붙은 머리(`.at-head`)의 실제 높이와 여유(`SCROLL_MARGIN`)를 음수로 준다. 스크롤하는 요소는 기본값 `html,body`(문서 전체)이고, alphaTab이 스크롤할 때마다 이 값을 읽어서 `updateSettings`는 부르지 않는다. 머리 높이는 `ResizeObserver`와 `resize`로 다시 잰다. 시험은 `window.__alphaTabApi`로 커서를 옮겨 본다.
 
 ## 변환 규칙
@@ -111,6 +112,7 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 - 2026-10-21 결정: 보기 창의 소리를 sonivox.sf2(1.3MB)에서 MuseScore_General.sf3(MIT, 약 38MB)로 바꿨다. sonivox 의 기타 소리가 연습에 듣기 힘들 만큼 나빴다. 파일은 vendor/musescore-general 에 받은 그대로 두고, 크기 때문에 창을 열 때가 아니라 처음 재생할 때 불러온다(악보만 볼 때는 내려받지 않는다). sonivox.sf2 는 vendor/alphatab 을 받은 그대로 두려고 지우지 않았고 쓰지 않는다.
 - 2026-10-21 결정: 보기 창은 모든 트랙을 나일론 기타(GM 24)로 재생한다. 클래식 기타 연습 앱이고, Guitar Pro 에서 온 곡은 스틸 기타(GM 25)로 적혀 있는 일이 많다. 원본 alphaTex 글자는 바꾸지 않고 재생 직전에 모델에서만 바꾼다.
 - 2026-10-21 결정: 재생 자동 스크롤에 머리 높이만큼의 오프셋을 준다. alphaTab 은 지금 줄의 맨 위를 화면 맨 위에 맞춰 스크롤해서 위에 붙은 머리 막대에 오선 윗부분이 가려졌다. 머리 높이는 줄바꿈으로 바뀌어 실제 높이를 재고 크기가 바뀌면 다시 잰다.
+- 2026-10-21 결정: 보기 창의 MuseScore General 나일론 기타가 기본 마스터 음량에서 연습 화면 합성음보다 훨씬 작게 들렸다. 두 플레이어를 같은 곡으로 재생해 잰 크기 차이만큼 alphaTab 마스터 음량을 올렸다(PLAYBACK_MASTER_VOLUME). 연습 화면의 연주음 슬라이더는 보기 창에 반영하지 않는다(보기 창은 클릭이 없는 비교용이다). 같은 크기로 맞추면 6음 화음이 이어지는 곡(로만자 반주)이 1.0을 넘어 잘려서, 그 곡이 넘지 않을 만큼 낮췄다. 그래서 다른 곡은 연습 화면보다 조금 작다.
 - 틀린 길: 처음에는 롤을 `au`로 옮기려 했다. 이름만 보고 정한 것이었고 위 확인으로 바로잡았다.
 - 알려진 것: 재생을 시작하자마자 바로 멈추면 alphaTab 내부(`pause`)에서 `InvalidStateError`가 콘솔에 난다(소리가 실제로 시작되기 전에 멈출 때). `test/test-browser-smoke.js`는 재생 뒤 잠시 기다렸다 멈춘다. 이 오류는 vendor 코드 안이라 고치지 않았다.
 - 안 돌려 본 것: 실제 폰(갤럭시 폴드7)에서의 보기·재생. 소리 품질은 확인하지 않았다.

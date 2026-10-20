@@ -10,6 +10,7 @@
   var SPEEDS = [50, 75, 100];
   var SCROLL_MARGIN = 8; // 자동 스크롤 때 지금 줄의 맨 위와 머리 막대 아랫단 사이 여유(px)
   var NARROW_SCALE = 0.7; // 폰 폭(500px 미만)에서는 악보 제목 줄까지 한 화면에 들어오게 줄여 그린다
+  var PLAYBACK_MASTER_VOLUME = 5.61; // 연습 화면 합성음과 비슷한 크기로 맞추되 가장 빽빽한 내장곡이 1.0을 넘지 않게 낮춘 alphaTab 마스터 음량(배율). 근거는 Docs/alphatab.md
 
   function byId(id){ return document.getElementById(id); }
   var els = {
@@ -154,6 +155,7 @@
       setStatus('alphaTab을 시작하지 못했습니다: ' + (error && error.message ? error.message : error), 'error');
       return;
     }
+    api.masterVolume = PLAYBACK_MASTER_VOLUME;
 
     // 사운드폰트는 처음 재생을 누를 때 불러온다. soundState: idle(아직) | loading | loaded. 다 불러오면 playerReady가 오고 그때 재생을 시작한다.
     // alphaTab은 재생 중 지금 줄의 맨 위를 화면 맨 위에 맞춰 스크롤한다(스크롤 요소는 기본값 html,body = 문서 전체).
@@ -197,6 +199,7 @@
       refreshReady();
     });
     api.playerReady.on(function(){
+      api.masterVolume = PLAYBACK_MASTER_VOLUME; // 플레이어가 준비될 때 값이 사라졌을 경우를 대비해 다시 준다
       if (soundState !== 'loading') return;
       soundState = 'loaded';
       setSoundAttr('loaded');
