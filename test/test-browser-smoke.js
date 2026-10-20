@@ -2302,8 +2302,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=slide-3')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=slide-3">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=review-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=review-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -4111,7 +4111,7 @@ async function testFretLabel(client, httpPort) {
     t.attr('art','g').click();
     var original = window.playGuitarNote;
     var calls = [];
-    window.playGuitarNote = function(midi, dur, when, gain, art, str, options){ calls.push({ midi: midi, dur: dur, art: art, str: str, options: options }); };
+    window.playGuitarNote = function(midi, dur, when, gain, art, str, options){ calls.push({ midi: midi, dur: dur, art: art, str: str, options: options, gain: gain }); };
     var out = { capo: curCapo() };
     try {
       press(' ', 'Space');
@@ -4122,7 +4122,13 @@ async function testFretLabel(client, httpPort) {
       t.pos(0,1,0,2).click(); calls.length = 0;
       document.getElementById('tiPlaySlotBtn').click();
       out.byButton = calls.slice(); calls.length = 0;
+      t.pos(0,0,0,2).click();
+      t.attr('art','!').click(); calls.length = 0;
+      press(' ', 'Space');
+      out.apoyando = calls.slice(); calls.length = 0;
     } finally { window.playGuitarNote = original; }
+    out.slurGain = SLUR_GAIN;
+    out.apoyandoGain = APOYANDO_GAIN;
     out.expectedFrom = GuitarParser.STRINGS[1].midi + 3 + out.capo;
     out.expectedTo = GuitarParser.STRINGS[1].midi + 5 + out.capo;
     out.expectedSec = Math.min(SLIDE_GLIDE_SEC, 1.6 * SLIDE_MAX_SHARE);
@@ -4140,6 +4146,14 @@ async function testFretLabel(client, httpPort) {
   assert.ok(!slidePlay.plain[0].options || !slidePlay.plain[0].options.glide, 'a plain note has no glide: ' + JSON.stringify(slidePlay.plain[0]));
   assert.equal(slidePlay.byButton.length, 1, 'the play button plays the slide note');
   assert.equal(slidePlay.byButton[0].options && slidePlay.byButton[0].options.glide && slidePlay.byButton[0].options.glide.fromMidi, slidePlay.expectedFrom, 'the play button glides too');
+  // 입력 화면 들어보기도 연습 화면처럼 주법별 gain(articulationGain)으로 친다
+  assert.ok(slidePlay.slurGain < 1 && slidePlay.apoyandoGain > 1, 'the gain constants are readable as page globals');
+  assert.equal(slidePlay.slide[0].gain, slidePlay.slurGain, 'the slide note plays at SLUR_GAIN: ' + slidePlay.slide[0].gain);
+  assert.equal(slidePlay.byButton[0].gain, slidePlay.slurGain, 'the play button plays the slide note at SLUR_GAIN too');
+  assert.equal(slidePlay.plain[0].gain, 1, 'a plain note plays at gain 1');
+  assert.equal(slidePlay.apoyando.length, 1, 'the apoyando note plays once: ' + JSON.stringify(slidePlay.apoyando));
+  assert.equal(slidePlay.apoyando[0].art, 'apoyando');
+  assert.equal(slidePlay.apoyando[0].gain, slidePlay.apoyandoGain, 'the apoyando note plays at APOYANDO_GAIN: ' + slidePlay.apoyando[0].gain);
   assert.deepEqual(client.consoleErrors.slice(slideErrorsBefore), [], 'the slide input steps run without console errors');
 
   // 입력 화면 스크린샷: 로망스 1부
@@ -4850,7 +4864,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=slide-3')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=review-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

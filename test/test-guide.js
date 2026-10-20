@@ -214,6 +214,20 @@ assert.equal(crossBarResume[0].duration, 2, 'parsed resume uses only the remaini
 }
 
 {
+  // articulationGain: 연습 화면 재생 이벤트와 입력 화면 들어보기가 같이 쓰는 주법별 gain 배율
+  assert.ok(context.APOYANDO_GAIN > 1, 'the apoyando gain is louder than a plain note');
+  assert.equal(context.articulationGain('apoyando'), context.APOYANDO_GAIN);
+  assert.equal(context.articulationGain('slur'), context.SLUR_GAIN);
+  assert.equal(context.articulationGain('slide'), context.SLUR_GAIN);
+  assert.equal(context.articulationGain(null), 1.0);
+  assert.equal(context.articulationGain('harmonic'), 1.0, 'a harmonic is played at the plain gain');
+  assert.equal(context.articulationGain(undefined), 1.0);
+  assert.deepEqual(Array.from(chordEvents, event => event.gain), Array.from(chordEvents, event => context.articulationGain(event.articulation)),
+    'event gains come from articulationGain');
+  assert.ok(chordEvents.some(event => event.gain === context.APOYANDO_GAIN), 'an apoyando event carries APOYANDO_GAIN');
+}
+
+{
   // 롤(~): 줄 번호가 큰 음부터 ROLL_STEP 간격으로 늦춰 치고 끝 시각은 같다. 짧은 조각은 간격이 줄고, 복원은 굴리지 않는다.
   assert.ok(context.ROLL_STEP > 0 && context.ROLL_MAX_SHARE > 0 && context.ROLL_MAX_SHARE <= 1, 'the roll constants are positive and the share is at most the whole piece');
   const close = (a, b, message) => assert.ok(Math.abs(a - b) < 1e-9, message + ' (' + a + ' vs ' + b + ')');

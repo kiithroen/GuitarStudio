@@ -123,12 +123,12 @@
         }), ROLL_PLAY_SEC);
         timed.forEach(function(entry){
           var item = entry.note.item;
-          playGuitarNote(soundingMidi(entry.note.midi, capo), ROLL_PLAY_SEC - entry.delay, now + entry.delay, null, articulationName(item.note.art), item.str, glideOptions(item));
+          playGuitarNote(soundingMidi(entry.note.midi, capo), ROLL_PLAY_SEC - entry.delay, now + entry.delay, articulationGain(articulationName(item.note.art)), articulationName(item.note.art), item.str, glideOptions(item));
         });
         return;
       }
       items.forEach(function(item){
-        playGuitarNote(soundingMidi(T.noteMidiOf(item.str, item.note), capo), ROLL_PLAY_SEC, null, null, articulationName(item.note.art), item.str, glideOptions(item));
+        playGuitarNote(soundingMidi(T.noteMidiOf(item.str, item.note), capo), ROLL_PLAY_SEC, null, articulationGain(articulationName(item.note.art)), articulationName(item.note.art), item.str, glideOptions(item));
       });
     } catch (error) {
       // 오디오가 없거나 실패해도 입력은 계속한다

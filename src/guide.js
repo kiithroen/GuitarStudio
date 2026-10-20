@@ -1,8 +1,14 @@
 var SLUR_GAIN = 0.6; // 슬러·슬라이드 음은 오른손으로 다시 치지 않아 작게
+var APOYANDO_GAIN = 1.16; // 아포얀도는 세게
 var ROLL_STEP = 0.04; // 롤(~) 구성음 사이 간격(초)
 var ROLL_MAX_SHARE = 0.5; // 롤 전체 퍼짐이 그 조각 길이에서 차지할 수 있는 몫
 var SLIDE_GLIDE_SEC = 0.08; // 슬라이드 음이 출발 음 높이에서 제 높이로 미끄러지는 시간(초)
 var SLIDE_MAX_SHARE = 0.5; // 미끄럼 시간이 그 음 길이에서 차지할 수 있는 몫
+
+// 주법 이름('apoyando', 'slur', 'slide', 그 밖은 null 포함)에 따른 gain 배율. 연습 화면 재생과 입력 화면 들어보기가 같이 쓴다.
+function articulationGain(articulation){
+  return articulation === 'apoyando' ? APOYANDO_GAIN : ((articulation === 'slur' || articulation === 'slide') ? SLUR_GAIN : 1.0);
+}
 
 // 롤(~): 줄 번호가 큰 음부터 간격을 두고 늦춰 친다(Docs/score-format.md 롤). notes는 { str, midi }를 가진 객체 배열.
 // 롤 순서(줄 번호 큰 것 먼저, 같거나 없으면 midi 작은 것, 그다음 원래 순서)대로 [{ note, delay }]를 돌려준다. 음이 둘 미만이면 원래 순서에 delay 0.
@@ -84,7 +90,7 @@ function getBeatGuideEvents(beat, options){
       var articulation = hasChordComponents
         ? (note.articulation || null)
         : (note.articulation || noteSource.articulation || part.articulation || null);
-      var gain = articulation === 'apoyando' ? 1.16 : ((articulation === 'slur' || articulation === 'slide') ? SLUR_GAIN : 1.0);
+      var gain = articulationGain(articulation);
       var event = { kind:'note', note:note, duration:duration - delay, when:when + delay,
         gain:gain, articulation:articulation, str:note.str };
       // 슬라이드: 지금 치는 조각만 출발 음 높이에서 미끄러진다(resume 복원은 미끄러지지 않는다)
