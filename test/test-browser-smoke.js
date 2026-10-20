@@ -2302,8 +2302,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=review-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=review-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=review-2')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=review-2">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -2876,6 +2876,41 @@ async function testStaffInputMode(client, httpPort) {
   await loadPage(() => client.send('Page.reload', { ignoreCache: true }));
   await installHelpers();
   assert.equal(await client.evaluate(`__tiTest.shown('tiPitchPicker') && !__tiTest.shown('tiFretboard') && document.getElementById('tiModeStaff').getAttribute('aria-pressed')`), 'true', 'the staff input mode survives a reload');
+
+  // 1b. 음 고르는 오선의 음역: 맨 위 띠는 기타 음역 상한(1번 줄 개방 + MAX_FRET)의 적는 음(실음 + 12)이고 맨 아래는 적는 E3(-7).
+  //     위 덧줄은 10부터 맨 위 띠까지 짝수마다 있고, 화면 높이는 늘지 않는다. 기대는 STRINGS·MAX_FRET에서 셈한다.
+  const range = await client.evaluate(`(function(){
+    var topMidi = GuitarParser.STRINGS[0].midi + GuitarNotation.MAX_FRET;
+    var writtenName = GuitarParser.noteNameForMidi(topMidi + 12, false);
+    var octave = Number(/-?\\d+$/.exec(writtenName)[0]);
+    var expectedTop = octave * 7 + 'CDEFGAB'.indexOf(writtenName.charAt(0)) - 30;
+    var steps = Array.prototype.map.call(document.querySelectorAll('#tiPitchPicker .ti-pick-band'), function(b){ return Number(b.dataset.step); });
+    var ledgerYs = Array.prototype.map.call(document.querySelectorAll('#tiPitchPicker .ti-pick-ledger'), function(l){ return Number(l.getAttribute('y1')); });
+    var expectedUp = [];
+    for (var st = 10; st <= expectedTop; st += 2) expectedUp.push(GuitarStaffSvg.BASE_Y - st * GuitarStaffSvg.LINE_GAP / 2);
+    var viewBox = document.getElementById('tiPitchPicker').getAttribute('viewBox').split(' ').map(Number);
+    var rect = document.getElementById('tiPitchPicker').getBoundingClientRect();
+    return { topMidi: topMidi, topName: GuitarParser.noteNameForMidi(topMidi, false), writtenName: writtenName, expectedTop: expectedTop, top: Math.max.apply(null, steps), bottom: Math.min.apply(null, steps), count: steps.length,
+      upLedgers: ledgerYs.filter(function(y){ return y < GuitarStaffSvg.BASE_Y - 4 * GuitarStaffSvg.LINE_GAP; }).sort(function(a, b){ return b - a; }),
+      expectedUp: expectedUp, viewTop: viewBox[1], viewBottom: viewBox[1] + viewBox[3], topBandY: GuitarStaffSvg.BASE_Y - expectedTop * GuitarStaffSvg.LINE_GAP / 2,
+      height: rect.height, stepPx: rect.height / (viewBox[3] / (GuitarStaffSvg.LINE_GAP / 2)) };
+  })()`);
+  assert.ok(range.expectedTop > 14, 'the written top note is above the old E6 limit: ' + JSON.stringify(range));
+  assert.equal(range.top, range.expectedTop, 'the top picker band is the written guitar range limit ' + range.writtenName);
+  assert.equal(range.bottom, -7, 'the bottom picker band is the written E3');
+  assert.equal(range.count, range.expectedTop + 7 + 1, 'every step between the bottom and the top has a band');
+  assert.ok(range.expectedUp.length >= 3 && range.expectedUp.length === range.upLedgers.length, 'one upper ledger line per even step from 10 to the top: ' + JSON.stringify(range));
+  assert.deepEqual(range.upLedgers.slice().sort((a, b) => b - a), range.expectedUp.slice().sort((a, b) => b - a), 'the upper ledger lines sit at the even steps from 10 up to the top band');
+  assert.ok(range.viewTop < range.topBandY, 'the visible range reaches above the top band so its note head is not cut off: ' + JSON.stringify(range));
+  assert.ok(Math.abs(range.height - 166) <= 1, 'the picker keeps the same on-screen height (is ' + range.height + ')');
+  assert.ok(range.stepPx > 5 && range.stepPx < 7, 'a staff step is about 6px (is ' + range.stepPx + ')');
+  const emptyText = await text();
+  const emptyCursor = await client.evaluate('__tiTest.cursor()');
+  await client.evaluate(`__tiTest.clickBand(${range.expectedTop}, false); true`);
+  assert.ok((await line(0)).indexOf(range.topName + '@1') >= 0, 'clicking the top band writes the highest guitar note (' + await line(0) + ')');
+  await client.evaluate(`__tiTest.key('z', 'KeyZ', { ctrlKey:true }); true`);
+  assert.equal(await text(), emptyText, 'undo removes the note written from the top band');
+  assert.equal(await client.evaluate('__tiTest.cursor()'), emptyCursor, 'undo leaves the cursor where it was');
 
   // 2. 길이 키와 글자 키로 입력: 8분 E F, 4분 G, 2분 A. 음을 넣어도 커서는 그대로라 사이마다 →로 직접 넘긴다. 끝난 뒤 →를 누르면 2마디 첫 조각(2분음표가 쥔 4칸은 건너뜀)이다.
   const keys = [['4', 'Digit4'], ['E'], ['ArrowRight', 'ArrowRight'], ['F'], ['ArrowRight', 'ArrowRight'], ['5', 'Digit5'], ['G'], ['ArrowRight', 'ArrowRight'], ['6', 'Digit6'], ['A']];
@@ -4864,7 +4899,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=review-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=review-2')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

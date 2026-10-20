@@ -971,13 +971,21 @@
 
   // ---------- 오선 입력 (계산은 src/staff-input.js, 규칙은 Docs/staff-input.md)
 
-  var PICK_SCALE = 1.75;      // 음 고르는 오선은 src/staff-svg.js 좌표(줄 간격 8)를 1.75배로 그려 줄 간격 14px, 위치 한 칸 7px
-  var PICK_TOP = 14;          // 적는 E6
+  var PICK_TOP_WRITTEN = P.noteNameForMidi(P.STRINGS[0].midi + N.MAX_FRET + 12, false); // 기타 음역 최고음의 적는 이름(실음 + 12)
+  var PICK_TOP = writtenStep(PICK_TOP_WRITTEN.charAt(0), Number(/-?\d+$/.exec(PICK_TOP_WRITTEN)[0])); // 맨 위 띠: 기타 음역 최고음의 적는 음
   var PICK_BOTTOM = -7;       // 적는 E3
   var PICK_BODY = 114;        // 머리(음자리표·조표) 오른쪽 음 누르는 자리의 폭(좌표)
-  var PICK_VIEW_TOP = 26;     // 보이는 세로 범위(좌표): 맨 위 음 머리와 맨 아래 음 머리가 잘리지 않게
-  var PICK_VIEW_BOTTOM = 121;
-  var PICK_LEDGERS = [-6, -4, -2, 10, 12, 14];
+  function pickY(step){ return StaffSvg.BASE_Y - step * (StaffSvg.LINE_GAP / 2); } // pickerGeometry().yOf와 같은 식
+  var PICK_VIEW_TOP = pickY(PICK_TOP) - 6;       // 보이는 세로 범위(좌표): 맨 위 음 머리와 맨 아래 음 머리가 잘리지 않게
+  var PICK_VIEW_BOTTOM = pickY(PICK_BOTTOM) + 5;
+  var PICK_HEIGHT_PX = 166;   // 음 고르는 오선의 화면 높이(px). 음역이 넓어져도 입력판 높이가 그대로이게 배율을 이 값에서 셈한다
+  var PICK_SCALE = PICK_HEIGHT_PX / (PICK_VIEW_BOTTOM - PICK_VIEW_TOP); // src/staff-svg.js 좌표를 화면 px로 바꾸는 배율
+  var PICK_LEDGERS = (function(){
+    var list = [];
+    for (var st = PICK_BOTTOM; st < 0; st++) if (st % 2 === 0) list.push(st);    // 아래 덧줄: PICK_BOTTOM까지의 짝수
+    for (st = 10; st <= PICK_TOP; st += 2) list.push(st);                        // 위 덧줄: 10부터 PICK_TOP 이하의 짝수
+    return list;
+  })();
 
   function copyPos(p){ return { m: p.m, c: p.c, s: p.s }; }
 
@@ -1009,6 +1017,11 @@
   function stepToWritten(step){
     var d = step + 30;
     return { letter: NOTE_LETTERS.charAt(d % 7), octave: Math.floor(d / 7) };
+  }
+
+  // stepToWritten의 역함수: 적는 음이름 글자와 옥타브에서 오선 위치.
+  function writtenStep(letter, octave){
+    return octave * 7 + NOTE_LETTERS.indexOf(letter) - 30;
   }
 
   function setInputMode(mode){
