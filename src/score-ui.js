@@ -66,20 +66,24 @@ function getBeatRightHandLabel(beat){
   return finger ? finger : '';
 }
 
-// 악보 보기 단추. T 키가 이 순서로 돈다.
-var SCORE_VIEW_BUTTONS = [
-  {view:'tab', id:'#scoreModeTabBtn'},
-  {view:'both', id:'#scoreModeBothBtn'},
-  {view:'staff', id:'#scoreModeStaffBtn'},
-  {view:'card', id:'#scoreModeCardBtn'}
-];
+// 악보 보기. T 키가 이 순서로 돈다.
+var SCORE_VIEWS = ['tab', 'both', 'staff', 'card'];
+
+function setScoreView(view){
+  appState.scoreView = view;
+  syncScoreModeUI();
+  saveAppState();
+  if (curSong && curSong.type === 'structured') renderStructuredMeasures();
+  updateActiveCursor(curMeasureIdx, curBeatIdx, false);
+}
 
 function syncScoreModeUI(){
   var isTab = appState.scoreView !== 'card';
-  SCORE_VIEW_BUTTONS.forEach(function(entry){
-    if ($(entry.id)) $(entry.id).setAttribute('aria-selected', String(appState.scoreView === entry.view));
-  });
-  if ($('#scoreModeSeg')) $('#scoreModeSeg').hidden = !curSong || curSong.type !== 'structured';
+  var viewSelect = $('#scoreViewSelect');
+  if (viewSelect){
+    viewSelect.value = appState.scoreView;
+    viewSelect.hidden = !curSong || curSong.type !== 'structured';
+  }
   if ($('#structuredScoreWrap')){
     $('#structuredScoreWrap').classList.toggle('tab-view-active', isTab);
     $('#structuredScoreWrap').classList.toggle('card-view-active', !isTab);
@@ -87,15 +91,11 @@ function syncScoreModeUI(){
 }
 
 function initScoreUi(){
-  SCORE_VIEW_BUTTONS.forEach(function(entry){
-    if (!$(entry.id)) return;
-    $(entry.id).addEventListener('click', function(){
-      appState.scoreView = entry.view;
-      syncScoreModeUI();
-      saveAppState();
-      if (curSong && curSong.type === 'structured') renderStructuredMeasures();
-      updateActiveCursor(curMeasureIdx, curBeatIdx, false);
-    });
+  var viewSelect = $('#scoreViewSelect');
+  if (!viewSelect) return;
+  viewSelect.addEventListener('change', function(){
+    setScoreView(viewSelect.value);
+    viewSelect.blur();
   });
 }
 

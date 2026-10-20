@@ -8,6 +8,8 @@ const { spawn } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const builtinSongsJson = JSON.parse(fs.readFileSync(path.join(root, 'songs.json'), 'utf8'));
 const builtinSongCount = builtinSongsJson.length;
+// 페이지 안에서 악보 보기 선택 목록을 사용자가 고른 것처럼 바꾸는 식(change 이벤트)
+const pageSetScoreView = viewExpr => `(function(v){ var s = document.getElementById('scoreViewSelect'); s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })); })(${viewExpr})`;
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -271,7 +273,7 @@ async function testTemporaryScoreEditor(client){
     toolbar.scrollLeft=0;
     var left={play:document.getElementById('compactPlayBtn').getClientRects().length>0&&getComputedStyle(document.getElementById('compactPlayBtn')).display!=='none',
       song:document.getElementById('compactSongSelect').getClientRects().length>0&&getComputedStyle(document.getElementById('compactSongSelect')).display!=='none',
-      tab:document.getElementById('scoreModeTabBtn').getClientRects().length>0,
+      tab:document.getElementById('scoreViewSelect').getClientRects().length>0,
       noDocumentOverflow:document.documentElement.scrollWidth<=innerWidth+1};
     return left;
   })()`);
@@ -335,15 +337,15 @@ async function testTemporaryScoreEditor(client){
     function count(){return document.querySelectorAll('#structuredScoreWrap .beat-cell.is-uncertain').length;}
     try {
       curSong={id:'uncertain-mark-fixture',title:'Uncertain mark fixture',badge:'fixture',type:'structured',beats:4,bpm:70,capo:0,measures:parsed.measures};
-      document.getElementById('scoreModeTabBtn').click();
+      ${pageSetScoreView("'tab'")};
       renderSong();
       var tab=count(),badgeHidden=badge.hidden,badgeText=badge.textContent;
-      document.getElementById('scoreModeCardBtn').click();
+      ${pageSetScoreView("'card'")};
       var card=count();
       return {tab:tab,card:card,badgeHidden:badgeHidden,badgeText:badgeText};
     } finally {
       curSong=previous;
-      document.getElementById(previousView==='card'?'scoreModeCardBtn':'scoreModeTabBtn').click();
+      ${pageSetScoreView("previousView==='card'?'card':'tab'")};
       renderSong();
     }
   })()`);
@@ -592,6 +594,49 @@ async function testEditHandoff(client, httpPort) {
   assert.deepEqual([capoCompactDesktop.compact, capoCompactDesktop.shown, capoCompactDesktop.text], [true, true, '카포 3'], 'compact mode shows the capo badge for a capo 3 draft');
   await client.evaluate(`setCompactPractice(false); true`);
   assert.equal(await client.evaluate(`document.body.classList.contains('practice-compact')`), false, 'compact mode is off again');
+  // 일반 모드 툴바 항목이 폭 640~1092에서 서로 겹치지 않는다(폴드7을 펼친 화면 근처 포함). BPM 배지는 일반 모드에서 숨는다.
+  const toolbarFitProbe = `(function(){
+    function visible(el){ return !!el && !el.hidden && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none'; }
+    var items = [];
+    ['compactPlayBtn', 'rewindToFirstBtn', 'compactSongSelect', 'scoreViewSelect', 'capoBadge', 'uncertainBadge'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (visible(el)) items.push({ id:id, el:el });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.score-toolbar-right > *'), function(el){
+      if (visible(el)) items.push({ id:el.id || el.className, el:el });
+    });
+    var rects = items.map(function(item){ var r = item.el.getBoundingClientRect(); return { id:item.id, left:r.left, right:r.right, top:r.top, bottom:r.bottom, width:Math.round(r.width * 10) / 10 }; });
+    var overlaps = [];
+    for (var i = 0; i < rects.length; i++) for (var j = i + 1; j < rects.length; j++) {
+      var a = rects[i], b = rects[j];
+      var overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      var overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      if (overlapX > 1 && overlapY > 1) overlaps.push(a.id + ' x ' + b.id + ' (' + Math.round(overlapX * 10) / 10 + 'px)');
+    }
+    var toolbar = document.getElementById('scoreToolbar');
+    var status = document.getElementById('compactStatusBadge');
+    var capo = document.getElementById('capoBadge');
+    return {
+      overlaps:overlaps,
+      widths:rects.map(function(r){ return r.id + '=' + r.width; }).join(' '),
+      statusShown:status.getClientRects().length > 0,
+      capoShown:visible(capo) && capo.textContent === '카포 3',
+      scrollWidth:toolbar.scrollWidth, clientWidth:toolbar.clientWidth
+    };
+  })()`;
+  for (const fitWidth of [640, 768, 900, 984, 1092]) {
+    await client.send('Emulation.setDeviceMetricsOverride', { width: fitWidth, height: 1000, deviceScaleFactor: 1, mobile: false });
+    const fit = await client.evaluate(toolbarFitProbe);
+    assert.deepEqual(fit.overlaps, [], fitWidth + 'px toolbar items overlap: ' + fit.overlaps.join(', ') + ' [' + fit.widths + ']');
+    assert.equal(fit.statusShown, false, fitWidth + 'px normal mode hides the BPM badge');
+    assert.equal(fit.capoShown, true, fitWidth + 'px toolbar shows the capo 3 badge');
+    if (fitWidth >= 900) assert.ok(fit.scrollWidth <= fit.clientWidth + 1, fitWidth + 'px toolbar has no horizontal scroll (' + fit.scrollWidth + ' > ' + fit.clientWidth + ') [' + fit.widths + ']');
+  }
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate(`setCompactPractice(true); true`);
+  assert.equal(await client.evaluate(`document.getElementById('compactStatusBadge').getClientRects().length > 0`), true, '900px compact mode still shows the BPM badge');
+  await client.evaluate(`setCompactPractice(false); true`);
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false });
   await client.evaluate('window.scrollTo(0, document.getElementById("scoreToolbar").getBoundingClientRect().top + window.scrollY - 8); true');
   await shot('practice-capo-badge.png', 1024, 768);
   await client.evaluate(`document.getElementById('resetScoreDraftBtn').click(); true`);
@@ -3193,19 +3238,21 @@ async function testPracticeStaffView(client) {
   await reload();
   const initial = await client.evaluate(`({
     view: appState.scoreView,
-    labels: Array.prototype.map.call(document.querySelectorAll('#scoreModeSeg button'), function(button){ return button.textContent.trim() + ':' + button.id + ':' + button.getAttribute('role') + ':' + button.getAttribute('aria-selected'); }),
+    selectValue: document.getElementById('scoreViewSelect').value,
+    labels: Array.prototype.map.call(document.querySelectorAll('#scoreViewSelect option'), function(option){ return option.value + ':' + option.textContent.trim(); }),
     svgs: document.querySelectorAll('#measuresGrid .tab-staff-layer svg').length,
     staffCards: document.querySelectorAll('#measuresGrid .measure-card.staff-on').length,
     cards: document.querySelectorAll('#measuresGrid .measure-card').length
   })`);
   assert.equal(initial.view, 'tab', 'the default score view is the TAB view');
-  assert.deepEqual(initial.labels, ['타브:scoreModeTabBtn:tab:true', '둘 다:scoreModeBothBtn:tab:false', '오선:scoreModeStaffBtn:tab:false', '카드:scoreModeCardBtn:tab:false'], 'four view buttons in order');
+  assert.deepEqual(initial.labels, ['tab:타브', 'both:둘 다', 'staff:오선', 'card:카드'], 'four view options in order');
+  assert.equal(initial.selectValue, 'tab', 'the view select starts on the TAB view');
   assert.equal(initial.svgs, 0, 'the TAB view draws no staff layer');
   assert.equal(initial.staffCards, 0, 'no card is staff-on in the TAB view');
   assert.ok(initial.cards > 1, 'the default song has several cards');
 
   // (2) 둘 다: 모든 카드에 오선 층, 첫 카드 왼쪽 열에 음자리표와 박자표, 둘째 카드에는 음자리표만
-  await client.evaluate(`document.getElementById('scoreModeBothBtn').click(); true`);
+  await client.evaluate(`${pageSetScoreView("'both'")}; true`);
   await waitForCondition(client, allLayersDrawn, 5000);
   const both = await client.evaluate(`(function(){
     var cards = document.querySelectorAll('#measuresGrid .measure-card');
@@ -3215,7 +3262,7 @@ async function testPracticeStaffView(client) {
     layout.measures.forEach(function(measure){ measure.items.forEach(function(item){ if (item.type === 'chord') expected += item.notes.length; }); });
     return {
       view: appState.scoreView,
-      selected: ['Tab', 'Both', 'Staff', 'Card'].map(function(name){ return document.getElementById('scoreMode' + name + 'Btn').getAttribute('aria-selected'); }),
+      selected: document.getElementById('scoreViewSelect').value,
       firstClef: count(cards[0], '.st-clef'), firstTime: count(cards[0], '.st-time'),
       secondClef: count(cards[1], '.st-clef'), secondTime: count(cards[1], '.st-time'),
       heads: document.querySelectorAll('#measuresGrid .tab-staff-layer .st-head').length,
@@ -3226,7 +3273,7 @@ async function testPracticeStaffView(client) {
     };
   })()`);
   assert.equal(both.view, 'both');
-  assert.deepEqual(both.selected, ['false', 'true', 'false', 'false'], 'only the both button is selected');
+  assert.equal(both.selected, 'both', 'the view select shows the both view');
   assert.deepEqual([both.firstClef, both.firstTime, both.secondClef, both.secondTime], [1, 1, 1, 0], 'the first card shows clef and time, later cards only the clef');
   assert.equal(both.heads, both.expectedHeads, 'staff note heads match the layout count');
   assert.ok(both.heads > 0, 'the default song draws note heads');
@@ -3306,7 +3353,7 @@ async function testPracticeStaffView(client) {
   await client.evaluate(`appState.clickMode = 'all'; true`);
 
   // (5) 오선만: 타브 격자는 숨고 오선은 보인다. T 키는 tab, both, staff, card 순서로 돈다. 새로고침 뒤에도 유지된다.
-  await client.evaluate(`document.getElementById('scoreModeStaffBtn').click(); true`);
+  await client.evaluate(`${pageSetScoreView("'staff'")}; true`);
   await waitForCondition(client, allLayersDrawn, 5000);
   const staffOnly = await client.evaluate(`(function(){
     var card = document.querySelector('#measuresGrid .measure-card');
@@ -3339,7 +3386,7 @@ async function testPracticeStaffView(client) {
   await reload();
   assert.equal(await client.evaluate('appState.scoreView'), 'staff', 'the chosen view survives a reload');
   await waitForCondition(client, allLayersDrawn, 5000);
-  assert.equal(await client.evaluate(`document.getElementById('scoreModeStaffBtn').getAttribute('aria-selected')`), 'true', 'the reloaded view button is selected');
+  assert.equal(await client.evaluate(`document.getElementById('scoreViewSelect').value`), 'staff', 'the reloaded view select shows the saved view');
 
   // (6) 악보 입력에서 넘긴 조표
   const handoff = { title: '조표 시험', beats: 4, bpm: 72, badge: '시험', key: 1, savedAt: Date.now(), lines: ['[-] E4@1 - G4@1 - | ""', '[Am] A2@5+E4@1 r r r | "끝"'] };
@@ -3371,7 +3418,7 @@ async function testPracticeStaffView(client) {
     await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
     await client.evaluate(`(async function(){
       changeSongById('builtin-lv6-romance-full');
-      document.getElementById('scoreModeBothBtn').click();
+      ${pageSetScoreView("'both'")};
       appState.clickMode = 'off';
       curMeasureIdx = 0; curBeatIdx = 0;
       updateActiveCursor(0, 0, false);
@@ -3429,7 +3476,7 @@ async function testFretLabel(client, httpPort) {
   const practice = await client.evaluate(`(function(){
     ${probeColor}
     changeSongById('builtin-lv6-romance-full');
-    document.getElementById('scoreModeBothBtn').click();
+    ${pageSetScoreView("'both'")};
     appState.clickMode = 'off';
     curMeasureIdx = 1; curBeatIdx = 1;
     updateActiveCursor(1, 1, false);
@@ -3551,7 +3598,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=capo-badge-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=fold-toolbar-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

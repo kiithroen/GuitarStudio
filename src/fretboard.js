@@ -244,13 +244,9 @@ function initFretboard(){
       title.textContent = chName;
 
       var svg = buildChordSvg(ch.frets, ch.fingers);
-      var sub = document.createElement('div');
-      sub.className = 'chord-card-sub';
-      sub.textContent = '클릭: 화음 듣기';
 
       card.appendChild(title);
       card.appendChild(svg);
-      card.appendChild(sub);
 
       card.addEventListener('click', function(){
         highlightFretboard(chName, null, true);

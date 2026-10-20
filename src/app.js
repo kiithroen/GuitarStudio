@@ -1777,9 +1777,8 @@ function curCapo(){
     } else if (e.key === 't' || e.key === 'T' || e.key === 'ㅅ'){
       e.preventDefault();
       if (curSong && curSong.type === 'structured'){
-        var viewIndex = SCORE_VIEW_BUTTONS.findIndex(function(entry){ return entry.view === appState.scoreView; });
-        var nextView = SCORE_VIEW_BUTTONS[(viewIndex + 1) % SCORE_VIEW_BUTTONS.length];
-        if ($(nextView.id)) $(nextView.id).click();
+        var viewIndex = SCORE_VIEWS.indexOf(appState.scoreView);
+        setScoreView(SCORE_VIEWS[(viewIndex + 1) % SCORE_VIEWS.length]);
       }
     } else if (e.key === 'p' || e.key === 'P' || e.key === 'ㅔ'){
       e.preventDefault();

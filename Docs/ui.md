@@ -16,6 +16,10 @@
 - 2026-10-19 결정: 곡 선택 목록(`#songSelect`, `#compactSongSelect`)은 내장곡을 레벨별 묶음(`Lv.1 입문` 등)으로 보여 줘. 두 목록 모두 `src/app.js`의 `appendBuiltinSongGroups` 하나로 만들어. 레벨 기준은 [내장곡 출처](builtin-sources.md)의 레벨 절에 있어.
 
 - 2026-10-19 결정: 악보 보기 단추(`#scoreModeSeg`)는 `타브`(`#scoreModeTabBtn`)·`둘 다`(`#scoreModeBothBtn`)·`오선`(`#scoreModeStaffBtn`)·`카드`(`#scoreModeCardBtn`) 넷이야. `둘 다`와 `오선`은 타브 카드 위에 오선을 띄워. 규칙과 이유는 [오선 미리보기](staff-notation.md)의 연습 화면 절에 있어.
+- 2026-10-20 결정: 일반 화면 툴바에서 BPM 배지(`#compactStatusBadge`)를 숨겨. 갤럭시 폴드7을 펼친 화면에서 툴바 왼쪽 묶음이 넘쳐 BPM 배지가 오른쪽 단추 밑에 깔렸어(캡처). 같은 '마디·박·BPM'은 재생 중 콘솔 상태 줄(`#phaseTxt`)에 이미 나와서, 콘솔을 숨기는 콤팩트 뷰에서만 보여. 카포 배지는 보기 선택 바로 뒤에 와.
+- 2026-10-20 결정: 악보 보기 단추 넷(`#scoreModeSeg`)을 선택 목록 하나(`#scoreViewSelect`, `타브`·`둘 다`·`오선`·`카드`)로 바꿨어. 같은 폴드 화면에서 툴바 폭을 아끼려는 거야. `T` 키 순서와 `appState.scoreView` 값은 그대로이고, 보기를 바꾸는 일은 `src/score-ui.js`의 `setScoreView` 하나가 해. 고른 뒤 포커스를 빼서 Space·T 단축키가 계속 먹어.
+- 2026-10-20 결정: 폭이 모자라면 곡 선택(`#compactSongSelect`, `flex:1 1 auto`, 최소 90px)이 먼저 줄어. `test/test-browser-smoke.js`가 640·768·900·984·1092px에서 툴바 항목이 겹치지 않는지 확인해. 폴드7 펼친 화면의 CSS 폭은 984×1092로 알려져 있지만(출처 하나, 기기에서 안 재 봄) 캡처의 툴바 비율로 어림하면 Chrome에서 900px 안팎이라 그 근처를 여러 폭으로 봐.
+- 2026-10-20 결정: 코드 카드마다 붙던 `클릭: 화음 듣기` 문구를 지웠어. 패널 제목(`이 곡의 코드 운지표 (누르면 화음 미리 듣기)`)에 같은 안내가 있어서야. 누르면 화음이 나는 동작은 그대로야.
 
 ## 단축키와 안내
 

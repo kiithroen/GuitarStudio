@@ -282,7 +282,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=capo-badge-1')), 'every app script uses the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=fold-toolbar-1')), 'every app script uses the shared revision');
   for (const id of ['editInInputBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
     assert.match(html, new RegExp('id="' + id + '"'), 'draft UI includes #' + id);
   }
@@ -391,16 +391,18 @@ async function main(){
     context.renderSong();
   }
 
-  const scoreMode = elements.get('scoreModeSeg');
-  assert.equal(scoreMode.hidden, false, 'score view controls are available for structured songs');
-  await elements.get('scoreModeBothBtn').click();
+  const scoreMode = elements.get('scoreViewSelect');
+  assert.equal(scoreMode.hidden, false, 'score view select is available for structured songs');
+  const chooseScoreView = async view => { scoreMode.value = view; await scoreMode.dispatch('change'); };
+  await chooseScoreView('both');
   assert.equal(context.appState.scoreView, 'both', 'both view updates saved app settings');
-  await elements.get('scoreModeStaffBtn').click();
+  await chooseScoreView('staff');
   assert.equal(context.appState.scoreView, 'staff', 'staff view updates saved app settings');
-  await elements.get('scoreModeCardBtn').click();
+  await chooseScoreView('card');
   assert.equal(context.appState.scoreView, 'card', 'card view updates saved app settings');
-  await elements.get('scoreModeTabBtn').click();
+  await chooseScoreView('tab');
   assert.equal(context.appState.scoreView, 'tab', 'TAB view remains selectable');
+  assert.equal(scoreMode.value, 'tab', 'the select follows the saved view');
 
   const image = { id:'vm-image', title:'VM image', type:'image', imageDataUrl:'data:image/png;base64,AA==', pdfPages:['data:image/png;base64,AA==','data:image/png;base64,AQ=='], curPageIdx:0, systems:[{ x:0.1,y:0.1,w:0.8,h:0.2,bars:[{ chord:'C',note:'C4',memo:'old',w:1 }] }] };
   const originalImageSave = context.dbSaveImageSong;

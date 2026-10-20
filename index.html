@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=capo-badge-1">
+<link rel="stylesheet" href="src/base.css?v=fold-toolbar-1">
 <style>
 #sheetLoadStatus{margin-top:8px;padding:7px 11px;border-radius:8px;border:1px solid var(--off);background:var(--off-soft);color:var(--off);font-weight:600}
 
@@ -69,8 +69,10 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .score-toolbar-right > button{flex-shrink:0;white-space:nowrap}
 #compactPlayBtn{display:inline-flex;align-items:center;justify-content:center;font-weight:800;padding:4px 10px;font-size:12.5px;border-radius:7px;white-space:nowrap;flex-shrink:0}
 #rewindToFirstBtn{display:inline-flex;align-items:center;justify-content:center;font-weight:600;padding:4px 9px;font-size:12px;border-radius:7px;white-space:nowrap;flex-shrink:0}
-#compactSongSelect{display:inline-block;min-width:120px;max-width:240px;height:30px;font-size:12.5px;font-weight:600;padding:2px 8px;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#compactStatusBadge{display:inline-flex;align-items:center;font-family:var(--font-num);font-weight:700;font-size:11.5px;padding:2px 7px;white-space:nowrap;flex-shrink:0}
+#compactSongSelect{display:inline-block;flex:1 1 auto;min-width:90px;max-width:240px;height:30px;font-size:12.5px;font-weight:600;padding:2px 8px;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#scoreViewSelect{display:inline-block;height:30px;font-size:12.5px;font-weight:600;padding:2px 6px;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);color:var(--fg);flex-shrink:0}
+#scoreViewSelect[hidden]{display:none}
+#compactStatusBadge{display:none;align-items:center;font-family:var(--font-num);font-weight:700;font-size:11.5px;padding:2px 7px;white-space:nowrap;flex-shrink:0}
 #capoBadge{display:inline-flex;align-items:center;font-size:11.5px;padding:2px 7px;white-space:nowrap;flex-shrink:0}
 #capoBadge[hidden]{display:none}
 #scoreTitle,#scoreTypeBadge,#scoreClickHint{display:none}
@@ -319,14 +321,7 @@ body.practice-compact #compactSongSelect{
   text-overflow: ellipsis !important;
 }
 
-body.practice-compact .tab-seg{
-  margin: 0 !important;
-  flex-shrink: 0 !important;
-}
-body.practice-compact .tab-seg button{
-  padding: 3px 6px !important;
-  font-size: 11px !important;
-}
+body.practice-compact #scoreViewSelect{height:28px !important;font-size:11px !important;padding:2px 4px !important;flex-shrink:0 !important}
 
 body.practice-compact #compactStatusBadge{
   display: inline-flex !important;
@@ -405,7 +400,6 @@ body.practice-compact .fretboard{
 .chord-card{flex:0 0 118px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);padding:8px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
 .chord-card.active{border-color:var(--accent);background:var(--accent-soft)}
 .chord-card-title{font-family:var(--font-num);font-size:15px;font-weight:700}
-.chord-card-sub{font-size:11px;color:var(--muted)}
 
 /* 유튜브 레퍼런스 */
 .yt-links{display:flex;flex-wrap:wrap;gap:6px}
@@ -556,12 +550,7 @@ body.practice-compact .fretboard{
         <h2 id="scoreTitle" hidden>작은 별 (Twinkle Twinkle Little Star)</h2>
         <button type="button" class="btn sm" id="renameScoreTitleBtn" hidden style="min-height:28px;padding:0 8px;font-size:12px" title="곡 이름 변경">✏️ 이름 변경</button>
         <span class="badge accent" id="scoreTypeBadge" hidden>내장 동요 · 다장조(C)</span>
-        <div class="tab-seg" id="scoreModeSeg" role="tablist" aria-label="악보 보기 모드" style="margin-left:2px;flex-shrink:0">
-          <button type="button" id="scoreModeTabBtn" role="tab" aria-selected="true" title="6현 가로선 타브(TAB) 악보로 보기 (단축키: T)">타브</button>
-          <button type="button" id="scoreModeBothBtn" role="tab" aria-selected="false" title="타브(TAB) 위에 오선을 함께 보기 (단축키: T)">둘 다</button>
-          <button type="button" id="scoreModeStaffBtn" role="tab" aria-selected="false" title="오선만 보기 (단축키: T)">오선</button>
-          <button type="button" id="scoreModeCardBtn" role="tab" aria-selected="false" title="박자·음표 길이 및 계이름(친절한 오선지) 카드 뷰 (단축키: T)">카드</button>
-        </div>
+        <select id="scoreViewSelect" class="score-view-select" aria-label="악보 보기" title="악보 보기 (단축키: T)"><option value="tab">타브</option><option value="both">둘 다</option><option value="staff">오선</option><option value="card">카드</option></select>
         <span class="badge" id="compactStatusBadge" style="font-family:var(--font-num);font-weight:700">64 BPM · 1마디</span>
         <span class="badge accent" id="capoBadge" hidden>카포 0</span>
         <span class="badge warn" id="uncertainBadge" hidden title="?로 표시한 확인 필요 칸 수">확인 0곳</span>
@@ -887,23 +876,23 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=capo-badge-1"></script>
-<script src="src/app-state.js?v=capo-badge-1"></script>
-<script src="src/notation.js?v=capo-badge-1"></script>
-<script src="src/rhythm.js?v=capo-badge-1"></script>
-<script src="src/parser.js?v=capo-badge-1"></script>
-<script src="src/staff-layout.js?v=capo-badge-1"></script>
-<script src="src/staff-svg.js?v=capo-badge-1"></script>
-<script src="src/score-drafts.js?v=capo-badge-1"></script>
-<script src="src/score.js?v=capo-badge-1"></script>
-<script src="src/audio.js?v=capo-badge-1"></script>
-<script src="src/guide.js?v=capo-badge-1"></script>
-<script src="src/image-analysis.js?v=capo-badge-1"></script>
-<script src="src/fretboard.js?v=capo-badge-1"></script>
-<script src="src/score-ui.js?v=capo-badge-1"></script>
-<script src="src/sheets.js?v=capo-badge-1"></script>
-<script src="src/score-prompt.js?v=capo-badge-1"></script>
-<script src="src/score-editor.js?v=capo-badge-1"></script>
-<script src="src/app.js?v=capo-badge-1"></script>
+<script src="src/storage.js?v=fold-toolbar-1"></script>
+<script src="src/app-state.js?v=fold-toolbar-1"></script>
+<script src="src/notation.js?v=fold-toolbar-1"></script>
+<script src="src/rhythm.js?v=fold-toolbar-1"></script>
+<script src="src/parser.js?v=fold-toolbar-1"></script>
+<script src="src/staff-layout.js?v=fold-toolbar-1"></script>
+<script src="src/staff-svg.js?v=fold-toolbar-1"></script>
+<script src="src/score-drafts.js?v=fold-toolbar-1"></script>
+<script src="src/score.js?v=fold-toolbar-1"></script>
+<script src="src/audio.js?v=fold-toolbar-1"></script>
+<script src="src/guide.js?v=fold-toolbar-1"></script>
+<script src="src/image-analysis.js?v=fold-toolbar-1"></script>
+<script src="src/fretboard.js?v=fold-toolbar-1"></script>
+<script src="src/score-ui.js?v=fold-toolbar-1"></script>
+<script src="src/sheets.js?v=fold-toolbar-1"></script>
+<script src="src/score-prompt.js?v=fold-toolbar-1"></script>
+<script src="src/score-editor.js?v=fold-toolbar-1"></script>
+<script src="src/app.js?v=fold-toolbar-1"></script>
 </body>
 </html>
