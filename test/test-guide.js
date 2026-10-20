@@ -253,6 +253,27 @@ assert.equal(crossBarResume[0].duration, 2, 'parsed resume uses only the remaini
     assert.ok(event.duration > 0, 'the last component still has a positive length');
   });
 
+  // rollDelays: 순서와 간격 (getBeatGuideEvents 가 같은 함수를 쓴다)
+  assert.equal(typeof context.rollDelays, 'function', 'rollDelays is exposed');
+  const sample = [{ str:1, midi:64 }, { str:6, midi:40 }, { str:3, midi:55 }];
+  const ordered = context.rollDelays(sample, 0.6);
+  assert.deepEqual(ordered.map(item => item.note.str), [6, 3, 1], 'highest string number first');
+  ordered.forEach((item, k) => close(item.delay, k * expectedStep(0.6, 3), 'delay ' + k));
+  assert.equal(ordered[0].delay, 0);
+  assert.deepEqual(sample.map(note => note.str), [1, 6, 3], 'the input array is not reordered');
+  const shortOrdered = context.rollDelays(sample, 0.05);
+  close(shortOrdered[2].delay, 0.05 * context.ROLL_MAX_SHARE, 'the spread is capped at the share of the piece');
+  const noStr = context.rollDelays([{ midi:64 }, { midi:40 }, { midi:52 }], 1);
+  assert.deepEqual(noStr.map(item => item.note.midi), [40, 52, 64], 'without strings the lower pitch goes first');
+  const sameStr = context.rollDelays([{ str:2, midi:60, id:'a' }, { str:2, midi:60, id:'b' }], 1);
+  assert.deepEqual(sameStr.map(item => item.note.id), ['a', 'b'], 'ties keep the original order');
+  const mixed = context.rollDelays([{ str:2, midi:60 }, { midi:50 }], 1);
+  assert.deepEqual(mixed.map(item => item.note.midi), [50, 60], 'a note without a string falls back to pitch');
+  assert.deepEqual(Array.from(context.rollDelays([{ str:4, midi:50 }], 1), item => [item.note.str, item.delay]), [[4, 0]], 'one note: no delay');
+  assert.deepEqual(Array.from(context.rollDelays([], 1)), [], 'no notes');
+  const viaEvents = notesOf(three, { startTime:0, slotDuration:0.6 });
+  context.rollDelays(three.chordNotes, 0.6).forEach((item, k) => close(viaEvents[k].when, item.delay, 'getBeatGuideEvents uses the same delays ' + k));
+
   // 롤이 아닌 화음은 같은 시각
   const plain = parser.parseScore('[-] E2@6+B3@2+G4@1 r r r', 4).measures[0].beats[0];
   const plainEvents = notesOf(plain, { startTime:4, slotDuration:0.6 });

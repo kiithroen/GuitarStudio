@@ -19,6 +19,9 @@
   var BEATS_LABELS = { 2: '2/4', 3: '3/4', 4: '4/4', 6: '6/8', 8: '4/4 (8박 핑거스타일)', 9: '9/8 (8분음표 9칸)' };
   var CELL_SLOT_MIN = 26;   // score-input.html의 .ti-cell 기본 조각 폭과 같다
   var CELL_SLOT_PAD = 6;
+  var CELL_ROLL_ROOM = 9;   // 롤 조각이 든 칸은 조각 폭 양쪽에 이만큼씩 더한다(글자가 가운데라서)
+  var POS_H = 24;           // .ti-pos 높이(px). score-input.html의 CSS height와 맞춰야 한다(롤 물결선 세로 위치)
+  var ROLL_PLAY_SEC = 1.6;  // 들어보기 한 조각의 길이(초)
   var TEN_WINDOW_MS = 700;
   var SAVE_DEBOUNCE_MS = 300;
   var TEXT_DEBOUNCE_MS = 300;
@@ -100,12 +103,24 @@
 
   function articulationName(art){ return art === '!' ? 'apoyando' : (art === 'h' ? 'harmonic' : (art === 's' ? 'slur' : null)); }
 
-  function playNotes(items){
+  // rolled 이면 연습 화면과 같은 rollDelays(src/guide.js) 순서와 간격으로 굴려 친다.
+  function playNotes(items, rolled){
     if (!ui.sound || !items.length) return;
     try {
       var capo = T.docCapo(doc);
+      if (rolled && items.length >= 2){
+        var now = ensureAudioCtx().currentTime;
+        var timed = rollDelays(items.map(function(item){
+          return { str: item.str, midi: T.noteMidiOf(item.str, item.note), item: item };
+        }), ROLL_PLAY_SEC);
+        timed.forEach(function(entry){
+          var item = entry.note.item;
+          playGuitarNote(soundingMidi(entry.note.midi, capo), ROLL_PLAY_SEC - entry.delay, now + entry.delay, null, articulationName(item.note.art), item.str);
+        });
+        return;
+      }
       items.forEach(function(item){
-        playGuitarNote(soundingMidi(T.noteMidiOf(item.str, item.note), capo), 1.6, null, null, articulationName(item.note.art), item.str);
+        playGuitarNote(soundingMidi(T.noteMidiOf(item.str, item.note), capo), ROLL_PLAY_SEC, null, null, articulationName(item.note.art), item.str);
       });
     } catch (error) {
       // 오디오가 없거나 실패해도 입력은 계속한다
@@ -294,6 +309,19 @@
       if (slot.restUncertain) slotEl.classList.add('is-uncertain');
     }
     for (var str = 1; str <= T.STRING_COUNT; str++) slotEl.appendChild(buildPos(str, slot.notes[str - 1]));
+    if (T.slotRollShown(slot)){
+      var minStr = 0, maxStr = 0;
+      slot.notes.forEach(function(note, index){
+        if (!note) return;
+        if (!minStr) minStr = index + 1;
+        maxStr = index + 1;
+      });
+      var mark = buildRollMark();
+      mark.style.top = ((minStr - 1) * POS_H + 4) + 'px';
+      mark.style.height = ((maxStr - minStr) * POS_H + 16) + 'px';
+      slotEl.classList.add('is-roll');
+      slotEl.appendChild(mark);
+    }
     return slotEl;
   }
 
@@ -537,6 +565,10 @@
     var uncertain = $('tiUncertainBtn');
     uncertain.disabled = !(cursorNote || slot.rest);
     uncertain.setAttribute('aria-pressed', String(cursorNote ? cursorNote.uncertain : (slot.rest ? slot.restUncertain : false)));
+    var rollBtn = $('tiRollBtn');
+    var rollCount = slot.notes.filter(function(note){ return !!note; }).length;
+    rollBtn.disabled = !!slot.rest || rollCount < 2;
+    rollBtn.setAttribute('aria-pressed', String(T.slotRollShown(slot)));
     refreshStaffMode();
   }
 
@@ -583,13 +615,14 @@
     var i;
     for (i = 0; i < cells.length; i++){
       var max = 0;
+      var room = cells[i].querySelector('.ti-slot.is-roll') ? CELL_ROLL_ROOM : 0;
       var labels = cells[i].querySelectorAll('.ti-pos-label');
       for (var j = 0; j < labels.length; j++){
         var range = document.createRange();
         range.selectNodeContents(labels[j]);
         max = Math.max(max, range.getBoundingClientRect().width);
       }
-      widths.push(Math.max(CELL_SLOT_MIN, Math.ceil(max + CELL_SLOT_PAD)));
+      widths.push(Math.max(CELL_SLOT_MIN, Math.ceil(max + CELL_SLOT_PAD)) + 2 * room);
     }
     for (i = 0; i < cells.length; i++){
       if (widths[i] === CELL_SLOT_MIN) cells[i].style.removeProperty('--sw');
@@ -911,7 +944,17 @@
     }
   }
 
-  function playSlot(){ playNotes(slotNotes(cursor)); }
+  // 커서 조각 화음의 롤을 켜고 끈다. 켜는 조건(쉼 아님, 두 음 이상)은 T.slotRollShown/T.setRoll 이 정한다.
+  function toggleRoll(){
+    var pos = copyPos(cursor);
+    var slot = T.getSlot(doc, pos);
+    if (!slot) return;
+    var on = !T.slotRollShown(slot);
+    var result = apply(function(d){ return T.setRoll(d, pos, on); }, { measures: [pos.m] });
+    if (result && result.ok === false) setStatus(T.ROLL_ERROR);
+  }
+
+  function playSlot(){ playNotes(slotNotes(cursor), T.slotRollShown(T.getSlot(doc, cursor))); }
 
   // ---------- 오선 입력 (계산은 src/staff-input.js, 규칙은 Docs/staff-input.md)
 
@@ -1917,6 +1960,7 @@
       });
     });
     $('tiUncertainBtn').addEventListener('click', toggleUncertain);
+    $('tiRollBtn').addEventListener('click', toggleRoll);
 
     $('tiCopyTextBtn').addEventListener('click', copyScoreText);
     $('tiCopyTsvBtn').addEventListener('click', copyScoreTsv);
@@ -2014,6 +2058,11 @@
       if (event.repeat) return;
       flushPending(true);
       toggleSlur(false);
+    }
+    else if (event.code === 'Backquote'){
+      if (event.repeat) return;
+      flushPending(true);
+      toggleRoll();
     }
     else if (key === 'Escape'){ flushPending(true); clearSelection(); }
     else handled = false;

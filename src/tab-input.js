@@ -20,6 +20,7 @@
   var ART_VALUES = ['!', 'h', 's'];
   // 티란도 표시 ~ 를 없애기 전에 저장된 문서의 주법 값. 읽을 때 없음(null)으로 바꾼다.
   var REMOVED_ART_VALUE = '~';
+  var ROLL_ERROR = '롤은 두 음 이상 화음에만 붙일 수 있습니다.';
 
   function isInt(value){ return typeof value === 'number' && Number.isInteger(value); }
   function isHarmonicFret(fret){ return Object.prototype.hasOwnProperty.call(GuitarNotation.NATURAL_HARMONICS, fret); }
@@ -287,6 +288,26 @@
     return { ok: true, removedNotes: removed };
   }
 
+  // 롤(~)이 보이고 내보내지는 조각인가: 쉼이 아니고 음이 둘 이상이며 roll 표시가 켜져 있다. 내보내기와 화면이 이 함수 하나를 쓴다.
+  function slotRollShown(slot){
+    if (!slot || slot.rest || slot.roll !== true) return false;
+    var count = 0;
+    for (var i = 0; i < slot.notes.length; i++) if (slot.notes[i]) count++;
+    return count >= 2;
+  }
+
+  // 조각 화음의 롤을 켜고 끈다. 켜려면 쉼이 아니고 음이 둘 이상이어야 한다(아니면 문서를 그대로 두고 ok:false).
+  function setRoll(doc, pos, on){
+    var slot = requireSlot(doc, pos);
+    if (on){
+      var count = 0;
+      for (var i = 0; i < slot.notes.length; i++) if (slot.notes[i]) count++;
+      if (slot.rest || count < 2) return { ok: false, error: ROLL_ERROR };
+    }
+    slot.roll = !!on;
+    return { ok: true };
+  }
+
   function setRestUncertain(doc, pos, on){
     var slot = requireSlot(doc, pos);
     if (!slot.rest) return { ok: false };
@@ -484,7 +505,7 @@
     });
     items.sort(function(a, b){ return a.midi - b.midi || b.str - a.str; });
     var text = items.map(function(item){ return noteToken(doc, item.str, item.note); }).join('+');
-    return slot.roll && items.length >= 2 ? '~' + text : text;
+    return slotRollShown(slot) ? '~' + text : text;
   }
 
   function isHoldingToken(tokens, i){
@@ -786,7 +807,7 @@
     cloneDoc: cloneDoc, normalizeDoc: normalizeDoc, hasContent: hasContent,
     getSlot: getSlot, isValidPos: isValidPos, firstPos: firstPos, nextPos: nextPos, prevPos: prevPos, clampPos: clampPos,
     setNote: setNote, removeNote: removeNote, toggleNote: toggleNote, setNoteAttrs: setNoteAttrs,
-    setRest: setRest, setRestUncertain: setRestUncertain, clearSlot: clearSlot,
+    setRest: setRest, setRestUncertain: setRestUncertain, clearSlot: clearSlot, setRoll: setRoll, slotRollShown: slotRollShown, ROLL_ERROR: ROLL_ERROR,
     setDivision: setDivision, setBeats: setBeats, setKey: setKey, setMeasureChord: setMeasureChord, setMeasureMemo: setMeasureMemo,
     insertEmptyMeasure: insertEmptyMeasure, duplicateRange: duplicateRange, deleteRange: deleteRange,
     clearRange: clearRange, copyRange: copyRange, pasteAfter: pasteAfter,

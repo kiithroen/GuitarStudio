@@ -2301,14 +2301,14 @@ async function testInvalidStructuredPersistence(client) {
 async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
-  assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=roll-2')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=roll-2">/, 'score-input.html loads the shared base stylesheet');
+  assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=roll-3')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=roll-3">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
     'tiResultPanel', 'tiDiagnostics', 'tiScoreText', 'tiCopyTextBtn', 'tiCopyTsvBtn', 'tiOpenPracticeBtn', 'tiResultStatus', 'tiDock', 'tiCursorLabel', 'tiPrevBtn', 'tiNextBtn',
-    'tiRestBtn', 'tiClearSlotBtn', 'tiDiv1', 'tiDiv2', 'tiDiv3', 'tiDiv4', 'tiPlaySlotBtn', 'tiAutoAdvance', 'tiSoundToggle', 'tiStaffToggle', 'tiDockToggle', 'tiFretboard', 'tiAttrs', 'tiUncertainBtn',
+    'tiRestBtn', 'tiClearSlotBtn', 'tiDiv1', 'tiDiv2', 'tiDiv3', 'tiDiv4', 'tiPlaySlotBtn', 'tiAutoAdvance', 'tiSoundToggle', 'tiStaffToggle', 'tiDockToggle', 'tiFretboard', 'tiAttrs', 'tiUncertainBtn', 'tiRollBtn',
     'tiImportDialog', 'tiImportText', 'tiImportError', 'tiImportApplyBtn', 'tiImportCancelBtn', 'backToPracticeLink'
   ].forEach(id => assert.match(inputHtml, new RegExp('id="' + id + '"'), 'score-input.html includes #' + id));
 
@@ -2779,9 +2779,9 @@ async function testScoreInputStaff(client, httpPort) {
 }
 
 // 악보 입력 화면의 오선 입력 모드(음 고르는 오선, 길이 단추, 키보드): 규칙은 Docs/staff-input.md, 계산은 src/staff-input.js.
-// 입력판 운지 열(#tiAttrs, 폭 272px)이 넘치지 않고 단추가 잘리지 않으며 보이는 힌트와 겹치지 않는지. 입력판을 펼친 상태로 900×1000과 1024×768에서 잰다.
+// 입력판 운지 열(#tiAttrs, 폭 272px)이 넘치지 않고 단추가 잘리지 않으며 보이는 힌트와 겹치지 않는지. 입력판을 펼친 상태로 900×1000, 1024×768, 1280×900에서 잰다.
 async function checkAttrsColumn(client, mode) {
-  for (const [width, height] of [[900, 1000], [1024, 768]]) {
+  for (const [width, height] of [[900, 1000], [1024, 768], [1280, 900]]) {
     await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
     await client.evaluate('window.scrollTo(0, 0); true');
     const m = await client.evaluate(`(function(){
@@ -4310,11 +4310,241 @@ async function testRollMarks(client, httpPort) {
   process.stdout.write('Browser checkpoint: roll waves in practice TAB and staff, and in score input card staffs, passed\n');
 }
 
+// 롤(~) 악보 입력 화면: 카드 TAB 물결선(위치는 실제 상자로 잰다), 입력판 단추, ` 키, 들어보기 소리. 규칙은 Docs/tab-input.md.
+async function testRollInput(client, httpPort) {
+  client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
+  const errorsBefore = client.consoleErrors.length;
+  const inputUrl = `http://127.0.0.1:${httpPort}/score-input.html`;
+  async function load() {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await client.send('Page.navigate', { url: inputUrl });
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, 'document.readyState === "complete" && document.querySelectorAll("#tiMeasures .ti-measure").length >= 1', 8000);
+  }
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false });
+  await load();
+  await client.evaluate(`(function(){ Object.keys(localStorage).filter(function(key){ return key.indexOf('gs.tabInput.') === 0; }).forEach(function(key){ localStorage.removeItem(key); }); return true; })()`);
+  await load();
+  await client.evaluate(`window.__tiTest = {
+    pos: function(m, c, s, str){ return document.querySelector('.ti-slot[data-m="'+m+'"][data-c="'+c+'"][data-s="'+s+'"] .ti-pos[data-str="'+str+'"]'); },
+    fret: function(str, fret){ return document.querySelector('.ti-fret[data-str="'+str+'"][data-fret="'+fret+'"]'); },
+    text: function(){ return document.getElementById('tiScoreText').value; },
+    press: function(key, code, extra){ var e = new KeyboardEvent('keydown', Object.assign({ key:key, code:code, bubbles:true, cancelable:true }, extra || {})); document.body.dispatchEvent(e); return e.defaultPrevented; }
+  }; true`);
+
+  // 1. 두 화면의 힌트와 단추
+  const hints = await client.evaluate(`({ tab: document.getElementById('tiTabHint').textContent, staff: document.getElementById('tiStaffHint').textContent, title: document.getElementById('tiRollBtn').title, label: document.getElementById('tiRollBtn').textContent })`);
+  assert.ok(hints.tab.indexOf('~ 롤') >= 0, 'the tab hint mentions the roll key: ' + hints.tab);
+  assert.ok(hints.staff.indexOf('~ 롤') >= 0, 'the staff hint mentions the roll key: ' + hints.staff);
+  assert.ok(hints.label.indexOf('롤') >= 0 && hints.title.indexOf('롤') === 0, 'the roll button is labeled: ' + JSON.stringify(hints));
+
+  // 2. 불러온 롤 악보의 카드: 물결선은 롤 조각에만, 프렛 글자의 왼쪽에, 위·아래 음 줄을 덮는다.
+  const rollLines = [
+    '[-] ~E2@6+B3@2+G4@1 E2@6+B3@2+G4@1 ~E2@6+B3@2 E2@6+B3@2 | ""',
+    '[-] C3@5/~A3@3+D4@2+F#4@1 ~E2@6+E4@1 - r | ""'
+  ];
+  await client.evaluate(`(function(){
+    window.confirm = function(){ return true; };
+    document.getElementById('tiImportBtn').click();
+    var area = document.getElementById('tiImportText');
+    area.value = ${JSON.stringify(rollLines.join('\n'))};
+    area.dispatchEvent(new Event('input', { bubbles:true }));
+    document.getElementById('tiImportApplyBtn').click();
+    return true;
+  })()`);
+  assert.equal(await client.evaluate(`document.getElementById('tiImportError').textContent`), '', 'the roll score imports without error');
+  const rolled = [[0, 0, 0], [0, 2, 0], [1, 0, 1], [1, 1, 0]];
+  const plain = [[0, 1, 0], [0, 3, 0], [1, 0, 0], [1, 2, 0], [1, 3, 0]];
+  const geometry = await client.evaluate(`(function(){
+    function slotEl(p){ return document.querySelector('.ti-slot[data-m="'+p[0]+'"][data-c="'+p[1]+'"][data-s="'+p[2]+'"]'); }
+    function info(p){
+      var slot = slotEl(p);
+      var marks = slot.querySelectorAll('.roll-mark');
+      var out = { marks: marks.length, isRoll: slot.classList.contains('is-roll') };
+      if (marks.length){
+        var rect = marks[0].getBoundingClientRect();
+        var labels = Array.prototype.map.call(slot.querySelectorAll('.ti-pos-label'), function(label){ return label.getBoundingClientRect().left; });
+        var centers = Array.prototype.filter.call(slot.querySelectorAll('.ti-pos'), function(pos){ return pos.querySelector('.ti-pos-label'); }).map(function(pos){
+          var r = pos.getBoundingClientRect();
+          return r.top + r.height / 2;
+        });
+        var slotRect = slot.getBoundingClientRect();
+        out.slotLeft = slotRect.left; out.slotWidth = slotRect.width; out.labelWidths = Array.prototype.map.call(slot.querySelectorAll('.ti-pos-label'), function(label){ return label.getBoundingClientRect().width; });
+        out.cellSw = slot.closest('.ti-cell').style.getPropertyValue('--sw');
+        out.right = rect.right; out.top = rect.top; out.bottom = rect.bottom; out.minLabelLeft = Math.min.apply(null, labels);
+        out.firstCenter = centers[0]; out.lastCenter = centers[centers.length - 1]; out.noteCount = centers.length;
+        var cs = getComputedStyle(marks[0]);
+        out.position = cs.position; out.width = rect.width; out.mask = cs.webkitMaskImage || cs.maskImage;
+      }
+      return out;
+    }
+    return { rolled: ${JSON.stringify(rolled)}.map(info), plain: ${JSON.stringify(plain)}.map(info) };
+  })()`);
+  geometry.rolled.forEach((info, k) => {
+    const where = 'rolled slot ' + JSON.stringify(rolled[k]) + ' ' + JSON.stringify(info);
+    assert.equal(info.marks, 1, 'one roll mark in the rolled slot: ' + where);
+    assert.equal(info.isRoll, true, 'the rolled slot has the is-roll class: ' + where);
+    assert.ok(info.noteCount >= 2, 'the rolled slot has two or more notes: ' + where);
+    assert.ok(info.right <= info.minLabelLeft - 1, 'the wave is at least 1px left of every fret label: ' + where);
+    assert.ok(info.top <= info.firstCenter && info.bottom >= info.lastCenter, 'the wave covers the top and bottom note rows: ' + where);
+    assert.ok(info.width > 0 && info.position === 'absolute' && /svg/.test(info.mask), 'the wave is a positioned box with the shared mask shape: ' + where);
+  });
+  geometry.plain.forEach((info, k) => {
+    assert.equal(info.marks, 0, 'no roll mark in a slot without a roll: ' + JSON.stringify(plain[k]));
+    assert.equal(info.isRoll, false, 'no is-roll class without a roll: ' + JSON.stringify(plain[k]));
+  });
+  const innerShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  const innerTarget = path.join(root, 'test-artifacts', 'score-input-roll-cards.png');
+  fs.writeFileSync(innerTarget, Buffer.from(innerShot.data, 'base64'));
+  process.stdout.write('Artifact: ' + innerTarget + '\n');
+
+  // 3. 단추와 ` 키 (타브 모드, 오선 모드)
+  const keys = await client.evaluate(`(function(){
+    var t = __tiTest;
+    var T = GuitarTabInput;
+    document.getElementById('tiNewBtn').click();
+    var btn = document.getElementById('tiRollBtn');
+    var out = {};
+    function cell(c){ return t.text().split('\\n')[0].split(' ')[c + 1]; }
+    function status(){ return document.getElementById('tiStatus').textContent; }
+    t.pos(0,0,0,1).click(); t.fret(1, 0).click();
+    out.oneDisabled = btn.disabled;
+    out.onePressed = btn.getAttribute('aria-pressed');
+    t.pos(0,0,0,6).click(); t.fret(6, 0).click();
+    out.twoDisabled = btn.disabled;
+    out.twoPressedBefore = btn.getAttribute('aria-pressed');
+    btn.click();
+    out.btnPressed = btn.getAttribute('aria-pressed');
+    out.btnCell = cell(0);
+    out.btnMark = document.querySelectorAll('.ti-slot[data-m="0"][data-c="0"] .roll-mark').length;
+    out.keyPrevented = t.press('\`', 'Backquote');
+    out.keyOffPressed = btn.getAttribute('aria-pressed');
+    out.keyOffCell = cell(0);
+    out.keyOffMark = document.querySelectorAll('.ti-slot[data-m="0"][data-c="0"] .roll-mark').length;
+    t.press('~', 'Backquote', { shiftKey:true });
+    out.shiftCell = cell(0);
+    t.press('\`', 'Backquote');
+    out.offAgain = cell(0);
+    t.pos(0,1,0,3).click(); t.fret(3, 2).click();
+    out.singleDisabled = btn.disabled;
+    var before = t.text();
+    out.singlePrevented = t.press('\`', 'Backquote');
+    out.singleStatus = status();
+    out.singleSame = t.text() === before;
+    out.expectedError = T.ROLL_ERROR;
+    t.pos(0,2,0,1).click(); t.press('r', 'KeyR');
+    out.restDisabled = btn.disabled;
+    before = t.text();
+    t.press('\`', 'Backquote');
+    out.restStatus = status();
+    out.restSame = t.text() === before;
+    t.pos(0,0,0,1).click();
+    document.getElementById('tiModeStaff').click();
+    t.pos(0,0,0,1).click();
+    out.staffModeOn = document.getElementById('tiModeStaff').getAttribute('aria-pressed');
+    out.staffPrevented = t.press('\`', 'Backquote');
+    out.staffCell = cell(0);
+    out.staffPressed = btn.getAttribute('aria-pressed');
+    t.press('\`', 'Backquote');
+    out.staffOffCell = cell(0);
+    document.getElementById('tiModeTab').click();
+    return out;
+  })()`);
+  assert.equal(keys.oneDisabled, true, 'the roll button is disabled on a one-note slot: ' + JSON.stringify(keys));
+  assert.equal(keys.onePressed, 'false');
+  assert.equal(keys.twoDisabled, false, 'the roll button is enabled on a two-note slot');
+  assert.equal(keys.twoPressedBefore, 'false', 'the roll button starts released');
+  assert.equal(keys.btnPressed, 'true', 'the roll button is pressed after the click');
+  assert.equal(keys.btnCell.charAt(0), '~', 'the exported cell starts with ~ after the button: ' + keys.btnCell);
+  assert.equal(keys.btnMark, 1, 'the card draws the wave after the button');
+  assert.equal(keys.keyPrevented, true, 'the ` key is handled');
+  assert.equal(keys.keyOffPressed, 'false', 'the ` key releases the roll button');
+  assert.equal(keys.keyOffCell, keys.btnCell.slice(1), 'the ` key turns the roll off');
+  assert.equal(keys.keyOffMark, 0, 'the wave disappears with the roll');
+  assert.equal(keys.shiftCell, keys.btnCell, 'Shift + ` (the ~ key) turns the roll on too');
+  assert.equal(keys.offAgain, keys.keyOffCell, 'the key toggles back off');
+  assert.equal(keys.singleDisabled, true, 'the roll button is disabled on a one-note slot');
+  assert.equal(keys.singlePrevented, true, 'the ` key is handled even when it cannot turn the roll on');
+  assert.equal(keys.singleStatus, keys.expectedError, 'the ` key on one note says why: ' + keys.singleStatus);
+  assert.equal(keys.singleSame, true, 'the ` key on one note leaves the score text alone');
+  assert.equal(keys.restDisabled, true, 'the roll button is disabled on a rest');
+  assert.equal(keys.restStatus, keys.expectedError, 'the ` key on a rest says why');
+  assert.equal(keys.restSame, true, 'the ` key on a rest leaves the score text alone');
+  assert.equal(keys.staffModeOn, 'true', 'the staff input mode is on');
+  assert.equal(keys.staffPrevented, true, 'the ` key is handled in the staff input mode');
+  assert.equal(keys.staffCell, keys.btnCell, 'the ` key turns the roll on in the staff input mode: ' + keys.staffCell);
+  assert.equal(keys.staffPressed, 'true');
+  assert.equal(keys.staffOffCell, keys.keyOffCell, 'and off again');
+
+  // 4. 들어보기: 롤 조각은 rollDelays 순서와 간격으로 치고 끝 시각이 같다. 롤이 아니면 같은 시각.
+  const play = await client.evaluate(`(function(){
+    var t = __tiTest;
+    document.getElementById('tiNewBtn').click();
+    t.pos(0,0,0,6).click(); t.fret(6, 0).click();
+    t.pos(0,0,0,1).click(); t.fret(1, 0).click();
+    t.pos(0,0,0,3).click(); t.fret(3, 2).click();
+    var original = window.playGuitarNote;
+    var calls = [];
+    window.playGuitarNote = function(midi, dur, when, gain, art, str){ calls.push({ midi: midi, dur: dur, when: when, str: str }); };
+    var out = {};
+    try {
+      t.press(' ', 'Space');
+      out.plain = calls.slice(); calls.length = 0;
+      t.press('\`', 'Backquote');
+      out.pressed = document.getElementById('tiRollBtn').getAttribute('aria-pressed');
+      t.press(' ', 'Space');
+      out.rolled = calls.slice(); calls.length = 0;
+      document.getElementById('tiPlaySlotBtn').click();
+      out.rolledByButton = calls.slice(); calls.length = 0;
+    } finally { window.playGuitarNote = original; }
+    var items = out.rolled.map(function(call){ return { str: call.str, midi: call.midi }; });
+    var expected = rollDelays(items, out.rolled.length ? out.rolled[0].dur : 1);
+    out.expectedStrs = expected.map(function(entry){ return entry.note.str; });
+    out.expectedDelays = expected.map(function(entry){ return entry.delay; });
+    return out;
+  })()`);
+  assert.equal(play.plain.length, 3, 'a plain chord plays every note: ' + JSON.stringify(play.plain));
+  assert.ok(play.plain.every(call => call.when === play.plain[0].when && call.dur === play.plain[0].dur), 'a plain chord plays at one time with one length: ' + JSON.stringify(play.plain));
+  assert.equal(play.pressed, 'true', 'the ` key rolled the chord');
+  assert.equal(play.rolled.length, 3, 'a rolled chord plays every note');
+  assert.deepEqual(play.rolled.map(call => call.str), play.expectedStrs, 'the rolled chord plays in the rollDelays order: ' + JSON.stringify(play.rolled));
+  assert.deepEqual(play.rolled.map(call => call.str), [...play.rolled.map(call => call.str)].sort((a, b) => b - a), 'the highest string number plays first');
+  play.rolled.forEach((call, k) => {
+    assert.ok(Number.isFinite(call.when), 'a rolled note has a start time');
+    assert.ok(Math.abs((call.when - play.rolled[0].when) - play.expectedDelays[k]) < 1e-6, 'rolled note ' + k + ' is late by its roll delay (' + (call.when - play.rolled[0].when) + ' vs ' + play.expectedDelays[k] + ')');
+    assert.ok(Math.abs((call.when + call.dur) - (play.rolled[0].when + play.rolled[0].dur)) < 1e-6, 'every rolled note ends together');
+  });
+  assert.ok(play.expectedDelays[2] > 0 && play.rolled[0].dur > 0, 'the roll actually spreads the chord');
+  assert.deepEqual(play.rolledByButton.map(call => call.str), play.expectedStrs, 'the play button rolls too');
+
+  // 5. 롤 조각이 든 칸은 조각 폭이 넓어진다(CELL_ROLL_ROOM): 같은 글자 폭의 롤 칸이 롤 아닌 칸보다 좁지 않다.
+  const widths = await client.evaluate(`(function(){
+    var t = __tiTest;
+    document.getElementById('tiNewBtn').click();
+    function put(c, strs){ strs.forEach(function(str){ t.pos(0,c,0,str).click(); t.fret(str, 0).click(); }); }
+    put(0, [6, 1]); put(1, [6, 1]);
+    function cellWidth(c){ return document.querySelectorAll('#tiMeasures .ti-measure')[0].querySelectorAll('.ti-cell')[c].getBoundingClientRect().width; }
+    var before = [cellWidth(0), cellWidth(1)];
+    t.pos(0,1,0,6).click();
+    t.press('\`', 'Backquote');
+    return { before: before, after: [cellWidth(0), cellWidth(1)] };
+  })()`);
+  assert.equal(widths.before[0], widths.before[1], 'two cells with the same labels start equally wide: ' + JSON.stringify(widths));
+  assert.ok(widths.after[0] <= widths.before[0], 'the plain cell does not grow');
+  assert.ok(widths.after[1] >= widths.before[1], 'the rolled cell does not shrink');
+
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the roll input steps run without console errors');
+  client.dialogHandler = null;
+  process.stdout.write('Browser checkpoint: roll in score input (card wave geometry, button, ` key in both modes, rolled playback) passed\n');
+}
+
 async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=roll-2')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=roll-3')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -4832,6 +5062,7 @@ async function main() {
     await testNaturalHarmonics(cdp, httpPort);
     await testSlurLabels(cdp, httpPort);
     await testRollMarks(cdp, httpPort);
+    await testRollInput(cdp, httpPort);
 
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');

@@ -2,6 +2,22 @@ var SLUR_GAIN = 0.6; // 슬러(해머링·풀링) 음은 오른손으로 다시 
 var ROLL_STEP = 0.04; // 롤(~) 구성음 사이 간격(초)
 var ROLL_MAX_SHARE = 0.5; // 롤 전체 퍼짐이 그 조각 길이에서 차지할 수 있는 몫
 
+// 롤(~): 줄 번호가 큰 음부터 간격을 두고 늦춰 친다(Docs/score-format.md 롤). notes는 { str, midi }를 가진 객체 배열.
+// 롤 순서(줄 번호 큰 것 먼저, 같거나 없으면 midi 작은 것, 그다음 원래 순서)대로 [{ note, delay }]를 돌려준다. 음이 둘 미만이면 원래 순서에 delay 0.
+function rollDelays(notes, duration){
+  var list = (notes || []).slice();
+  if (list.length < 2) return list.map(function(note){ return { note:note, delay:0 }; });
+  var ordered = list.map(function(note, order){ return { note:note, order:order }; }).sort(function(a, b){
+    var sa = Number.isFinite(Number(a.note.str)) ? Number(a.note.str) : null;
+    var sb = Number.isFinite(Number(b.note.str)) ? Number(b.note.str) : null;
+    if (sa != null && sb != null && sa !== sb) return sb - sa;
+    if (a.note.midi !== b.note.midi) return a.note.midi - b.note.midi;
+    return a.order - b.order;
+  }).map(function(item){ return item.note; });
+  var step = Math.min(ROLL_STEP, duration * ROLL_MAX_SHARE / (ordered.length - 1));
+  return ordered.map(function(note, order){ return { note:note, delay:order * step }; });
+}
+
 function guideParts(beat){
   return beat && Array.isArray(beat.subNotes) && beat.subNotes.length ? beat.subNotes : (beat ? [beat] : []);
 }
@@ -55,20 +71,13 @@ function getBeatGuideEvents(beat, options){
     }
     if (kind !== 'note' || duration <= 0) return;
     var playNotes = guideNotes(noteSource).filter(function(note){ return note && note.midi; });
-    // 롤(~): 줄 번호가 큰 음부터 간격을 두고 늦춰 친다(Docs/score-format.md 롤). 끝 시각은 그대로.
-    var rollStep = 0;
-    if (allowRoll && noteSource.rolled && playNotes.length >= 2){
-      playNotes = playNotes.map(function(note, order){ return { note:note, order:order }; }).sort(function(a, b){
-        var sa = Number.isFinite(Number(a.note.str)) ? Number(a.note.str) : null;
-        var sb = Number.isFinite(Number(b.note.str)) ? Number(b.note.str) : null;
-        if (sa != null && sb != null && sa !== sb) return sb - sa;
-        if (a.note.midi !== b.note.midi) return a.note.midi - b.note.midi;
-        return a.order - b.order;
-      }).map(function(item){ return item.note; });
-      rollStep = Math.min(ROLL_STEP, duration * ROLL_MAX_SHARE / (playNotes.length - 1));
-    }
-    playNotes.forEach(function(note, noteOrder){
-      var delay = noteOrder * rollStep;
+    // 롤(~)이면 rollDelays 순서와 간격으로 친다. 끝 시각은 그대로.
+    var timed = allowRoll && noteSource.rolled
+      ? rollDelays(playNotes, duration)
+      : playNotes.map(function(note){ return { note:note, delay:0 }; });
+    timed.forEach(function(item){
+      var note = item.note;
+      var delay = item.delay;
       var hasChordComponents = Array.isArray(noteSource.chordNotes) && noteSource.chordNotes.length > 0;
       var articulation = hasChordComponents
         ? (note.articulation || null)

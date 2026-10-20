@@ -418,6 +418,66 @@ test('roll: ~ is written only while the part has two or more notes, and the flag
   assert.deepEqual(ti.scoreToDoc({ beats: 4, raw: ti.docScoreText(doc) }).error, undefined);
 });
 
+test('roll: slotRollShown follows the rule that the export uses', function(){
+  const doc = fresh();
+  const slot = doc.measures[0].cells[0].slots[0];
+  assert.equal(ti.slotRollShown(null), false);
+  assert.equal(ti.slotRollShown(slot), false, 'an empty slot');
+  put(doc, pos(0), [[6, 0], [2, 0]]);
+  assert.equal(ti.slotRollShown(slot), false, 'two notes without the flag');
+  slot.roll = true;
+  assert.equal(ti.slotRollShown(slot), true);
+  assert.equal(tokens(doc)[0][0].charAt(0), '~', 'the export writes ~ exactly when slotRollShown is true');
+  ti.removeNote(doc, pos(0), 2);
+  assert.equal(ti.slotRollShown(slot), false, 'one note');
+  assert.equal(tokens(doc)[0][0].charAt(0) === '~', false);
+  ti.setNote(doc, pos(0), 2, 0);
+  slot.rest = true;
+  assert.equal(ti.slotRollShown(slot), false, 'a rest never shows a roll');
+});
+
+test('roll: setRoll turns the roll on and off for a chord and refuses one note or a rest', function(){
+  const doc = fresh();
+  put(doc, pos(0), [[6, 0], [2, 0], [1, 0]]);
+  const slot = doc.measures[0].cells[0].slots[0];
+  assert.deepEqual(ti.setRoll(doc, pos(0), true), { ok: true });
+  assert.equal(slot.roll, true);
+  assert.equal(ti.slotRollShown(slot), true);
+  assert.equal(tokens(doc)[0][0].charAt(0), '~');
+  assert.deepEqual(ti.setRoll(doc, pos(0), false), { ok: true });
+  assert.equal(slot.roll, false);
+  assert.equal(tokens(doc)[0][0].charAt(0) === '~', false);
+
+  // 한 음
+  put(doc, pos(0, 1), [[3, 0]]);
+  const before = JSON.stringify(doc);
+  const single = ti.setRoll(doc, pos(0, 1), true);
+  assert.equal(single.ok, false);
+  assert.equal(single.error, ti.ROLL_ERROR);
+  assert.equal(JSON.stringify(doc), before, 'the document is untouched when the roll is refused');
+  // 빈 조각, 쉼
+  assert.equal(ti.setRoll(doc, pos(0, 2), true).ok, false);
+  ti.setRest(doc, pos(0, 3), true);
+  const restBefore = JSON.stringify(doc);
+  const rest = ti.setRoll(doc, pos(0, 3), true);
+  assert.deepEqual([rest.ok, rest.error], [false, ti.ROLL_ERROR]);
+  assert.equal(JSON.stringify(doc), restBefore);
+  // 끄기는 조건 없이 된다
+  assert.deepEqual(ti.setRoll(doc, pos(0, 1), false), { ok: true });
+  assert.throws(() => ti.setRoll(doc, pos(9), true), /올바르지 않은 위치/);
+});
+
+test('roll: setRoll round-trips through the exported text', function(){
+  const doc = fresh();
+  put(doc, pos(0), [[6, 0], [2, 0], [1, 0]]);
+  ti.setRoll(doc, pos(0), true);
+  const text = ti.docScoreText(doc);
+  const back = ti.scoreToDoc({ beats: 4, raw: text });
+  assert.equal(back.error, undefined);
+  assert.equal(back.doc.measures[0].cells[0].slots[0].roll, true);
+  assert.equal(ti.docScoreText(back.doc), text);
+});
+
 test('roll: setRest(true) and clearSlot turn the roll off, setRest(false) leaves it', function(){
   const doc = fresh();
   put(doc, pos(0), [[6, 0], [1, 0]]);
