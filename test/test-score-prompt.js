@@ -113,7 +113,7 @@ assert.match(tabResult.measures[2], /꾸밈음 생략/);
 assert.equal(staffResult.measures.length, 4);
 staffResult.measures.forEach(function(line){ assert.doesNotMatch(line.split('|')[0], /@/); });
 assert.match(staffResult.measures[0], /못갖춘마디/);
-assert.match(staffResult.measures[1], /"A · /);
+assert.match(staffResult.measures[1], / \| "A"$/, 'section text is the whole bar memo: the long-note memo is in the description only');
 assert.match(staffResult.measures[3], /페르마타/);
 // 예시 3: D.S. al Coda 가 펼쳐진다(1 2 3 4 2 3 5)
 assert.equal(jumpResult.measures.length, 7);
@@ -216,13 +216,13 @@ const REQUIRED = [
   ['\\title', 'title'], ['\\notices', 'notices'], [' · ', 'notices joiner'], ['\\tempo (', 'tempo'], ['4분음표 기준', 'tempo is quarter based'], ['\\tempo (64)', 'default tempo'], ['템포 표기 없음(64 가정)', 'default tempo note'],
   ['\\ts (', 'time signature'], ['\\capo', 'capo'], ['\\tuning', 'tuning'],
   // 3 마디
-  ['`|`로 나눠', 'bars split by |'], ['\\ro', 'repeat open'], ['\\rc', 'repeat close'], ['\\ae', 'alternate ending'], ['\\ac', 'anacrusis'], ['\\section', 'section'], ['\\jump', 'jump'], ['펼치지 말고', 'do not expand repeats'], ['(with Repeat)·(반복 있음)', 'D.S. with Repeat'],
+  ['`|`로 나눠', 'bars split by |'], ['\\ro', 'repeat open'], ['\\rc', 'repeat close'], ['\\ae', 'alternate ending'], ['\\ac', 'anacrusis'], ['\\section', 'section'], ['\\jump', 'jump'], ['펼치지 말고', 'do not expand repeats'], ['(with Repeat)·(반복 있음)', 'D.S. with Repeat'], ['세뇨 옆에 적혀 있어도', 'with Repeat beside the segno goes on the D.S. bar'], ['al Coda·al Fine이 인쇄되지 않아도', 'D.S. without al Coda still jumps to the coda'],
   // 4 음
   ['프렛.줄', 'fret.string'], ['1번 줄이 가장 높은 줄', 'string 1 is the highest'], ['음이름+옥타브', 'note name plus octave'], ['한 옥타브 높게', 'guitar staff is written an octave up'], ['옥타브 숫자에서 1을 빼', 'minus one octave'], ['`#`·`b`', 'accidentals'], ['추측해서 만들지 마', 'do not guess strings'], ['섞지 마', 'do not mix fretted and named notes'],
   // 5 길이·묶음
   ['`.1` 온음표', 'whole note'], ['`.32` 32분음표', '32nd note'], ['`{d}`', 'dotted'], ['`{tu 3}`', 'triplet'], ['`{t}`', 'tie'], ['`\\voice`', 'voices'], ['첫째 성부에만', 'marks go to the first voice'],
   // 6 주법
-  ['`{h}`', 'hammer-on/pull-off'], ['`{sl}`', 'slide'], ['`{nh}`', 'natural harmonic'], ['`{ad}`', 'roll down arrow'], ['`{au}`', 'roll up arrow'], ['`{gr}`', 'grace note'], ['`{fermata medium}`', 'fermata'],
+  ['`{h}`', 'hammer-on/pull-off'], ['`{sl}`', 'slide'], ['`{nh}`', 'natural harmonic'], ['`{ad}`', 'roll down arrow'], ['두 성부의 그 박에 모두', 'a roll across two voices goes on both voices'], ['`{au}`', 'roll up arrow'], ['`{gr}`', 'grace note'], ['`{fermata medium}`', 'fermata'],
   ['`{lf 2}`~`{lf 5}`', 'left hand fingers'], ['`{rf 1}`~`{rf 4}`', 'right hand fingers'], ['`{ch "Am"}`', 'chord name'], ['글리산도 생략', 'glissando without a start note'], ['스트로크', 'strokes'],
   // 7 메모
   ['`{txt "…"}`', 'text memo'], ['`{txt "확인: 이유"}`', 'uncertain memo'], ['아포얀도 표시는 옮기지 마', 'no apoyando']

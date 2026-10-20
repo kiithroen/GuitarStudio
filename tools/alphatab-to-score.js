@@ -538,8 +538,9 @@ function convert(score, opts){
         if (beat.hasWhammyBar) memo(MEMO.whammy);
         if (beat.isTremolo) memo(MEMO.tremolo);
         if (beat.vibrato !== model.VibratoType.None) memo(MEMO.vibrato);
-        const roll = beat.notes.length > 1 && (beat.brushType === model.BrushType.ArpeggioDown || beat.brushType === model.BrushType.ArpeggioUp);
-        if (beat.notes.length > 1 && beat.brushType === model.BrushType.ArpeggioUp) memo(MEMO.arpeggioUp);
+        // 롤은 박마다가 아니라 합친 조각에서 음이 둘 이상일 때 붙인다(두 성부에 걸친 롤은 박마다 음이 하나다).
+        const roll = beat.brushType === model.BrushType.ArpeggioDown || beat.brushType === model.BrushType.ArpeggioUp;
+        if (beat.brushType === model.BrushType.ArpeggioUp) memo(MEMO.arpeggioUp);
         if (beat.notes.length > 1 && (beat.brushType === model.BrushType.BrushUp || beat.brushType === model.BrushType.BrushDown)) memo(MEMO.stroke);
         beat.notes.forEach(function(note){
           if (note.isDead){ memo(MEMO.dead); return; }
@@ -620,6 +621,7 @@ function convert(score, opts){
   const seen = new Map();
   const lines = [];
   let carry = 0;
+  let endChord = '';
   let lastPiece = null;
 
   order.forEach(function(index, position){
@@ -757,6 +759,10 @@ function convert(score, opts){
         const cellNumber = Math.min(grid.cells, Math.max(0, Math.floor((entry.start + TOLERANCE_TICKS) / grid.slotTicks))) + 1;
         memos.push(cellNumber + '박부터 ' + entry.name);
       });
+      endChord = collected.chords[collected.chords.length - 1].name;
+    } else if (isValidChordName(endChord)){
+      // 교본은 같은 코드가 이어지는 마디에 코드 이름을 다시 적지 않는데, 앱의 코드 카드는 마디 머리표로 그려서 비우면 카드가 끊긴다.
+      chordName = endChord;
     }
 
     // 섹션(리허설 기호)은 그 마디 메모의 맨 앞이다. 펼친 사본마다 같다.
@@ -764,15 +770,11 @@ function convert(score, opts){
     lines.push({ chord: chordName, cells: cellTexts, texts: section ? [section].concat(collected.texts) : collected.texts, memos: memos, overlap: overlap, hasNotes: collected.records.length > 0 });
   });
 
-  // 길이가 다른 음의 겹침 메모는 곡 전체면 설명에 한 번만 적는다.
-  const noteBars = lines.filter(function(line){ return line.hasNotes; });
-  const overlapBars = noteBars.filter(function(line){ return line.overlap; });
-  const overlapForWholeSong = overlapBars.length >= 2 && overlapBars.length === noteBars.length;
-  if (overlapForWholeSong) descriptionParts.push(MEMO.overlap);
+  // 길이가 다른 음의 겹침 메모는 한 마디라도 해당하면 설명에 한 번만 적는다. 두 성부 곡은 거의 모든 마디가 해당해 마디 메모가 다른 메모를 가린다.
+  if (lines.some(function(line){ return line.hasNotes && line.overlap; })) descriptionParts.push(MEMO.overlap);
 
   const measureTexts = lines.map(function(line){
     const memos = line.texts.concat(line.memos);
-    if (line.overlap && !overlapForWholeSong) memos.push(MEMO.overlap);
     return '[' + line.chord + '] ' + line.cells.join(' ') + (memos.length ? ' | ' + JSON.stringify(memos.join(' · ')) : '');
   });
 

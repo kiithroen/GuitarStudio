@@ -507,7 +507,8 @@ test('rest start: a note that ends inside a cell with nothing else sounding spli
   assert.deepEqual(out.measures, ['[-] ' + [n(1, 0) + '/r', n(2, 0), n(3, 0) + '/r', n(4, 0)].join(' ')]);
   const held = convertTex('\\title "H" \\tempo 80 \\ts (4 4)\n\\track "Guitar" \\staff {tabs} \\tuning (E4 B3 G3 D3 A2 E2)\n\\voice\n0.6.1 |\n\\voice\n:8 0.1 r 0.2 r 0.3 r 0.4 r |\n');
   assert.equal(held.ok, true);
-  assert.deepEqual(held.measures, ['[-] ' + [n(6, 0) + '+' + n(1, 0), n(2, 0), n(3, 0), n(4, 0)].join(' ') + ' | "긴 음은 시작만 적음"']);
+  assert.deepEqual(held.measures, ['[-] ' + [n(6, 0) + '+' + n(1, 0), n(2, 0), n(3, 0), n(4, 0)].join(' ')]);
+  assert.match(held.description, /긴 음은 시작만 적음/);
 });
 
 test('refusals: unsupported meter, non-standard tuning, meter change, non-guitar track, bad track number', function(){
@@ -593,16 +594,54 @@ test('chord names: first chord in the bar, unsupported names become [-] with a n
   assert.equal(back.measures[1].indexOf(converter.CHORD_NAME_PAD), -1);
 });
 
-test('voices: the long-note memo goes to the bar, or once to the description when every bar has it', function(){
+test('chord names: a bar without a chord takes the chord that sounded at the end of the previous bar in play order, with no memo', function(){
+  const bar = function(chords){
+    const beats = ['0.1.4', '0.2.4', '0.3.4', '0.4.4'];
+    Object.keys(chords).forEach(function(index){ beats[index] += ' {ch "' + chords[index] + '"}'; });
+    return beats.join(' ') + ' |\n';
+  };
+  const out = convertTex('\\title "Carry" \\tempo 80 \\ts (4 4)\n' + bar({}) + bar({ 0: 'Am' }) + bar({}) + bar({ 0: 'C', 2: 'G7' }) + bar({}) + bar({}) + bar({ 0: 'N.C.' }) + bar({}));
+  assert.equal(out.ok, true);
+  const heads = out.measures.map(function(line){ return line.split(' ')[0]; });
+  assert.deepEqual(heads, ['[-]', '[Am]', '[Am]', '[C]', '[G7]', '[G7]', '[-]', '[-]']);
+  assert.doesNotMatch(out.measures[2], /\|/, 'a carried chord has no memo');
+  assert.match(out.measures[3], /"3박부터 G7"$/, 'a change inside the bar keeps its memo');
+  assert.doesNotMatch(out.measures[4], /\|/);
+  assert.match(out.measures[6], /코드 이름 변환 불가: N\.C\./);
+  assert.doesNotMatch(out.measures[7], /\|/, 'an unusable carried name leaves [-] with no memo');
+});
+
+test('voices: the long-note memo is written once in the description when only some bars have it, and never in a bar memo', function(){
   const tex = '\\title "Per Bar" \\tempo 80 \\ts (4 4)\n\\track "Guitar" \\staff {tabs} \\tuning (E4 B3 G3 D3 A2 E2)\n\\voice\n0.6.1 | 0.6.4 0.6.4 0.6.4 0.6.4\n\\voice\n:4 0.1 1.1 3.1 1.1 | :4 0.1 1.1 3.1 1.1\n';
   const out = convertTex(tex);
   assert.equal(out.ok, true);
-  assert.equal(out.measures[0], '[-] ' + [n(6, 0) + '+' + n(1, 0), n(1, 1), n(1, 3), n(1, 1)].join(' ') + ' | "긴 음은 시작만 적음"');
+  assert.equal(out.measures[0], '[-] ' + [n(6, 0) + '+' + n(1, 0), n(1, 1), n(1, 3), n(1, 1)].join(' '));
   assert.equal(out.measures[1], '[-] ' + [n(6, 0) + '+' + n(1, 0), n(6, 0) + '+' + n(1, 1), n(6, 0) + '+' + n(1, 3), n(6, 0) + '+' + n(1, 1)].join(' '));
-  assert.doesNotMatch(out.description, /긴 음은 시작만 적음/);
+  // 한 마디라도 해당하면 설명에 한 번만 적고 마디 메모에는 달지 않는다.
+  assert.equal(out.description.split('긴 음은 시작만 적음').length - 1, 1);
+  out.measures.forEach(function(line){ assert.doesNotMatch(line, /긴 음/); });
+  const noOverlap = convertTex('\\title "N" \\tempo 80 \\ts (4 4)\n:4 0.1 1.1 3.1 1.1 | :4 0.1 1.1 3.1 1.1\n');
+  assert.equal(noOverlap.ok, true);
+  assert.doesNotMatch(noOverlap.description, /긴 음/);
   const whole = tool.convertScore(importCleanTex(readFixture('two-voices.tex'), 'two-voices'), { sourceName: 'two-voices.tex' });
   whole.measures.forEach(function(line){ assert.doesNotMatch(line, /긴 음/); });
   assert.match(whole.description, /긴 음은 시작만 적음/);
+});
+
+test('roll across two voices: one note per voice with {ad} gets the roll mark, and so does a roll on one voice only (judged on the merged piece)', function(){
+  const head = '\\title "Roll" \\tempo 60 \\ts (4 4)\n\\track "Guitar" \\staff {tabs} \\tuning (E4 B3 G3 D3 A2 E2)\n';
+  const firstCell = function(out){ return out.measures[0].split(' | ')[0].replace(/^\[-\] /, '').split(' ')[0]; };
+  const chord = [n(6, 0), n(1, 4)].join('+');
+  const both = convertTex(head + '\\voice\n4.1.1 {ad}\n\\voice\n0.6.1 {ad}\n');
+  assert.equal(both.ok, true);
+  assert.equal(firstCell(both), '~' + chord);
+  const oneVoice = convertTex(head + '\\voice\n4.1.1 {ad}\n\\voice\n0.6.1\n');
+  assert.equal(oneVoice.ok, true);
+  assert.equal(firstCell(oneVoice), '~' + chord);
+  const plain = convertTex(head + '\\voice\n4.1.1\n\\voice\n0.6.1\n');
+  assert.equal(firstCell(plain), chord);
+  const single = convertTex(head + '\\voice\n4.1.1 {ad}\n');
+  assert.equal(firstCell(single), n(1, 4));
 });
 
 test('harmonics and effects: a fret outside the natural-harmonic table stays a plain note with a note, bends are noted once per bar', function(){
