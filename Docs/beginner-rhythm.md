@@ -39,6 +39,7 @@ note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}`, rest
 `scheduleBeatGuide`는 실음 MIDI에 카포를 한 번 적용한다. 구조화 악보 이벤트는 `event.duration`을 악보상 길이로 유지하면서 `playGuitarNote(..., {naturalDecay:true,hardStopAt})`에 전달하고, 음가 끝에서 note-off를 강제하지 않는다. KS는 기존 버퍼가 가진 자연 감쇠를 따르고, classic은 기존 파형·배음·필터·어택을 보존하면서 공통 `getNaturalDecayProfile`의 음고·현 기반 감쇠 envelope를 사용한다. 그래서 실제 여운 길이는 악보 음가와 다를 수 있다. `exactDuration` API는 내부 테스트나 명시 호출에 남아 있지만 구조화 가이드는 사용하지 않는다.
 
 - 콘서트홀 wet gain은 `CONCERT_HALL_WET_GAIN` 단일 상수를 초기 ON 라우팅과 실시간 ON 전환에서 함께 쓴다. OFF는 0이고 dry gain과 전환 시간은 기존 값을 유지한다. 이 값은 wet 잔향만 조절하며 음원·명시 길이·IR을 바꾸지 않는다.
+- `appState.guitarVol`(연주음 슬라이더)은 기타 소리 전부가 지나는 `guitarBus` gain에 곱해진다(`updateGuitarVolume`). 클릭 버스와 마스터 compressor 설정은 바꾸지 않는다.
 - 공유 마스터 compressor의 threshold는 여러 현이 동시에 날 때 생기는 순간 피크를 위한 여유를 두도록 낮춰 뒀다(`src/audio.js` compressor 생성부). ratio·knee·attack·release와 각 버스 gain은 기존 설정을 유지한다.
 - classic 음원의 저음 명료도를 위해 저음 권선현(`isBass`)에서만 필터 attack·decay cutoff에 하한 `CLASSIC_BASS_ATTACK_CUTOFF`·`CLASSIC_BASS_DECAY_CUTOFF`를 둔다. 기존 주파수 배수 계산값이 더 높으면 그 값을 유지하며, 고음과 KS 음원은 바꾸지 않는다.
 

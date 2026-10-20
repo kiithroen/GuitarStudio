@@ -73,6 +73,20 @@
     return buf;
   }
 
+  function guitarVolumeGain(){
+    var v = appState.guitarVol;
+    return typeof v === 'number' && isFinite(v) && v >= 0 && v <= 1 ? v : 1.0;
+  }
+
+  // 연주음 슬라이더 값을 기타 버스 gain 에 짧은 램프로 반영 (콘서트홀 전환과 같은 40ms)
+  function updateGuitarVolume(){
+    if (!actx || !guitarBus || !guitarBus.gain) return;
+    var now = actx.currentTime;
+    guitarBus.gain.cancelScheduledValues(now);
+    guitarBus.gain.setValueAtTime(guitarBus.gain.value, now);
+    guitarBus.gain.linearRampToValueAtTime(guitarVolumeGain(), now + 0.04);
+  }
+
   function ensureAudioCtx(){
     if (!actx){
       var AC = window.AudioContext || window.webkitAudioContext;
@@ -97,8 +111,9 @@
       clickBus = actx.createGain();
       clickBus.gain.value = 1.0;
 
+      // 기타 소리 전부가 지나는 버스: 연주음 슬라이더(appState.guitarVol)가 이 gain 에 곱해진다. 클릭 버스는 영향받지 않음
       guitarBus = actx.createGain();
-      guitarBus.gain.value = 1.0;
+      guitarBus.gain.value = guitarVolumeGain();
 
       dryGainNode = actx.createGain();
       dryGainNode.gain.value = 0.88;

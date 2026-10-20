@@ -81,7 +81,7 @@ function makeContext(capo, acousticFx){
     console
   };
   vm.createContext(context);
-  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, renderKsString, getNaturalDecayProfile, legacyToneDuration, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
+  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, renderKsString, getNaturalDecayProfile, legacyToneDuration, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, updateGuitarVolume, scheduleMetronomeClick, getBuses: function(){ return { guitarBus, clickBus }; }, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
   return { context, oscillators, filters, compressors, gains };
 }
 
@@ -375,6 +375,60 @@ test('concert hall wet gain initializes and toggles through the shared routing p
   const offNodes = disabled.context.__audioHooks.getFxNodes();
   assert.equal(offNodes.wetGainNode.gain.value, 0, 'disabled AudioContext starts with wet muted');
   assert.equal(offNodes.dryGainNode.gain.value, 0.88, 'disabled AudioContext keeps dry gain');
+});
+
+function recordingContext(patch){
+  const made = makeContext(0, true);
+  Object.assign(made.context.appState, patch);
+  const createGain = made.context.actx.createGain;
+  made.context.actx.createGain = function(){ const node = createGain.call(this); node.connect = function(target){ this.target = target; }; return node; };
+  return made;
+}
+
+test('guitar volume scales only the guitar bus, every guitar voice goes through it, and the click bus is untouched', function(){
+  const full = recordingContext({ guitarVol: 1 });
+  full.context.__audioHooks.ensureAudioCtx();
+  const half = recordingContext({ guitarVol: 0.5 });
+  half.context.__audioHooks.ensureAudioCtx();
+  const baseGain = full.context.__audioHooks.getBuses().guitarBus.gain.value;
+  assert.equal(baseGain, 1, 'full guitar volume leaves the guitar bus at its base gain');
+  assert.equal(half.context.__audioHooks.getBuses().guitarBus.gain.value, baseGain * 0.5, 'a context created with guitarVol 0.5 starts at half');
+  assert.equal(half.context.__audioHooks.getBuses().clickBus.gain.value, 1, 'the click bus ignores guitarVol');
+
+  const { context } = full;
+  const buses = context.__audioHooks.getBuses();
+  context.appState.guitarVol = 0.5;
+  context.__audioHooks.updateGuitarVolume();
+  assert.equal(buses.guitarBus.gain.last[0], 'linear', 'live change ramps the guitar bus');
+  assert.equal(buses.guitarBus.gain.last[1], baseGain * 0.5, 'the ramp ends at half of the base gain');
+  assert.equal(buses.guitarBus.gain.last[2], 0.04, 'the ramp uses the same 40ms as the concert hall switch');
+  assert.equal(buses.clickBus.gain.events.length, 0, 'the click bus gain is never scheduled by guitar volume');
+  context.appState.guitarVol = 0;
+  context.__audioHooks.updateGuitarVolume();
+  assert.equal(buses.guitarBus.gain.last[1], 0, 'zero silences the guitar bus');
+
+  context.__audioHooks.replaceGetKsBuffer(() => ({ duration:4 }));
+  context.playGuitarNote(64, 0.5, 1, 1, null, 1, { exactDuration:true });
+  assert.equal(context.trackedGuideVoices[0].damp.target, buses.guitarBus, 'a plucked voice ends in the guitar bus');
+  context.__audioHooks.addSympatheticResonance(64, 1, 1, 2);
+  const symp = Object.values(context.stringVoices).flat().filter(v => v.symp);
+  assert.ok(symp.length > 0 && symp.every(v => v.damp.target === buses.guitarBus), 'sympathetic voices end in the guitar bus');
+});
+
+test('click gain is volume times the click amplitude and reaches twice the level at vol 2', function(){
+  function clickPeak(vol, accent, sub){
+    const made = recordingContext({ vol });
+    made.context.__audioHooks.scheduleMetronomeClick(1, accent, sub);
+    const clickGain = made.gains[made.gains.length - 1];
+    assert.equal(clickGain.target, made.context.__audioHooks.getBuses().clickBus, 'the click ends in the click bus');
+    return clickGain.gain.events.find(e => e[0] === 'linear')[1];
+  }
+  for (const [accent, sub] of [[true, false], [false, false], [false, true]]){
+    const base = clickPeak(1, accent, sub);
+    assert.ok(base > 0, 'click peak is positive');
+    assert.ok(Math.abs(clickPeak(2, accent, sub) - base * 2) < 1e-12, 'vol 2 doubles the click gain');
+    assert.ok(Math.abs(clickPeak(0.5, accent, sub) - base * 0.5) < 1e-12, 'levels at or below 100% scale as before');
+  }
 });
 
 test('stopGuitarNotes cuts direct and sympathetic voices at the requested time only', function(){

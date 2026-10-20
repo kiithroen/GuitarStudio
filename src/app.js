@@ -1671,6 +1671,7 @@ function curCapo(){
     }
     $('#beatsSelect').value = String(appState.beats);
     $('#volRange').value = Math.round(appState.vol * 100);
+    $('#guitarVolRange').value = Math.round(appState.guitarVol * 100);
     $('#clickModeSelect').value = appState.clickMode;
     $('#loopEnable').checked = appState.loopEnable;
     $('#speedTrainerChk').checked = appState.speedTrainer;
@@ -1730,6 +1731,12 @@ function curCapo(){
 
   $('#volRange').addEventListener('input', function(e){
     appState.vol = Number(e.target.value) / 100;
+    saveAppState();
+  });
+
+  $('#guitarVolRange').addEventListener('input', function(e){
+    appState.guitarVol = Number(e.target.value) / 100;
+    updateGuitarVolume();
     saveAppState();
   });
 

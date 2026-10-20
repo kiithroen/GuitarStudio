@@ -845,6 +845,91 @@ async function testConcertHallRouting(client){
   process.stdout.write('Browser checkpoint: concert hall routing ON/OFF passed\n');
 }
 
+// 클릭음(0~200%)·연주음(0~100%) 슬라이더: 연주음은 기타 버스만 낮추고 클릭 버스는 그대로, 콘솔 행은 900px·1280px 에서 가로로 넘치지 않는다
+async function testVolumeSliders(client){
+  const errorsBefore = client.consoleErrors.length;
+  const attrs = await client.evaluate(`(function(){
+    var click = document.getElementById('volRange'), guitar = document.getElementById('guitarVolRange');
+    return { click:!!click && [click.min, click.max, click.step], guitar:!!guitar && [guitar.min, guitar.max, guitar.step, guitar.value],
+      guitarTitle:guitar ? guitar.parentElement.title : '' };
+  })()`);
+  assert.deepEqual(attrs.click, ['0', '200', '5'], 'the click slider goes from 0 to 200 percent');
+  assert.deepEqual(attrs.guitar, ['0', '100', '5', '100'], 'the guitar slider goes from 0 to 100 percent and starts at 100');
+  assert.match(attrs.guitarTitle, /메트로놈 클릭이 더 잘 들립니다/, 'the guitar slider explains why to lower it');
+
+  const routing = await client.evaluate(`(async function(){
+    var saved = { vol:appState.vol, guitarVol:appState.guitarVol };
+    var wait = function(ms){ return new Promise(function(resolve){ setTimeout(resolve, ms); }); };
+    try {
+      ensureAudioCtx();
+      var guitar = document.getElementById('guitarVolRange'), click = document.getElementById('volRange');
+      var baseline = guitarBus.gain.value;
+      guitar.value = '50'; guitar.dispatchEvent(new Event('input', { bubbles:true }));
+      await wait(150);
+      var half = { state:appState.guitarVol, bus:guitarBus.gain.value, click:clickBus.gain.value, saved:JSON.parse(localStorage.getItem('gs.state')).guitarVol };
+      guitar.value = '100'; guitar.dispatchEvent(new Event('input', { bubbles:true }));
+      await wait(150);
+      var full = { state:appState.guitarVol, bus:guitarBus.gain.value };
+      click.value = '200'; click.dispatchEvent(new Event('input', { bubbles:true }));
+      var doubled = { state:appState.vol, saved:JSON.parse(localStorage.getItem('gs.state')).vol, shown:click.value };
+      return { baseline:baseline, half:half, full:full, doubled:doubled };
+    } finally {
+      appState.vol = saved.vol; appState.guitarVol = saved.guitarVol;
+      updateGuitarVolume(); syncConsoleUI(); saveAppState();
+    }
+  })()`);
+  assert.ok(Math.abs(routing.baseline - 1) < 0.001, 'the guitar bus starts at its base gain');
+  assert.equal(routing.half.state, 0.5, 'the guitar slider sets appState.guitarVol');
+  assert.ok(Math.abs(routing.half.bus - routing.baseline * 0.5) < 0.001, 'the live guitar bus gain ends at half after the ramp (' + routing.half.bus + ')');
+  assert.equal(routing.half.click, 1, 'the click bus gain is not touched by the guitar slider');
+  assert.equal(routing.half.saved, 0.5, 'the guitar volume is saved in the app state');
+  assert.ok(Math.abs(routing.full.bus - routing.baseline) < 0.001, 'moving the slider back restores the guitar bus gain');
+  assert.deepEqual(routing.doubled, { state:2, saved:2, shown:'200' }, 'the click slider reaches 200 percent and saves it');
+
+  const screenshotDir = path.join(root, 'test-artifacts');
+  fs.mkdirSync(screenshotDir, { recursive:true });
+  await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+  for (const width of [900, 1280]){
+    await client.send('Emulation.setDeviceMetricsOverride', { width, height:1000, deviceScaleFactor:1, mobile:false });
+    await new Promise(resolve => setTimeout(resolve, 150));
+    const row = await client.evaluate(`(function(){
+      var pickRow = document.getElementById('beatsSelect').closest('.ctrl-row');
+      var volumeRow = document.getElementById('volRange').closest('.ctrl-row');
+      var box = pickRow.parentElement;
+      box.scrollIntoView({ block:'center' });
+      var b = box.getBoundingClientRect();
+      function probe(rowEl){
+        var items = Array.prototype.map.call(rowEl.children, function(el){ var c = el.getBoundingClientRect(); return { id:(el.querySelector('input,select') || el).id, left:c.left, right:c.right, top:c.top, height:c.height }; });
+        var tops = [];
+        items.forEach(function(item){ var t = item.top + item.height / 2; if (!tops.some(function(v){ return Math.abs(v - t) < 10; })) tops.push(t); });
+        return { ids:items.map(function(item){ return item.id; }), scroll:rowEl.scrollWidth, client:rowEl.clientWidth, items:items, lines:tops.length };
+      }
+      return { sameBox:volumeRow.parentElement === box, volumeAfterPick:pickRow.nextElementSibling === volumeRow,
+        pick:probe(pickRow), volume:probe(volumeRow), boxRight:b.right, boxLeft:b.left,
+        page:document.documentElement.scrollWidth, inner:innerWidth,
+        clip:{ x:Math.max(0, b.left - 8), y:Math.max(0, b.top - 8), width:b.width + 16, height:b.height + 16 } };
+    })()`);
+    assert.equal(row.sameBox && row.volumeAfterPick, true, width + 'px the volume row follows the pick row in the same box');
+    assert.deepEqual(row.pick.ids, ['beatsSelect', 'clickModeSelect'], width + 'px the first console row holds the beat and click mode selects');
+    assert.deepEqual(row.volume.ids, ['volRange', 'guitarVolRange'], width + 'px the second console row holds the two volume sliders');
+    for (const name of ['pick', 'volume']){
+      const part = row[name];
+      assert.equal(part.lines, 1, width + 'px the ' + name + ' console row stays on one line');
+      assert.ok(part.scroll <= part.client + 1, width + 'px the ' + name + ' console row has no horizontal overflow (' + part.scroll + ' > ' + part.client + ')');
+      for (const item of part.items) assert.ok(item.right <= row.boxRight + 1 && item.left >= row.boxLeft - 1, width + 'px console item #' + item.id + ' stays inside its box');
+    }
+    assert.ok(row.page <= row.inner + 1, width + 'px page has no horizontal overflow (' + row.page + ' > ' + row.inner + ')');
+    const shot = await client.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false, clip:{ x:row.clip.x, y:row.clip.y, width:row.clip.width, height:row.clip.height, scale:1 } });
+    const target = path.join(screenshotDir, 'practice-volume-sliders-' + width + '-dark.png');
+    fs.writeFileSync(target, Buffer.from(shot.data, 'base64'));
+    process.stdout.write('Artifact: ' + target + ' (console rows: ' + row.pick.lines + ' + ' + row.volume.lines + ' lines)\n');
+  }
+  await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: '' }] });
+  await client.send('Emulation.setDeviceMetricsOverride', { width:1024, height:768, deviceScaleFactor:1, mobile:false });
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the volume sliders raise no console errors');
+  process.stdout.write('Browser checkpoint: click and guitar volume sliders passed\n');
+}
+
 async function testConcertHallOfflineRender(client){
   const render = await client.evaluate(`(async function(){
     var saved = { actx:window.actx, outGain:window.outGain, clickBus:window.clickBus, guitarBus:window.guitarBus,
@@ -2310,8 +2395,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=nylon-sf-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=nylon-sf-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=click-vol-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=click-vol-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -5744,7 +5829,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=nylon-sf-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=click-vol-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -5880,6 +5965,7 @@ async function main() {
     assert.equal(audioBoot.instance, true, 'app initializes a real AudioContext');
     assert.equal(audioBoot.state, 'running', 'AudioContext resumes in the browser test');
     await testConcertHallRouting(cdp);
+    await testVolumeSliders(cdp);
     await testBuiltinScores(cdp, browserBin);
     await testConcertHallOfflineRender(cdp);
     const liveGuide = await cdp.evaluate(`(function(){

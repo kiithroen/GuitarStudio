@@ -275,14 +275,36 @@ function testScoreViewNormalization(){
   assert.equal(loadedView({}), 'tab', 'a missing scoreView falls back to tab');
 }
 
+// 저장된 클릭음 vol(0~2)·연주음 guitarVol(0~1) 정규화: 범위 안은 유지하고 숫자가 아니거나 범위 밖은 기본값
+function testVolumeNormalization(){
+  function loadedVolumes(saved){
+    const store = { 'gs.state': JSON.stringify(saved) };
+    const sb = {
+      console, document: {}, Math, JSON, Date, Promise, Object, Array, Number, String, Map, Set,
+      localStorage: { getItem(key){ return key in store ? store[key] : null; }, setItem(){}, removeItem(){} }
+    };
+    sb.window = sb;
+    const ctx = vm.createContext(sb);
+    for (const script of ['src/storage.js', 'src/app-state.js']) vm.runInContext(fs.readFileSync(path.join(root, script), 'utf8'), ctx, { filename: script });
+    return JSON.parse(vm.runInContext('JSON.stringify([appState.vol, appState.guitarVol])', ctx));
+  }
+  assert.deepEqual(loadedVolumes({}), [0.55, 1], 'missing volumes fall back to the click default and full guitar volume');
+  assert.deepEqual(loadedVolumes({ vol: 2, guitarVol: 0.5 }), [2, 0.5], 'click volume keeps values up to 2 and guitar volume keeps its value');
+  assert.deepEqual(loadedVolumes({ vol: 0, guitarVol: 0 }), [0, 0], 'zero is a valid volume');
+  assert.deepEqual(loadedVolumes({ vol: 2.5, guitarVol: 1.5 }), [0.55, 1], 'values above the range fall back to the defaults');
+  assert.deepEqual(loadedVolumes({ vol: -1, guitarVol: -0.1 }), [0.55, 1], 'negative values fall back to the defaults');
+  assert.deepEqual(loadedVolumes({ vol: '1', guitarVol: null }), [0.55, 1], 'non-numbers fall back to the defaults');
+}
+
 async function main(){
   testScoreViewNormalization();
+  testVolumeNormalization();
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   document.querySelector('#storageStatus');
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=nylon-sf-1')), 'every app script uses the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=click-vol-1')), 'every app script uses the shared revision');
   for (const id of ['editInInputBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
     assert.match(html, new RegExp('id="' + id + '"'), 'draft UI includes #' + id);
   }
@@ -304,6 +326,22 @@ async function main(){
   assert.equal(typeof context.parseScore, 'function', 'parser API remains available to built-in and sheet scores');
   assert.equal(typeof context.scoreEditorHooks, 'object', 'temporary score editor integration hooks are available');
   assert.equal(context.appState.clickMode, 'all', 'click mode defaults to all on a clean boot');
+  assert.equal(context.appState.guitarVol, 1, 'guitar volume defaults to full on a clean boot');
+  assert.equal(elements.get('guitarVolRange').value, 100, 'the guitar volume slider shows the default');
+  for (const [id, state, raw, expected] of [['volRange', 'vol', '200', 2], ['guitarVolRange', 'guitarVol', '50', 0.5]]){
+    const slider = elements.get(id);
+    slider.value = raw;
+    await slider.dispatch('input');
+    assert.equal(context.appState[state], expected, id + ' input updates appState.' + state);
+    assert.equal(JSON.parse(localValues.get('gs.state'))[state], expected, id + ' value is saved with the app state');
+  }
+  Object.assign(context.appState, { vol: 0.55, guitarVol: 1 });
+  context.syncConsoleUI();
+  assert.equal(elements.get('volRange').value, 55, 'the click slider shows the restored default');
+  assert.equal(elements.get('guitarVolRange').value, 100, 'the guitar slider shows the restored default');
+  context.saveAppState();
+  assert.ok(/id="guitarVolRange" min="0" max="100"/.test(html), 'index.html has the guitar volume slider');
+  assert.ok(/id="volRange" min="0" max="200"/.test(html), 'the click volume slider goes up to 200%');
   assert.equal(typeof context.initEditor, 'undefined', 'removed editor bootstrap is absent');
   assert.equal(typeof context.openConverterEditorModal, 'undefined', 'removed text editor API is absent');
   assert.equal(typeof context.buildAiPromptText, 'undefined', 'removed AI prompt API is absent');
