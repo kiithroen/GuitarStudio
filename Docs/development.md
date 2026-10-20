@@ -60,6 +60,7 @@
 - `test/test-score-prompt.js`는 프롬프트 속 문법 예시(`EXAMPLE_MEASURES`, `EXAMPLE_TSV_ROW`)와 음 길이 표(`RHYTHM_EXAMPLES`)가 현재 파서로 오류 없이 읽히고 길이가 맞는지만 확인해. 규칙 문장은 검사하지 않으니 문법을 바꾸면 프롬프트 규칙도 같이 고쳐.
 - 클립보드 API가 없거나 거부되면 화면 밖 textarea와 `execCommand('copy')`로 복사해. `window.prompt`는 여러 줄을 한 줄로 뭉개서 쓰지 않아.
 - 2026-10-19 결정: 저장소를 읽고 명령을 실행할 수 있는 AI(코딩 에이전트)용 짧은 프롬프트를 `#copyProjectPromptBtn`으로 복사해. 본문은 `src/score-prompt.js`의 `buildProjectPrompt()`야. 문법과 변환 규칙을 다시 적지 않고 `Docs/score-format.md`와 `buildScoreImagePrompt()` 출력 명령을 가리켜서, 규칙이 한 군데에만 있게 했어. AI는 결과를 `Temp/scores/<제목>.tsv`에 저장하고 `node tools/check-score.js`로 문법 오류가 0인지 확인해. 이 도구는 행 모양(5열, 칸 수, BPM 30~240)을 보고 악보는 `parser.validateScore`로만 검사해. 칸 수 목록은 `src/sheets.js`, BPM 범위는 `src/app.js` 곡 적용부와 같아야 해. `test-score-prompt`가 프롬프트 속 명령을 실제로 실행해 확인해.
+- 2026-10-20 결정: 코드 이름이 찍히지 않은 마디는 `[-]` 대신 앞에서 이어지는 코드를 적게 했어(앞 마디 중간에 바뀌었으면 바뀐 뒤 코드). 악보는 코드가 바뀌는 마디에만 이름을 찍는데, `[-]`로 두면 연습 화면에서 그 마디들의 코드 칩이 비어 보여서야. 곡 처음처럼 이어질 코드가 없으면 그대로 `[-]`야. 이미 변환해 둔 언제나 몇 번이라도·인생의 회전목마 TSV(`Temp/scores`, 드라이브 `GuitarScores` 폴더)도 같은 규칙으로 고쳤어.
 
 ## UI 톤 및 버튼 명칭 정돈
 
