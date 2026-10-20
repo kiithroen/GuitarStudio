@@ -66,6 +66,7 @@ TSV 파일을 구글 드라이브의 `GuitarScores` 폴더에 넣어 두면, 시
 - 6열 지원이 들어간 뒤에는 시트의 Apps Script를 이 저장소의 `tools/sheet-import-script.js`로 **다시 붙여 넣어야** 6열이 들어간다(옛 스크립트는 6열 줄을 열 수 오류로 건너뛴다). 붙여 넣은 뒤 `폴더에서 지금 가져오기`로 확인한다.
 - 열이 5개나 6개가 아닌 줄과 제목이 겹치는 줄은 건너뛰고 이유를 알려 준다. 메뉴로 돌리면 알림 창에, 자동 실행이면 Apps Script 실패 메일로 온다. 악보 문법은 검사하지 않으니 폴더에 넣기 전에 `tools/check-score.js`로 검사한다. 문법이 틀린 행이 들어가면 앱이 시트 전체를 불러오지 않는다.
 - 저장소의 `Temp/scores`를 드라이브 데스크톱이 동기화하는 `GuitarScores` 폴더로 연결(`mklink /J`)해 두면, AI가 저장한 TSV가 바로 그 폴더로 간다.
+- Guitar Pro 파일(`.gp` `.gp3` `.gp4` `.gp5` `.gpx`)은 `GuitarScores` 폴더에 넣고 `node tools/build-scores.js <폴더>`를 돌리면 같은 이름의 `.tex`(alphaTex 원본)와 `.tsv`가 생긴다. 기본은 첫 기타 트랙이고, 같은 이름의 `.tex`가 이미 있으면 그 파일은 건너뛴다. 다른 트랙은 `node tools/gp-to-alphatex.js <파일> --track n`(1부터)으로 `.tex`를 만든 뒤 `build-scores`를 돌린다.
 
 ## 백업과 데이터 이동
 

@@ -11,7 +11,8 @@
 | `vendor/alphatab/` | alphaTab 1.8.4(MPL-2.0). 브라우저 UMD(`dist/alphaTab.min.js`, 전역 `alphaTab`), worker·worklet, Bravura 글꼴, sonivox 사운드폰트 |
 | `test/test-score-to-alphatex.js` | 변환기 테스트. vendor의 alphaTab을 `require`해서 변환 결과를 가져온 모델 필드까지 확인한다 |
 | `tools/score-to-alphatex.js`, `tools/alphatab-to-score.js` | 우리 악보 ↔ alphaTab 양방향 명령줄 도구. [명령줄 도구](#명령줄-도구) |
-| `tools/build-scores.js` | 폴더의 `.tex` 원본을 시트용 6열 TSV로 바꾸는 도구. [원본은 alphaTex](#원본은-alphatex) |
+| `tools/build-scores.js` | 폴더의 `.tex` 원본을 시트용 6열 TSV로 바꾸는 도구. 같은 이름의 `.tex`가 없는 Guitar Pro 파일은 먼저 `.tex`로 만든다. [원본은 alphaTex](#원본은-alphatex) |
+| `tools/gp-to-alphatex.js` | Guitar Pro 파일의 기타 트랙 하나를 alphaTex 원본(`.tex`)으로 쓰는 도구. [원본은 alphaTex](#원본은-alphatex) |
 | `test/test-alphatab-tools.js`, `test/fixtures/alphatab/` | 명령줄 도구 테스트와 예제(손으로 짠 alphaTex, MusicXML, 브랜치 alphaTex 16곡) |
 
 ## 원본은 alphaTex
@@ -19,6 +20,8 @@
 곡의 원본은 alphaTex이고, 시트의 우리 악보(5열)는 그 alphaTex에서 만들어 낸 결과물이다. 길은 둘이다: 사진 → alphaTex → 우리 악보, alphaTex → 우리 악보. 우리 문법이나 플레이어가 좋아지면 변환기만 다시 돌려 원본에서 정보를 다시 꺼낸다.
 
 ```text
+드라이브 GuitarScores/곡.gpx (Guitar Pro. 같은 이름의 .tex가 없을 때만)
+  → node tools/build-scores.js <폴더>가 곡.tex를 만든다(첫 기타 트랙만 alphaTex로 쓴다)
 드라이브 GuitarScores/곡.tex
   → node tools/build-scores.js <폴더>
   → 곡.tsv (6열: 제목, 칸 수, BPM, 설명, 악보, alphaTex 원본)
@@ -36,6 +39,7 @@
 
 - 2026-10-20 결정: alphaTex를 악보의 원본으로 둔다. 우리 문법이 바뀌거나 플레이어가 좋아져도 변환기만 다시 돌리면 되고, 우리 악보에서 alphaTex로 되돌리면 잃는 정보(성부, 실제 길이, 도돌이)를 원본에 그대로 둘 수 있어서다. 아포얀도만 보충 파일로 살리는 안도 있었지만 교본에 음별 표시가 없어 뺐다. 위 표의 세 가지는 alphaTex를 거치면 버린다.
 - 원본 `.tex`를 고치는 일은 Claude가 PC에서 하고 `tools/build-scores.js`로 다시 변환한다.
+- Guitar Pro 파일(`.gp` `.gp3` `.gp4` `.gp5` `.gpx`)을 폴더에 넣고 `build-scores`를 돌리면 같은 이름의 `.tex`가 없는 것마다 `.tex`가 생기고 이어서 `.tsv`가 생긴다. 만들어진 `.tex`가 원본이 되고 `.gp`는 지우지도 고치지도 않는다. 다른 트랙은 `node tools/gp-to-alphatex.js <파일> --track n`으로 만든다(명령줄 도구 절).
 - 2026-10-20 결정: 원본 alphaTex가 있는 곡(곡 객체에 `alphaTex`가 있는 곡)은 앱에서 제자리에서 고치지 않는다. 사용자가 악보 입력 화면에서 고쳐 돌아오면 원본을 잃은 것으로 보고, 우리 악보만 담은 `(사본)` 곡을 새로 만들어 저장한다(제목 규칙은 [화면과 조작](ui.md)). 원본 곡은 그대로 남는다. 칸 수를 바꿔 돌아와도 같다(제목은 원래 곡의 `(사본)`, 칸 수는 고친 악보의 것). 앱은 드라이브에 쓰지 못하고, 우리 악보에서 alphaTex로 되돌리면 성부·실제 길이·도돌이 같은 원본 정보를 잃기 때문이다.
 
 ## vendor로 둔 이유
@@ -104,6 +108,7 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 node tools/score-to-alphatex.js <시트 한 행 TSV 파일 | --builtin <id>> [-o 출력.tex]
 node tools/alphatab-to-score.js <입력 파일> [--track n(1부터)] [-o 출력.tsv]
 node tools/build-scores.js <폴더> [--check]
+node tools/gp-to-alphatex.js <입력.gp|.gp3|.gp4|.gp5|.gpx> [--track n(1부터)] [-o 출력.tex]
 ```
 
 | | `score-to-alphatex.js` | `alphatab-to-score.js` |
@@ -115,6 +120,10 @@ node tools/build-scores.js <폴더> [--check]
 | 종료 코드 | 0 성공, 1 변환 실패(TSV 검사에 걸림 포함), 2 사용법이 틀림(인자, 읽을 수 없는 파일, 없는 id, 한 행이 아닌 TSV) | 0 성공, 1 변환하지 않음·읽지 못함·검사 오류, 2 사용법이 틀림(인자, 읽을 수 없는 파일, 모르는 확장자) |
 
 `build-scores.js`는 [원본은 alphaTex](#원본은-alphatex)의 흐름을 맡는다. 폴더 안(하위 폴더 제외) `*.tex`마다 `alphatab-to-score.js`와 같은 변환·검사(`GuitarParser.validateScore`)를 돌려 같은 이름의 `.tsv`를 쓴다. 한 행 6열은 제목, 칸 수, BPM, 설명, 악보, alphaTex 원본이고, 원본은 파일 내용의 줄바꿈·탭·연속 공백을 공백 하나로 편 것이다(따옴표 안은 그대로 두고, 따옴표 안에 줄바꿈이나 탭이 있으면 그 파일은 변환하지 않는다). 한 줄로 펴서 변환 결과가 달라지는 파일(줄 끝 주석 등)도 변환하지 않는다. UTF-8에 앞에 BOM, 끝에 줄바꿈 하나다. 변환·검사 오류가 있는 파일은 TSV를 쓰지 않고(기존 TSV는 그대로) 오류를 목록으로 보이며 종료 코드 1이다. `.tex`가 없는 TSV(손으로 만든 것)는 건드리지 않는다. `--check`는 쓰지 않고 보고만 한다. 마지막 줄은 `변환 n · 오류 n · 건너뜀 n`이다. 시트 셀 한 칸이 50,000자라 그보다 긴 alphaTex는 Apps Script가 F열만 비운다([시트 자동 가져오기](development.md#시트-자동-가져오기)).
+
+`build-scores.js`는 폴더 안(하위 폴더 제외) Guitar Pro 파일 중 같은 이름(확장자를 뺀 이름)의 `.tex`가 없는 것마다 `gp-to-alphatex.js`의 `gpToAlphaTex`(기본 트랙)로 `.tex`를 만들고, 그 `.tex`를 이번 실행의 목록에 더해 위처럼 `.tsv`를 만든다. 로그는 `만듦: 곡.gpx → 곡.tex (트랙 n/m "이름")`이고 트랙이 둘 이상이면 아래에 트랙 목록을 들여 쓴다. 같은 이름의 `.tex`가 있으면 `건너뜀: 곡.gpx (.tex 있음)`을 찍고 건너뛴다(건너뜀 수에 더한다). 실패(트랙 없음, 비표준 조율 등)는 `오류: 곡.gpx`와 이유이고 `.tex`를 쓰지 않는다. `--check`는 아무 파일도 쓰지 않고 `.gp`를 메모리에서 alphaTex로 바꿔 변환까지 돌려 `확인: 곡.gpx → 트랙 n (m마디)`를 찍는다.
+
+`gp-to-alphatex.js`는 읽기(`parseScoreBytes`)와 트랙 고르기(`selectStaff`, `--track`이 없으면 첫 표준 조율 6줄 기타 트랙)를 `alphatab-to-score.js`의 것 그대로 쓰고, 고른 트랙만 남긴 악보(`score.tracks = [고른 트랙]`)를 vendor alphaTab의 `AlphaTexExporter`로 쓴다. `\title`은 파일 이름에서 확장자를 뗀 이름이고, `notices`는 ` · `로 이은 [파일 안 제목이 비어 있지 않고 파일 이름과 다르면 `원제 <파일 안 제목>`, 파일 안 notices, `Guitar Pro 파일(<파일 이름>)에서 변환`]이다. 그 밖의 머리 정보는 건드리지 않는다. 출력은 BOM 없는 UTF-8, 줄바꿈 LF이고, 출력 파일이 이미 있으면 덮지 않고 종료 코드 1이다(손본 원본을 지키려고). 성공하면 `만듦: <출력> (트랙 n/m "이름")` 한 줄과(트랙이 둘 이상이면) 트랙 목록을 찍는다. 종료 코드는 0 성공, 1 변환하지 못함·출력이 이미 있음, 2 사용법이 틀림(인자, 읽을 수 없는 파일, `GP_EXTENSIONS`에 없는 확장자)이다. MusicXML은 범위가 아니다.
 
 메시지는 한국어 `~습니다`체다. 읽는 쪽은 alphaTex가 `AlphaTexImporter`, 나머지가 `ScoreLoader.loadScoreFromBytes`(바이트에서 형식을 알아서 고른다)다. `--track`은 1부터 센 트랙 번호다(Guitar Pro 같은 프로그램과 같다). 생략하면 6줄 표준 조율 트랙이 먼저이고, 없으면 음높이가 있는 첫 트랙(줄·프렛 없이 음높이만 있는 트랙)이다. 6줄인데 표준 조율이 아닌 트랙뿐이면 줄 정보 없는 트랙으로 넘어가지 않고 이유와 함께 멈춘다. 트랙 목록은 오류 메시지에 1부터 나온다.
 
@@ -192,6 +201,7 @@ node tools/build-scores.js <폴더> [--check]
 - 2026-10-21 결정: 곡 중간의 짧은 마디(격자보다 짧고 칸 길이의 정수배)는 변환한다. 모자란 칸은 앞 음 유지 `-`로 채우고(마지막이 쉼이면 `r`) 메모 `원본 2/4 마디 → 뒤 2칸 유지`를 단다. Guitar Pro 의 Ballade pour Adeline 이 rit. 경과구 한 마디만 2/4 라서 곡 전체가 거부됐다. 쉼으로 채우면 경과구 끝에서 소리가 끊기고, 곡 전체를 2칸으로 쪼개면 마디 번호가 원본과 어긋나서 유지로 채운다. 연습 시간은 원본보다 그만큼 길어진다.
 - 2026-10-21 결정: 4/4 곡이 4칸 격자에 맞지 않는 리듬(32분음표 등)을 가지면, BPM 상한 안에서 8칸(8분음표 칸)으로 다시 변환해 옮긴 음이 줄면 8칸을 쓴다. 4칸에서는 32분음표 아르페지오가 화음처럼 뭉쳤다. 2/4·3/4 는 칸을 늘리면 앱이 박자를 다르게 읽어서 바꾸지 않는다.
 - 2026-10-21 결정: 두 성부가 같은 순간 같은 줄·같은 음을 치면 토큰 하나만 남기고, 같은 박 글은 마디 메모에 한 번만 쓴다. 기타는 한 줄을 한 번에 한 번만 울린다.
+- 2026-10-21 결정: `build-scores`는 폴더의 Guitar Pro 파일(.gp .gp3 .gp4 .gp5 .gpx) 중 같은 이름의 .tex가 없는 것을 alphaTab으로 읽어, 첫 기타 트랙(변환기의 트랙 고르기 규칙과 같다)만 alphaTex로 써서 .tex를 만든 뒤 지금처럼 .tsv를 만든다. 만든 .tex가 원본이고 .gp는 지우지도 고치지도 않는다. 같은 이름의 .tex가 있으면 .gp는 건너뛴다(손본 원본을 덮지 않으려고). 제목은 파일 이름이고, 파일 안 제목이 다르면 notices에 `원제`로 남긴다(한글 이름으로 바꿔 넣으면 그 이름이 시트 제목이 된다). 다른 트랙은 `tools/gp-to-alphatex.js --track n`으로 만든다. 고른 트랙만 남기는 것은 변환기가 한 트랙만 읽고 시트 셀에 한도가 있어서다. 실제 파일(Ballade pour Adeline.gpx, 기타 1트랙)로 alphaTex를 만들어 변환한 결과가 시트·앱까지 들어가는 것을 확인했다.
 
 ## 사진 변환
 

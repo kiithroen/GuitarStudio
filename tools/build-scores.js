@@ -3,11 +3,14 @@
 // 폴더의 alphaTex 원본(*.tex)을 시트용 TSV(6열)로 바꾸는 도구. 흐름과 규칙은 Docs/alphatab.md 의 "원본은 alphaTex" 절.
 // 사용: node tools/build-scores.js <폴더> [--check]
 // 폴더 안(하위 폴더 제외) 곡.tex 마다 alphatab-to-score 변환을 돌려 곡.tsv 를 쓴다.
+// Guitar Pro 파일(곡.gp .gp3 .gp4 .gp5 .gpx)은 같은 이름의 곡.tex 가 없을 때만 첫 기타 트랙을 alphaTex 로 써서 곡.tex 를 만든 뒤 같은 길로 간다.
+// 곡.tex 가 이미 있으면 GP 는 건너뛰고(손본 원본을 덮지 않는다), GP 파일은 지우거나 고치지 않는다. --check 는 GP 도 메모리에서만 돌린다.
 // TSV 한 행 6열: 제목, 칸 수, BPM, 설명, 악보, alphaTex 원본(한 줄로 편 것). --check 는 쓰지 않고 보고만 한다.
 const fs = require('node:fs');
 const path = require('node:path');
 const converter = require('./alphatab-to-score.js');
 const checkScore = require('./check-score.js');
+const gpTool = require('./gp-to-alphatex.js');
 
 const USAGE = '사용법: node tools/build-scores.js <폴더> [--check]';
 const BOM = '﻿';
@@ -67,6 +70,11 @@ function buildOne(texFile){
   } catch (error) {
     return { errors: ['파일을 읽지 못했습니다.'] };
   }
+  return buildFromText(raw, texFile);
+}
+
+// alphaTex 글(texFile 은 이름과 제목 대신 쓰는 경로일 뿐 읽지 않는다)을 TSV 한 행으로 바꾼다.
+function buildFromText(raw, texFile){
   const flat = flattenAlphaTex(raw);
   if (flat.error) return { errors: [flat.error] };
 
@@ -126,6 +134,55 @@ function main(argv){
   let converted = 0;
   let failed = 0;
   let skipped = 0;
+
+  // Guitar Pro 파일: 같은 이름의 .tex 가 없으면 .tex 를 만들어 이번 실행의 .tex 목록에 더한다(--check 는 메모리에서만 돌린다).
+  function indentLines(text){
+    return String(text).split('\n').map(function(line){ return '  ' + line; }).join('\n');
+  }
+  entries.filter(function(name){ return gpTool.GP_EXTENSIONS.indexOf(path.extname(name).toLowerCase()) >= 0; }).forEach(function(name){
+    const base = path.basename(name, path.extname(name));
+    if (texBases.has(base)){
+      skipped++;
+      process.stdout.write('건너뜀: ' + name + ' (.tex 있음)\n');
+      return;
+    }
+    let result;
+    try {
+      result = gpTool.gpToAlphaTex(fs.readFileSync(path.join(options.folder, name)), { fileName: name });
+    } catch (error) {
+      result = { ok: false, error: '파일을 읽지 못했습니다.' };
+    }
+    if (!result.ok){
+      failed++;
+      process.stderr.write('오류: ' + name + '\n' + indentLines(result.error) + '\n');
+      return;
+    }
+    const trackText = '트랙 ' + result.trackNumber + '/' + result.trackCount + ' "' + result.trackName + '"';
+    const trackLines = result.trackCount > 1 ? '\n' + indentLines(result.trackList) : '';
+    if (options.check){
+      const checked = buildFromText(result.tex, path.join(options.folder, base + '.tex'));
+      if (checked.errors){
+        failed++;
+        process.stderr.write('오류: ' + name + '\n' + indentLines(checked.errors.join('\n')) + '\n');
+        return;
+      }
+      converted++;
+      texBases.add(base);
+      process.stdout.write('확인: ' + name + ' → 트랙 ' + result.trackNumber + ' (' + checked.measures + '마디)' + trackLines + '\n');
+      return;
+    }
+    try {
+      fs.writeFileSync(path.join(options.folder, base + '.tex'), result.tex, { encoding: 'utf8', flag: 'wx' });
+    } catch (error) {
+      failed++;
+      process.stderr.write('오류: ' + name + '\n  .tex 를 쓰지 못했습니다: ' + base + '.tex\n');
+      return;
+    }
+    texNames.push(base + '.tex');
+    texBases.add(base);
+    process.stdout.write('만듦: ' + name + ' → ' + base + '.tex (' + trackText + ')' + trackLines + '\n');
+  });
+  texNames.sort();
   texNames.forEach(function(name){
     const texFile = path.join(options.folder, name);
     const base = path.basename(name, path.extname(name));
@@ -163,6 +220,6 @@ function main(argv){
   return failed > 0 ? 1 : 0;
 }
 
-module.exports = { flattenAlphaTex: flattenAlphaTex, buildOne: buildOne };
+module.exports = { flattenAlphaTex: flattenAlphaTex, buildOne: buildOne, buildFromText: buildFromText };
 
 if (require.main === module) process.exitCode = main(process.argv);

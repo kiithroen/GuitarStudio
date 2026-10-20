@@ -1000,6 +1000,196 @@ test('build-scores: writes 6-column TSV with BOM, keeps TSV files without .tex, 
   }
 });
 
+// ---------- Guitar Pro 파일 → alphaTex 원본(.tex) → TSV
+
+const GP_TOOL_PATH = path.join(__dirname, '../tools/gp-to-alphatex.js');
+const gpTool = require(GP_TOOL_PATH);
+const GP_NAME = '두 트랙.gp';
+// 바이트는 이 테스트 안에서 만든다: 예제 two-tracks.tex(Bass 4줄, Guitar, Guitar 2)를 Guitar Pro 7 로 쓴다.
+const GP_BYTES = Buffer.from(new alphaTab.exporter.Gp7Exporter().export(importCleanTex(readFixture('two-tracks.tex'), 'two-tracks'), new alphaTab.Settings()));
+
+function convertedColumns(result){
+  const columns = result.tsv.split('\t');
+  return [columns[1], columns[2], columns[4]];
+}
+
+// 한 판을 돌려 어긋난 것을 모은다. 일부러 어긋난 사본에 같은 판을 돌려 걸리는지 보려고 도구 경로를 받는다.
+function gpScenarioFailures(buildScript, gpScript){
+  const failures = [];
+  function expect(ok, message){ if (!ok) failures.push(message); }
+  function readTex(file){
+    try { return fs.readFileSync(file, 'utf8'); } catch (error) { return null; }
+  }
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-gp-build-'));
+  try {
+    // 1) build-scores 가 .tex 와 .tsv 를 만든다
+    const buildDir = path.join(root, 'build');
+    fs.mkdirSync(buildDir);
+    fs.writeFileSync(path.join(buildDir, GP_NAME), GP_BYTES);
+    const texPath = path.join(buildDir, '두 트랙.tex');
+    const run = runNode(buildScript, [buildDir]);
+    expect(run.code === 0, 'build 종료 코드 ' + run.code + ': ' + run.err);
+    expect(run.out.indexOf('만듦: 두 트랙.gp → 두 트랙.tex (트랙 2/3 "Guitar")') >= 0, 'build 로그: ' + run.out);
+    expect(run.out.trimEnd().split('\n').pop() === '변환 1 · 오류 0 · 건너뜀 0', 'build 마지막 줄: ' + run.out);
+    const tex = readTex(texPath);
+    expect(tex !== null, '.tex 가 만들어지지 않았습니다');
+    let viaTex = null;
+    if (tex !== null){
+      expect(tex.indexOf('\r') < 0 && tex.charCodeAt(0) !== 0xFEFF, '.tex 는 BOM 없는 LF 여야 합니다');
+      expect((tex.match(/\\track/g) || []).length === 1, '\\track 이 하나여야 합니다: ' + (tex.match(/\\track/g) || []).length);
+      expect(tex.indexOf('Bass') < 0, '다른 트랙(Bass)이 남았습니다');
+      const imported = importTex(tex);
+      expect(imported.thrown === null && imported.diagnostics.length === 0, '.tex 읽기 진단: ' + imported.diagnostics.join(' / '));
+      if (imported.score){
+        const score = imported.score;
+        expect(score.title === '두 트랙', '제목: ' + score.title);
+        expect(score.notices.indexOf('원제 Two Tracks') >= 0, 'notices 에 원제가 없습니다: ' + score.notices);
+        expect(score.notices.indexOf('Guitar Pro 파일(' + GP_NAME + ')에서 변환') >= 0, 'notices 에 변환 문구가 없습니다: ' + score.notices);
+        expect(score.tracks.length === 1 && score.tracks[0].name === 'Guitar', '남은 트랙: ' + score.tracks.map(function(track){ return track.name; }).join(','));
+        // 2) 뽑은 .tex 를 변환한 결과 == GP 를 --track 2 로 변환한 결과
+        viaTex = tool.convertScore(score, { sourceName: '두 트랙.tex', fallbackTitle: '두 트랙' });
+      }
+    }
+    const tsvText = readTex(path.join(buildDir, '두 트랙.tsv'));
+    expect(tsvText !== null && tsvText.slice(1, -1).split('\t').length === 6, '.tsv 는 6열이어야 합니다');
+    const direct = tool.convertScore(tool.parseScoreBytes(GP_BYTES), { trackNumber: 2, sourceName: GP_NAME, fallbackTitle: '두 트랙' });
+    expect(direct.ok === true, 'GP 직접 변환: ' + direct.error);
+    if (viaTex && direct.ok){
+      expect(viaTex.ok === true, '.tex 변환: ' + viaTex.error);
+      if (viaTex.ok) expect(JSON.stringify(convertedColumns(viaTex)) === JSON.stringify(convertedColumns(direct)), '칸 수·BPM·악보 열이 GP 직접 변환과 다릅니다');
+    }
+
+    // 3) 같은 이름의 .tex 가 있으면 GP 를 건너뛰고 .tex 는 그대로다
+    if (tex !== null){
+      const keepDir = path.join(root, 'keep');
+      fs.mkdirSync(keepDir);
+      fs.writeFileSync(path.join(keepDir, GP_NAME), GP_BYTES);
+      const marked = tex.replace('\\title "두 트랙"', '\\title "손본 원본"');
+      expect(marked !== tex, '표시 글을 넣을 자리가 없습니다');
+      fs.writeFileSync(path.join(keepDir, '두 트랙.tex'), marked, 'utf8');
+      const keepRun = runNode(buildScript, [keepDir]);
+      expect(keepRun.out.indexOf('건너뜀: 두 트랙.gp (.tex 있음)') >= 0, '건너뜀 로그: ' + keepRun.out);
+      expect(readTex(path.join(keepDir, '두 트랙.tex')) === marked, '이미 있는 .tex 가 바뀌었습니다');
+      expect(keepRun.out.trimEnd().split('\n').pop() === '변환 1 · 오류 0 · 건너뜀 1', '건너뜀 판 마지막 줄: ' + keepRun.out);
+    }
+
+    // 4) --check 는 새 파일을 만들지 않는다
+    const checkDir = path.join(root, 'check');
+    fs.mkdirSync(checkDir);
+    fs.writeFileSync(path.join(checkDir, GP_NAME), GP_BYTES);
+    const checkRun = runNode(buildScript, [checkDir, '--check']);
+    expect(checkRun.code === 0, '--check 종료 코드 ' + checkRun.code + ': ' + checkRun.err);
+    expect(/확인: 두 트랙\.gp → 트랙 2 \(\d+마디\)/.test(checkRun.out), '--check 로그: ' + checkRun.out);
+    expect(JSON.stringify(fs.readdirSync(checkDir)) === JSON.stringify([GP_NAME]), '--check 가 파일을 만들었습니다: ' + fs.readdirSync(checkDir).join(','));
+
+    // 5) gp-to-alphatex 명령줄
+    const cliDir = path.join(root, 'cli');
+    fs.mkdirSync(cliDir);
+    const cliGp = path.join(cliDir, GP_NAME);
+    fs.writeFileSync(cliGp, GP_BYTES);
+    const cliRun = runNode(gpScript, [cliGp, '--track', '3']);
+    expect(cliRun.code === 0, 'CLI 종료 코드 ' + cliRun.code + ': ' + cliRun.err);
+    expect(/^만듦: .*두 트랙\.tex \(트랙 3\/3 "Guitar 2"\)/.test(cliRun.out), 'CLI 로그: ' + cliRun.out);
+    expect(cliRun.out.indexOf('Bass') >= 0, 'CLI 가 트랙 목록을 찍지 않았습니다');
+    const cliTexPath = path.join(cliDir, '두 트랙.tex');
+    const cliTex = readTex(cliTexPath);
+    expect(cliTex !== null, 'CLI 가 .tex 를 만들지 않았습니다');
+    if (cliTex !== null){
+      const imported = importTex(cliTex);
+      expect(imported.score && imported.score.tracks.length === 1 && imported.score.tracks[0].name === 'Guitar 2', 'CLI 트랙: ' + (imported.score ? imported.score.tracks.map(function(track){ return track.name; }).join(',') : imported.diagnostics.join('/')));
+      const again = runNode(gpScript, [cliGp, '--track', '3']);
+      expect(again.code === 1, '출력이 있을 때 종료 코드 ' + again.code);
+      expect(readTex(cliTexPath) === cliTex, '이미 있는 출력이 바뀌었습니다');
+      const other = runNode(gpScript, [cliGp, '-o', cliTexPath]);
+      expect(other.code === 1 && readTex(cliTexPath) === cliTex, '-o 로 준 기존 출력도 덮으면 안 됩니다');
+    }
+    const defaultOut = path.join(cliDir, 'out.tex');
+    const defaultRun = runNode(gpScript, [cliGp, '-o', defaultOut]);
+    expect(defaultRun.code === 0 && /트랙 2\/3 "Guitar"/.test(defaultRun.out), '기본 트랙은 첫 표준 기타여야 합니다: ' + defaultRun.out + defaultRun.err);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+  return failures;
+}
+
+test('gpToAlphaTex: picks the first standard 6-string track by default, keeps only it, names the title after the file, refuses a bass track', function(){
+  const result = gpTool.gpToAlphaTex(GP_BYTES, { fileName: GP_NAME });
+  assert.equal(result.ok, true, result.error);
+  assert.equal(result.trackNumber, 2);
+  assert.equal(result.trackName, 'Guitar');
+  assert.equal(result.trackCount, 3);
+  assert.match(result.trackList, /1: Bass · 4줄/);
+  assert.match(result.trackList, /3: Guitar 2 · 6줄/);
+  assert.deepEqual(gpTool.GP_EXTENSIONS, ['.gp', '.gp3', '.gp4', '.gp5', '.gpx']);
+  const picked = gpTool.gpToAlphaTex(GP_BYTES, { fileName: GP_NAME, trackNumber: 3 });
+  assert.equal(picked.ok, true, picked.error);
+  assert.equal(picked.trackName, 'Guitar 2');
+  const bass = gpTool.gpToAlphaTex(GP_BYTES, { fileName: GP_NAME, trackNumber: 1 });
+  assert.equal(bass.ok, false);
+  assert.match(bass.error, /트랙 1번은 6줄 기타가 아닙니다/);
+  const missing = gpTool.gpToAlphaTex(GP_BYTES, { fileName: GP_NAME, trackNumber: 9 });
+  assert.equal(missing.ok, false);
+  assert.match(missing.error, /트랙 9번이 없습니다/);
+  const broken = gpTool.gpToAlphaTex(Buffer.from('not a score'), { fileName: 'x.gp' });
+  assert.equal(broken.ok, false);
+  // 파일 안 제목이 파일 이름과 같으면 원제를 남기지 않는다
+  const same = gpTool.gpToAlphaTex(GP_BYTES, { fileName: 'Two Tracks.gp' });
+  assert.equal(same.ok, true, same.error);
+  assert.doesNotMatch(same.tex, /원제/);
+  assert.match(same.tex, /Guitar Pro 파일\(Two Tracks\.gp\)에서 변환/);
+});
+
+test('Guitar Pro files in build-scores: .tex and .tsv are made from the first guitar track, an existing .tex is kept, --check writes nothing, gp-to-alphatex --track picks another track and never overwrites', function(){
+  assert.deepEqual(gpScenarioFailures(BUILD_PATH, GP_TOOL_PATH), []);
+  // 도구 자체의 사용법 오류
+  assert.equal(runNode(GP_TOOL_PATH, []).code, 2);
+  assert.equal(runNode(GP_TOOL_PATH, ['a.txt']).code, 2);
+  assert.equal(runNode(GP_TOOL_PATH, [path.join(os.tmpdir(), 'gs-no-such-file.gp')]).code, 2);
+  assert.equal(runNode(GP_TOOL_PATH, ['a.gp', '--track', '0']).code, 2);
+});
+
+// 일부러 어긋난 사본: tools/ 에 임시 사본을 만들어 같은 판을 돌리고, 걸리는 어긋남이 있어야 한다.
+function gpMutantFailures(label, gpReplacement, buildReplacements){
+  const created = [];
+  function copyOf(source, name, replacements){
+    let text = fs.readFileSync(source, 'utf8');
+    replacements.forEach(function(pair){
+      assert.equal(text.split(pair[0]).length - 1, 1, label + ': 사본을 만들 자리가 하나여야 합니다: ' + pair[0]);
+      text = text.replace(pair[0], function(){ return pair[1]; });
+    });
+    const file = path.join(path.dirname(source), name);
+    fs.writeFileSync(file, text, 'utf8');
+    created.push(file);
+    return file;
+  }
+  try {
+    let gpScript = GP_TOOL_PATH;
+    const buildList = buildReplacements.slice();
+    if (gpReplacement){
+      gpScript = copyOf(GP_TOOL_PATH, 'gp-to-alphatex.mutant.js', [gpReplacement]);
+      buildList.push(["require('./gp-to-alphatex.js')", "require('./gp-to-alphatex.mutant.js')"]);
+    }
+    const buildScript = copyOf(BUILD_PATH, 'build-scores.mutant.js', buildList);
+    const caught = gpScenarioFailures(buildScript, gpScript);
+    assert.ok(caught.length > 0, label + ' 사본이 검사에 걸리지 않았습니다');
+    process.stdout.write('  ' + label + ': caught by ' + caught.length + ' failure(s), e.g. ' + caught[0].split('\n')[0] + '\n');
+  } finally {
+    created.forEach(function(file){ fs.rmSync(file, { force: true }); });
+  }
+}
+
+test('mutant (가): not dropping the other tracks is caught', function(){
+  gpMutantFailures('other tracks kept', ['score.tracks = [picked.track];', 'void 0;'], []);
+});
+
+test('mutant (나): not renaming the title to the file name is caught', function(){
+  gpMutantFailures('title kept', ['score.title = title;', 'void 0;'], []);
+});
+
+test('mutant (다): overwriting an existing .tex is caught', function(){
+  gpMutantFailures('overwrite', null, [['if (texBases.has(base)){', 'if (false){'], ["flag: 'wx'", "flag: 'w'"]]);
+});
+
 test('mid-song meter change: a bar shorter than the grid bar and a whole number of cells is filled; a longer bar or a bar that is not a whole number of cells is refused with its number and meter', function(){
   // 끝이 음이면 유지, 끝이 쉼이면 r (예제 short-bar, short-bar-rest, short-bar-repeat 가 줄 전체를 견준다). 여기서는 거절과 칸 수를 본다.
   const head = '\\title "M" \\tempo 80 \\ts (4 4)\n0.1.4 1.1.4 3.1.4 0.2.4 |\n';

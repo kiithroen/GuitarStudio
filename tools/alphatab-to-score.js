@@ -1029,6 +1029,8 @@ module.exports = {
   parseAlphaTex: parseAlphaTex,
   parseScoreBytes: parseScoreBytes,
   loadScoreFile: loadScoreFile,
+  selectStaff: selectStaff,
+  describeTracks: describeTracks,
   Refusal: Refusal,
   MEMO: MEMO
 };
