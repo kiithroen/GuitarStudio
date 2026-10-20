@@ -5300,7 +5300,13 @@ async function testAlphaTabView(client, httpPort) {
   await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
   await navigate(viewUrl, viewSettled, 45000);
   assert.equal((await readStatus()).state, 'ready', 'dark mode view is ready');
-  await waitForCondition(client, `document.querySelectorAll('#atHost svg *[fill]').length > 0`, 10000);
+  // alphaTab 은 나눠서 그린다. 첫 요소만 보고 읽으면 줄(--muted)이 아직 없어 부하가 클 때 헛되이 실패했다.
+  await waitForCondition(client, `(function(){
+    var style = getComputedStyle(document.documentElement);
+    var want = [style.getPropertyValue('--fg').trim().toUpperCase(), style.getPropertyValue('--muted').trim().toUpperCase()];
+    var fills = Array.prototype.map.call(document.querySelectorAll('#atHost svg *[fill]'), function(el){ return el.getAttribute('fill').toUpperCase(); });
+    return want.every(function(color){ return fills.indexOf(color) >= 0; });
+  })()`, 15000);
   const darkColors = await client.evaluate(`(function(){
     var fg = getComputedStyle(document.documentElement).getPropertyValue('--fg').trim().toUpperCase();
     var muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim().toUpperCase();
