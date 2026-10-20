@@ -36,6 +36,7 @@ alphaTab 보기 창은 `app.js` 없이 따로 스크립트를 부른다. 구성�
 | `src/score-to-alphatex.js` | 텍스트 악보 → alphaTex 변환기(`GuitarAlphaTex`). `GuitarStaffLayout.layoutScore` 결과만 쓴다 |
 | `alphatab.html`, `src/alphatab-view.js` | 새 탭 alphaTab 보기 창. `gs.alphaTab.view`를 읽어(곡에 원본 `alphaTex`가 있으면 그대로, 없으면 변환해) 플레이어를 띄운다. 불러오는 스크립트는 notation·rhythm·parser·staff-layout·score-to-alphatex·vendor alphaTab 순이다 |
 | `vendor/alphatab/` | alphaTab 1.8.4(MPL-2.0) 배포본. 고치지 않는다. 앱 기본 화면은 불러오지 않고 보기 창에서만 쓴다 |
+| `vendor/musescore-general/` | MuseScore_General 사운드폰트(`.sf3`, MIT, 약 38MB) 받은 그대로. 보기 창이 처음 재생할 때만 불러온다. 출처와 해시는 [alphaTab 보기](alphatab.md) |
 | `tools/score-to-alphatex.js` | 시트 한 행 TSV·내장곡 → alphaTex 명령줄 도구(`GuitarAlphaTex.toAlphaTex`만 쓴다). 사용법은 [alphaTab 보기](alphatab.md#명령줄-도구) |
 | `tools/alphatab-to-score.js` | alphaTex·Guitar Pro·MusicXML → 시트 한 행 TSV 명령줄 도구(vendor alphaTab을 Node에서 `require`). 가져오기 규칙과 한계는 [alphaTab 보기](alphatab.md#명령줄-도구) |
 | `tools/build-scores.js` | 폴더의 `.tex` 원본 → 시트용 6열 TSV(`곡.tsv`) 도구. 같은 이름의 `.tex`가 없는 Guitar Pro 파일은 먼저 `.tex`로 만든다. 흐름은 [alphaTab 보기](alphatab.md#원본은-alphatex) |

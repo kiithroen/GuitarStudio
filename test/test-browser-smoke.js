@@ -19,12 +19,17 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon',
   '.mjs': 'application/javascript; charset=utf-8',
   '.woff2': 'font/woff2',
-  '.sf2': 'application/octet-stream'
+  '.sf2': 'application/octet-stream',
+  '.sf3': 'application/octet-stream'
 };
+
+// 정적 서버가 받은 요청 경로(쿼리 제외). 사운드폰트를 언제 요청하는지 본다.
+const servedPaths = [];
 
 function createStaticServer() {
   const server = http.createServer((req, res) => {
     const rawPath = req.url.split('?')[0];
+    servedPaths.push(rawPath);
     const safePath = rawPath === '/' ? '/index.html' : rawPath;
     const filePath = path.join(root, safePath);
 
@@ -2305,8 +2310,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=measure-width-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=measure-width-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=nylon-sf-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=nylon-sf-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -5267,6 +5272,8 @@ async function testAlphaTabView(client, httpPort) {
   }
   const setKey = value => client.evaluate(`localStorage.setItem(${JSON.stringify(VIEW_KEY)}, ${JSON.stringify(typeof value === 'string' ? value : JSON.stringify(value))}); true`);
   const readStatus = () => client.evaluate(`({ state: document.body.getAttribute('data-at-state'), text: document.getElementById('atStatus').textContent, title: document.getElementById('atTitle').textContent })`);
+  const soundFontHits = () => servedPaths.filter(p => p === '/vendor/musescore-general/MuseScore_General.sf3').length;
+  const SOUND_LOADING = '소리를 불러오는 중입니다(약 38MB, 처음 한 번만)';
 
   // 1. 연습 화면 단추: 구조화 곡에서만 보이고, 누르면 지금 곡을 넘기고 새 탭을 연다
   await navigate(practiceUrl, practiceReady);
@@ -5357,6 +5364,8 @@ async function testAlphaTabView(client, httpPort) {
   status = await readStatus();
   assert.equal(status.state, 'ready', 'alphaTab finished rendering and the player is ready: ' + JSON.stringify(status));
   assert.equal(status.title, handoff.title, 'the head shows the song title');
+  // 소리 없이도 플레이어가 준비되니 ready 가 그림이 DOM 에 다 들어오기 전에 올 수 있다. 그려질 때까지 기다린 뒤 읽는다.
+  await waitForCondition(client, `document.querySelectorAll('#atHost svg *[fill]').length > 0`, 15000);
   const drawn = await client.evaluate(`(function(){
     var host = document.getElementById('atHost');
     return { svgs: host.querySelectorAll('svg').length, bars: host.getAttribute('data-bars'), renders: Number(host.getAttribute('data-renders')), profile: host.getAttribute('data-profile'), height: host.scrollHeight,
@@ -5373,6 +5382,9 @@ async function testAlphaTabView(client, httpPort) {
   assert.equal(drawn.speeds, '50,75,100');
   assert.equal(drawn.speedLabel, '100');
   assert.equal(drawn.views, '오선+타브,타브,오선');
+  assert.equal(await client.evaluate(`document.body.getAttribute('data-at-sound')`), 'idle', 'the sound font is not requested when the view opens');
+  const programs = await client.evaluate(`document.getElementById('atHost').getAttribute('data-programs')`);
+  assert.ok(programs && programs.split(',').every(program => program === '24'), 'every track plays as the nylon guitar (GM program 24): ' + programs);
   // 오선과 타브가 같이 그려진다: 타브 글자(TAB 자리표)와 오선 음자리표 글리프
   const lightColors = await client.evaluate(`(function(){
     var fg = getComputedStyle(document.documentElement).getPropertyValue('--fg').trim().toUpperCase();
@@ -5396,9 +5408,60 @@ async function testAlphaTabView(client, httpPort) {
   const backHeight = await chooseView('scoreTab', scoreHeight);
   assert.ok(Math.abs(backHeight - drawn.height) <= 2, 'switching back restores the staff+tab layout');
 
+  // 재생 자동 스크롤: 지금 줄의 맨 위가 위에 붙은 머리 막대 아래에 온다(막대에 가려지지 않는다). 재생을 기다리지 않고 커서를 뒤쪽 줄로 옮긴 뒤 scrollToCursor로 스크롤시킨다.
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 360, deviceScaleFactor: 1, mobile: false }); // 낮은 화면이라야 문서 끝에 막히지 않고 둘째 줄이 맨 위까지 올라간다
+  await navigate(viewUrl, viewSettled, 45000);
+  const systems = await client.evaluate(`window.__alphaTabApi.boundsLookup.staffSystems.length`);
+  assert.ok(systems >= 3, 'the 900px view has several systems to scroll between: ' + systems);
+  const scrollProbe = `(function(){
+    var api = window.__alphaTabApi;
+    var surface = document.querySelector('#atHost .at-surface').getBoundingClientRect();
+    var lineTop = surface.top + api.boundsLookup.staffSystems[1].realBounds.y;
+    var head = document.querySelector('.at-head').getBoundingClientRect();
+    return { scrollY: window.scrollY, maxScroll: document.documentElement.scrollHeight - innerHeight, lineTop: lineTop, headBottom: head.bottom, offset: api.settings.player.scrollOffsetY };
+  })()`;
+  const targetSystem = await client.evaluate(`(function(){
+    var api = window.__alphaTabApi;
+    var system = api.boundsLookup.staffSystems[1];
+    var masterBar = api.score.masterBars[system.bars[0].index];
+    api.tickPosition = masterBar.start;
+    return system.bars[0].index;
+  })()`);
+  // 커서가 둘째 줄로 옮겨 갈 때까지 기다린다(처음 커서는 첫 줄에 있다)
+  await waitForCondition(client, `(function(){ var bar = document.querySelector('#atHost .at-cursor-bar'); var surface = document.querySelector('#atHost .at-surface'); if (!bar || !surface) return false; return bar.getBoundingClientRect().top - surface.getBoundingClientRect().top >= window.__alphaTabApi.boundsLookup.staffSystems[1].realBounds.y - 1; })()`, 8000);
+  await client.evaluate(`window.__alphaTabApi.scrollToCursor(); true`);
+  await waitForCondition(client, `window.scrollY > 0`, 8000);
+  await new Promise(resolve => setTimeout(resolve, 1500)); // 부드러운 스크롤이 끝날 때까지
+  const scrolled = await client.evaluate(scrollProbe);
+  assert.ok(scrolled.scrollY > 0, 'the page scrolled to the cursor system (bar ' + targetSystem + ')');
+  assert.ok(scrolled.scrollY < scrolled.maxScroll - 1, 'the scroll was not stopped by the end of the page, so the cursor system top could reach the top: ' + JSON.stringify(scrolled));
+  assert.ok(scrolled.lineTop >= scrolled.headBottom && scrolled.lineTop <= scrolled.headBottom + 40, 'the cursor system top sits just below the sticky head bar instead of behind it: ' + JSON.stringify(scrolled));
+  await client.evaluate(`window.scrollTo(0, 0); true`);
+  await client.send('Emulation.clearDeviceMetricsOverride');
+
+  // 소리(사운드폰트)는 처음 재생을 누를 때 불러온다. 지금까지 보기 창을 여러 번 열었어도 요청이 없어야 한다.
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  assert.equal(soundFontHits(), 0, 'opening and switching the view never requests the sound font');
+
   // 재생·일시정지·처음으로·Space
-  await client.evaluate(`document.getElementById('atPlayBtn').click(); true`, { userGesture: true });
-  await waitForCondition(client, `document.getElementById('atPlayBtn').textContent === '일시정지'`, 8000);
+  await client.evaluate(`(function(){
+    window.__statusLog = [];
+    new MutationObserver(function(){ window.__statusLog.push(document.getElementById('atStatus').textContent); }).observe(document.getElementById('atStatus'), { childList: true, characterData: true, subtree: true });
+    return true;
+  })()`);
+  const loadingNow = await client.evaluate(`(function(){
+    document.getElementById('atPlayBtn').click();
+    return { disabled: document.getElementById('atPlayBtn').disabled, text: document.getElementById('atStatus').textContent, sound: document.body.getAttribute('data-at-sound') };
+  })()`, { userGesture: true });
+  assert.equal(loadingNow.disabled, true, 'the play button is disabled while the sound loads');
+  assert.equal(loadingNow.text, SOUND_LOADING, 'the status line says the sound is loading');
+  assert.equal(loadingNow.sound, 'loading');
+  await waitForCondition(client, `document.getElementById('atPlayBtn').textContent === '일시정지'`, 90000);
+  assert.equal(soundFontHits(), 1, 'the first play requests the sound font once');
+  const afterLoad = await client.evaluate(`({ disabled: document.getElementById('atPlayBtn').disabled, text: document.getElementById('atStatus').textContent, state: document.body.getAttribute('data-at-state'), sound: document.body.getAttribute('data-at-sound'), log: window.__statusLog })`);
+  assert.equal(afterLoad.disabled, false, 'the play button is enabled again once playing');
+  assert.deepEqual([afterLoad.text, afterLoad.state, afterLoad.sound], ['', 'ready', 'loaded'], 'the loading text goes away after the sound loaded');
+  assert.ok(afterLoad.log.some(text => text.startsWith(SOUND_LOADING + ' ') && /\d+%$/.test(text)), 'the status line shows the loading progress in percent: ' + JSON.stringify(afterLoad.log.slice(0, 5)));
   await new Promise(resolve => setTimeout(resolve, 1200)); // 소리가 실제로 시작된 뒤에 멈춘다(바로 멈추면 alphaTab 내부에서 시작 전 정지 오류가 난다)
   await client.evaluate(`document.getElementById('atPlayBtn').click(); true`, { userGesture: true });
   await waitForCondition(client, `document.getElementById('atPlayBtn').textContent === '재생'`, 8000);
@@ -5407,6 +5470,25 @@ async function testAlphaTabView(client, httpPort) {
   await new Promise(resolve => setTimeout(resolve, 1200));
   await client.evaluate(`document.getElementById('atRewindBtn').click(); true`, { userGesture: true });
   await waitForCondition(client, `document.getElementById('atPlayBtn').textContent === '재생'`, 8000);
+  assert.equal(soundFontHits(), 1, 'later plays reuse the loaded sound font');
+
+  // 소리를 불러오지 못하면 알리고 단추를 다시 살린다: 사운드폰트 주소를 없는 파일로 바꿔 요청한다
+  await navigate(viewUrl, viewSettled, 45000);
+  const errorsBeforeFailure = client.consoleErrors.length;
+  await client.evaluate(`(function(){
+    var open = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url){ return open.apply(this, [method, String(url).replace('MuseScore_General.sf3', 'missing-sound.sf3')].concat(Array.prototype.slice.call(arguments, 2))); };
+    document.getElementById('atPlayBtn').click();
+    return true;
+  })()`, { userGesture: true });
+  await waitForCondition(client, `document.body.getAttribute('data-at-sound') === 'failed'`, 30000);
+  const failedSound = await client.evaluate(`({ disabled: document.getElementById('atPlayBtn').disabled, text: document.getElementById('atStatus').textContent, state: document.body.getAttribute('data-at-state') })`);
+  assert.deepEqual(failedSound, { disabled: false, text: '소리를 불러오지 못했습니다. 네트워크를 확인하세요.', state: 'error' }, 'a failed sound font load is reported and the play button is usable again');
+  assert.equal(servedPaths.filter(p => p === '/vendor/musescore-general/missing-sound.sf3').length, 1, 'the failed request went to the replaced address');
+  assert.equal(soundFontHits(), 1, 'the failed attempt did not request the real sound font again');
+  // alphaTab 이 읽지 못한 사운드폰트를 콘솔 오류로 남기는 것은 이 시험이 일부러 부른 것이다. 다른 오류는 남겨 아래 검사가 잡게 한다.
+  const expectedErrors = client.consoleErrors.splice(errorsBeforeFailure);
+  assert.ok(expectedErrors.length >= 1 && expectedErrors.every(text => /Soundfont/.test(String(text))), 'only the sound font read error is logged for the failed load: ' + JSON.stringify(expectedErrors));
 
   // 폭 900 다크와 375에서 가로로 넘치지 않는다
   const screenshotDir = path.join(root, 'test-artifacts');
@@ -5485,7 +5567,7 @@ async function testAlphaTexSongs(client, httpPort) {
     await waitForCondition(client, ready, timeoutMs || 8000);
   }
   const setKey = value => client.evaluate(`localStorage.setItem(${JSON.stringify(VIEW_KEY)}, ${JSON.stringify(JSON.stringify(value))}); true`);
-  const viewState = () => client.evaluate(`({ state: document.body.getAttribute('data-at-state'), status: document.getElementById('atStatus').textContent,
+  const viewState = () => client.evaluate(`({ state: document.body.getAttribute('data-at-state'), status: document.getElementById('atStatus').textContent, programs: document.getElementById('atHost').getAttribute('data-programs'),
     label: document.getElementById('atSource').textContent, labelHidden: document.getElementById('atSource').hidden, source: document.getElementById('atSource').getAttribute('data-source'),
     bars: document.getElementById('atHost').getAttribute('data-bars') })`);
 
@@ -5631,6 +5713,7 @@ async function testAlphaTexSongs(client, httpPort) {
   assert.equal(view.labelHidden, false);
   assert.equal(view.bars, '3', 'the view drew the alphaTex itself (3 bars), not the 2-bar score of the song');
   assert.equal(view.status, '', 'no status line text when everything went well');
+  assert.equal(view.programs, '24', 'the original alphaTex plays as the nylon guitar (GM program 24)');
 
   // 8. 사본(alphaTex 없음)은 우리 악보에서 만든 미리보기
   await setKey(copyPayload);
@@ -5640,6 +5723,7 @@ async function testAlphaTexSongs(client, httpPort) {
   assert.equal(view.label, '우리 악보에서 만든 미리보기');
   assert.equal(view.source, 'converted');
   assert.equal(view.bars, String(editedLines.length));
+  assert.equal(view.programs, '24', 'the converted preview plays as the nylon guitar (GM program 24)');
 
   // 9. 원본이 alphaTab 오류면 상태 줄에 알리고 변환 미리보기로 대신 그린다
   await setKey(Object.assign({}, original, { alphaTex: BROKEN_TEX }));
@@ -5660,7 +5744,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=measure-width-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=nylon-sf-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

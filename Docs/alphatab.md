@@ -8,7 +8,8 @@
 |---|---|
 | `src/score-to-alphatex.js` | 우리 악보 → alphaTex 변환기(`GuitarAlphaTex.toAlphaTex`). DOM 없는 순수 함수이고 Node에서도 돈다 |
 | `alphatab.html`, `src/alphatab-view.js` | 보기 창. `app.js`를 불러오지 않는다. 변환하고 alphaTab 플레이어를 띄운다 |
-| `vendor/alphatab/` | alphaTab 1.8.4(MPL-2.0). 브라우저 UMD(`dist/alphaTab.min.js`, 전역 `alphaTab`), worker·worklet, Bravura 글꼴, sonivox 사운드폰트 |
+| `vendor/alphatab/` | alphaTab 1.8.4(MPL-2.0). 브라우저 UMD(`dist/alphaTab.min.js`, 전역 `alphaTab`), worker·worklet, Bravura 글꼴, sonivox 사운드폰트(`dist/soundfont/sonivox.sf2`, 받은 그대로 두고 코드에서 쓰지 않는다) |
+| `vendor/musescore-general/` | 보기 창의 사운드폰트 `MuseScore_General.sf3`. 출처 https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General/ , 버전 0.2.0, 39,900,972바이트, SHA-256 `5b85b6c2c61d10b2b91cddd41efcce7b25cd31c8271d511c73afafbef20b6fa3`, MIT. 저작권 고지는 같은 폴더의 `MuseScore_General_License.md`. 받은 그대로 두고 고치지 않는다 |
 | `test/test-score-to-alphatex.js` | 변환기 테스트. vendor의 alphaTab을 `require`해서 변환 결과를 가져온 모델 필드까지 확인한다 |
 | `tools/score-to-alphatex.js`, `tools/alphatab-to-score.js` | 우리 악보 ↔ alphaTab 양방향 명령줄 도구. [명령줄 도구](#명령줄-도구) |
 | `tools/build-scores.js` | 폴더의 `.tex` 원본을 시트용 6열 TSV로 바꾸는 도구. 같은 이름의 `.tex`가 없는 Guitar Pro 파일은 먼저 `.tex`로 만든다. [원본은 alphaTex](#원본은-alphatex) |
@@ -54,6 +55,15 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 
 색은 `src/base.css` 토큰(`--fg`, `--muted`)에서 읽어 alphaTab 표시 색(`mainGlyphColor`, `staffLineColor` 등)에 넣고, 시스템 색 구성이 바뀌면 다시 읽는다. 소리는 alphaTab의 사운드폰트라 앱의 합성음과 다르다.
 
+소리는 이렇게 낸다.
+
+- 창을 열 때는 사운드폰트를 요청하지 않는다. 설정(`player`)에 `soundFont`를 두지 않고 플레이어만 켜 두면, 작업자와 출력이 준비되는 대로(소리 없이) `재생`이 켜진다.
+- 처음 `재생`(또는 Space)을 누르면 `api.loadSoundFontFromUrl`로 `vendor/musescore-general/MuseScore_General.sf3`(약 38MB)를 불러온다. 불러오는 동안 `재생`은 눌리지 않고 상태 줄에 `소리를 불러오는 중입니다(약 38MB, 처음 한 번만)`와 진행률(`soundFontLoad` 이벤트의 `loaded`·`total`로 셈한 %)이 보인다. 다 불러와 `playerReady`가 오면 바로 재생을 시작한다. 그다음 재생은 곧바로 된다. 창을 다시 열면 브라우저 캐시가 쓰이길 기대하지만 캐시 헤더는 서버 몫이고 안 돌려 봤다.
+- 실패하면(`api.error`) 상태 줄에 `소리를 불러오지 못했습니다. 네트워크를 확인하세요.`를 보이고 `재생`을 다시 켠다. 다시 누르면 처음부터 불러온다.
+- 악기는 악보를 읽은 뒤 그리기 전에 모든 트랙의 `track.playbackInfo.program`을 24(General MIDI Acoustic Guitar (nylon))로 바꾼다. 원본 alphaTex와 우리 악보에서 만든 미리보기가 같다. 악보 글자는 바꾸지 않는다. 바뀐 값은 `#atHost`의 `data-programs`에 읽은 모델에서 다시 읽어 적는다.
+- 사운드폰트 상태는 `body`의 `data-at-sound`(`idle` · `loading` · `loaded` · `failed`)에 적는다.
+- 재생 자동 스크롤은 `settings.player.scrollOffsetY`에 위에 붙은 머리(`.at-head`)의 실제 높이와 여유(`SCROLL_MARGIN`)를 음수로 준다. 스크롤하는 요소는 기본값 `html,body`(문서 전체)이고, alphaTab이 스크롤할 때마다 이 값을 읽어서 `updateSettings`는 부르지 않는다. 머리 높이는 `ResizeObserver`와 `resize`로 다시 잰다. 시험은 `window.__alphaTabApi`로 커서를 옮겨 본다.
+
 ## 변환 규칙
 
 배치는 `GuitarStaffLayout.layoutScore`의 결과 하나만 쓴다. 코드 이름만 `GuitarParser.parseScore`의 마디 `chord`에서 읽는다. 표의 alphaTab 모델 필드는 `vendor/alphatab/dist/alphaTab.core.mjs`의 alphaTex 파서 코드에서 찾은 표기를 Node에서 가져와 `test/test-score-to-alphatex.js`가 확인한 것이다.
@@ -98,6 +108,9 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 - 2026-10-20 결정: 롤은 `au`가 아니라 `ad`로 옮긴다. 이름이 반대로 보이지만, alphaTab의 `ad`(ArpeggioDown)가 아래 줄(낮은 소리)부터 굴린다. `ad`와 `au`를 같은 화음에 달고 alphaTab이 만든 MIDI 이벤트의 시작 순서를 보면 `ad`는 낮은 음부터, `au`는 높은 음부터였고(`test/test-score-to-alphatex.js`), 화면에서도 `ad`의 화살표가 위를 가리켰다(낮은 줄에서 높은 줄로, 우리 롤과 같은 방향).
 - 2026-10-20 결정: `alphaTab` 단추는 악보 툴바(`악보 편집` 앞)가 아니라 머리 줄(`단축키 안내` 옆)에 둔다. 툴바에 넣으면 640px 폭 검사에서 `보기 선택`·`카포 배지`와 겹쳤다([화면과 조작](ui.md)).
 - 2026-10-20 결정: 폭 500px 미만에서는 alphaTab 배율을 낮춰(`NARROW_SCALE`) 그린다. 배율은 불러올 때만 정한다. 375px에서도 가로로 넘치지 않지만 긴 곡 제목이 악보 머리의 제목 줄에서 잘린다(보기 창 안에서 가로 스크롤). 제목은 머리 줄에도 있다.
+- 2026-10-21 결정: 보기 창의 소리를 sonivox.sf2(1.3MB)에서 MuseScore_General.sf3(MIT, 약 38MB)로 바꿨다. sonivox 의 기타 소리가 연습에 듣기 힘들 만큼 나빴다. 파일은 vendor/musescore-general 에 받은 그대로 두고, 크기 때문에 창을 열 때가 아니라 처음 재생할 때 불러온다(악보만 볼 때는 내려받지 않는다). sonivox.sf2 는 vendor/alphatab 을 받은 그대로 두려고 지우지 않았고 쓰지 않는다.
+- 2026-10-21 결정: 보기 창은 모든 트랙을 나일론 기타(GM 24)로 재생한다. 클래식 기타 연습 앱이고, Guitar Pro 에서 온 곡은 스틸 기타(GM 25)로 적혀 있는 일이 많다. 원본 alphaTex 글자는 바꾸지 않고 재생 직전에 모델에서만 바꾼다.
+- 2026-10-21 결정: 재생 자동 스크롤에 머리 높이만큼의 오프셋을 준다. alphaTab 은 지금 줄의 맨 위를 화면 맨 위에 맞춰 스크롤해서 위에 붙은 머리 막대에 오선 윗부분이 가려졌다. 머리 높이는 줄바꿈으로 바뀌어 실제 높이를 재고 크기가 바뀌면 다시 잰다.
 - 틀린 길: 처음에는 롤을 `au`로 옮기려 했다. 이름만 보고 정한 것이었고 위 확인으로 바로잡았다.
 - 알려진 것: 재생을 시작하자마자 바로 멈추면 alphaTab 내부(`pause`)에서 `InvalidStateError`가 콘솔에 난다(소리가 실제로 시작되기 전에 멈출 때). `test/test-browser-smoke.js`는 재생 뒤 잠시 기다렸다 멈춘다. 이 오류는 vendor 코드 안이라 고치지 않았다.
 - 안 돌려 본 것: 실제 폰(갤럭시 폴드7)에서의 보기·재생. 소리 품질은 확인하지 않았다.
@@ -238,4 +251,4 @@ node test/test-score-prompt.js
 node test/test-browser-smoke.js
 ```
 
-`test-score-to-alphatex`는 `songs.json`의 모든 곡을 변환해 alphaTab 가져오기 진단이 0인지, 마디 수와 마디마다 박 길이 합(tick)이 박자표와 같은지, 줄·프렛·실음이 배치와 같은지 확인하고, 합성 악보로 위 표의 효과를 하나씩 모델 필드로 확인한다. 빈칸 악보는 첫 마디 앞쪽 빈칸의 `\ac`, 가운데 짧은 마디의 `\ts (2 4)`와 다음 마디의 `\ts (4 4)`, 끝마디의 `\ts`, 8분음표 칸 곡의 `\ts (n 8)`, 마디마다 박 길이 합이 빈칸을 뺀 칸 수와 같은지, 전체 길이가 리듬 길이와 같은지를 보고, 빈칸을 4분쉼으로 내보내는 사본이 걸리는지도 본다. 기대값은 우리 파서·상수에서 셈한다. 브라우저 스모크는 연습 화면 단추의 넘기기, 보기 창의 그리기·보기 전환·재생·다크와 375px 폭을 확인한다. 원본 alphaTex 곡은 테스트 안에서 시트 곡처럼 만들어, 보기 창이 alphaTex를 그대로 그리는지(우리 악보와 마디 수가 다른 alphaTex로 구별), 고친 초안이면 alphaTex를 넘기지 않는지, 입력 화면에서 고쳐 돌아오면(칸 수를 바꿔 돌아오는 경우 포함) `(사본)`·`(사본 2)` 곡이 생기고 원본이 그대로인지, alphaTex가 없는 곡은 제자리 초안으로 남는지, 원본이 alphaTab 오류일 때 변환 미리보기로 대신 그리는지 본다. 스크린샷 `test-artifacts/alphatab-view.png`를 남긴다.
+`test-score-to-alphatex`는 `songs.json`의 모든 곡을 변환해 alphaTab 가져오기 진단이 0인지, 마디 수와 마디마다 박 길이 합(tick)이 박자표와 같은지, 줄·프렛·실음이 배치와 같은지 확인하고, 합성 악보로 위 표의 효과를 하나씩 모델 필드로 확인한다. 빈칸 악보는 첫 마디 앞쪽 빈칸의 `\ac`, 가운데 짧은 마디의 `\ts (2 4)`와 다음 마디의 `\ts (4 4)`, 끝마디의 `\ts`, 8분음표 칸 곡의 `\ts (n 8)`, 마디마다 박 길이 합이 빈칸을 뺀 칸 수와 같은지, 전체 길이가 리듬 길이와 같은지를 보고, 빈칸을 4분쉼으로 내보내는 사본이 걸리는지도 본다. 기대값은 우리 파서·상수에서 셈한다. 브라우저 스모크는 연습 화면 단추의 넘기기, 보기 창의 그리기·보기 전환·재생·다크와 375px 폭을 확인한다. 소리는 창을 여는 동안 사운드폰트 요청이 없는 것(서버가 받은 경로로 센다), 처음 재생을 누르면 `재생`이 꺼지고 상태 줄에 불러오는 중 문구와 진행률이 보였다가 재생 상태가 되는 것, 그다음 재생이 다시 요청하지 않는 것, 없는 파일을 요청하면 실패 문구와 함께 단추가 다시 켜지는 것, 두 악보 경로(원본 alphaTex, 우리 악보 미리보기)의 모든 트랙이 프로그램 24인 것을 확인한다. 자동 스크롤은 폭 900px·낮은 화면에서 커서를 둘째 줄로 옮기고 `scrollToCursor`를 부른 뒤 그 줄의 맨 위가 머리 막대 바로 아래에 오는지 본다(재생을 기다리지 않는다). 원본 alphaTex 곡은 테스트 안에서 시트 곡처럼 만들어, 보기 창이 alphaTex를 그대로 그리는지(우리 악보와 마디 수가 다른 alphaTex로 구별), 고친 초안이면 alphaTex를 넘기지 않는지, 입력 화면에서 고쳐 돌아오면(칸 수를 바꿔 돌아오는 경우 포함) `(사본)`·`(사본 2)` 곡이 생기고 원본이 그대로인지, alphaTex가 없는 곡은 제자리 초안으로 남는지, 원본이 alphaTab 오류일 때 변환 미리보기로 대신 그리는지 본다. 스크린샷 `test-artifacts/alphatab-view.png`를 남긴다.

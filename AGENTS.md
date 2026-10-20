@@ -13,7 +13,7 @@
 - 카포처럼 전역 피치에 영향을 주는 값은 TAB·코드 카드·지판·가이드음 모든 경로에 같이 반영한다.
 - 악보 입력 화면(`score-input.html`)은 `app.js`를 불러오지 않는다. 두 화면이 같이 쓰는 전역은 `src/app-state.js`, 스타일은 `src/base.css`에 둔다. 칸 수 목록은 `GuitarNotation.SHEET_BEAT_COUNTS`, 음이름은 `noteNameForMidi`만 쓴다.
 - UI 문구(상태 줄·알림·확인 창·오류 메시지)는 `~습니다`·`~하세요`·명사형으로 쓰고 반말·해요체를 쓰지 않는다. `src/score-prompt.js`의 AI 프롬프트 본문은 해당하지 않는다. 문서·코드 주석·커밋 메시지는 해라체(`~한다`·`~했다`)로 쓰고 반말을 쓰지 않는다. 규칙은 `Docs/development.md`의 UI 톤 절.
-- `vendor/alphatab/`은 받은 그대로 두고 고치지 않는다. alphaTab은 보기 창(`alphatab.html`)과 `tools/`에서만 불러오고 앱 기본 화면에는 싣지 않는다.
+- `vendor/` 아래(`alphatab/`, `musescore-general/` 사운드폰트)는 받은 그대로 두고 고치지 않는다. alphaTab은 보기 창(`alphatab.html`)과 `tools/`에서만 불러오고 앱 기본 화면에는 싣지 않는다.
 - `tools/sheet-import-script.js`는 시트의 Apps Script에 붙여 넣는 파일이다. `require`·`module`·`import`를 쓰지 않고, 악보 문법 검사를 옮기지 않는다.
 
 ## 악보·재생
