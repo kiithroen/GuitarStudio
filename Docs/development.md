@@ -153,3 +153,5 @@ Get-ChildItem src\*.js, test\*.js, tools\*.js | ForEach-Object { node --check $_
 ```
 
 브라우저 스모크는 Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 실행 파일을 지정할 수 있다. 임시 HTTP 서버와 임시 브라우저 프로필을 쓰며 Web Audio API 경로를 실제로 실행한다. Node 내장 `fetch`와 `WebSocket` 전역이 필요하고 `node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`로 확인할 수 있다. 실제 기기에서의 청취 품질은 확인하지 않는다. 스크린샷 검증은 `test-artifacts/`에 새 파일을 만들 수 있으니 기존 개인 자료를 보존한다.
+
+브라우저 스모크는 크롬 임시 프로필(`gs-browser-smoke-*`)을 크롬 프로세스가 끝난 뒤 지우고, 시작할 때 `os.tmpdir()` 아래의 한 시간 넘은 것을 치운다. 2026-10-21 결정: 크롬을 끈 직후 지우던 정리가 윈도에서 파일 잠금으로 실패하고 그 오류를 버려, 실행마다 프로필 폴더가 남아 Temp에 528개(약 26GB)가 쌓였다. 프로세스 트리가 끝날 때까지 기다린 뒤 다시 시도하며 지우고, 실패하면 경고를 낸다.

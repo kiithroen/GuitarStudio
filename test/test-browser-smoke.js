@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const os = require('node:os');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
 const builtinSongsJson = JSON.parse(fs.readFileSync(path.join(root, 'songs.json'), 'utf8'));
@@ -5825,6 +5825,46 @@ async function testAlphaTexSongs(client, httpPort) {
   process.stdout.write('Browser checkpoint: alphaTex songs (original alphaTex drawn as is, copy instead of draft, numbered copies, in-place draft without alphaTex, fallback preview) passed\n');
 }
 
+const TEMP_PROFILE_PREFIX = 'gs-browser-smoke-';
+
+function removeTempProfile(dir) {
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}
+
+// 이전 실행이 죽어서 남긴 임시 프로필(os.tmpdir() 바로 아래, 접두사가 같고 한 시간 넘은 폴더)만 치운다.
+function removeStaleTempProfiles() {
+  const base = os.tmpdir();
+  const limit = Date.now() - 60 * 60 * 1000;
+  let removed = 0;
+  let names = [];
+  try { names = fs.readdirSync(base); } catch (_) { return; }
+  names.forEach(function(name) {
+    if (!name.startsWith(TEMP_PROFILE_PREFIX)) return;
+    const dir = path.join(base, name);
+    try {
+      const stat = fs.statSync(dir);
+      if (!stat.isDirectory() || stat.mtimeMs >= limit) return;
+      removeTempProfile(dir);
+      removed++;
+    } catch (_) {}
+  });
+  if (removed > 0) process.stdout.write('Removed ' + removed + ' stale temp Chrome profiles\n');
+}
+
+// 우리가 띄운 크롬만 끄고(윈도에서는 프로세스 트리째), 프로세스가 실제로 끝날 때까지 기다린다.
+function stopChrome(proc, timeoutMs) {
+  return new Promise(function(resolve) {
+    if (proc.exitCode !== null || proc.signalCode !== null) { resolve(); return; }
+    const timer = setTimeout(resolve, timeoutMs);
+    proc.once('exit', function() { clearTimeout(timer); resolve(); });
+    if (process.platform === 'win32' && proc.pid) {
+      spawnSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+    } else {
+      proc.kill();
+    }
+  });
+}
+
 async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
@@ -5840,9 +5880,10 @@ async function main() {
     return;
   }
 
+  removeStaleTempProfiles();
   const { server, port: httpPort } = await createStaticServer();
   const cdpPort = 9333 + Math.floor(Math.random() * 200);
-  const tempProfileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-browser-smoke-'));
+  const tempProfileDir = fs.mkdtempSync(path.join(os.tmpdir(), TEMP_PROFILE_PREFIX));
 
   const chromeProc = spawn(browserBin, [
     '--headless=new',
@@ -6362,11 +6403,13 @@ async function main() {
     process.stdout.write('Result: browser smoke passed (clean boot, songs loaded, edit hand-off to the score input screen, image library, Web Audio, 0 console errors)\n');
   } finally {
     if (cdp) cdp.close();
-    chromeProc.kill();
+    await stopChrome(chromeProc, 10000);
     server.close();
     try {
-      fs.rmSync(tempProfileDir, { recursive: true, force: true });
-    } catch (_) {}
+      removeTempProfile(tempProfileDir);
+    } catch (error) {
+      process.stderr.write('Warning: temp Chrome profile not removed: ' + tempProfileDir + ' (' + (error && error.code) + ')\n');
+    }
   }
 }
 
