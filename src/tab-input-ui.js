@@ -498,7 +498,10 @@
       var attr = btn.dataset.attr;
       var current = cursorNote ? (cursorNote[attr] == null ? '' : String(cursorNote[attr])) : null;
       btn.disabled = !cursorNote;
-      if (attr === 'art' && btn.dataset.value === 'h' && cursorNote && cursorNote.art !== 'h' && !T.isHarmonicFret(cursorNote.fret)) btn.disabled = true;
+      if (attr === 'art' && btn.dataset.value === 'h' && cursorNote){
+        if (ui.inputMode === 'staff') btn.disabled = !S.harmonicTarget(doc, cursor, cursor.str).ok;
+        else if (cursorNote.art !== 'h' && !T.isHarmonicFret(cursorNote.fret)) btn.disabled = true;
+      }
       btn.setAttribute('aria-pressed', String(cursorNote != null && current === btn.dataset.value));
     });
     var uncertain = $('tiUncertainBtn');
@@ -799,6 +802,37 @@
     if (attr === 'lh') attrs.lh = value === '' ? null : Number(value);
     else attrs[attr] = value === '' ? null : value;
     apply(function(d){ return T.setNoteAttrs(d, pos, str, attrs); }, { measures: [pos.m] });
+  }
+
+  // 커서 음의 자연 하모닉스를 켜고 끈다. onlyOn 이면 이미 하모닉스인 음은 그대로 둔다(단추).
+  // 오선 모드는 누른 자리를 손 대는 자리로 보고 필요하면 줄을 옮긴다(Docs/staff-input.md).
+  function toggleHarmonic(onlyOn){
+    var pos = copyPos(cursor);
+    var str = cursor.str;
+    var slot = T.getSlot(doc, pos);
+    var note = slot ? slot.notes[str - 1] : null;
+    if (!note){
+      setStatus('하모닉스로 바꿀 음이 없습니다.');
+      return;
+    }
+    if (note.art === 'h'){
+      if (onlyOn) return;
+      apply(function(d){ return T.setNoteAttrs(d, pos, str, { art: null }); }, { measures: [pos.m] });
+      return;
+    }
+    if (ui.inputMode === 'staff'){
+      var result = apply(function(d){ return S.makeHarmonic(d, pos, str); }, {
+        measures: [pos.m],
+        onDone: function(res){ noteSel = { pos: pos, str: res.str }; cursor.str = res.str; }
+      });
+      if (result && result.ok === false) setStatus(result.error);
+      return;
+    }
+    if (!T.isHarmonicFret(note.fret)){
+      setStatus('하모닉스는 ' + GuitarNotation.naturalHarmonicFretsText() + '프렛 음에서만 됩니다.');
+      return;
+    }
+    apply(function(d){ return T.setNoteAttrs(d, pos, str, { art: 'h' }); }, { measures: [pos.m] });
   }
 
   function toggleUncertain(){
@@ -1814,7 +1848,10 @@
     attrButtons = Array.prototype.slice.call($('tiAttrs').querySelectorAll('[data-attr]'));
     attrButtons.forEach(function(btn){
       if (btn.dataset.attr === 'art' && btn.dataset.value === 'h') btn.title = '자연 하모닉스(' + GuitarNotation.naturalHarmonicFretsText() + '프렛 음에서만)';
-      btn.addEventListener('click', function(){ setAttr(btn.dataset.attr, btn.dataset.value); });
+      btn.addEventListener('click', function(){
+        if (btn.dataset.attr === 'art' && btn.dataset.value === 'h') toggleHarmonic(true);
+        else setAttr(btn.dataset.attr, btn.dataset.value);
+      });
     });
     $('tiUncertainBtn').addEventListener('click', toggleUncertain);
 
@@ -1904,6 +1941,11 @@
       if (event.repeat) return;
       flushPending(true);
       toggleRest();
+    }
+    else if (event.code === 'KeyH'){
+      if (event.repeat) return;
+      flushPending(true);
+      toggleHarmonic(false);
     }
     else if (key === 'Escape'){ flushPending(true); clearSelection(); }
     else handled = false;

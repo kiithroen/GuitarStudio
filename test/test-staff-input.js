@@ -472,6 +472,131 @@ test('harmonic notes (art h) cannot be transposed or moved to another string, an
   assert.equal(noteAt(doc, at, string.str), null);
 });
 
+// 하모닉스 켜기: 값은 NATURAL_HARMONICS·STRINGS에서 셈한다. 기대는 테스트 안에서 따로 브루트포스로 구한다.
+function harmonicSetup(){
+  const notation = require('../src/notation.js');
+  const parser = require('../src/parser.js');
+  const frets = Object.keys(notation.NATURAL_HARMONICS).map(Number).sort(function(a, b){ return b - a; });
+  // 손 대는 자리 (str, fret)에서 같은 음을 하모닉스 프렛으로 칠 수 있는 다른 줄들을 우선순위대로(프렛이 큰 쪽, 같으면 낮은 줄 번호) 늘어놓는다.
+  function candidatesOf(str, fret, occupied){
+    const midi = parser.STRINGS[str - 1].midi + fret;
+    const list = [];
+    for (let s = 1; s <= 6; s++){
+      if (s === str || (occupied && occupied.indexOf(s) >= 0)) continue;
+      const f = midi - parser.STRINGS[s - 1].midi;
+      if (frets.indexOf(f) >= 0) list.push({ str: s, fret: f });
+    }
+    list.sort(function(a, b){ return frets.indexOf(a.fret) - frets.indexOf(b.fret) || a.str - b.str; });
+    return list;
+  }
+  const all = [];
+  for (let s = 1; s <= 6; s++){
+    for (let f = 0; f <= ti.MAX_FRET; f++) all.push({ str: s, fret: f, isHarmonic: frets.indexOf(f) >= 0 });
+  }
+  return { notation: notation, parser: parser, frets: frets, candidatesOf: candidatesOf, all: all };
+}
+
+test('harmonicTarget and makeHarmonic: a harmonic fret stays on its string', function(){
+  const h = harmonicSetup();
+  const item = h.all.find(function(x){ return x.isHarmonic; });
+  const doc = fresh();
+  ti.setNote(doc, pos(0), item.str, item.fret);
+  const target = si.harmonicTarget(doc, pos(0), item.str);
+  assert.deepEqual(target, { ok: true, str: item.str, fret: item.fret, same: true });
+  assert.deepEqual(si.makeHarmonic(doc, pos(0), item.str), { ok: true, str: item.str });
+  assert.equal(noteAt(doc, pos(0), item.str).art, 'h');
+  assert.equal(noteAt(doc, pos(0), item.str).fret, item.fret);
+  // 이미 하모닉스이면 바꾸지 않는다
+  const before = snapshot(doc);
+  assert.deepEqual(si.harmonicTarget(doc, pos(0), item.str), { ok: true, str: item.str, fret: item.fret, same: true });
+  assert.deepEqual(si.makeHarmonic(doc, pos(0), item.str), { ok: true, str: item.str });
+  assert.deepEqual(snapshot(doc), before);
+  // 음이 없으면 막는다
+  const empty = fresh();
+  assert.equal(si.harmonicTarget(empty, pos(0), 1).error, '하모닉스로 바꿀 음이 없습니다.');
+  assert.equal(si.makeHarmonic(empty, pos(0), 1).error, '하모닉스로 바꿀 음이 없습니다.');
+});
+
+test('harmonicTarget moves a plain note to the free string where its hand position is a harmonic fret', function(){
+  const h = harmonicSetup();
+  const item = h.all.find(function(x){ return !x.isHarmonic && h.candidatesOf(x.str, x.fret).length > 0; });
+  assert.ok(item, 'a plain position with a harmonic alternative exists');
+  const expected = h.candidatesOf(item.str, item.fret)[0];
+  const doc = fresh();
+  ti.setNote(doc, pos(0), item.str, item.fret);
+  ti.setNoteAttrs(doc, pos(0), item.str, { lh: 2, rh: 'i', art: '!', uncertain: true });
+  const handMidi = ti.noteMidiOf(item.str, noteAt(doc, pos(0), item.str));
+  assert.deepEqual(si.harmonicTarget(doc, pos(0), item.str), { ok: true, str: expected.str, fret: expected.fret, same: false });
+  assert.deepEqual(si.makeHarmonic(doc, pos(0), item.str), { ok: true, str: expected.str });
+  assert.equal(noteAt(doc, pos(0), item.str), null, 'the old string is emptied');
+  const moved = noteAt(doc, pos(0), expected.str);
+  assert.equal(moved.art, 'h', 'apoyando became a harmonic');
+  assert.equal(moved.fret, expected.fret);
+  assert.equal(moved.lh, null, 'the left hand finger is cleared');
+  assert.equal(moved.rh, 'i', 'the right hand finger stays');
+  assert.equal(moved.uncertain, true, 'the check mark stays');
+  assert.equal(h.parser.STRINGS[expected.str - 1].midi + moved.fret, handMidi, 'the hand position pitch is kept');
+});
+
+test('harmonicTarget priority: larger harmonic fret first, then the lower string number', function(){
+  const h = harmonicSetup();
+  let multi = 0;
+  h.all.forEach(function(item){
+    if (item.isHarmonic) return;
+    const list = h.candidatesOf(item.str, item.fret);
+    if (list.length < 2) return;
+    multi++;
+    const doc = fresh();
+    ti.setNote(doc, pos(0), item.str, item.fret);
+    const target = si.harmonicTarget(doc, pos(0), item.str);
+    const bestFret = Math.max.apply(null, list.map(function(x){ return x.fret; }));
+    assert.equal(target.fret, bestFret, 'the largest harmonic fret wins at ' + item.str + '/' + item.fret);
+    assert.equal(target.str, list.filter(function(x){ return x.fret === bestFret; })[0].str);
+    assert.equal(target.str, list[0].str);
+  });
+  assert.ok(multi > 0, 'at least one position has two harmonic alternatives');
+});
+
+test('harmonicTarget fails with the guide text when no free string makes the hand position a harmonic fret', function(){
+  const h = harmonicSetup();
+  const item = h.all.find(function(x){ return !x.isHarmonic && h.candidatesOf(x.str, x.fret).length === 0; });
+  assert.ok(item, 'a position with no harmonic alternative exists');
+  const doc = fresh();
+  ti.setNote(doc, pos(0), item.str, item.fret);
+  const before = snapshot(doc);
+  const message = '이 자리는 빈 줄 어디에서도 ' + h.notation.naturalHarmonicFretsText() + '프렛이 아니라 하모닉스로 칠 수 없습니다.';
+  const target = si.harmonicTarget(doc, pos(0), item.str);
+  assert.equal(target.ok, false);
+  assert.equal(target.error, message);
+  const made = si.makeHarmonic(doc, pos(0), item.str);
+  assert.equal(made.ok, false);
+  assert.equal(made.error, message);
+  assert.deepEqual(snapshot(doc), before, 'a refusal leaves the document unchanged');
+});
+
+test('harmonicTarget skips candidate strings that hold other notes', function(){
+  const h = harmonicSetup();
+  const item = h.all.find(function(x){ return !x.isHarmonic && h.candidatesOf(x.str, x.fret).length >= 2; });
+  assert.ok(item, 'a position with two alternatives exists');
+  const list = h.candidatesOf(item.str, item.fret);
+  const doc = fresh();
+  ti.setNote(doc, pos(0), item.str, item.fret);
+  // 우선 후보 줄을 다른 음(0프렛)으로 채운다. 그 줄의 0프렛은 하모닉스 프렛이 아니라서 후보와 같은 음일 수 없다.
+  ti.setNote(doc, pos(0), list[0].str, 0);
+  const occupied = [list[0].str];
+  const expected = h.candidatesOf(item.str, item.fret, occupied)[0];
+  assert.equal(expected.str, list[1].str);
+  assert.deepEqual(si.harmonicTarget(doc, pos(0), item.str), { ok: true, str: expected.str, fret: expected.fret, same: false });
+  assert.deepEqual(si.makeHarmonic(doc, pos(0), item.str), { ok: true, str: expected.str });
+  assert.equal(noteAt(doc, pos(0), list[0].str).fret, 0, 'the other note is untouched');
+  assert.equal(noteAt(doc, pos(0), list[0].str).art, null);
+  // 후보를 모두 채우면 막는다
+  const full = fresh();
+  ti.setNote(full, pos(0), item.str, item.fret);
+  list.forEach(function(x){ ti.setNote(full, pos(0), x.str, 0); });
+  assert.equal(si.harmonicTarget(full, pos(0), item.str).ok, false, 'all alternatives occupied is refused');
+});
+
 test('random operations keep the document valid and failures leave it untouched', function(){
   let seed = 20261019;
   function random(){

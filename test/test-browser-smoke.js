@@ -2289,8 +2289,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=harmonics-2')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=harmonics-2">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=harmonics-3')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=harmonics-3">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -3095,6 +3095,71 @@ async function testStaffInputMode(client, httpPort) {
   assert.ok(durShot.scroll <= durShot.inner, 'the 1024px staff input page does not overflow horizontally');
   assert.deepEqual(client.consoleErrors.slice(durErrorsBefore), [], 'the length steps run without console errors');
 
+  // 13. H 키와 하모닉스 단추(오선 모드): 누른 자리를 손 대는 자리로 보고, 그 줄의 프렛이 하모닉스 프렛이 아니면 줄을 옮겨 켠다. 기대는 STRINGS·NATURAL_HARMONICS에서 따로 셈한다.
+  const harmErrorsBefore = client.consoleErrors.length;
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate(`document.getElementById('tiNewBtn').click(); __tiTest.key('5', 'Digit5'); true`);
+  await client.evaluate('__tiTest.clickBand(2, false); true');
+  const staffHarm = await client.evaluate(`(function(){
+    var t = __tiTest;
+    var table = GuitarNotation.NATURAL_HARMONICS;
+    var frets = Object.keys(table).map(Number).sort(function(a, b){ return b - a; });
+    var hBtn = document.querySelector('[data-attr="art"][data-value="h"]');
+    function press(){ var e = new KeyboardEvent('keydown', { key:'h', code:'KeyH', bubbles:true, cancelable:true }); document.body.dispatchEvent(e); return e.defaultPrevented; }
+    function firstToken(){ return t.text().split('\\n')[0].split(' ')[1]; }
+    var out = { premise: {} };
+    var start = firstToken().match(/@(\\d)$/);
+    var str0 = Number(start[1]);
+    var fret0 = Number(t.pos(0,0,0,str0).querySelector('.ti-pos-label').textContent);
+    var midi = GuitarParser.STRINGS[str0 - 1].midi + fret0;
+    var cands = [];
+    for (var s = 1; s <= 6; s++) {
+      if (s === str0) continue;
+      var f = midi - GuitarParser.STRINGS[s - 1].midi;
+      if (frets.indexOf(f) >= 0) cands.push({ str:s, fret:f });
+    }
+    cands.sort(function(a, b){ return frets.indexOf(a.fret) - frets.indexOf(b.fret) || a.str - b.str; });
+    out.premise = { startHarmonic: frets.indexOf(fret0) >= 0, cands: cands.length };
+    var doc = GuitarTabInput.createDoc();
+    GuitarTabInput.setNote(doc, { m:0, c:0, s:0 }, str0, fret0);
+    out.target = GuitarStaffInput.harmonicTarget(doc, { m:0, c:0, s:0 }, str0);
+    out.expected = cands[0];
+    out.btnEnabled = !hBtn.disabled;
+    out.prevented = press();
+    var token = firstToken();
+    out.token = token;
+    out.expectedToken = 'h' + GuitarParser.noteNameForMidi(GuitarParser.STRINGS[cands[0].str - 1].midi + table[cands[0].fret], false) + '@' + cands[0].str;
+    out.cursor = t.cursor();
+    out.pressed = hBtn.getAttribute('aria-pressed');
+    out.btnAfter = !hBtn.disabled;
+    var handNode = t.pos(0,0,0,cands[0].str).querySelector('.ti-pos-label'); out.handLabel = handNode ? handNode.textContent : '';
+    var beforeButton = t.text();
+    hBtn.click();
+    out.buttonKeepsOn = t.text() === beforeButton;
+    press();
+    out.offToken = firstToken();
+    out.expectedOff = GuitarParser.noteNameForMidi(GuitarParser.STRINGS[cands[0].str - 1].midi + cands[0].fret, false) + '@' + cands[0].str;
+    out.offPressed = hBtn.getAttribute('aria-pressed');
+    hBtn.click();
+    out.buttonOn = firstToken();
+    return out;
+  })()`);
+  assert.equal(staffHarm.premise.startHarmonic, false, 'the staff test note starts on a non-harmonic fret: ' + JSON.stringify(staffHarm.premise));
+  assert.ok(staffHarm.premise.cands > 0, 'the staff test note has a harmonic alternative string: ' + JSON.stringify(staffHarm.premise));
+  assert.equal(staffHarm.prevented, true, 'the H key is handled in staff mode');
+  assert.equal(staffHarm.btnEnabled, true, 'the harmonic button is enabled when another string can play the harmonic');
+  assert.deepEqual({ str: staffHarm.target.str, fret: staffHarm.target.fret, same: staffHarm.target.same }, { str: staffHarm.expected.str, fret: staffHarm.expected.fret, same: false }, 'harmonicTarget matches the independent calculation');
+  assert.equal(staffHarm.token, staffHarm.expectedToken, 'H writes the harmonic on the target string: ' + JSON.stringify(staffHarm));
+  assert.ok(staffHarm.cursor.indexOf(staffHarm.expected.str + '번 줄') >= 0, 'the cursor string follows the moved note: ' + staffHarm.cursor);
+  assert.equal(staffHarm.pressed, 'true', 'the harmonic button is pressed after H');
+  assert.equal(staffHarm.btnAfter, true, 'a harmonic note keeps the button enabled');
+  assert.ok(staffHarm.handLabel.indexOf('<' + staffHarm.expected.fret + '>') >= 0, 'the TAB label shows the hand fret: ' + staffHarm.handLabel);
+  assert.equal(staffHarm.buttonKeepsOn, true, 'the button on a harmonic note leaves it as it is');
+  assert.equal(staffHarm.offToken, staffHarm.expectedOff, 'H again turns it off, the plain note stays on the moved string: ' + staffHarm.offToken);
+  assert.equal(staffHarm.offPressed, 'false', 'the harmonic button is released after H again');
+  assert.equal(staffHarm.buttonOn, staffHarm.expectedToken, 'the button turns it on again');
+  assert.deepEqual(client.consoleErrors.slice(harmErrorsBefore), [], 'the staff harmonic steps run without console errors');
+
   await client.send('Emulation.clearDeviceMetricsOverride');
   await client.evaluate(clearStorage);
   client.dialogHandler = null;
@@ -3682,6 +3747,45 @@ async function testFretLabel(client, httpPort) {
   assert.equal(harm.noneHTokens, 0, 'none removes the harmonic');
   assert.ok(harm.nonePlain >= 1, 'none leaves the plain note of that fret: ' + JSON.stringify(harm));
   assert.ok(harm.noneLabel.indexOf('<') < 0, 'the TAB label has no brackets after none: ' + harm.noneLabel);
+
+  // H 키 (타브 모드): 하모닉스 프렛이면 켜고 끄고, 아니면 안내만 하고 바꾸지 않는다
+  const hkey = await client.evaluate(`(function(){
+    var t = __tiTest;
+    var table = GuitarNotation.NATURAL_HARMONICS;
+    var hf = Number(Object.keys(table)[0]);
+    var plainFret = 1;
+    for (var f = 1; f <= 19; f++) { if (!Object.prototype.hasOwnProperty.call(table, f)) { plainFret = f; break; } }
+    var hName = GuitarParser.noteNameForMidi(GuitarParser.STRINGS[1].midi + table[hf], false);
+    function press(){ var e = new KeyboardEvent('keydown', { key:'h', code:'KeyH', bubbles:true, cancelable:true }); document.body.dispatchEvent(e); return e.defaultPrevented; }
+    function count(){ return t.text().split(/\\s+/).filter(function(x){ return x.indexOf('h' + hName + '@2') >= 0; }).length; }
+    var out = {};
+    t.pos(0,1,0,2).click();
+    if (!t.pos(0,1,0,2).querySelector('.ti-pos-label') || t.pos(0,1,0,2).querySelector('.ti-pos-label').textContent.indexOf(String(hf)) !== 0) t.fret(2, hf).click(); // 같은 프렛을 다시 누르면 지워지니 음이 없을 때만 넣는다
+    out.beforeOn = count();
+    out.prevented = press();
+    out.on = count();
+    out.pressed = t.attr('art','h').getAttribute('aria-pressed');
+    press();
+    out.off = count();
+    t.fret(2, plainFret).click();
+    var textBefore = t.text();
+    press();
+    out.plainStatus = document.getElementById('tiStatus').textContent;
+    out.plainSame = t.text() === textBefore;
+    out.expectedStatus = '하모닉스는 ' + GuitarNotation.naturalHarmonicFretsText() + '프렛 음에서만 됩니다.';
+    out.tabHint = document.getElementById('tiTabHint').textContent;
+    out.staffHint = document.getElementById('tiStaffHint').textContent;
+    return out;
+  })()`);
+  assert.equal(hkey.beforeOn, 0, 'a plain harmonic-fret note is not a harmonic yet');
+  assert.equal(hkey.prevented, true, 'the H key is handled');
+  assert.ok(hkey.on >= 1, 'H turns a harmonic-fret note into h + sounding pitch + @2: ' + JSON.stringify(hkey));
+  assert.equal(hkey.pressed, 'true', 'the harmonic button shows the harmonic state after H');
+  assert.equal(hkey.off, 0, 'H again turns the harmonic off');
+  assert.equal(hkey.plainStatus, hkey.expectedStatus, 'H on a non-harmonic fret says where harmonics work: ' + hkey.plainStatus);
+  assert.equal(hkey.plainSame, true, 'H on a non-harmonic fret leaves the score text alone');
+  assert.ok(hkey.tabHint.indexOf('H 하모닉스') >= 0, 'the tab hint mentions H: ' + hkey.tabHint);
+  assert.ok(hkey.staffHint.indexOf('H 하모닉스') >= 0, 'the staff hint mentions H: ' + hkey.staffHint);
 
   // 입력 화면 스크린샷: 로망스 1부
   const romance = builtinSongsJson.find(item => item.id === 'builtin-lv6-romance-full');

@@ -210,6 +210,44 @@
     return { ok: true, str: toStr };
   }
 
+  // ---------- 하모닉스
+
+  // 커서 음을 자연 하모닉스로 만들 줄과 손 대는 프렛. 오선에서 누른 자리(손 대는 자리)는 그대로 두고 줄만 옮긴다.
+  function harmonicTarget(doc, pos, str){
+    var slot = GuitarTabInput.getSlot(doc, pos);
+    if (!slot || !isInt(str) || str < 1 || str > GuitarTabInput.STRING_COUNT || !slot.notes[str - 1]){
+      return fail('하모닉스로 바꿀 음이 없습니다.');
+    }
+    var note = slot.notes[str - 1];
+    if (note.art === 'h') return { ok: true, str: str, fret: note.fret, same: true };
+    var midi = GuitarTabInput.noteMidiOf(str, note);
+    if (GuitarTabInput.isHarmonicFret(note.fret)) return { ok: true, str: str, fret: note.fret, same: true };
+    var best = null;
+    for (var s = 1; s <= GuitarTabInput.STRING_COUNT; s++){
+      if (s === str || slot.notes[s - 1]) continue;
+      var fret = midi - GuitarParser.STRINGS[s - 1].midi;
+      if (fret < 0 || !GuitarTabInput.isHarmonicFret(fret)) continue;
+      if (!best || fret > best.fret) best = { str: s, fret: fret }; // 프렛이 큰 쪽(12, 7, 5, 4 순) 먼저, 같으면 먼저 나온 낮은 줄 번호
+    }
+    if (!best){
+      return fail('이 자리는 빈 줄 어디에서도 ' + GuitarNotation.naturalHarmonicFretsText() + '프렛이 아니라 하모닉스로 칠 수 없습니다.');
+    }
+    return { ok: true, str: best.str, fret: best.fret, same: false };
+  }
+
+  function makeHarmonic(doc, pos, str){
+    var target = harmonicTarget(doc, pos, str);
+    if (!target.ok) return target;
+    var slot = GuitarTabInput.getSlot(doc, pos);
+    var note = slot.notes[str - 1];
+    if (note.art === 'h') return { ok: true, str: str };
+    if (!target.same){
+      relocateNote(slot, str, target.str, GuitarTabInput.noteMidiOf(str, note));
+    }
+    slot.notes[target.str - 1].art = 'h';
+    return { ok: true, str: target.str };
+  }
+
   // ---------- 음높이
 
   function alterFor(doc, pos, letter, soundingOctave){
@@ -433,6 +471,7 @@
     placeEvent: placeEvent, assignString: assignString, addToChord: addToChord,
     toggleChordNote: toggleChordNote, nextEventPos: nextEventPos, prevEventPos: prevEventPos,
     stringCandidates: stringCandidates, moveToString: moveToString,
+    harmonicTarget: harmonicTarget, makeHarmonic: makeHarmonic,
     alterFor: alterFor, writtenToMidi: writtenToMidi, nearestMidi: nearestMidi, referenceMidi: referenceMidi,
     transposeNote: transposeNote, noteToRest: noteToRest
   };
