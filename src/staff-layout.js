@@ -69,6 +69,7 @@
       name: letter + m[2] + m[3], letter: letter, alter: alter, octave: written, step: step,
       midi: drawMidi, soundMidi: parsed.midi, slur: parsed.articulation === 'slur', slide: parsed.articulation === 'slide', accidental: null, ledger: ledgerFor(step),
       str: parsed.pos ? parsed.pos.str : null, fret: parsed.pos ? parsed.pos.fret : null,
+      lh: parsed.pos && parsed.pos.lh != null ? parsed.pos.lh : null, rh: parsed.pos && parsed.pos.rh != null ? parsed.pos.rh : null,
       uncertain: !!parsed.uncertain, harmonic: harmonic
     };
   }
@@ -281,7 +282,8 @@
               item.notes = baseNotes.map(function(note){
                 var copy = {
                   name: note.name, letter: note.letter, alter: note.alter, octave: note.octave, step: note.step,
-                  accidental: null, ledger: note.ledger.slice(), str: note.str, fret: note.fret, uncertain: note.uncertain
+                  accidental: null, ledger: note.ledger.slice(), str: note.str, fret: note.fret, uncertain: note.uncertain,
+                  lh: note.lh, rh: note.rh // 오선 그리기에는 쓰지 않는다. 다른 보기(alphaTab 변환)가 운지를 읽는다.
                 };
                 if (note.harmonic) copy.harmonic = true;
                 if (!item.tieFromPrev){

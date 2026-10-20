@@ -4,6 +4,7 @@ var scoreDrafts = createScoreDraftStore();
 var scoreEditorHooks = (function(){
   var TAB_INPUT_OPEN_KEY = 'gs.tabInput.open';
   var TAB_INPUT_HANDOFF_KEY = 'gs.tabInput.handoff';
+  var ALPHATAB_VIEW_KEY = 'gs.alphaTab.view';
   var TAB_INPUT_HANDOFF_MAX_AGE_MS = 600000;
   var TAB_INPUT_HANDOFF_MAX_FUTURE_MS = 60000;
 
@@ -70,6 +71,8 @@ var scoreEditorHooks = (function(){
     }
     var edit = document.getElementById('editInInputBtn');
     if (edit) edit.hidden = !structured;
+    var alphaTab = document.getElementById('openAlphaTabBtn');
+    if (alphaTab) alphaTab.hidden = !structured;
     var copy = document.getElementById('copyCurSongTsvBtn');
     if (copy) copy.hidden = !structured;
     var copyStatus = document.getElementById('scoreCopyStatus');
@@ -115,6 +118,21 @@ var scoreEditorHooks = (function(){
     else showStorageStatus('악보 입력 화면으로 전달하지 못했습니다. 악보 복사 기능을 이용하세요.');
   }
 
+  // 지금 곡(초안이면 초안 내용)을 alphaTab 보기 창(새 탭)으로 넘긴다. 연습은 멈추지 않는다.
+  function openInAlphaTab(){
+    if (!curSong || curSong.type !== 'structured') return;
+    var ok = ls.set(ALPHATAB_VIEW_KEY, {
+      title:curSong.title,
+      beats:curSong.beats,
+      bpm:Math.max(30, Math.min(240, Math.round(Number(curSong.bpm) || 64))),
+      capo:GuitarParser.getSongCapo(curSong),
+      lines:serializeScoreMeasures(curSong.measures, '\n').split('\n'),
+      savedAt:Date.now()
+    });
+    if (ok) window.open('alphatab.html', '_blank');
+    else showStorageStatus('alphaTab 보기로 전달하지 못했습니다. 브라우저 저장소를 확인하세요.');
+  }
+
   function appendMeasureEditButton(head, index){
     var button = document.createElement('button');
     button.type = 'button';
@@ -131,6 +149,7 @@ var scoreEditorHooks = (function(){
 
   function init(){
     document.getElementById('editInInputBtn').addEventListener('click', function(){ openInInput(0); });
+    document.getElementById('openAlphaTabBtn').addEventListener('click', openInAlphaTab);
     document.getElementById('resetScoreDraftBtn').addEventListener('click', reset);
     window.addEventListener('beforeunload', function(event){
       var hasDraft = allSongs.some(function(song){

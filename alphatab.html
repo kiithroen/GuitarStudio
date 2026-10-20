@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#eceee9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121614" media="(prefers-color-scheme: dark)">
+<title>alphaTab 보기 · 기타 스튜디오</title>
+<link rel="stylesheet" href="src/base.css?v=alphatab-1">
+<style>
+/* alphaTab 보기 창 전용. 색은 base.css 토큰만 쓴다. */
+.at-head{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 0;background:var(--bg);border-bottom:1px solid var(--line)}
+.at-title{margin:0;font-size:17px;font-weight:700;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.at-controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;min-width:0}
+.at-field{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.at-select{min-height:32px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg);font-size:12.5px}
+.at-status{margin:0;flex:1 1 100%;min-width:0;font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
+.at-status[data-state="error"]{color:var(--off)}
+.at-status:empty{display:none}
+.at-host{position:relative;min-height:160px;overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px}
+.at-cursor-bar{background:var(--accent-soft)}
+.at-cursor-beat{background:var(--accent);width:3px}
+.at-selection div{background:var(--accent-soft)}
+.at-highlight *{fill:var(--accent);stroke:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="at-head">
+    <h1 class="at-title" id="atTitle">alphaTab 보기</h1>
+    <div class="at-controls">
+      <button type="button" class="btn sm primary" id="atPlayBtn" disabled title="재생과 일시정지 (단축키: Space)">재생</button>
+      <button type="button" class="btn sm" id="atRewindBtn" disabled title="처음 위치로 돌아갑니다">처음으로</button>
+      <label class="at-field" for="atSpeedSelect">빠르기
+        <select class="at-select" id="atSpeedSelect" disabled>
+          <option value="50">50%</option>
+          <option value="75">75%</option>
+          <option value="100" selected>100%</option>
+        </select>
+      </label>
+      <label class="at-field" for="atViewSelect">보기
+        <select class="at-select" id="atViewSelect" disabled>
+          <option value="scoreTab" selected>오선+타브</option>
+          <option value="tab">타브</option>
+          <option value="score">오선</option>
+        </select>
+      </label>
+    </div>
+    <p class="at-status" id="atStatus" role="status" aria-live="polite" data-state="loading">불러오는 중</p>
+  </header>
+  <main class="at-host" id="atHost" aria-label="alphaTab 악보"></main>
+</div>
+<script src="src/notation.js?v=alphatab-1"></script>
+<script src="src/rhythm.js?v=alphatab-1"></script>
+<script src="src/parser.js?v=alphatab-1"></script>
+<script src="src/staff-layout.js?v=alphatab-1"></script>
+<script src="src/score-to-alphatex.js?v=alphatab-1"></script>
+<script src="vendor/alphatab/dist/alphaTab.min.js?v=alphatab-1"></script>
+<script src="src/alphatab-view.js?v=alphatab-1"></script>
+</body>
+</html>

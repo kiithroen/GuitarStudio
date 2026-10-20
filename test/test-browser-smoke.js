@@ -16,7 +16,10 @@ const MIME_TYPES = {
   '.js': 'application/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
-  '.ico': 'image/x-icon'
+  '.ico': 'image/x-icon',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.woff2': 'font/woff2',
+  '.sf2': 'application/octet-stream'
 };
 
 function createStaticServer() {
@@ -2302,8 +2305,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=review-2')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=review-2">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=alphatab-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=alphatab-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -4895,11 +4898,224 @@ async function testRollInput(client, httpPort) {
   process.stdout.write('Browser checkpoint: roll in score input (card wave geometry, button, ` key in both modes, rolled playback) passed\n');
 }
 
+// alphaTab 보기 창: 연습 화면 단추가 곡을 넘기고, 넘긴 곡을 alphatab.html이 alphaTab으로 그린다.
+async function testAlphaTabView(client, httpPort) {
+  const SONG_ID = 'builtin-lv1-butterfly';
+  const VIEW_KEY = 'gs.alphaTab.view';
+  const practiceUrl = `http://127.0.0.1:${httpPort}/index.html`;
+  const viewUrl = `http://127.0.0.1:${httpPort}/alphatab.html`;
+  const practiceReady = 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= ' + builtinSongCount + ' && window.curSong != null';
+  const viewSettled = 'document.readyState === "complete" && ["ready","empty","error"].indexOf(document.body.getAttribute("data-at-state")) >= 0';
+  const errorsBefore = client.consoleErrors.length;
+  async function navigate(url, ready, timeoutMs) {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await client.send('Page.navigate', { url });
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, ready, timeoutMs || 8000);
+  }
+  const setKey = value => client.evaluate(`localStorage.setItem(${JSON.stringify(VIEW_KEY)}, ${JSON.stringify(typeof value === 'string' ? value : JSON.stringify(value))}); true`);
+  const readStatus = () => client.evaluate(`({ state: document.body.getAttribute('data-at-state'), text: document.getElementById('atStatus').textContent, title: document.getElementById('atTitle').textContent })`);
+
+  // 1. 연습 화면 단추: 구조화 곡에서만 보이고, 누르면 지금 곡을 넘기고 새 탭을 연다
+  await navigate(practiceUrl, practiceReady);
+  await client.evaluate(`localStorage.removeItem(${JSON.stringify(VIEW_KEY)}); changeSongById(${JSON.stringify(SONG_ID)}); true`);
+  const button = await client.evaluate(`(function(){
+    var b = document.getElementById('openAlphaTabBtn');
+    var help = document.getElementById('helpModalOpenBtn');
+    return { exists: !!b, hidden: !!b && b.hidden, shown: !!b && b.getClientRects().length > 0, text: b && b.textContent, besideHelp: !!b && b.previousElementSibling === help, type: b && b.type };
+  })()`);
+  assert.deepEqual(button, { exists: true, hidden: false, shown: true, text: 'alphaTab', besideHelp: true, type: 'button' }, 'the alphaTab button sits next to the help button and is visible for a structured song');
+  await client.evaluate(`(function(){ window.__alphaTabOpens = []; window.open = function(url, target){ window.__alphaTabOpens.push([String(url), target]); return {}; }; return true; })()`);
+  await client.evaluate(`document.getElementById('openAlphaTabBtn').click(); true`, { userGesture: true });
+  const handoff = await client.evaluate(`(function(){
+    var stored = JSON.parse(localStorage.getItem(${JSON.stringify(VIEW_KEY)}) || 'null');
+    return { stored: stored, opens: window.__alphaTabOpens, lines: serializeScoreMeasures(curSong.measures, '\\n').split('\\n'), title: curSong.title, beats: curSong.beats, bpm: curSong.bpm, capo: GuitarParser.getSongCapo(curSong) };
+  })()`);
+  assert.ok(handoff.stored, 'clicking the alphaTab button writes ' + VIEW_KEY);
+  assert.deepEqual(handoff.opens, [['alphatab.html', '_blank']], 'the button opens alphatab.html in a new tab');
+  assert.equal(handoff.stored.title, handoff.title, 'handoff carries the song title');
+  assert.equal(handoff.stored.beats, handoff.beats, 'handoff carries the cell count');
+  assert.equal(handoff.stored.bpm, handoff.bpm, 'handoff carries the BPM');
+  assert.equal(handoff.stored.capo, handoff.capo, 'handoff carries the capo');
+  assert.deepEqual(handoff.stored.lines, handoff.lines, 'handoff carries the current score lines');
+  assert.equal(typeof handoff.stored.savedAt, 'number', 'handoff carries a save time');
+  const butterfly = builtinSongsJson.find(item => item.id === SONG_ID);
+  assert.equal(handoff.stored.lines.length, butterfly.lines.length, 'handoff has one line per measure');
+
+  // 지금 곡이 초안·카포 곡이면 그 내용을 넘긴다
+  const fixture = await client.evaluate(`(function(){
+    var previous = curSong;
+    var parsed = parseScore('[C] !1C4@2:i E4@1:p r r | "copy memo"', 4);
+    try {
+      curSong = { id:'alphatab-handoff-fixture', title:'Handoff fixture', badge:'Capo 2', type:'structured', beats:4, bpm:77, capo:0, measures:parsed.measures };
+      scoreEditorHooks.refreshStatus();
+      window.__alphaTabOpens.length = 0;
+      document.getElementById('openAlphaTabBtn').click();
+      var stored = JSON.parse(localStorage.getItem(${JSON.stringify(VIEW_KEY)}));
+      var opens = window.__alphaTabOpens.slice();
+      curSong = { id:'alphatab-image-fixture', title:'Image fixture', type:'image', beats:4, bpm:60, measures:[] };
+      scoreEditorHooks.refreshStatus();
+      var hiddenForImage = document.getElementById('openAlphaTabBtn').hidden;
+      return { stored: stored, opens: opens, hiddenForImage: hiddenForImage };
+    } finally { curSong = previous; scoreEditorHooks.refreshStatus(); renderSong(); }
+  })()`);
+  assert.equal(fixture.stored.title, 'Handoff fixture');
+  assert.equal(fixture.stored.bpm, 77);
+  assert.equal(fixture.stored.capo, 2, 'capo from the song title/badge is handed over');
+  assert.deepEqual(fixture.stored.lines, ['[C] !1C4@2:i E4@1:p r r | "copy memo"'], 'a draft hands over its current content');
+  assert.equal(fixture.opens.length, 1);
+  assert.equal(fixture.hiddenForImage, true, 'the alphaTab button hides for a non-structured song');
+  // 저장이 막히면 알림 줄에 알리고 새 탭은 열지 않는다
+  const storageFail = await client.evaluate(`(function(){
+    var original = Storage.prototype.setItem;
+    window.__alphaTabOpens.length = 0;
+    Storage.prototype.setItem = function(){ throw new Error('quota'); };
+    try { document.getElementById('openAlphaTabBtn').click(); } finally { Storage.prototype.setItem = original; }
+    var status = document.getElementById('storageStatus');
+    return { opens: window.__alphaTabOpens.length, shown: !status.hidden, text: status.textContent };
+  })()`);
+  assert.equal(storageFail.opens, 0, 'no new tab opens when the handoff cannot be saved');
+  assert.equal(storageFail.shown, true);
+  assert.match(storageFail.text, /alphaTab/);
+  await client.evaluate(`document.getElementById('storageStatus').hidden = true; true`);
+
+  // 2. 보기 창: 넘기기 값이 없거나 모양이 틀리면 안내만 한다
+  await client.evaluate(`localStorage.removeItem(${JSON.stringify(VIEW_KEY)}); true`);
+  await navigate(viewUrl, viewSettled);
+  let status = await readStatus();
+  assert.deepEqual([status.state, status.text], ['empty', '연습 화면의 alphaTab 단추로 여세요.'], 'no handoff shows the guidance line');
+  await setKey('{not json');
+  await navigate(viewUrl, viewSettled);
+  status = await readStatus();
+  assert.deepEqual([status.state, status.text], ['empty', '연습 화면의 alphaTab 단추로 여세요.'], 'a broken handoff shows the guidance line');
+  await setKey({ title: 'x', beats: 4, bpm: 60, lines: 'not an array' });
+  await navigate(viewUrl, viewSettled);
+  assert.equal((await readStatus()).state, 'empty', 'a handoff of the wrong shape shows the guidance line');
+  await setKey({ title: 'Bad score', beats: 4, bpm: 60, capo: 0, lines: ['E4 r r'], savedAt: Date.now() });
+  await navigate(viewUrl, viewSettled);
+  status = await readStatus();
+  assert.equal(status.state, 'error', 'a score the converter rejects shows an error');
+  assert.match(status.text, /^악보를 alphaTab으로 바꾸지 못했습니다: .+/, 'the converter error is shown in the status line');
+  assert.equal(status.title, 'Bad score');
+  assert.equal(await client.evaluate(`document.getElementById('atPlayBtn').disabled`), true, 'play stays disabled after an error');
+
+  // 3. 보기 창: 연습 화면이 넘긴 곡을 그린다
+  await setKey(handoff.stored);
+  await navigate(viewUrl, viewSettled, 45000);
+  status = await readStatus();
+  assert.equal(status.state, 'ready', 'alphaTab finished rendering and the player is ready: ' + JSON.stringify(status));
+  assert.equal(status.title, handoff.title, 'the head shows the song title');
+  const drawn = await client.evaluate(`(function(){
+    var host = document.getElementById('atHost');
+    return { svgs: host.querySelectorAll('svg').length, bars: host.getAttribute('data-bars'), renders: Number(host.getAttribute('data-renders')), profile: host.getAttribute('data-profile'), height: host.scrollHeight,
+      playEnabled: !document.getElementById('atPlayBtn').disabled, rewindEnabled: !document.getElementById('atRewindBtn').disabled, playText: document.getElementById('atPlayBtn').textContent,
+      speeds: Array.prototype.map.call(document.getElementById('atSpeedSelect').options, function(o){ return o.value; }).join(','),
+      views: Array.prototype.map.call(document.getElementById('atViewSelect').options, function(o){ return o.textContent; }).join(','),
+      speedLabel: document.getElementById('atSpeedSelect').value };
+  })()`);
+  assert.ok(drawn.svgs >= 1, 'alphaTab drew SVG');
+  assert.equal(drawn.bars, String(butterfly.lines.length), 'alphaTab loaded one bar per measure');
+  assert.equal(drawn.profile, 'scoreTab');
+  assert.equal(drawn.playEnabled && drawn.rewindEnabled, true, 'play and rewind are enabled once ready');
+  assert.equal(drawn.playText, '재생');
+  assert.equal(drawn.speeds, '50,75,100');
+  assert.equal(drawn.speedLabel, '100');
+  assert.equal(drawn.views, '오선+타브,타브,오선');
+  // 오선과 타브가 같이 그려진다: 타브 글자(TAB 자리표)와 오선 음자리표 글리프
+  const lightColors = await client.evaluate(`(function(){
+    var fg = getComputedStyle(document.documentElement).getPropertyValue('--fg').trim().toUpperCase();
+    var fills = {};
+    Array.prototype.forEach.call(document.querySelectorAll('#atHost svg *'), function(el){ var f = el.getAttribute('fill'); if (f) fills[f.toUpperCase()] = true; });
+    return { fg: fg, fills: Object.keys(fills) };
+  })()`);
+  assert.ok(lightColors.fills.indexOf(lightColors.fg) >= 0, 'alphaTab glyph color follows the --fg token (' + lightColors.fg + ' in ' + lightColors.fills.join(',') + ')');
+
+  // 보기 선택을 바꾸면 다시 그린다
+  async function chooseView(value, previousHeight) {
+    const renders = Number(await client.evaluate(`document.getElementById('atHost').getAttribute('data-renders')`));
+    await client.evaluate(`(function(){ var s = document.getElementById('atViewSelect'); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+    await waitForCondition(client, `Number(document.getElementById('atHost').getAttribute('data-renders')) > ${renders} && document.getElementById('atHost').getAttribute('data-profile') === ${JSON.stringify(value)} && document.getElementById('atHost').scrollHeight !== ${previousHeight}`, 15000);
+    return client.evaluate(`document.getElementById('atHost').scrollHeight`);
+  }
+  const tabHeight = await chooseView('tab', drawn.height);
+  assert.ok(tabHeight < drawn.height, 'tab-only view is shorter than staff+tab (' + tabHeight + ' < ' + drawn.height + ')');
+  const scoreHeight = await chooseView('score', tabHeight);
+  assert.ok(scoreHeight < drawn.height, 'staff-only view is shorter than staff+tab (' + scoreHeight + ' < ' + drawn.height + ')');
+  const backHeight = await chooseView('scoreTab', scoreHeight);
+  assert.ok(Math.abs(backHeight - drawn.height) <= 2, 'switching back restores the staff+tab layout');
+
+  // 재생·일시정지·처음으로·Space
+  await client.evaluate(`document.getElementById('atPlayBtn').click(); true`, { userGesture: true });
+  await waitForCondition(client, `document.getElementById('atPlayBtn').textContent === '일시정지'`, 8000);
+  await new Promise(resolve => setTimeout(resolve, 1200)); // 소리가 실제로 시작된 뒤에 멈춘다(바로 멈추면 alphaTab 내부에서 시작 전 정지 오류가 난다)
+  await client.evaluate(`document.getElementById('atPlayBtn').click(); true`, { userGesture: true });
+  await waitForCondition(client, `document.getElementById('atPlayBtn').textContent === '재생'`, 8000);
+  await client.evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true })); true`, { userGesture: true });
+  await waitForCondition(client, `document.getElementById('atPlayBtn').textContent === '일시정지'`, 8000);
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  await client.evaluate(`document.getElementById('atRewindBtn').click(); true`, { userGesture: true });
+  await waitForCondition(client, `document.getElementById('atPlayBtn').textContent === '재생'`, 8000);
+
+  // 폭 900 다크와 375에서 가로로 넘치지 않는다
+  const screenshotDir = path.join(root, 'test-artifacts');
+  fs.mkdirSync(screenshotDir, { recursive: true });
+  const overflowProbe = `(function(){ var head = document.querySelector('.at-head').getBoundingClientRect(); return { scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth, headRight: head.right, width: innerWidth }; })()`;
+  async function capture(name, width, height, mobile) {
+    await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
+    await navigate(viewUrl, viewSettled, 45000); // 화면 폭에 맞는 배율은 불러올 때 정한다
+    await waitForCondition(client, `document.querySelectorAll('#atHost svg *[fill]').length > 0`, 10000);
+    const before = Number(await client.evaluate(`document.getElementById('atHost').getAttribute('data-renders')`));
+    await new Promise(resolve => setTimeout(resolve, 800));
+    await client.evaluate('window.scrollTo(0, 0); true');
+    const probe = await client.evaluate(overflowProbe);
+    assert.ok(probe.scroll <= probe.client + 1, width + 'px alphaTab page has no horizontal overflow (' + probe.scroll + ' > ' + probe.client + ')');
+    assert.ok(probe.headRight <= probe.width + 1, width + 'px alphaTab head stays inside the viewport');
+    const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    const target = path.join(screenshotDir, name);
+    fs.writeFileSync(target, Buffer.from(shot.data, 'base64'));
+    process.stdout.write('Artifact: ' + target + ' (renders ' + before + ')\n');
+  }
+  await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+  await navigate(viewUrl, viewSettled, 45000);
+  assert.equal((await readStatus()).state, 'ready', 'dark mode view is ready');
+  await waitForCondition(client, `document.querySelectorAll('#atHost svg *[fill]').length > 0`, 10000);
+  const darkColors = await client.evaluate(`(function(){
+    var fg = getComputedStyle(document.documentElement).getPropertyValue('--fg').trim().toUpperCase();
+    var muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim().toUpperCase();
+    var fills = {};
+    Array.prototype.forEach.call(document.querySelectorAll('#atHost svg *'), function(el){ var f = el.getAttribute('fill'); if (f) fills[f.toUpperCase()] = true; });
+    return { fg: fg, muted: muted, fills: Object.keys(fills) };
+  })()`);
+  assert.notEqual(darkColors.fg, lightColors.fg, 'dark mode changes the --fg token');
+  assert.ok(darkColors.fills.indexOf(darkColors.fg) >= 0 && darkColors.fills.indexOf(darkColors.muted) >= 0, 'dark mode alphaTab colors follow the --fg and --muted tokens (' + darkColors.fills.join(',') + ')');
+  assert.equal(darkColors.fills.indexOf('#000000'), -1, 'no pure black glyphs on the dark background');
+  await capture('alphatab-view.png', 900, 1000, false);
+  await capture('alphatab-view-375.png', 375, 812, true);
+  await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+  await navigate(viewUrl, viewSettled, 45000);
+  await capture('alphatab-view-375-light.png', 375, 812, true);
+
+  // 모든 효과가 든 악보도 오류 없이 그려진다
+  await setKey({ title: 'Effects "demo"', beats: 4, bpm: 60, capo: 2, lines: ['[Am] ~E2@6+B3@2+G4@1 hE5@1 hF#5@2 r', '[CM7] 1E4@1:i/s2F4@1:m 3G3@3/gA3@3 E3@4 -', '[Cm7] E4/F4/G4 - E4 -/F4', '- r r r'], savedAt: Date.now() });
+  await navigate(viewUrl, viewSettled, 45000);
+  status = await readStatus();
+  assert.equal(status.state, 'ready', 'a score with roll, harmonics, slur, slide, tie and triplet renders: ' + JSON.stringify(status));
+  assert.equal(await client.evaluate(`document.getElementById('atHost').getAttribute('data-bars')`), '4');
+  assert.equal(status.title, 'Effects "demo"');
+
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: '' }] });
+  await client.evaluate(`localStorage.removeItem(${JSON.stringify(VIEW_KEY)}); true`);
+  await navigate(practiceUrl, practiceReady);
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'no console errors on the practice button and the alphaTab view');
+  process.stdout.write('Browser checkpoint: alphaTab view (practice button hand-off, alphatab.html render, view switch, play/pause, dark and 375px layout) passed\n');
+}
+
 async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=review-2')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=alphatab-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -5419,6 +5635,7 @@ async function main() {
     await testSlideLabels(cdp, httpPort);
     await testRollMarks(cdp, httpPort);
     await testRollInput(cdp, httpPort);
+    await testAlphaTabView(cdp, httpPort);
 
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');
