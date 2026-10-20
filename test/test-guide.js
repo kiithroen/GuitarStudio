@@ -213,4 +213,73 @@ assert.equal(crossBarResume[0].duration, 2, 'parsed resume uses only the remaini
     'in a chord only the slurred component is quieter');
 }
 
+{
+  // 롤(~): 줄 번호가 큰 음부터 ROLL_STEP 간격으로 늦춰 치고 끝 시각은 같다. 짧은 조각은 간격이 줄고, 복원은 굴리지 않는다.
+  assert.ok(context.ROLL_STEP > 0 && context.ROLL_MAX_SHARE > 0 && context.ROLL_MAX_SHARE <= 1, 'the roll constants are positive and the share is at most the whole piece');
+  const close = (a, b, message) => assert.ok(Math.abs(a - b) < 1e-9, message + ' (' + a + ' vs ' + b + ')');
+  const notesOf = (beat, options) => Array.from(context.getBeatGuideEvents(beat, options).filter(event => event.kind === 'note'));
+  const expectedStep = (duration, count) => Math.min(context.ROLL_STEP, duration * context.ROLL_MAX_SHARE / (count - 1));
+
+  const three = parser.parseScore('[-] ~E2@6+B3@2+G4@1 r r r', 4).measures[0].beats[0];
+  const threeEvents = notesOf(three, { startTime:4, slotDuration:0.6 });
+  assert.deepEqual(threeEvents.map(event => event.str), [6, 2, 1], 'a rolled chord starts on the highest string number');
+  const threeStep = expectedStep(0.6, 3);
+  threeEvents.forEach((event, k) => {
+    close(event.when, 4 + k * threeStep, 'onset ' + k + ' is shifted by k steps');
+    close(event.when + event.duration, 4.6, 'every component ends together');
+  });
+  assert.equal(threeEvents[0].when, 4, 'the first component sits on the beat');
+  assert.deepEqual(Object.keys(threeEvents[0]).sort(), ['articulation', 'duration', 'gain', 'kind', 'note', 'str', 'when'], 'the event shape has no new field');
+
+  const sixScore = parser.parseScore('[-] ~E2@6+A2@5+D3@4+G3@3+B3@2+E4@1 r r r', 4);
+  assert.deepEqual(sixScore.errors, []);
+  const sixEvents = notesOf(sixScore.measures[0].beats[0], { startTime:0, slotDuration:1 });
+  assert.deepEqual(sixEvents.map(event => event.str), [6, 5, 4, 3, 2, 1], 'six strings roll from 6 to 1');
+  const sixStep = expectedStep(1, 6);
+  sixEvents.forEach((event, k) => {
+    close(event.when, k * sixStep, 'six-string onset ' + k);
+    close(event.when + event.duration, 1, 'six-string components end together');
+  });
+
+  // 짧은 조각: 전체 퍼짐이 길이의 ROLL_MAX_SHARE 를 넘지 않게 간격이 줄어든다
+  const shortDuration = 0.05;
+  const shortEvents = notesOf(three, { startTime:0, slotDuration:shortDuration });
+  const shortStep = expectedStep(shortDuration, 3);
+  assert.ok(shortStep < context.ROLL_STEP, 'the test piece is short enough to shrink the step');
+  close(shortEvents[2].when - shortEvents[0].when, shortDuration * context.ROLL_MAX_SHARE, 'the whole spread is capped at the share of the piece');
+  shortEvents.forEach((event, k) => {
+    close(event.when, k * shortStep, 'short piece onset ' + k);
+    close(event.when + event.duration, shortDuration, 'short piece components end together');
+    assert.ok(event.duration > 0, 'the last component still has a positive length');
+  });
+
+  // 롤이 아닌 화음은 같은 시각
+  const plain = parser.parseScore('[-] E2@6+B3@2+G4@1 r r r', 4).measures[0].beats[0];
+  const plainEvents = notesOf(plain, { startTime:4, slotDuration:0.6 });
+  assert.deepEqual(plainEvents.map(event => event.when), [4, 4, 4], 'a plain chord stays simultaneous');
+  assert.deepEqual(plainEvents.map(event => event.duration), [0.6, 0.6, 0.6]);
+
+  // 분할 조각의 롤은 그 조각에만 걸리고 간격의 기준은 그 조각 길이
+  const splitBeat = parser.parseScore('[-] C3@5/~A3@3+D4@2+F#4@1 r r r', 4).measures[0].beats[0];
+  const splitEvents = notesOf(splitBeat, { startTime:2, slotDuration:0.8 });
+  assert.deepEqual(splitEvents.map(event => event.str), [5, 3, 2, 1], 'the plain part plays first, then the rolled part from its highest string number');
+  const partDuration = 0.4;
+  const splitStep = expectedStep(partDuration, 3);
+  close(splitEvents[0].when, 2, 'the plain part is on its own onset');
+  [1, 2, 3].forEach((eventIndex, k) => {
+    close(splitEvents[eventIndex].when, 2.4 + k * splitStep, 'rolled part onset ' + k);
+    close(splitEvents[eventIndex].when + splitEvents[eventIndex].duration, 2.8, 'rolled part components end together');
+  });
+
+  // resumeHold 복원은 굴리지 않고 한꺼번에 울린다
+  const heldScore = parser.parseScore('[-] ~E2@6+B3@2+G4@1 - r r', 4);
+  assert.deepEqual(heldScore.errors, []);
+  const rolledFirst = notesOf(heldScore.measures[0].beats[0], { startTime:0, slotDuration:0.5, measures:heldScore.measures });
+  close(rolledFirst[2].when - rolledFirst[0].when, 2 * expectedStep(1, 3), 'the held roll rolls over its whole written length');
+  const resumed = notesOf(heldScore.measures[0].beats[1], { startTime:0.5, slotDuration:0.5, measures:heldScore.measures, resumeHold:true });
+  assert.equal(resumed.length, 3, 'resume restores every component');
+  assert.deepEqual(resumed.map(event => event.when), [0.5, 0.5, 0.5], 'resume does not roll again');
+  assert.equal(new Set(resumed.map(event => event.duration)).size, 1, 'resume components share one remaining length');
+}
+
 process.stdout.write('Result: guide events passed (parsed and synthetic subdivision timing, simultaneous chords, articulation gain, rests, cross-bar holds, resume, loop clipping, capo, and legacy wrapper)\n');

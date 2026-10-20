@@ -38,6 +38,14 @@ function buildFretLabel(spec){
   return label;
 }
 
+// 롤(~) 화음 앞 세로 물결선. 위치·높이는 부르는 쪽이 정한다(Docs/ui.md).
+function buildRollMark(){
+  var mark = document.createElement('span');
+  mark.className = 'roll-mark';
+  mark.title = '롤: 낮은 줄부터 빠르게 굴려 치기';
+  return mark;
+}
+
 function formatChordRightHandLabel(token, notes){
   return (notes || []).map(function(note, index){
     var finger = getExplicitRightHand(token, index);

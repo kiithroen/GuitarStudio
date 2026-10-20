@@ -16,9 +16,6 @@
     return Object.keys(NATURAL_HARMONICS).map(Number).sort(function(a, b){ return b - a; }).join('·');
   }
 
-  // 없앤 티란도 표시 ~ 가 붙은 음 토큰에 보이는 오류 문구 (이 문구를 만드는 곳은 여기 하나)
-  var TIRANDO_MARK_REMOVED_MESSAGE = '티란도 표시 ~는 더 이상 쓰지 않습니다. ~를 지우세요(따로 적지 않은 음은 티란도로 칩니다).';
-
   function scan(text, splitBars){
     var out = [];
     var start = 0;
@@ -264,7 +261,15 @@
             add(errors, 'ISOLATED_SLASH', measureNo, beatIndex + 1, '박 안의 단독 슬래시 표기를 확인하세요.');
             return;
           }
-          var chordParts = part.split('+');
+          var rollMessage = '롤 ~는 +로 묶은 화음(두 음 이상)의 맨 앞에만 붙입니다: ' + part;
+          var rollReported = false;
+          if (part.charAt(0) === '~'){
+            if (part.slice(1).indexOf('+') < 0){
+              add(errors, 'INVALID_ROLL', measureNo, beatIndex + 1, rollMessage);
+              return;
+            }
+          }
+          var chordParts = (part.charAt(0) === '~' ? part.slice(1) : part).split('+');
           if (chordParts.some(function(chordPart){ return !chordPart.trim(); })){
             add(errors, 'EMPTY_SUBDIVISION', measureNo, beatIndex + 1, '화음 안에 비어 있는 음표가 있습니다.');
           }
@@ -276,7 +281,8 @@
             var plainChordPart = chordPart.replace(/\?$/, '');
             if (!parsed){
               if (plainChordPart.charAt(0) === '~'){
-                add(errors, 'UNKNOWN_NOTE', measureNo, beatIndex + 1, TIRANDO_MARK_REMOVED_MESSAGE);
+                if (!rollReported) add(errors, 'INVALID_ROLL', measureNo, beatIndex + 1, rollMessage);
+                rollReported = true;
                 return;
               }
               if (plainChordPart.charAt(0) === 'h'){

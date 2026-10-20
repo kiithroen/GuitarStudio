@@ -294,6 +294,13 @@
     if (!tok || tok === '-' || tok === '.') return null;
     tok = tok.trim();
     if (tok.indexOf('*') >= 0) return null;
+    // 롤 ~: +로 묶은 화음(두 음 이상)의 맨 앞에만 붙는다(Docs/score-format.md 롤).
+    var rolled = false;
+    if (tok.charAt(0) === '~'){
+      rolled = true;
+      tok = tok.slice(1).trim();
+      if (tok.indexOf('+') < 0) return null;
+    }
     // 화음 끝의 주법 postfix가 마지막 구성음의 오른손 suffix에 붙는 조합은 금지한다.
     if (/:([pima])!$/.test(tok)) return null;
 
@@ -341,6 +348,7 @@
       });
       melInf.chordNotes = chordNotes;
       melInf.customTok = chordNotes.map(function(cn){ return cn.tok; }).join('+');
+      if (rolled){ melInf.rolled = true; melInf.customTok = '~' + melInf.customTok; }
       return melInf;
     }
 
@@ -634,6 +642,7 @@
               chordNotes: note && note.chordNotes ? note.chordNotes : null,
               articulation: note && note.articulation ? note.articulation : null,
               explicitArticulation: !!(note && note.explicitArticulation),
+              rolled: !!(note && note.rolled),
               durFrac: 1 / rawSubToks.length,
               kind: GuitarNotation.isRestToken(stk) ? 'rest' : (stk === '-' ? 'hold' : (stk === '.' ? 'invalid' : (note ? 'note' : 'invalid'))),
               uncertain: GuitarNotation.hasUncertainMark(stk)
@@ -666,7 +675,8 @@
             bass: noteInfo && noteInfo.bass ? noteInfo.bass : null,
             chordNotes: noteInfo && noteInfo.chordNotes ? noteInfo.chordNotes : null,
             articulation: noteInfo && noteInfo.articulation ? noteInfo.articulation : null,
-            explicitArticulation: !!(noteInfo && noteInfo.explicitArticulation)
+            explicitArticulation: !!(noteInfo && noteInfo.explicitArticulation),
+            rolled: !!(noteInfo && noteInfo.rolled)
           });
         }
       }

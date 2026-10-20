@@ -129,8 +129,18 @@ pass('the node -e command in the project prompt prints the full conversion rules
 
 assert.ok(promptLines.some(line => line.indexOf('| 주법 | `!` 아포얀도, `h` 자연 하모닉스, `s` 슬러') === 0 && line.indexOf('~') < 0), 'the articulation row names only the apoyando mark !, the harmonic mark h and the slur mark s');
 assert.ok(promptLines.some(line => line.indexOf('| 티란도 표시') === 0 && line.indexOf('적지 않아') > 0), 'the exceptions table says to leave tirando marks out');
-assert.ok(!/(\s|,)`~`/.test(prompt) && !/\s~[A-G0-4]/.test(prompt), 'the prompt never shows the removed ~ mark as a token');
+assert.ok(!/E4~|~E4/.test(prompt), 'the prompt never shows a ~ on a single note');
 pass('the prompt teaches apoyando only and says tirando is the unmarked note');
+
+const rollExample = prompt.match(/`(~E2@6\+B3@2\+G4@1)`/);
+assert.ok(rollExample, 'the prompt shows the rolled chord example');
+const rolledParsed = parser.parseNoteToken(rollExample[1], 0);
+assert.ok(rolledParsed && rolledParsed.rolled === true && rolledParsed.chordNotes.length === 3, 'the prompt roll example parses as a rolled three-note chord');
+assert.deepEqual(parser.validateScore('[-] ' + rollExample[1] + ' r r r', 4).errors.filter(e => e.code === 'INVALID_ROLL'), [], 'the prompt roll example is valid');
+assert.ok(promptLines.some(line => line.indexOf('- 화음 앞에 세로 물결선(롤)') === 0 && line.indexOf('단음에는 붙이지 마') > 0), 'the rules tell to put ~ at the front of a rolled chord and not on single notes');
+assert.ok(promptLines.some(line => line.indexOf('| 아르페지오 롤(') === 0 && line.indexOf('`~`') > 0), 'the exceptions table maps the arpeggio roll to ~');
+assert.ok(promptLines.some(line => line.indexOf('| 라스게아도, 스트로크 |') === 0 && line.indexOf('화음 한 번') > 0), 'rasgueado and strokes stay one simultaneous chord');
+pass('the prompt teaches the roll ~ mark with a parsable example');
 
 const harmonicExample = prompt.match(/`(hF#5@2)`/);
 assert.ok(harmonicExample, 'the prompt shows the natural harmonic example');

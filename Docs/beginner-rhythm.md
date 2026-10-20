@@ -20,7 +20,7 @@ hold part의 `durationUnits`는 그 위치부터 이어지는 유지 체인의 �
 
 ## 재생 이벤트
 
-`getBeatGuideEvents(beat, options)`와 `scheduleBeatGuide(beat, options)`는 `startTime`, `slotDuration`(초/한 칸), `measures`, `resumeHold`, `maxDurationSlots`, `capo`를 사용해. 이벤트 `when`은 `startTime + subIndex / 분할수 * slotDuration`, 각 음 이벤트의 `duration`은 그 part의 공통 `durationUnits / 12 * slotDuration`이야. 화음 구성음은 같은 시각에 시작하고 같은 part 길이를 받아.
+`getBeatGuideEvents(beat, options)`와 `scheduleBeatGuide(beat, options)`는 `startTime`, `slotDuration`(초/한 칸), `measures`, `resumeHold`, `maxDurationSlots`, `capo`를 사용해. 이벤트 `when`은 `startTime + subIndex / 분할수 * slotDuration`, 각 음 이벤트의 `duration`은 그 part의 공통 `durationUnits / 12 * slotDuration`이야. 화음 구성음은 같은 시각에 시작하고 같은 part 길이를 받아. 롤(`~`) 조각은 예외야: 구성음을 줄 번호가 큰 것부터(6번 줄 → 1번 줄) `ROLL_STEP` 간격으로 늦춰 시작하고, 간격이 그 조각 길이 × `ROLL_MAX_SHARE` ÷ (음 수 − 1)을 넘으면 그만큼으로 줄여. 첫 음이 박 시각이고, 늦게 시작한 음은 늦은 만큼 `duration`이 줄어 끝 시각이 같아. `resumeHold` 복원은 다시 굴리지 않고 한꺼번에 울려(새로 치는 게 아니라 이어 울리는 소리를 되살리는 것이라서). 값은 `src/guide.js`.
 
 note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}`, rest 이벤트는 `{kind:'rest',when,duration}`이야. rest는 해당 시각의 기타 직접음을 정리해. gain은 명시한 아포얀도와 슬러(`SLUR_GAIN`, 오른손으로 다시 치지 않는 음이라 작게)만 바꾸고(값은 `src/guide.js`) 그 외는 1이야(티란도 표시는 2026-10-19에 문법에서 없앴어, [악보 문법](score-format.md)). 원문에 명시한 주법 설정만 전달하고 부모 분할 그룹의 주법을 자식에 전파하지 않아.
 

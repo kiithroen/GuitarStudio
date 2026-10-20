@@ -373,11 +373,92 @@ test('normalizeDoc reads a stored art "~" (the removed tirando mark) as no mark 
   assert.deepEqual(ti.validateDoc(result.doc).errors, []);
 });
 
-test('parseImportText refuses a ~ note with the tirando-removed message', function(){
+test('parseImportText refuses a ~ on a single note or inside a chord with the roll message', function(){
   for (const text of ['[-] ~E4 r r r', '[-] E4 ~B3@2 r r', '[-] E2+~B3 r r r']){
     const parsed = ti.parseImportText(text, { title: 't' });
     assert.equal(parsed.doc, undefined, text + ' is not imported');
-    assert.ok(String(parsed.error).indexOf('티란도 표시 ~는 더 이상 쓰지 않습니다. ~를 지우세요(따로 적지 않은 음은 티란도로 칩니다).') >= 0, text + ' shows the message: ' + parsed.error);
+    assert.ok(String(parsed.error).indexOf('롤 ~는 +로 묶은 화음(두 음 이상)의 맨 앞에만 붙입니다: ') >= 0, text + ' shows the message: ' + parsed.error);
+  }
+});
+
+test('roll: createSlot starts without a roll', function(){
+  assert.equal(ti.createSlot().roll, false);
+  const doc = fresh();
+  assert.equal(doc.measures[0].cells[0].slots[0].roll, false);
+});
+
+test('roll: a ~ chord round-trips text to document to text, whole cells and split parts', function(){
+  const text = [
+    '[-] ~E2@6+B3@2+G4@1 ~E2@6:p+hE5@1 ~E2@6+B3@2? E2@6+B3@2 | ""',
+    '[-] C3@5/~A3@3+D4@2+F#4@1 ~C3@5+E4@1/E4@1 r r | ""'
+  ].join('\n');
+  const result = ti.scoreToDoc({ beats: 4, raw: text });
+  assert.equal(result.error, undefined);
+  const cells =result.doc.measures[0].cells;
+  assert.deepEqual(cells.map(cell => cell.slots[0].roll), [true, true, true, false]);
+  const split = result.doc.measures[1].cells[0].slots;
+  assert.deepEqual(split.map(slot => slot.roll), [false, true], 'only the split part with ~ is rolled');
+  assert.equal(ti.docScoreText(result.doc), text, 'exported text equals the imported text');
+  assert.deepEqual(ti.scoreToDoc({ beats: 4, raw: ti.docScoreText(result.doc) }).doc.measures, result.doc.measures);
+  assert.deepEqual(ti.validateDoc(result.doc).errors, []);
+});
+
+test('roll: ~ is written only while the part has two or more notes, and the flag survives', function(){
+  const doc = fresh();
+  put(doc, pos(0), [[6, 0], [2, 0], [1, 0]]);
+  doc.measures[0].cells[0].slots[0].roll = true;
+  assert.equal(tokens(doc)[0][0], '~E2@6+B3@2+E4@1');
+  ti.removeNote(doc, pos(0), 1);
+  assert.equal(tokens(doc)[0][0], '~E2@6+B3@2', 'two notes keep the ~');
+  ti.removeNote(doc, pos(0), 2);
+  assert.equal(tokens(doc)[0][0], 'E2@6', 'one note drops the ~');
+  assert.equal(doc.measures[0].cells[0].slots[0].roll, true, 'the flag is kept');
+  ti.setNote(doc, pos(0), 1, 0);
+  assert.equal(tokens(doc)[0][0], '~E2@6+E4@1', 'adding a note back revives the roll');
+  assert.deepEqual(ti.scoreToDoc({ beats: 4, raw: ti.docScoreText(doc) }).error, undefined);
+});
+
+test('roll: setRest(true) and clearSlot turn the roll off, setRest(false) leaves it', function(){
+  const doc = fresh();
+  put(doc, pos(0), [[6, 0], [1, 0]]);
+  doc.measures[0].cells[0].slots[0].roll = true;
+  ti.setRest(doc, pos(0), true);
+  assert.equal(doc.measures[0].cells[0].slots[0].roll, false);
+  assert.equal(tokens(doc)[0][0], 'r');
+  put(doc, pos(0, 1), [[6, 0], [1, 0]]);
+  doc.measures[0].cells[1].slots[0].roll = true;
+  ti.clearSlot(doc, pos(0, 1));
+  assert.equal(doc.measures[0].cells[1].slots[0].roll, false);
+  put(doc, pos(0, 2), [[6, 0], [1, 0]]);
+  doc.measures[0].cells[2].slots[0].roll = true;
+  ti.setRest(doc, pos(0, 2), false);
+  assert.equal(doc.measures[0].cells[2].slots[0].roll, true, 'turning a rest off is not a clear');
+});
+
+test('roll: normalizeDoc reads old documents without roll as false and refuses a non-boolean roll', function(){
+  const doc = fresh();
+  put(doc, pos(0), [[6, 0], [1, 0]]);
+  const old = JSON.parse(JSON.stringify(doc));
+  old.measures.forEach(m => m.cells.forEach(c => c.slots.forEach(slot => { delete slot.roll; })));
+  const before = JSON.stringify(old);
+  const result = ti.normalizeDoc(old);
+  assert.equal(result.error, undefined);
+  assert.ok(result.doc.measures.every(m => m.cells.every(c => c.slots.every(slot => slot.roll === false))), 'missing roll becomes false');
+  assert.equal(JSON.stringify(old), before, 'the stored object is not mutated');
+
+  const rolled = JSON.parse(JSON.stringify(doc));
+  rolled.measures[0].cells[0].slots[0].roll = true;
+  assert.equal(ti.normalizeDoc(rolled).doc.measures[0].cells[0].slots[0].roll, true, 'true is kept');
+  const restRoll = JSON.parse(JSON.stringify(fresh()));
+  restRoll.measures[0].cells[0].slots[0].rest = true;
+  restRoll.measures[0].cells[0].slots[0].roll = true;
+  assert.equal(ti.normalizeDoc(restRoll).error, undefined, 'a rolled rest slot is not an error');
+
+  for (const bad of ['yes', 1, null]){
+    const broken = JSON.parse(JSON.stringify(doc));
+    broken.measures[0].cells[0].slots[0].roll = bad;
+    const refused = ti.normalizeDoc(broken);
+    assert.ok(String(refused.error).indexOf('롤 표시는 true/false여야 합니다.') >= 0, JSON.stringify(bad) + ' is refused: ' + refused.error);
   }
 });
 

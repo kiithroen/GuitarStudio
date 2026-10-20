@@ -345,7 +345,7 @@ test('removed legacy notations are rejected and modern equivalents pass', functi
     ['[-] F\u266F4 r r r', 'UNKNOWN_NOTE'],
     ['[-] E4! r r r', 'UNKNOWN_NOTE'],
     ['[-] E4~ r r r', 'UNKNOWN_NOTE'],
-    ['[-] ~E4 r r r', 'UNKNOWN_NOTE'],
+    ['[-] ~E4 r r r', 'INVALID_ROLL'],
     ['[-] 도4 r r r', 'UNKNOWN_NOTE'],
     ['[-] 0솔 r r r', 'UNKNOWN_NOTE'],
     ['[-] E4,F4 r r r', 'UNKNOWN_NOTE'],
@@ -418,19 +418,67 @@ test('every chord dictionary entry is a valid header with six strings, and its l
   }
 });
 
-test('the removed tirando mark ~ is an UNKNOWN_NOTE error with a message that says to delete it', function(){
-  const message = '티란도 표시 ~는 더 이상 쓰지 않습니다. ~를 지우세요(따로 적지 않은 음은 티란도로 칩니다).';
-  for (const token of ['~E4', 'E2+~B3', '~0E2@6:p+!4B4@1:a', '!E4+~B3']){
+test('roll ~ is accepted only at the front of a chord of two or more notes', function(){
+  const message = token => '롤 ~는 +로 묶은 화음(두 음 이상)의 맨 앞에만 붙입니다: ' + token;
+  for (const token of ['~E4', 'E2+~B3', '!E4+~B3', '~r', '~-', '~~E2+B3']){
     const result = parser.validateScore('[-] ' + token + ' r r r', 4);
-    const unknown = result.errors.filter(e => e.code === 'UNKNOWN_NOTE');
-    assert.ok(unknown.length >= 1, token + ' reports UNKNOWN_NOTE');
-    assert.ok(unknown.some(e => e.message === message && e.measure === 1 && e.beat === 1), token + ' reports the tirando-removed message at measure 1 beat 1');
+    const rolls = result.errors.filter(e => e.code === 'INVALID_ROLL');
+    assert.equal(rolls.length, 1, token + ' reports one INVALID_ROLL');
+    assert.ok(rolls[0].message === message(token) && rolls[0].measure === 1 && rolls[0].beat === 1, token + ' reports the roll message at measure 1 beat 1');
     assert.equal(parser.parseNoteToken(token, 0), null, token + ' is not a note');
-    assert.ok(parse('[-] ' + token + ' r r r', 4).errors.some(e => e.code === 'UNKNOWN_NOTE'), token + ' parseScore reports UNKNOWN_NOTE');
+    assert.ok(parse('[-] ' + token + ' r r r', 4).errors.some(e => e.code === 'INVALID_ROLL'), token + ' parseScore reports INVALID_ROLL');
   }
+  const inSplit = parser.validateScore('[-] C3@5/~A3@3 r r r', 4).errors;
+  assert.ok(inSplit.some(e => e.code === 'INVALID_ROLL' && e.message === message('~A3@3')), 'a single note after a split slash reports the part as the token');
   const plain = parser.validateScore('[-] E4! r r r', 4).errors.filter(e => e.code === 'UNKNOWN_NOTE');
-  assert.ok(plain.length >= 1 && plain.every(e => e.message !== message), 'other bad tokens do not get the tirando message');
+  assert.ok(plain.length >= 1, 'other bad tokens stay UNKNOWN_NOTE');
   assert.deepEqual(parser.validateScore('[-] E4 !E4 E2+B3 r', 4).errors, [], 'unmarked notes and apoyando stay valid');
+});
+
+test('roll ~ parses with fingering, articulation and the check mark, and marks the beat or split part rolled', function(){
+  for (const token of ['~E2@6+B3@2+G4@1', '~0E2@6:p+!4B4@1:a', '~E2@6:p+hE5@1', '~E2+B3?', '~E2@6+sB3@2']){
+    const plain = token.slice(1);
+    assert.deepEqual(parser.validateScore('[-] ' + token + ' r r r', 4).errors.filter(e => e.code === 'INVALID_ROLL'), [], token + ' has no roll error');
+    const rolled = parser.parseNoteToken(token, 0);
+    const bare = parser.parseNoteToken(plain, 0);
+    assert.ok(rolled && bare, token + ' parses');
+    assert.equal(rolled.rolled, true, token + ' is rolled');
+    assert.equal(bare.rolled, undefined, plain + ' is not rolled');
+    assert.ok(rolled.customTok.charAt(0) === '~' && rolled.customTok.slice(1) === bare.customTok, token + ' customTok is ~ plus the plain customTok');
+    assert.deepEqual(rolled.chordNotes, bare.chordNotes, token + ' keeps its components unchanged');
+    assert.equal(rolled.midi, bare.midi);
+  }
+  const fingered = parse('[-] ~0E2@6:p+!4B4@1:a r r r', 4);
+  assert.deepEqual(fingered.errors, []);
+  const fingeredNotes = fingered.measures[0].beats[0].chordNotes;
+  assert.equal(fingeredNotes[0].rh, 'p');
+  assert.equal(fingeredNotes[0].lh, 0);
+  assert.equal(fingeredNotes[1].rh, 'a');
+  assert.equal(fingeredNotes[1].articulation, 'apoyando');
+  const harmonic = parse('[-] ~E2@6:p+hE5@1 r r r', 4).measures[0].beats[0];
+  assert.equal(harmonic.rolled, true);
+  assert.equal(harmonic.chordNotes[1].articulation, 'harmonic');
+  const uncertain = parse('[-] ~E2+B3? r r r', 4).measures[0].beats[0];
+  assert.equal(uncertain.rolled, true);
+  assert.equal(uncertain.uncertain, true);
+  assert.ok(uncertain.tok.charAt(0) === '~', 'the beat token keeps the ~');
+
+  const whole = parse('[-] ~E2@6+B3@2+G4@1 E2@6+B3@2 C3@5/~A3@3+D4@2+F#4@1 r', 4);
+  assert.deepEqual(whole.errors, []);
+  const beats = whole.measures[0].beats;
+  assert.equal(beats[0].rolled, true, 'a whole-cell rolled chord');
+  assert.equal(beats[1].rolled, false, 'a plain chord is not rolled');
+  assert.equal(beats[3].rolled, false, 'a rest is not rolled');
+  assert.equal(beats[2].rolled, undefined, 'the split group itself carries no rolled flag');
+  assert.deepEqual(beats[2].subNotes.map(p => p.rolled), [false, true], 'only the rolled split part is rolled');
+  assert.equal(beats[0].tok, '~E2@6+B3@2+G4@1');
+});
+
+test('a roll does not disturb slur judgement of its components', function(){
+  const ok = parse('[-] E4@1 ~E2@6+sF4@1 r r', 4);
+  assert.deepEqual(ok.errors, [], 'the slur is judged against the previous note on the same string');
+  const bad = parse('[-] r ~E2@6+sF4@1 r r', 4);
+  assert.ok(bad.errors.some(e => e.code === 'INVALID_SLUR'), 'a slur without a source inside a roll is still an error');
 });
 
 test('noteNameForMidi gives octave names in sharp or flat spelling', function(){

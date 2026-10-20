@@ -2302,8 +2302,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=slur-3')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=slur-3">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=roll-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=roll-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -4199,11 +4199,79 @@ async function testSlurLabels(client, httpPort) {
   process.stdout.write('Browser checkpoint: slur direction letters in practice TAB and score input cards passed\n');
 }
 
+// 롤(~): 연습 화면 TAB 은 롤 화음 왼쪽에 세로 물결선(.roll-mark)을 그린다. 위치는 화음 알약의 실제 상자로 잰다.
+async function testRollMarks(client, httpPort) {
+  client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
+  const errorsBefore = client.consoleErrors.length;
+  const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false });
+  await client.send('Page.navigate', { url: `http://127.0.0.1:${httpPort}/index.html` });
+  await waitForPageLoadAfter(client, before);
+  await waitForCondition(client, 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= ' + builtinSongCount + ' && window.curSong != null', 8000);
+  const rollLines = [
+    '[-] ~E2@6+B3@2+G4@1 E2@6+B3@2+G4@1 ~E2@6+B3@2 E2@6+B3@2 | ""',
+    '[-] C3@5/~A3@3+D4@2+F#4@1 ~E2@6+E4@1 - r | ""'
+  ];
+  const result = await client.evaluate(`(function(){
+    var song = scoreDrafts.createFromScore({ title: '롤 시험', beats: 4, bpm: 60, lines: ${JSON.stringify(rollLines)}, origin: 'tab-input' });
+    rebuildSongSelect(song.id);
+    var s = document.getElementById('scoreViewSelect'); s.value = 'tab'; s.dispatchEvent(new Event('change', { bubbles: true }));
+    appState.clickMode = 'off';
+    function center(rect){ return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }; }
+    function cellInfo(m, b){
+      var cell = document.querySelector('#measuresGrid .beat-cell[data-m="' + m + '"][data-b="' + b + '"]');
+      var pills = Array.prototype.slice.call(cell.querySelectorAll('.tab-fret-pill')).filter(function(pill){ return !pill.classList.contains('tab-held-fret'); });
+      var marks = Array.prototype.map.call(cell.querySelectorAll('.roll-mark'), function(mark){
+        var rect = mark.getBoundingClientRect();
+        var centerCss = mark.style.left.replace('calc(', '').replace(' - 19px)', '');
+        var chord = pills.filter(function(pill){ return (pill.style.left || '50%') === centerCss; }).map(function(pill){ return center(pill.getBoundingClientRect()); });
+        var cs = getComputedStyle(mark);
+        return {
+          top: rect.top, bottom: rect.bottom, right: rect.right, width: rect.width,
+          chordYs: chord.map(function(c){ return c.y; }), chordXs: chord.map(function(c){ return c.x; }),
+          mask: cs.webkitMaskImage || cs.maskImage, position: cs.position, title: mark.title
+        };
+      });
+      return { marks: marks, pillCount: pills.length, heldPills: cell.querySelectorAll('.tab-held-fret').length };
+    }
+    var out = { total: document.querySelectorAll('#measuresGrid .roll-mark').length, cells: {} };
+    [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0], [1, 1], [1, 2], [1, 3]].forEach(function(p){ out.cells[p[0] + ',' + p[1]] = cellInfo(p[0], p[1]); });
+    return out;
+  })()`);
+  assert.equal(result.total, 4, 'one wave per rolled chord: ' + result.total);
+  const expectMarks = { '0,0': 1, '0,1': 0, '0,2': 1, '0,3': 0, '1,0': 1, '1,1': 1, '1,2': 0, '1,3': 0 };
+  for (const [key, count] of Object.entries(expectMarks)) {
+    assert.equal(result.cells[key].marks.length, count, 'cell ' + key + ' has ' + count + ' roll marks');
+  }
+  assert.ok(result.cells['1,2'].heldPills >= 1, 'the hold of a rolled chord draws faded pills');
+  for (const [key, info] of Object.entries(result.cells)) {
+    for (const mark of info.marks) {
+      assert.ok(mark.chordYs.length >= 2, 'cell ' + key + ' the rolled chord has two or more pills');
+      const top = Math.min(...mark.chordYs), bottom = Math.max(...mark.chordYs);
+      assert.ok(mark.top <= top && mark.bottom >= bottom, 'cell ' + key + ' the wave covers the top and bottom string centers: ' + JSON.stringify({ wave: [mark.top, mark.bottom], strings: [top, bottom] }));
+      const centerX = mark.chordXs.reduce((a, b) => a + b, 0) / mark.chordXs.length;
+      assert.ok(mark.right <= centerX - 4, 'cell ' + key + ' the wave is at least 4px left of the pill center: ' + JSON.stringify({ right: mark.right, centerX }));
+      assert.ok(mark.width > 0 && mark.position === 'absolute', 'cell ' + key + ' the wave is a positioned box');
+      assert.ok(/svg/.test(mark.mask), 'cell ' + key + ' the wave shape comes from the mask image: ' + mark.mask);
+      assert.ok(mark.title.indexOf('롤') === 0, 'the wave has a title');
+    }
+  }
+  const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  const target = path.join(root, 'test-artifacts', 'practice-roll.png');
+  fs.writeFileSync(target, Buffer.from(shot.data, 'base64'));
+  process.stdout.write('Artifact: ' + target + '\n');
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the roll steps run without console errors');
+  client.dialogHandler = null;
+  process.stdout.write('Browser checkpoint: roll waves in practice TAB passed\n');
+}
+
 async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=slur-3')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=roll-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -4720,6 +4788,7 @@ async function main() {
     await testFretLabel(cdp, httpPort);
     await testNaturalHarmonics(cdp, httpPort);
     await testSlurLabels(cdp, httpPort);
+    await testRollMarks(cdp, httpPort);
 
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');

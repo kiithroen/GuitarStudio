@@ -358,6 +358,22 @@ function curCapo(){
     }));
   }
 
+  // 롤(~) 화음의 세로 물결선 하나를 격자에 붙인다. strs: 그 화음 구성음의 줄 번호, centerCss: 알약 가운데 x(CSS 값). 규칙은 Docs/ui.md.
+  function appendRollMark(gridEl, strs, centerCss){
+    var nums = (strs || []).filter(function(n){ return typeof n === 'number' && n > 0; });
+    if (nums.length < 2) return;
+    var minStr = Math.min.apply(null, nums), maxStr = Math.max.apply(null, nums);
+    var mark = buildRollMark();
+    mark.style.top = 'calc(' + ((minStr - 1) * 20) + '% - 8px)';
+    mark.style.height = 'calc(' + ((maxStr - minStr) * 20) + '% + 16px)';
+    mark.style.left = 'calc(' + centerCss + ' - 19px)';
+    gridEl.appendChild(mark);
+  }
+
+  function chordNoteStrs(notes){
+    return (notes || []).map(function(cn){ return cn && cn.str; });
+  }
+
   function renderStructuredMeasures(){
     var grid = $('#measuresGrid');
     grid.textContent = '';
@@ -546,6 +562,7 @@ function curCapo(){
                 gridEl.appendChild(cPill);
               }
             });
+            if (b.rolled) appendRollMark(gridEl, chordNoteStrs(b.chordNotes), '50%');
           } else if (b.isSubdivided && b.subNotes && b.subNotes.length > 1){
             var numSubs = b.subNotes.length;
             b.subNotes.forEach(function(sn, sIdx){
@@ -590,6 +607,7 @@ function curCapo(){
                 }
               } else if (sn.chordNotes && sn.chordNotes.length > 2){
                 sn.chordNotes.forEach(function(cn, componentIndex){ addSubPill(cn, null, componentIndex); });
+                if (sn.rolled) appendRollMark(gridEl, chordNoteStrs(sn.chordNotes), leftPct);
               } else if (sn.chordNotes && sn.chordNotes.length === 2){
                 var subBass = getExplicitBass(sn);
                 var pairSameStr = !!(subBass && subBass.str && sn.str && subBass.str === sn.str);
@@ -598,6 +616,7 @@ function curCapo(){
                 var pairMelTransform = pairSameStr && !pairSameFret ? 'translate(-15%, -50%)' : null;
                 if (subBass && subBass.midi) addSubPill(subBass, pairBassTransform, 0);
                 if (sn.midi && !pairSameFret) addSubPill(sn, pairMelTransform, 1);
+                if (sn.rolled) appendRollMark(gridEl, chordNoteStrs(sn.chordNotes), leftPct);
               } else if (sn.midi && sn.str){
                 var mPill = document.createElement('span');
                 mPill.className = 'tab-fret-pill note-fret';
@@ -640,6 +659,7 @@ function curCapo(){
                 appendPillFretLabel(mPill, b, beatToken, b.chordNotes && b.chordNotes.length >= 2 ? 1 : 0);
                 gridEl.appendChild(mPill);
               }
+              if (b.rolled) appendRollMark(gridEl, chordNoteStrs(b.chordNotes), diffFret ? '38%' : '50%');
             } else if (!hasMel && !hasBass){
               var dash = document.createElement('span');
               dash.className = 'tab-rest-dash ' + (b.kind === 'hold' ? 'tab-hold-mark' : 'tab-rest-mark');

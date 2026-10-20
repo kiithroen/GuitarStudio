@@ -30,7 +30,7 @@
   // ---------- 만들기
 
   function createSlot(){
-    return { rest: false, restUncertain: false, notes: [null, null, null, null, null, null] };
+    return { rest: false, restUncertain: false, roll: false, notes: [null, null, null, null, null, null] };
   }
 
   function createCell(division){
@@ -111,6 +111,7 @@
           var sWhere = cWhere + ', 조각 ' + (s + 1);
           if (!slot || typeof slot !== 'object') return { error: sWhere + ': 조각이 올바르지 않습니다.' };
           if (typeof slot.rest !== 'boolean' || typeof slot.restUncertain !== 'boolean') return { error: sWhere + ': 쉼 표시는 true/false여야 합니다.' };
+          if (slot.roll !== undefined && typeof slot.roll !== 'boolean') return { error: sWhere + ': 롤 표시는 true/false여야 합니다.' };
           if (!Array.isArray(slot.notes) || slot.notes.length !== STRING_COUNT) return { error: sWhere + ': 음 목록은 ' + STRING_COUNT + '개여야 합니다.' };
           var hasNote = false;
           for (var n = 0; n < slot.notes.length; n++){
@@ -130,6 +131,7 @@
     doc.measures.forEach(function(measure){
       measure.cells.forEach(function(cell){
         cell.slots.forEach(function(slot){
+          if (slot.roll === undefined) slot.roll = false;
           slot.notes.forEach(function(note){ if (note && note.art === REMOVED_ART_VALUE) note.art = null; });
         });
       });
@@ -276,6 +278,7 @@
       slot.restUncertain = false;
       return { ok: true, removedNotes: 0 };
     }
+    slot.roll = false;
     var removed = 0;
     for (var i = 0; i < slot.notes.length; i++){
       if (slot.notes[i]){ removed++; slot.notes[i] = null; }
@@ -296,6 +299,7 @@
     for (var i = 0; i < slot.notes.length; i++) slot.notes[i] = null;
     slot.rest = false;
     slot.restUncertain = false;
+    slot.roll = false;
     return { ok: true };
   }
 
@@ -479,7 +483,8 @@
       if (note) items.push({ str: index + 1, midi: noteMidiOf(index + 1, note), note: note });
     });
     items.sort(function(a, b){ return a.midi - b.midi || b.str - a.str; });
-    return items.map(function(item){ return noteToken(doc, item.str, item.note); }).join('+');
+    var text = items.map(function(item){ return noteToken(doc, item.str, item.note); }).join('+');
+    return slot.roll && items.length >= 2 ? '~' + text : text;
   }
 
   function isHoldingToken(tokens, i){
@@ -652,6 +657,10 @@
       slot.rest = true;
       slot.restUncertain = text !== 'r';
       return { slot: slot };
+    }
+    if (text.charAt(0) === '~'){
+      slot.roll = true;
+      text = text.slice(1);
     }
     var components = text.split('+');
     for (var i = 0; i < components.length; i++){
