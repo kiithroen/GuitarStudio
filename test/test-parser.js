@@ -392,6 +392,32 @@ test('removed legacy notations are rejected and modern equivalents pass', functi
   assert.notEqual(parser.lookupChord('Am'), null);
 });
 
+test('every chord dictionary entry is a valid header with six strings, and its lowest note is the root or the slash bass', function(){
+  for (const key of Object.keys(parser.CHORD_DB)){
+    const entry = parser.CHORD_DB[key];
+    const result = parser.validateScore('[' + key + '] C4 - - -', 4);
+    assert.equal(result.errors.length, 0, key + ' header has no errors');
+    assert.equal(result.warnings.some(w => w.code === 'UNSUPPORTED_CHORD'), false, key + ' is not reported as UNSUPPORTED_CHORD');
+    assert.equal(entry.frets.length, 6, key + ' has six frets');
+    assert.equal(entry.fingers.length, 6, key + ' has six fingers');
+    for (let i = 0; i < 6; i++){
+      const fret = entry.frets[i];
+      const finger = entry.fingers[i];
+      assert.ok(Number.isInteger(fret) && fret >= -1 && fret <= 12, key + ' fret ' + i + ' is an integer in -1..12');
+      assert.ok(Number.isInteger(finger) && finger >= 0 && finger <= 4, key + ' finger ' + i + ' is an integer in 0..4');
+      if (fret <= 0) assert.equal(finger, 0, key + ' string ' + i + ' has no finger when open or muted');
+    }
+    assert.ok(typeof entry.name === 'string' && entry.name.trim() !== '', key + ' has a name');
+    assert.ok(typeof entry.desc === 'string' && entry.desc.trim() !== '', key + ' has a desc');
+    const bassName = key.includes('/') ? key.split('/')[1] : key.match(/^[A-G][#b]?/)[0];
+    const expected = parser.parseNoteToken(bassName + '3', 0).midi % 12;
+    const lowest = entry.frets.findIndex(f => f >= 0);
+    assert.ok(lowest >= 0, key + ' has a sounding string');
+    const actual = parser.STRINGS[5 - lowest].midi + entry.frets[lowest];
+    assert.equal(actual % 12, expected, key + ' lowest note is the root or slash bass');
+  }
+});
+
 test('the removed tirando mark ~ is an UNKNOWN_NOTE error with a message that says to delete it', function(){
   const message = '티란도 표시 ~는 더 이상 쓰지 않습니다. ~를 지우세요(따로 적지 않은 음은 티란도로 칩니다).';
   for (const token of ['~E4', 'E2+~B3', '~0E2@6:p+!4B4@1:a', '!E4+~B3']){
