@@ -194,6 +194,15 @@ function simpleMusicXmlMeasures(){
   return ['[-] ' + cells.join(' ')];
 }
 
+// 줄 번호 없는 음으로 바꾼다(음이름으로 적은 음과 같은 모양: string·fret -1, 옥타브·음 이름만). alphaTex 는 한 보표에 프렛.줄 음과 음이름 음을 섞어 쓰는 것을 오류로 읽어서, 섞인 트랙은 읽은 모델을 고쳐 만든다.
+function unstring(score, bar, beat, noteIndex, midi){
+  const note = score.tracks[0].staves[0].bars[bar].voices[0].beats[beat].notes[noteIndex];
+  note.string = -1;
+  note.fret = -1;
+  note.octave = Math.floor(midi / 12);
+  note.tone = midi % 12;
+}
+
 const SOURCE_MEMO = '원본: ';
 const EXAMPLES = [
   {
@@ -213,10 +222,10 @@ const EXAMPLES = [
     measures: [
       '[-] ' + n(1, 0) + ' - - - | "도돌이 펼침"',
       '[-] ' + n(1, 1) + ' - - -',
-      '[-] ' + n(1, 3) + ' - - -',
+      '[-] ' + n(1, 3) + ' - - - | "1번 괄호"',
       '[-] ' + n(1, 0) + ' - - -',
       '[-] ' + n(1, 1) + ' - - -',
-      '[-] ' + n(2, 0) + ' - - -',
+      '[-] ' + n(2, 0) + ' - - - | "2번 괄호"',
       '[-] ' + n(2, 1) + ' - - -'
     ]
   },
@@ -269,21 +278,116 @@ const EXAMPLES = [
       '[-] ' + [pitchToken(midiOf('E', 4)), pitchToken(midiOf('F', 4) + 1), pitchToken(midiOf('C', 2)), pitchToken(midiOf('C', 6))].join(' ') + ' | "줄 정보 없음: 슬러 생략 · 음역 밖 → 옥타브 옮김"',
       '[-] ' + [pitchToken(midiOf('G', 3)) + '+' + pitchToken(midiOf('B', 3)), '-', pitchToken(midiOf('A', 3)), '-'].join(' ')
     ]
+  },
+  {
+    // 음이름으로만 적은 곡(줄 정보 없음): @줄 없이 음높이만. 왼손·오른손 운지, 화음, 붙임줄, 쉼은 그대로.
+    file: 'named-notes.tex', title: 'Named Notes', beats: 4, bpm: 90, capo: 0, descriptionHas: ['줄 정보 없음(기본 위치)'],
+    measures: [
+      '[-] ' + ['1' + pitchToken(midiOf('C', 4)) + ':i', pitchToken(midiOf('F', 4) + 1), pitchToken(midiOf('C', 3)) + '+' + pitchToken(midiOf('G', 3)), pitchToken(midiOf('B', 3) - 1)].join(' '),
+      '[-] ' + [pitchToken(midiOf('E', 4)), '-', '-', 'r'].join(' ')
+    ]
+  },
+  {
+    // 6줄 트랙 안에서 음 몇 개만 줄 정보가 없는 곡(읽은 모델을 고쳐 만든다): 그 음만 @줄 없이, 같은 화음의 다른 음은 @줄 그대로.
+    // 슬러 출발 음이 줄 없는 음이면 슬러를 빼고 메모, 음역 밖(C2)이면 옥타브를 옮기고 ? 와 메모.
+    file: 'mixed-strings.tex', title: 'Mixed Strings', beats: 4, bpm: 80, capo: 0, descriptionHas: [], editsModel: true,
+    edit: function(score){
+      unstring(score, 0, 0, 0, parser.STRINGS[0].midi);
+      unstring(score, 1, 0, 2, parser.STRINGS[1].midi);
+      unstring(score, 1, 1, 0, parser.STRINGS[0].midi + 1);
+      unstring(score, 2, 0, 0, midiOf('C', 2));
+    },
+    measures: [
+      '[-] ' + [pitchToken(parser.STRINGS[0].midi), n(1, 2), n(2, 3), n(3, 0)].join(' '),
+      '[-] ' + [n(6, 0) + '+' + n(4, 0) + '+' + pitchToken(parser.STRINGS[1].midi), pitchToken(parser.STRINGS[0].midi + 1), n(1, 3), 'r'].join(' ') + ' | "줄 정보 없음: 슬러 생략"',
+      '[-] ' + [pitchToken(midiOf('C', 2)), n(4, 0), n(3, 0), n(2, 0)].join(' ') + ' | "음역 밖 → 옥타브 옮김"'
+    ]
+  },
+  {
+    // 섹션(리허설 기호)은 마디 메모의 맨 앞, 페르마타는 변환기 메모(박의 글 뒤)
+    file: 'section-fermata.tex', title: 'Section Fermata', beats: 4, bpm: 80, capo: 0, descriptionHas: [],
+    measures: [
+      '[-] ' + [n(1, 0), '-', n(1, 1), '-'].join(' ') + ' | "A · 페르마타"',
+      '[-] ' + [n(1, 2), '-', '-', '-'].join(' ') + ' | "B Fine"',
+      '[-] ' + [n(1, 3), '-', '-', '-'].join(' ') + ' | "C · 메모"',
+      '[-] ' + [n(1, 5), '-', '-', '-'].join(' ')
+    ]
+  },
+  {
+    // 1 | 2(segno) | 3(To Coda) | 4(D.S. al Coda) | 5(coda) 는 1 2 3 4 2 3 5 로 펼쳐진다. 이동해서 다시 들어온 첫 마디(2번째 2)와 코다로 건너뛴 마디(5)에 메모.
+    file: 'ds-al-coda.tex', title: 'DS Coda', beats: 4, bpm: 80, capo: 0, descriptionHas: [],
+    measures: [
+      '[-] ' + n(1, 0) + ' - - -',
+      '[-] ' + n(1, 2) + ' - - -',
+      '[-] ' + n(1, 3) + ' - - -',
+      '[-] ' + n(1, 5) + ' - - -',
+      '[-] ' + n(1, 2) + ' - - - | "D.S. al Coda 펼침"',
+      '[-] ' + n(1, 3) + ' - - -',
+      '[-] ' + n(1, 7) + ' - - - | "To Coda 펼침"'
+    ]
+  },
+  {
+    // 1 | 2 | 3(Fine) | 4(D.C. al Fine) 는 1 2 3 4 1 2 3 으로 펼쳐지고 Fine 에서 끝난다.
+    file: 'dc-al-fine.tex', title: 'DC Fine', beats: 4, bpm: 80, capo: 0, descriptionHas: [],
+    measures: [
+      '[-] ' + n(1, 0) + ' - - -',
+      '[-] ' + n(1, 1) + ' - - -',
+      '[-] ' + n(1, 2) + ' - - -',
+      '[-] ' + n(1, 3) + ' - - -',
+      '[-] ' + n(1, 0) + ' - - - | "D.C. al Fine 펼침"',
+      '[-] ' + n(1, 1) + ' - - -',
+      '[-] ' + n(1, 2) + ' - - -'
+    ]
+  },
+  {
+    // 36마디 뼈대(마디 N의 박 글은 bN). 5마디 도돌이 시작+세뇨, 11마디 To Coda, 12마디 1번 괄호+도돌이 끝, 13마디 2번 괄호, 34마디 D.S. al Coda, 35마디 코다.
+    // 34마디 박 글에 with Repeat 가 있으면 이동한 뒤에도 도돌이와 1·2번 괄호를 다시 지킨다: 세뇨(5)부터 11, 1번 괄호(12), 5~11 다시, 마지막 바퀴의 To Coda 로 35, 36.
+    file: 'ds-with-repeat.tex', title: 'DS With Repeat', beats: 4, bpm: 80, capo: 0, descriptionHas: [],
+    measures: skeletonMeasures(true)
+  },
+  {
+    // 같은 뼈대에서 with Repeat 글만 뺀 것은 alphaTab 순서 그대로: 세뇨에서 11까지 가고 곧장 To Coda 로 35, 36. 1·2번 괄호 메모는 건너뛴 자리에도 붙지 않는 To Coda 메모와 따로다.
+    file: 'ds-with-repeat.tex', title: 'DS With Repeat', beats: 4, bpm: 80, capo: 0, descriptionHas: [], editsModel: true,
+    transformText: function(text){ return text.replace('b34 with Repeat', 'b34'); },
+    measures: skeletonMeasures(false)
   }
 ];
 
-const TEX_ONLY = EXAMPLES.filter(function(example){ return /\.tex$/.test(example.file); });
+// 뼈대의 기대 악보 줄: 연주 순서(마디 번호)와 그 자리의 변환기 메모. 박 글은 bN(34마디는 with Repeat 가 붙을 수 있다).
+function skeletonMeasures(withRepeat){
+  const order = [];
+  function run(from, to){ for (let bar = from; bar <= to; bar++) order.push({ bar: bar }); }
+  function mark(bar, memo){ order.push({ bar: bar, memo: memo }); }
+  run(1, 4); mark(5, '도돌이 펼침'); run(6, 11); mark(12, '1번 괄호'); run(5, 11); mark(13, '2번 괄호'); run(14, 34);
+  mark(5, 'D.S. al Coda 펼침'); run(6, 11);
+  if (withRepeat){ mark(12, '1번 괄호'); run(5, 11); }
+  mark(35, 'To Coda 펼침'); run(36, 36);
+  return order.map(function(entry){
+    const text = entry.bar === 34 && withRepeat ? 'b34 with Repeat' : 'b' + entry.bar;
+    return '[-] ' + n(1, 0) + ' - - - | ' + JSON.stringify(entry.memo ? text + ' · ' + entry.memo : text);
+  });
+}
 
-function loadExample(toolModule, file){
+// Guitar Pro 경로 테스트는 읽은 모델이나 글을 고치는 예제(editsModel)를 뺀다.
+const TEX_ONLY = EXAMPLES.filter(function(example){ return /\.tex$/.test(example.file) && !example.editsModel; });
+
+function loadExample(toolModule, example){
+  const file = example.file;
   const full = path.join(FIXTURES, file);
-  if (/\.tex$/.test(file)) return toolModule.parseAlphaTex(fs.readFileSync(full, 'utf8'));
+  if (/\.tex$/.test(file)){
+    let text = fs.readFileSync(full, 'utf8');
+    if (example.transformText) text = example.transformText(text);
+    const score = toolModule.parseAlphaTex(text);
+    if (example.edit) example.edit(score);
+    return score;
+  }
   return toolModule.parseScoreBytes(fs.readFileSync(full));
 }
 
 // 예제 하나의 기대와 어긋난 곳의 목록
 function exampleFailures(toolModule, example, score){
   const failures = [];
-  const result = toolModule.convertScore(score || loadExample(toolModule, example.file), { sourceName: example.file, fallbackTitle: path.basename(example.file, path.extname(example.file)) });
+  const result = toolModule.convertScore(score || loadExample(toolModule, example), { sourceName: example.file, fallbackTitle: path.basename(example.file, path.extname(example.file)) });
   const label = example.file;
   if (!result.ok) return [label + ': 변환 실패 ' + result.error];
   if (result.title !== example.title) failures.push(label + ': 제목 ' + result.title);
@@ -369,8 +473,7 @@ test('hand-written alphaTex examples read with zero alphaTab diagnostics', funct
 });
 
 test('hand-written examples convert to the expected score lines', function(){
-  const failures = TEX_ONLY.concat(EXAMPLES.filter(function(example){ return /\.musicxml$/.test(example.file); }))
-    .flatMap(function(example){ return exampleFailures(tool, example); });
+  const failures = EXAMPLES.flatMap(function(example){ return exampleFailures(tool, example); });
   if (failures.length) process.stdout.write(failures.join('\n') + '\n');
   assert.deepEqual(failures, []);
 });
@@ -796,6 +899,38 @@ test('mutant (f): not using notices as the description is caught', function(){
 
 test('mutant (g): dropping the beat text memo is caught', function(){
   mutantCaught('no beat text', "if (typeof beat.text === 'string' && beat.text) texts.push(", "if (false) texts.push(");
+});
+
+test('mutant (h): writing @string on a note that has no string is caught', function(){
+  mutantCaught('@string on a named note', "(record.str ? '@' + record.str : '')", "'@' + (record.str || 1)");
+});
+
+test('mutant (i): not following jump directions (D.S., D.C., Coda, Fine) in the play order is caught', function(){
+  mutantCaught('no jumps', 'function playOrder(score, staff){', 'function playOrder(score, staff){ score.masterBars.forEach(function(masterBar){ masterBar.directions = null; });');
+});
+
+test('mutant (m): ignoring the with Repeat text after D.S. is caught', function(){
+  mutantCaught('no with Repeat', '!barTextMatches(staff, order[position], WITH_REPEAT)', 'true');
+});
+
+test('mutant (n): putting the jump memo on any non-sequential bar (also on a skipped 1st/2nd ending) is caught', function(){
+  mutantCaught('jump memo on every skip', 'if (jump && isJumpArrival(jump, masterBar, index))', 'if (jump)');
+});
+
+test('mutant (o): not writing the 1st/2nd ending memo is caught', function(){
+  mutantCaught('no ending memo', 'if (ending) memos.push(ending);', 'void 0;');
+});
+
+test('mutant (j): dropping the section text from the bar memo is caught', function(){
+  mutantCaught('no section memo', 'texts: section ? [section].concat(collected.texts) : collected.texts', 'texts: collected.texts');
+});
+
+test('mutant (k): dropping the fermata memo is caught', function(){
+  mutantCaught('no fermata memo', 'if (beat.fermata) memo(MEMO.fermata);', 'void 0;');
+});
+
+test('mutant (l): treating a string-less note in a 6-string track as stringed is caught', function(){
+  mutantCaught('stringed branch for every note', 'if (hasStrings && note.isStringed && note.string >= 1){', 'if (hasStrings){');
 });
 
 process.stdout.write('1..' + checks + '\n');

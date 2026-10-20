@@ -21,7 +21,7 @@
 | `src/fretboard.js` | 지판 미리듣기와 코드 카드 표시 |
 | `src/score-ui.js` | 악보 보기 전환과 `formatSongToSheetTsv` 공통 함수 |
 | `src/sheets.js` | Google Sheets 읽기 연동 |
-| `src/score-prompt.js` | 악보 이미지 변환용 범용 AI 프롬프트 문자열과 복사 버튼 |
+| `src/score-prompt.js` | 악보 이미지 → alphaTex 변환용 범용 AI 프롬프트 문자열(`buildScoreImagePrompt`)과 복사 버튼 |
 | `src/score-editor.js` | 초안 상태 줄·원본 복원, 악보 입력 화면과 주고받기 |
 | `src/app.js` | 앱 상태, UI 부팅과 기능 연결 |
 
@@ -68,9 +68,11 @@ alphaTab 보기 창은 `app.js` 없이 따로 스크립트를 부른다. 구성�
 - 2026-10-19 결정: 프롬프트는 한 번에 끝까지 관대하게 변환하게 한다. 처음에는 지원하지 않는 표기(박자 변경, 변칙 조율)에서 변환을 멈추고 읽지 못한 음을 단독 `?`로 남겨 앱 검증이 불러오기를 막게 했는데, AI를 여러 번 다시 돌리지 않고 앱에서 직접 고치는 쪽을 택했다. 이제 지원하지 않는 표기는 정해진 규칙대로 단순하게 바꾸고(꾸밈음 생략, 슬러는 따로 침(2026-10-20부터는 `s` 표기, [악보 문법](score-format.md#슬러)), 박자가 다른 마디는 `r`로 채우거나 나눔 등) 마디 메모에 적게 하며, 불확실한 음은 가장 그럴듯한 값에 확인 표시 `?`를 붙이게 한다([악보 문법](score-format.md)의 확인 표시). 이미지에 없는 내용을 지어내지는 않게 한다. 같은 날 확인: 안 맞는 표기는 가볍게 편곡하는 느낌이면 되고 빼는 것도 그중 하나라 메모만 남기면 된다. 그래서 목록에 없는 표기(벤딩, 골페 등)도 같은 식으로 바꾸거나 빼게 하되, 원본에 없는 음을 더하지는 않게 한다.
 - 2026-10-19 결정: 프롬프트가 앱이 받는 한계를 AI에 직접 알려 준다. 시트 BPM은 정수만 받고(`src/sheets.js`), 범위를 벗어난 BPM은 앱이 말없이 잘라(`src/app.js` 곡 적용부). 칸을 잘게 잡으면 BPM이 커지니, 넘으면 칸을 키우고 분할로 적게 한다. 빠른 6/8·9/8은 6칸·9칸이면 쉽게 넘어서(점4분음표=100이면 300) 12/8처럼 2칸·3칸에 3분할로 적는 길을 같이 알려 준다. 파서는 2칸 3분할 마디를 오류 없이 읽는다. 코드 머리표 `[?]`는 코드 추론 표시라 검증을 통과하므로 읽지 못한 코드는 `[-]`로 두게 한다. 카포가 있으면 적은 음과 실음이 다르다는 것도 밝힌다. 이 한계를 바꾸면 프롬프트 문구도 같이 고친다.
 - 2026-10-19 결정: 프롬프트를 앱을 모르는 AI 기준으로 다시 썼다. 작업 원칙 → 출력 → 문법 1~7(마디, 칸 내용, 음 토큰 자리 순서, 음높이, 박자와 칸, 음 길이 표, 여러 성부) → 예외와 애매한 경우 표 → 출력 전 점검 순서다. 이전 판은 규칙이 흩어져 있고 음표 길이를 어떻게 적는지 대응이 없어서 AI가 유추해야 했다(8분음표 둘을 두 칸에 적는 식의 실수 위험). 음 길이 표는 `RHYTHM_EXAMPLES` 데이터에서 만들고, `test-score-prompt`가 각 표기를 파서로 읽어 길이가 표와 맞는지 확인한다. 옥타브 번호(가운데 도 = C4)와 기타 오선보의 한 옥타브 차이처럼 앱 밖의 관습에 기대던 부분도 명시했다.
-- `test/test-score-prompt.js`는 프롬프트 속 문법 예시(`EXAMPLE_MEASURES`, `EXAMPLE_TSV_ROW`)와 음 길이 표(`RHYTHM_EXAMPLES`)가 현재 파서로 오류 없이 읽히고 길이가 맞는지만 확인한다. 규칙 문장은 검사하지 않으니 문법을 바꾸면 프롬프트 규칙도 같이 고친다.
+- 2026-10-20 결정: 위 프롬프트들은 모두 옛 판이다. `buildScoreImagePrompt()`는 이제 악보 이미지를 alphaTex로 옮기는 프롬프트를 낸다(사진 → alphaTex → `tools/build-scores.js` → 우리 악보). 사진에서 우리 문법으로 바로 옮기던 길은 없앴다. 이유와 흐름, 프롬프트가 요구하는 것은 [alphaTab 보기](alphatab.md#사진-변환)에 있다. 우리 문법을 가르치던 [문법 1~7]은 프롬프트에서 빠졌고, 우리 문법 표는 변환기와 사람용이다. `RHYTHM_EXAMPLES`(음 길이 표)와 `EXAMPLE_MEASURES`·`EXAMPLE_TSV_ROW`(우리 악보 한 행의 예)는 프롬프트 밖의 시험 자료와 `Docs/score-format.md` 표의 원본으로 남겼다.
+- `test/test-score-prompt.js`는 프롬프트 속 예시 코드블록(`ALPHATEX_EXAMPLES`)이 vendor alphaTab에서 진단 0으로 읽히고 `tools/alphatab-to-score.js`로 바꾼 결과가 `validateScore` 오류 0인지, 규칙 속 alphaTex 조각과 이동 표시 이름이 읽히는지, 규칙 문장(`REQUIRED` 목록)이 빠지지 않았는지, 일부러 어긋난 사본이 걸리는지 확인한다. 음 길이 표(`RHYTHM_EXAMPLES`)와 우리 악보 예시 행은 현재 파서로 읽히는지 확인한다. 알려진 alphaTex 표기를 바꾸면 프롬프트 규칙과 이 목록을 같이 고친다.
 - 클립보드 API가 없거나 거부되면 화면 밖 textarea와 `execCommand('copy')`로 복사한다. `window.prompt`는 여러 줄을 한 줄로 뭉개서 쓰지 않는다.
 - 2026-10-19 결정: 저장소를 읽고 명령을 실행할 수 있는 AI(코딩 에이전트)용 짧은 프롬프트를 `#copyProjectPromptBtn`으로 복사한다. 본문은 `src/score-prompt.js`의 `buildProjectPrompt()`이다. 문법과 변환 규칙을 다시 적지 않고 `Docs/score-format.md`와 `buildScoreImagePrompt()` 출력 명령을 가리켜서, 규칙이 한 군데에만 있게 했다. AI는 결과를 `Temp/scores/<제목>.tsv`에 저장하고 `node tools/check-score.js`로 문법 오류가 0인지 확인한다. 이 도구는 행 모양(5열, 칸 수, BPM 30~240)을 보고 악보는 `parser.validateScore`로만 검사한다. 칸 수 목록은 `src/sheets.js`, BPM 범위는 `src/app.js` 곡 적용부와 같아야 한다. `test-score-prompt`가 프롬프트 속 명령을 실제로 실행해 확인한다.
+- 2026-10-20 결정: 프로젝트 프롬프트도 새 길로 바꿨다. 이제 `Docs/alphatab.md`("원본은 alphaTex", "사진 변환")를 읽고, `buildScoreImagePrompt()` 출력(alphaTex 변환 규칙)을 따라 `Temp/scores/<제목>.tex`를 저장하고, `node tools/build-scores.js Temp/scores`로 `<제목>.tsv`(6열)를 만든다. 위 `check-score.js` 흐름은 옛 판이다. 이유는 사진 변환의 원본을 alphaTex 하나로 모은 결정과 같다([alphaTab 보기](alphatab.md#사진-변환)). `test-score-prompt`가 문서·도구 파일 존재, `.tex`·`.tsv` 언급, 옛 길(`check-score`, `score-format`) 부재, 프롬프트 속 명령 실행을 확인한다.
 - 2026-10-20 결정: 코드 이름이 찍히지 않은 마디는 `[-]` 대신 앞에서 이어지는 코드를 적게 했다(앞 마디 중간에 바뀌었으면 바뀐 뒤 코드). 악보는 코드가 바뀌는 마디에만 이름을 찍는데, `[-]`로 두면 연습 화면에서 그 마디들의 코드 칩이 비어 보여서다. 곡 처음처럼 이어질 코드가 없으면 그대로 `[-]`이다. 이미 변환해 둔 언제나 몇 번이라도·인생의 회전목마 TSV(`Temp/scores`, 드라이브 `GuitarScores` 폴더)도 같은 규칙으로 고쳤다.
 
 ## UI 톤 및 버튼 명칭 정돈
@@ -104,7 +106,7 @@ alphaTab 보기 창은 `app.js` 없이 따로 스크립트를 부른다. 구성�
 - 화면에서 드래그해 복사한 TSV는 클립보드에 탭이 빠진 HTML이 같이 실려서, 시트가 HTML을 골라 한 칸에 몰아넣었다. `Ctrl+Shift+V`로 피할 수는 있지만 곡마다 붙여 넣는 일이 번거로웠다. 앱은 GitHub Pages에서 돌아 로컬 파일을 못 읽고, 드라이브 파일을 브라우저에서 바로 읽으려면 Drive API 키가 필요하다. 그래서 앱은 지금처럼 시트만 읽고, 시트 쪽 Apps Script가 드라이브 폴더를 가져오게 했다.
 - 틀린 길: 앱이 로컬 TSV 폴더를 `python -m http.server`의 폴더 목록으로 읽는 안은 서버를 띄워 둬야 해서 버렸다.
 - 행은 제목으로 맞춘다. 처음에는 앱이 E열부터 끝까지를 악보로 이어 읽어서(`src/sheets.js`의 `cols.slice(4)`) 출처 파일 같은 열을 더 둘 수 없었다.
-- 2026-10-20 결정(사용자): 시트 6번째 열(F열)에 원본 alphaTex를 둔다([alphaTab 보기](alphatab.md#원본은-alphatex)). 앱은 악보를 E열에서만 읽도록 `cols.slice(4, 5)`로 바꾸고 F열은 곡 객체의 `alphaTex`(`song.alphaTex`)로 싣는다. 이 값은 `scoreDrafts`가 곡을 복제해도 남아 연습 화면의 `curSong`까지 간다. 스크립트는 5열과 6열을 모두 받고, 행을 쓸 때 언제나 6열을 쓴다(5열 행은 F열을 비워 전에 있던 alphaTex를 지운다). F열도 일반 텍스트 서식으로 쓴다. 바뀐 행은 파일 단위 수정 시각(`PROP_PREFIX`)으로 가르므로 6번째 열만 바뀐 파일도 다시 쓴다. 셀 한 칸 한도(`TEX_CELL_LIMIT`)를 넘는 alphaTex는 그 열만 비우고 `console.log`로 남기며, 머리 행의 F1이 비어 있고 alphaTex를 쓰는 행이 있으면 `alphaTex`를 적는다. 스크립트를 시트에 다시 붙여 넣어야 반영된다.
+- 2026-10-20 결정: 시트 6번째 열(F열)에 원본 alphaTex를 둔다([alphaTab 보기](alphatab.md#원본은-alphatex)). 앱은 악보를 E열에서만 읽도록 `cols.slice(4, 5)`로 바꾸고 F열은 곡 객체의 `alphaTex`(`song.alphaTex`)로 싣는다. 이 값은 `scoreDrafts`가 곡을 복제해도 남아 연습 화면의 `curSong`까지 간다. 스크립트는 5열과 6열을 모두 받고, 행을 쓸 때 언제나 6열을 쓴다(5열 행은 F열을 비워 전에 있던 alphaTex를 지운다). F열도 일반 텍스트 서식으로 쓴다. 바뀐 행은 파일 단위 수정 시각(`PROP_PREFIX`)으로 가르므로 6번째 열만 바뀐 파일도 다시 쓴다. 셀 한 칸 한도(`TEX_CELL_LIMIT`)를 넘는 alphaTex는 그 열만 비우고 `console.log`로 남기며, 머리 행의 F1이 비어 있고 alphaTex를 쓰는 행이 있으면 `alphaTex`를 적는다. 스크립트를 시트에 다시 붙여 넣어야 반영된다.
 - 파일마다 마지막 수정 시각을 Script Properties(`PROP_PREFIX` + 파일 id)에 남기고 바뀐 파일의 행만 쓴다. 시트에서 직접 고친 행을 자동 실행이 매번 덮어쓰지 않게 하려는 것이다. 오류나 제목 중복이 있던 파일은 기록하지 않아 다음 실행에서 다시 본다.
 - 파일을 지워도 행은 지우지 않는다. 위 열 제약 때문에 시트에서 손으로 넣은 곡과 파일에서 온 곡을 구분할 수 없어서다.
 - 같은 제목이 여러 줄에 있으면 그 제목은 모두 건너뛴다. 어느 쪽이 맞는지 스크립트가 정하지 않는다.

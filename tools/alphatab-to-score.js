@@ -25,6 +25,8 @@ const BPM_MAX = 240;
 const TOLERANCE_TICKS = 2;
 const DIVISIONS = [1, 2, 3, 4];
 const CAPO_MAX = 12;
+// D.S.·D.C. 가 적힌 마디의 박 글에 이 글이 있으면 이동 뒤 구간이 도돌이·1·2번 괄호를 다시 지킨다.
+const WITH_REPEAT = /with\s*repeat/i;
 
 // 마디 메모와 설명 문구
 const MEMO = {
@@ -43,6 +45,7 @@ const MEMO = {
   whammy: '위미바',
   trill: '트릴',
   repeat: '도돌이 펼침',
+  fermata: '페르마타',
   anacrusis: '못갖춘마디',
   overflow: '마디 길이를 넘는 음 생략',
   tempo: '템포 변화 생략',
@@ -52,12 +55,10 @@ const MEMO = {
   noStringHarmonic: '줄 정보 없음: 하모닉스 생략'
 };
 
+// alphaTab 의 이동 표시(Direction 중 Jump 로 시작하는 것)의 이름. 이동해서 다시 들어온 첫 마디의 메모는 이름 + JUMP_SUFFIX 다.
+// 목표 표시(Segno·Coda·Fine)는 메모 없이 alphaTab 연주 순서가 따른다.
+const JUMP_SUFFIX = ' 펼침';
 const DIRECTION_LABEL = {
-  TargetFine: 'Fine',
-  TargetSegno: 'Segno',
-  TargetSegnoSegno: 'Segno Segno',
-  TargetCoda: 'Coda',
-  TargetDoubleCoda: 'Coda 2',
   JumpDaCapo: 'D.C.',
   JumpDaCapoAlCoda: 'D.C. al Coda',
   JumpDaCapoAlDoubleCoda: 'D.C. al Coda 2',
@@ -217,30 +218,136 @@ function selectStaff(score, trackNumber){
   return { track: track, staff: staff, hasStrings: staff.tuning.length > 0 };
 }
 
-// ---------- 연주 순서(도돌이·1/2번 괄호)
+// ---------- 연주 순서(도돌이·1/2번 괄호·이동 표시)
 
-// 반복과 1·2번 괄호는 alphaTab의 재생 순서(MidiFileGenerator)를 그대로 쓴다. D.S.·D.C. 같은 이동 표시는 펼치지 않으려고 생성하는 동안만 뗀다.
-function playOrder(score){
-  const saved = score.masterBars.map(function(masterBar){ return masterBar.directions; });
-  score.masterBars.forEach(function(masterBar){ masterBar.directions = null; });
-  try {
-    const handler = new alphaTab.midi.AlphaSynthMidiFileHandler(new alphaTab.midi.MidiFile());
-    const generator = new alphaTab.midi.MidiFileGenerator(score, newSettings(), handler);
-    generator.generate();
-    return generator.tickLookup.masterBars.map(function(item){ return item.masterBar.index; });
-  } finally {
-    score.masterBars.forEach(function(masterBar, index){ masterBar.directions = saved[index]; });
+// 반복, 1·2번 괄호, D.S.·D.C.·Coda·Fine·To Coda 는 alphaTab의 재생 순서(MidiFileGenerator)를 그대로 쓴다.
+// 예외: D.S.·D.C. 가 적힌 마디의 박 글에 "with Repeat" 가 있으면(책의 D.S. with Repeat) 그 이동 뒤 구간은 도돌이와 1·2번 괄호를 다시 지키는 순서로 바꾼다.
+// alphaTab 은 이동한 뒤 도돌이를 건너뛰어서 alphaTex 로는 적을 수 없는 뜻이다.
+function playOrder(score, staff){
+  const handler = new alphaTab.midi.AlphaSynthMidiFileHandler(new alphaTab.midi.MidiFile());
+  const generator = new alphaTab.midi.MidiFileGenerator(score, newSettings(), handler);
+  generator.generate();
+  const order = generator.tickLookup.masterBars.map(function(item){ return item.masterBar.index; });
+  const masterBars = score.masterBars;
+  for (let position = 0; position < order.length; position++){
+    const jump = jumpInfo(masterBars[order[position]]);
+    if (!jump || !jump.repeating || !barTextMatches(staff, order[position], WITH_REPEAT)) continue;
+    const segment = withRepeatSegment(masterBars, order[position], jump.name);
+    return segment ? order.slice(0, position + 1).concat(segment) : order;
   }
+  return order;
 }
 
-function directionLabels(masterBar){
-  if (!masterBar.directions || !masterBar.directions.size) return [];
-  const labels = [];
-  masterBar.directions.forEach(function(direction){
-    const label = DIRECTION_LABEL[model.Direction[direction]];
-    if (label) labels.push(label);
+// 박 글(txt)이 그 마디 어디에든 있는가
+function barTextMatches(staff, index, pattern){
+  const bar = staff.bars[index];
+  if (!bar) return false;
+  return bar.voices.some(function(voice){
+    return voice.beats.some(function(beat){ return typeof beat.text === 'string' && pattern.test(beat.text); });
   });
-  return labels;
+}
+
+function hasDirection(masterBar, direction){
+  return !!masterBar.directions && masterBar.directions.has(direction);
+}
+
+// from 부터 위(위쪽 번호)로 처음 나오는 direction 마디. 없으면 -1. reverse 이면 from 이하에서 가장 가까운 것(없으면 처음 것).
+function findDirectionBar(masterBars, direction, from, reverse){
+  if (reverse){
+    for (let i = from; i >= 0; i--) if (hasDirection(masterBars[i], direction)) return i;
+  }
+  for (let i = reverse ? 0 : from; i < masterBars.length; i++) if (hasDirection(masterBars[i], direction)) return i;
+  return -1;
+}
+
+// 마디 index 가 든 도돌이 구간의 마지막 바퀴인가. 구간 끝(도돌이 끝 마디)을 위쪽으로 찾고, 없으면 도돌이 안이 아니므로 마지막이다.
+function isLastPass(masterBars, index, pass){
+  for (let j = index; j < masterBars.length; j++){
+    if (j > index && masterBars[j].isRepeatStart) return true;
+    if (masterBars[j].isRepeatEnd) return pass >= masterBars[j].repeatCount;
+  }
+  return true;
+}
+
+// D.S.·D.C. 로 이동한 뒤 구간의 연주 순서(마디 index 목록). 도돌이와 1·2번 괄호를 첫 바퀴처럼 다시 지킨다.
+// To Coda 와 Fine 은 그 구간의 마지막 바퀴에서만 따른다(al Coda 면 To Coda, al Fine 이면 Fine). 이동할 곳을 못 찾으면 null.
+function withRepeatSegment(masterBars, jumpIndex, name){
+  const total = masterBars.length;
+  let start = 0;
+  if (name.indexOf('JumpDaCapo') !== 0){
+    const segno = name.indexOf('JumpDalSegnoSegno') === 0 ? model.Direction.TargetSegnoSegno : model.Direction.TargetSegno;
+    start = findDirectionBar(masterBars, segno, jumpIndex, true);
+    if (start < 0) return null;
+  }
+  const alFine = name.indexOf('AlFine') > 0;
+  const toCoda = name.indexOf('AlDoubleCoda') > 0 ? model.Direction.JumpDaDoubleCoda : (name.indexOf('AlCoda') > 0 ? model.Direction.JumpDaCoda : null);
+  const codaTarget = toCoda === model.Direction.JumpDaDoubleCoda ? model.Direction.TargetDoubleCoda : model.Direction.TargetCoda;
+  let repeatStart = 0;
+  for (let i = start; i >= 0; i--) if (masterBars[i].isRepeatStart){ repeatStart = i; break; }
+  const result = [];
+  let pass = 1;
+  let i = start;
+  let loopedBack = true;
+  let guard = 0;
+  while (i < total && guard++ < total * 50){
+    const masterBar = masterBars[i];
+    if (masterBar.isRepeatStart && !loopedBack){ repeatStart = i; pass = 1; }
+    loopedBack = false;
+    const endings = masterBar.alternateEndings;
+    if (endings && !(endings & (1 << (pass - 1)))){ i++; continue; }
+    result.push(i);
+    const last = isLastPass(masterBars, i, pass);
+    if (alFine && last && hasDirection(masterBar, model.Direction.TargetFine)) break;
+    if (toCoda !== null && last && hasDirection(masterBar, toCoda)){
+      const coda = findDirectionBar(masterBars, codaTarget, i + 1, false);
+      if (coda >= 0){ i = coda; repeatStart = coda; pass = 1; loopedBack = true; continue; }
+    }
+    if (masterBar.isRepeatEnd && pass < masterBar.repeatCount){ pass++; i = repeatStart; loopedBack = true; continue; }
+    if (masterBar.isRepeatEnd){ pass = 1; repeatStart = i + 1; }
+    i++;
+  }
+  return result;
+}
+
+// 마디에 붙은 이동 표시(D.S.·D.C.·To Coda, Direction 이름이 Jump 로 시작하는 것). 없으면 null.
+// repeating: D.S.·D.C. 계열(되돌아가는 이동). target(index): 그 이동의 도착지인 마디인가. 목표 표시(Segno·Coda·Fine)는 이동이 아니다.
+function jumpInfo(masterBar){
+  if (!masterBar.directions || !masterBar.directions.size) return null;
+  let found = null;
+  masterBar.directions.forEach(function(direction){
+    const name = model.Direction[direction];
+    if (!found && name.indexOf('Jump') === 0 && DIRECTION_LABEL[name]) found = { name: name, label: DIRECTION_LABEL[name] };
+  });
+  if (found) found.repeating = found.name.indexOf('JumpDalSegno') === 0 || found.name.indexOf('JumpDaCapo') === 0;
+  return found;
+}
+
+// 이동 표시가 붙은 마디 다음에 온 마디가 그 이동의 도착지인가(D.S.류는 세뇨 표지 마디, D.C.류는 첫 마디, To Coda는 코다 표지 마디).
+// 1·2번 괄호로 건너뛴 마디는 도착지가 아니다.
+function isJumpArrival(jump, masterBar, index){
+  if (jump.name.indexOf('JumpDaCapo') === 0) return index === 0;
+  if (jump.name.indexOf('JumpDalSegnoSegno') === 0) return hasDirection(masterBar, model.Direction.TargetSegnoSegno);
+  if (jump.name.indexOf('JumpDalSegno') === 0) return hasDirection(masterBar, model.Direction.TargetSegno);
+  if (jump.name === 'JumpDaCoda') return hasDirection(masterBar, model.Direction.TargetCoda);
+  if (jump.name === 'JumpDaDoubleCoda') return hasDirection(masterBar, model.Direction.TargetDoubleCoda);
+  return false;
+}
+
+// 1·2번 괄호의 첫 마디면 "1번 괄호" 꼴의 글. 앞 마디가 같은 괄호면 그 괄호의 첫 마디가 아니다.
+function endingText(masterBar, previous){
+  const endings = masterBar.alternateEndings;
+  if (!endings) return '';
+  const fresh = endings & ~(previous ? previous.alternateEndings : 0);
+  const numbers = [];
+  for (let bit = 0; bit < 8; bit++) if (fresh & (1 << bit)) numbers.push(bit + 1);
+  return numbers.length ? numbers.join('·') + '번 괄호' : '';
+}
+
+// 마디의 섹션(리허설 기호) 글. 마커와 글이 둘 다 있으면 공백으로 잇는다.
+function sectionText(masterBar){
+  const section = masterBar.section;
+  if (!section) return '';
+  return [section.marker, section.text].filter(function(part){ return typeof part === 'string' && part.trim(); }).join(' ').replace(/[\t\r\n]+/g, ' ').trim();
 }
 
 // ---------- 음 하나 → 토큰
@@ -419,6 +526,7 @@ function convert(score, opts){
         if (beat.isEmpty) return;
         // 박의 글(alphaTex 의 txt)은 그대로 그 마디 메모가 된다. 변환기가 만드는 근사 메모는 그 뒤에 붙는다.
         if (typeof beat.text === 'string' && beat.text) texts.push({ start: beat.playbackStart, text: beat.text });
+        if (beat.fermata) memo(MEMO.fermata);
         if (beat.graceType !== model.GraceType.None){ memo(MEMO.grace); return; }
         const start = beat.playbackStart + offset;
         if (beat.hasChord){
@@ -443,8 +551,8 @@ function convert(score, opts){
           let harmonic = false;
           let articulation = '';
           let shifted = false;
-          if (hasStrings){
-            if (!note.isStringed) return;
+          // 줄이 있는 음만 @줄을 붙인다. 6줄 트랙 안에서도 string 이 없는 음(음이름으로 적은 음)은 줄 정보 없는 트랙과 같은 규칙 하나(아래 else)를 쓴다.
+          if (hasStrings && note.isStringed && note.string >= 1){
             str = ourString(note, staff);
             if (str < 1 || str > 6) refuse('줄 번호가 6줄 범위를 벗어난 음이 있습니다(' + (index + 1) + '마디).');
             const open = STANDARD_TUNING[str - 1];
@@ -466,7 +574,7 @@ function convert(score, opts){
             }
             if ((note.slideOutType !== model.SlideOutType.None && !note.slideTarget) || note.slideInType !== model.SlideInType.None) memo(MEMO.slide);
           } else {
-            // 줄 정보 없음: 음높이만 쓰고 @줄은 붙이지 않는다(앱이 기본 위치를 고른다). 줄이 있어야 하는 주법은 뺀다.
+            // 줄 정보 없음(트랙 전체이거나 음 하나): 음높이만 쓰고 @줄은 붙이지 않는다(앱이 기본 위치를 고른다). 줄이 있어야 하는 주법은 뺀다.
             midi = pitchOnly(note);
             if (midi == null) return;
             if (note.harmonicType !== model.HarmonicType.None) memo(MEMO.noStringHarmonic);
@@ -506,7 +614,7 @@ function convert(score, opts){
     return record.articulation + record.left + name + (record.str ? '@' + record.str : '') + (record.right ? ':' + record.right : '') + (moved || record.shifted ? '?' : '');
   }
 
-  const order = playOrder(score);
+  const order = playOrder(score, staff);
   const counts = new Map();
   order.forEach(function(index){ counts.set(index, (counts.get(index) || 0) + 1); });
   const seen = new Map();
@@ -514,14 +622,21 @@ function convert(score, opts){
   let carry = 0;
   let lastPiece = null;
 
-  order.forEach(function(index){
+  order.forEach(function(index, position){
     const masterBar = masterBars[index];
     const occurrence = seen.has(index) ? seen.get(index) : 0;
     seen.set(index, occurrence + 1);
     const collected = collectBar(index);
     const memos = collected.memos.slice();
     if (masterBar.isAnacrusis) memos.push(MEMO.anacrusis);
-    directionLabels(masterBar).forEach(function(label){ memos.push(label + ' 표시(펼치지 않음)'); });
+    // 이동 표시(D.S. 등)가 붙은 마디 다음에 순서대로가 아닌 마디가 오고 그 마디가 그 이동의 도착지면, 이동해서 들어온 첫 마디다.
+    // 1·2번 괄호로 건너뛴 마디는 도착지가 아니다.
+    if (position > 0 && index !== order[position - 1] + 1){
+      const jump = jumpInfo(masterBars[order[position - 1]]);
+      if (jump && isJumpArrival(jump, masterBar, index)) memos.push(jump.label + JUMP_SUFFIX);
+    }
+    const ending = endingText(masterBar, index > 0 ? masterBars[index - 1] : null);
+    if (ending) memos.push(ending);
     if (index > 0 && masterBar.tempoAutomations.length){
       const previous = masterBars[index - 1].tempoAutomations;
       const first = masterBar.tempoAutomations[0].value;
@@ -644,7 +759,9 @@ function convert(score, opts){
       });
     }
 
-    lines.push({ chord: chordName, cells: cellTexts, texts: collected.texts, memos: memos, overlap: overlap, hasNotes: collected.records.length > 0 });
+    // 섹션(리허설 기호)은 그 마디 메모의 맨 앞이다. 펼친 사본마다 같다.
+    const section = sectionText(masterBar);
+    lines.push({ chord: chordName, cells: cellTexts, texts: section ? [section].concat(collected.texts) : collected.texts, memos: memos, overlap: overlap, hasNotes: collected.records.length > 0 });
   });
 
   // 길이가 다른 음의 겹침 메모는 곡 전체면 설명에 한 번만 적는다.
