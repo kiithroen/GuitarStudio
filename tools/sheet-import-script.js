@@ -62,11 +62,12 @@ function planImport(sheetTitles, headerTitle, entries) {
 
   var rest = entries.filter(function (e) { return e.cols[0] !== headerTitle; });
 
-  var counts = {};
+  // 제목이 constructor·__proto__ 같은 이름이어도 상속 속성으로 읽히지 않게 프로토타입 없는 객체를 쓴다.
+  var counts = Object.create(null);
   rest.forEach(function (e) {
     counts[e.cols[0]] = (counts[e.cols[0]] || 0) + 1;
   });
-  var dupInfo = {};
+  var dupInfo = Object.create(null);
   rest.forEach(function (e) {
     var title = e.cols[0];
     if (counts[title] < 2) return;

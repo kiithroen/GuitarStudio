@@ -241,6 +241,37 @@ test('planImport drops header titles, updates by row, appends, counts unchanged 
   assert.deepEqual(plan.duplicates[0].fileKeys, ['id-e1.tsv', 'id-e2.tsv']);
 });
 
+test('planImport treats titles named like Object.prototype members as ordinary titles', function(){
+  const w = makeWorld();
+  const names = ['constructor', 'toString', '__proto__', 'hasOwnProperty'];
+  const entry = function(file, title, changed){
+    return { file, fileKey: 'id-' + file, line: 1, cols: colsFor(title), changed };
+  };
+  names.forEach(function(name){
+    // 새 제목은 추가
+    const added = plain(w.ctx.planImport(['X'], '곡 제목', [entry('n.tsv', name, true)]));
+    assert.equal(added.appends.length, 1, name + ' appended');
+    assert.equal(added.appends[0][0], name);
+    assert.equal(added.updates.length, 0);
+    assert.equal(added.duplicates.length, 0);
+    // 시트에 이미 있으면 그 행을 갱신
+    const updated = plain(w.ctx.planImport(['X', name], '곡 제목', [entry('n.tsv', name, true)]));
+    assert.equal(updated.updates.length, 1, name + ' updated');
+    assert.equal(updated.updates[0].row, 3);
+    assert.equal(updated.appends.length, 0);
+    // 바뀌지 않았으면 변경 없음
+    const same = plain(w.ctx.planImport(['X', name], '곡 제목', [entry('n.tsv', name, false)]));
+    assert.equal(same.unchanged, 1, name + ' unchanged');
+    // 두 파일에 같은 제목이면 중복으로 건너뛴다
+    const dup = plain(w.ctx.planImport(['X'], '곡 제목', [entry('d1.tsv', name, true), entry('d2.tsv', name, true)]));
+    assert.equal(dup.duplicates.length, 1, name + ' duplicate');
+    assert.equal(dup.duplicates[0].title, name);
+    assert.deepEqual(dup.duplicates[0].files, ['d1.tsv', 'd2.tsv']);
+    assert.equal(dup.appends.length, 0);
+    assert.equal(dup.updates.length, 0);
+  });
+});
+
 // 5, 6, 7 은 같은 세계를 이어서 쓴다.
 const seq = worldWithFiles([
   makeFile('idA', 'A.tsv', rowFor('A', 'from file A') + '\n'),
