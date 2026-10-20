@@ -332,9 +332,75 @@ function curCapo(){
     });
   }
 
-  function watchStaffResize(grid){
+  // ---------- 마디 폭: 규칙은 Docs/ui.md 의 마디 폭 절
+  var MEASURE_TAB_SPLIT_WIDTH = 48;          // TAB: 칸 안 분할 하나의 폭
+  var MEASURE_TAB_SIDE_WIDTH = 56;           // TAB: 줄 이름 열과 카드 안쪽 여백
+  var MEASURE_CARD_SIDE_WIDTH = 32;          // 카드 보기: 카드 안쪽 여백
+  var MEASURE_CARD_BEAT_WIDTHS = [[3, 108], [2, 88], [0, 68]]; // 카드 보기: [그 마디의 최대 분할 수 이상, 칸 폭]
+  var MEASURE_MIN_WIDTH_TAB = [[9, 560], [8, 460], [6, 330], [0, 250]]; // [칸 수 이상, 마디 기본 폭]
+  var MEASURE_MIN_WIDTH_CARD = [[9, 560], [8, 460], [6, 340], [0, 260]];
+  var MEASURE_WIDTH_PERCENTILE = 0.9;        // 기준 열 폭: 마디의 이 비율이 들어가는 폭
+  var measureView = { base:0, needs:[], cols:0 };
+
+  function pickByThreshold(table, value){
+    for (var i = 0; i < table.length; i++){
+      if (value >= table[i][0]) return table[i][1];
+    }
+    return table[table.length - 1][1];
+  }
+
+  function measureMaxSplit(measure){
+    return (measure.beats || []).reduce(function(max, beat){
+      return Math.max(max, beat.subNotes && beat.subNotes.length || 1);
+    }, 1);
+  }
+
+  // 마디 하나가 겹침 없이 그려지는 데 필요한 폭(px). 그 마디 자신의 최대 분할로 정한다.
+  function measureNeedWidth(measure, beats, isTab){
+    var split = measureMaxSplit(measure);
+    if (isTab){
+      return Math.max(pickByThreshold(MEASURE_MIN_WIDTH_TAB, beats), beats * split * MEASURE_TAB_SPLIT_WIDTH + MEASURE_TAB_SIDE_WIDTH);
+    }
+    return Math.max(pickByThreshold(MEASURE_MIN_WIDTH_CARD, beats), beats * pickByThreshold(MEASURE_CARD_BEAT_WIDTHS, split) + MEASURE_CARD_SIDE_WIDTH);
+  }
+
+  // 작은 순으로 놓은 필요 폭의 90% 자리 값
+  function measureBaseWidth(needs){
+    var sorted = needs.slice().sort(function(a, b){ return a - b; });
+    return sorted[Math.max(0, Math.ceil(MEASURE_WIDTH_PERCENTILE * sorted.length) - 1)];
+  }
+
+  // 지금 격자의 실제 열 수. auto-fill 의 계산된 열 목록(px 값들)을 센다. 격자가 안 보이면 열 폭이 px 로 풀리지 않아 1열로 본다.
+  function gridColumnCount(grid){
+    var tracks = String(getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(Boolean);
+    var resolved = tracks.length > 0 && tracks.every(function(track){ return /^[0-9.]+px$/.test(track); });
+    return resolved ? tracks.length : 1;
+  }
+
+  // 기준 폭보다 넓은 마디는 열을 더 걸친다. 열 수 이상이면 한 줄 전체로 막는다: auto-fill 격자에서 열 수보다 큰 span 은
+  // 보이지 않는 열을 만들어 가로로 넘친다.
+  function applyMeasureSpans(){
+    var grid = $('#measuresGrid');
+    if (!grid || !measureView.needs.length || !(measureView.base > 0)) return;
+    var cols = gridColumnCount(grid);
+    measureView.cols = cols;
+    grid.dataset.cols = cols;
+    for (var i = 0; i < grid.children.length && i < measureView.needs.length; i++){
+      var k = Math.ceil(measureView.needs[i] / measureView.base);
+      grid.children[i].style.gridColumn = k <= 1 ? '' : (k >= cols ? '1 / -1' : 'span ' + k);
+    }
+  }
+
+  // 격자 폭이 바뀌면(창 크기·콤팩트 뷰) 열 걸침을 다시 셈하고, 오선 층이 있으면 새 폭으로 다시 그린다.
+  // 열 걸침은 관측 콜백 안에서 바꾸지 않고 한 박자 뒤에 바꾼다(콜백 안에서 크기를 바꾸면 ResizeObserver 루프 오류가 난다).
+  function watchGridResize(grid){
     if (staffView.observer || typeof ResizeObserver === 'undefined') return;
+    var lastWidth = -1;
     staffView.observer = new ResizeObserver(function(){
+      if (grid.clientWidth !== lastWidth){
+        lastWidth = grid.clientWidth;
+        setTimeout(applyMeasureSpans, 0);
+      }
       clearTimeout(staffView.timer);
       staffView.timer = setTimeout(drawStaffLayers, 120);
     });
@@ -381,30 +447,9 @@ function curCapo(){
     grid.textContent = '';
     var isTab = (appState.scoreView !== 'card');
     staffView.layout = (isTab && isStaffViewOn()) ? computeStaffLayout() : null;
-    if (curSong && curSong.beats >= 9){
-      grid.style.gridTemplateColumns = isTab ? 'repeat(auto-fill, minmax(560px, 1fr))' : 'repeat(auto-fill, minmax(560px, 1fr))';
-    } else if (curSong && curSong.beats >= 8){
-      grid.style.gridTemplateColumns = isTab ? 'repeat(auto-fill, minmax(460px, 1fr))' : 'repeat(auto-fill, minmax(460px, 1fr))';
-    } else if (curSong && curSong.beats >= 6){
-      grid.style.gridTemplateColumns = isTab ? 'repeat(auto-fill, minmax(330px, 1fr))' : 'repeat(auto-fill, minmax(340px, 1fr))';
-    } else {
-      grid.style.gridTemplateColumns = isTab ? 'repeat(auto-fill, minmax(250px, 1fr))' : 'repeat(auto-fill, minmax(260px, 1fr))';
-    }
-    var maxSubParts = (curSong.measures || []).reduce(function(maxParts, measure){
-      return (measure.beats || []).reduce(function(measureMax, beat){
-        return Math.max(measureMax, beat.subNotes && beat.subNotes.length || 1);
-      }, maxParts);
-    }, 1);
-    if (isTab){
-      var requiredMinWidth = curSong.beats * maxSubParts * 48 + 56;
-      var existingMinWidth = curSong.beats >= 9 ? 560 : (curSong.beats >= 8 ? 460 : (curSong.beats >= 6 ? 330 : 250));
-      grid.style.gridTemplateColumns = 'repeat(auto-fill,minmax(' + Math.max(existingMinWidth, requiredMinWidth) + 'px,1fr))';
-    } else {
-      var cardBeatWidth = maxSubParts >= 3 ? 108 : (maxSubParts >= 2 ? 88 : 68);
-      var requiredCardMinWidth = curSong.beats * cardBeatWidth + 32;
-      var existingCardMinWidth = curSong.beats >= 9 ? 560 : (curSong.beats >= 8 ? 460 : (curSong.beats >= 6 ? 340 : 260));
-      grid.style.gridTemplateColumns = 'repeat(auto-fill,minmax(' + Math.max(existingCardMinWidth, requiredCardMinWidth) + 'px,1fr))';
-    }
+    measureView.needs = curSong.measures.map(function(measure){ return measureNeedWidth(measure, curSong.beats, isTab); });
+    measureView.base = measureBaseWidth(measureView.needs);
+    grid.style.gridTemplateColumns = 'repeat(auto-fill,minmax(min(' + measureView.base + 'px,100%),1fr))';
     var chordsSet = [];
 
     curSong.measures.forEach(function(m, mIdx){
@@ -846,10 +891,9 @@ function curCapo(){
     });
 
     renderChordCards(chordsSet);
-    if (staffView.layout){
-      watchStaffResize(grid);
-      drawStaffLayers();
-    }
+    applyMeasureSpans();
+    watchGridResize(grid);
+    if (staffView.layout) drawStaffLayers();
   }
 
   // ---------- 악보 렌더링: 2) 이미지 / PDF 악보 + 마디 그리드 매퍼 (B안 주력)

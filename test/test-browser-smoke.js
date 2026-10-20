@@ -2305,8 +2305,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=skip-cell-2')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=skip-cell-2">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=measure-width-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=measure-width-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -4746,6 +4746,136 @@ async function testSkipCells(client, httpPort) {
   process.stdout.write('Browser checkpoint: skip cells in practice TAB, card, and staff views passed\n');
 }
 
+// 마디 폭: 마디마다 자기 분할로 필요 폭을 정하고, 기준 열 폭(90%)보다 넓은 마디는 열을 더 차지하며, 어떤 보기·폭에서도 가로로 넘치지 않는다. 규칙은 Docs/ui.md 마디 폭.
+async function testMeasureWidth(client, httpPort) {
+  const errorsBefore = client.consoleErrors.length;
+  const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await client.send('Page.navigate', { url: `http://127.0.0.1:${httpPort}/index.html` });
+  await waitForPageLoadAfter(client, before);
+  await waitForCondition(client, 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= ' + builtinSongCount + ' && window.curSong != null', 8000);
+
+  const pitches = ['E4', 'F4', 'G4', 'A4'];
+  const cell = split => pitches.slice(0, split).join('/');
+  const line = (beats, split) => '[C] ' + Array(beats).fill(cell(split)).join(' ') + ' | ""';
+  // (A) 8칸: 분할 없는 마디 10, 2분할 8, 4분할(32분음표) 2 / (B) 3칸 99마디 중 4분할 하나 / (C) 분할 없는 4칸
+  const splitsA = [1, 1, 1, 4, 2, 2, 1, 1, 2, 2, 1, 4, 2, 2, 1, 1, 2, 2, 1, 1];
+  const songs = {
+    A: { title: '마디 폭 A', beats: 8, lines: splitsA.map(split => line(8, split)) },
+    B: { title: '마디 폭 B', beats: 3, lines: Array.from({ length: 99 }, (_, index) => line(3, index === 40 ? 4 : 1)) },
+    C: { title: '마디 폭 C', beats: 4, lines: Array.from({ length: 12 }, () => line(4, 1)) }
+  };
+  async function openSong(key) {
+    const created = await client.evaluate(`(function(){
+      var song = scoreDrafts.createFromScore({ title: ${JSON.stringify(songs[key].title)}, beats: ${songs[key].beats}, bpm: 60, lines: ${JSON.stringify(songs[key].lines)}, origin: 'tab-input' });
+      rebuildSongSelect(song.id);
+      return { measures: curSong.measures.length, beats: curSong.beats, title: curSong.title };
+    })()`);
+    assert.deepEqual(created, { measures: songs[key].lines.length, beats: songs[key].beats, title: songs[key].title }, 'test song ' + key + ' opens');
+  }
+  const settle = () => client.evaluate('new Promise(function(resolve){ requestAnimationFrame(function(){ requestAnimationFrame(function(){ setTimeout(resolve, 250); }); }); })');
+  async function setView(view) {
+    await client.evaluate(`${pageSetScoreView(JSON.stringify(view))}; true`);
+  }
+  async function setWidth(width) {
+    await client.send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 500 });
+    await settle();
+  }
+  const probe = () => client.evaluate(`(function(){
+    var wrap = document.getElementById('structuredScoreWrap'), grid = document.getElementById('measuresGrid');
+    var cards = Array.prototype.slice.call(grid.querySelectorAll('.measure-card'));
+    var firstTop = cards[0].getBoundingClientRect().top;
+    return {
+      wrap: [wrap.scrollWidth, wrap.clientWidth], grid: [grid.scrollWidth, grid.clientWidth],
+      doc: [document.documentElement.scrollWidth, window.innerWidth],
+      cols: Number(grid.dataset.cols), template: grid.style.gridTemplateColumns,
+      gridWidth: grid.getBoundingClientRect().width,
+      widths: cards.map(function(card){ return Math.round(card.getBoundingClientRect().width); }),
+      spans: cards.map(function(card){ return card.style.gridColumn; }),
+      firstRow: cards.filter(function(card){ return Math.abs(card.getBoundingClientRect().top - firstTop) < 2; }).length,
+      overflowCards: cards.filter(function(card){ var r = card.getBoundingClientRect(), g = grid.getBoundingClientRect(); return r.right > g.right + 1 || r.left < g.left - 1; }).length
+    };
+  })()`);
+  function assertNoOverflow(result, label) {
+    assert.ok(result.wrap[0] <= result.wrap[1] + 1, label + ': #structuredScoreWrap does not scroll sideways ' + JSON.stringify(result.wrap));
+    assert.ok(result.grid[0] <= result.grid[1] + 1, label + ': #measuresGrid does not overflow ' + JSON.stringify(result.grid));
+    assert.ok(result.doc[0] <= result.doc[1] + 1, label + ': the page does not scroll sideways ' + JSON.stringify(result.doc));
+    assert.equal(result.overflowCards, 0, label + ': every measure card stays inside the grid');
+  }
+  const probes = {};
+  for (const key of ['A', 'B', 'C']) {
+    await openSong(key);
+    for (const view of ['tab', 'both', 'card']) {
+      await setView(view);
+      for (const width of [375, 900, 1024, 1280]) {
+        await setWidth(width);
+        const result = await probe();
+        const label = key + ' ' + view + ' ' + width + 'px';
+        assertNoOverflow(result, label);
+        probes[label] = result;
+      }
+    }
+  }
+  const view = label => probes[label];
+  // (B) 900px 타브: 분할 없는 마디는 한 줄에 둘 이상, 4분할 마디는 그보다 넓다
+  const b900 = view('B tab 900px');
+  assert.ok(b900.firstRow >= 2, 'B tab 900px: several plain measures share a row (' + b900.firstRow + ')');
+  assert.ok(b900.widths[40] > b900.widths[0] * 1.5 && b900.spans[40] !== '', 'B tab 900px: the 4-split measure takes more columns: ' + JSON.stringify({ plain: b900.widths[0], split: b900.widths[40], span: b900.spans[40] }));
+  assert.equal(b900.spans[0], '', 'B tab 900px: a plain measure takes one column');
+  const b1280 = view('B tab 1280px');
+  assert.ok(b1280.cols >= 3 && b1280.widths[40] > b1280.widths[0] * 1.5, 'B tab 1280px: more columns and the 4-split measure is still wider: ' + JSON.stringify({ cols: b1280.cols, plain: b1280.widths[0], split: b1280.widths[40] }));
+  // (A) 900px: 4분할 마디는 한 줄 전체이고 넘치지 않는다
+  const a900 = view('A tab 900px');
+  assert.equal(a900.spans[3], '1 / -1', 'A tab 900px: the 4-split measure fills its row: ' + JSON.stringify(a900.spans.slice(0, 6)));
+  assert.ok(Math.abs(a900.widths[3] - a900.gridWidth) <= 1, 'A tab 900px: the 4-split measure is as wide as the grid (' + a900.widths[3] + ' vs ' + a900.gridWidth + ')');
+  assert.ok(a900.widths[3] < 1592, 'A tab 900px: the 4-split measure is narrower than its wanted width, so its cells shrink');
+  // (C) 지금처럼 한 줄에 여러 마디
+  assert.ok(view('C tab 900px').firstRow >= 2 && view('C tab 1280px').firstRow >= 3, 'C: a song without splits keeps several measures per row (' + view('C tab 900px').firstRow + ', ' + view('C tab 1280px').firstRow + ')');
+  assert.ok(view('C card 900px').firstRow >= 2, 'C card view: several measures per row');
+  process.stdout.write('  measure width rows: ' + JSON.stringify(Object.fromEntries(Object.entries(probes).map(([label, r]) => [label, r.cols + ' cols, ' + r.firstRow + ' in row 1']))) + '\n');
+
+  // 콤팩트 뷰도 넘치지 않는다
+  await openSong('A');
+  await setView('tab');
+  await client.evaluate("document.getElementById('toggleCompactBtn').click(); true");
+  assert.equal(await client.evaluate("document.body.classList.contains('practice-compact')"), true, 'compact view is on');
+  for (const width of [375, 900]) {
+    await setWidth(width);
+    assertNoOverflow(await probe(), 'A compact ' + width + 'px');
+  }
+  await client.evaluate("document.getElementById('toggleCompactBtn').click(); true");
+
+  // 좁아진 4분할 마디에서 글자가 겹치는지 눈으로 보도록 캡처를 남긴다
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  async function capture(name, key, viewName, dark, targetIndex, width, lead) {
+    await openSong(key);
+    await setView(viewName);
+    await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: dark ? 'dark' : 'light' }] });
+    await client.send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await settle();
+    await client.evaluate(`(function(){
+      document.getElementById('scoreToolbar').scrollIntoView({ block: 'start', inline: 'nearest' });
+      var card = document.querySelector('#measuresGrid .measure-card[data-m="${targetIndex}"]');
+      var wrap = document.getElementById('structuredScoreWrap');
+      wrap.style.scrollBehavior = 'auto';
+      wrap.scrollTop += card.getBoundingClientRect().top - wrap.getBoundingClientRect().top - ${lead};
+      return true;
+    })()`);
+    await settle();
+    const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    const target = path.join(root, 'test-artifacts', name);
+    fs.writeFileSync(target, Buffer.from(shot.data, 'base64'));
+    process.stdout.write('Artifact: ' + target + '\n');
+    await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: '' }] });
+  }
+  await capture('practice-measure-width-split-both-dark.png', 'A', 'both', true, 3, 900, 8);
+  await capture('practice-measure-width-tab.png', 'B', 'tab', false, 40, 900, 215);
+
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the measure width steps run without console errors');
+  process.stdout.write('Browser checkpoint: per-measure widths, 90% base column, column spans, and no sideways overflow passed\n');
+}
+
 // 빈칸 _ 악보 입력 화면: - 키·단추로 칸 전체를 켜고 끄기(두 모드), 카드 빗금과 오선 위치, 오선 모드의 거절·이동. 규칙은 Docs/tab-input.md, Docs/staff-input.md 빈칸.
 async function testSkipInput(client, httpPort) {
   client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
@@ -5530,7 +5660,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=skip-cell-2')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=measure-width-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -6052,6 +6182,7 @@ async function main() {
     await testRollInput(cdp, httpPort);
     await testSkipCells(cdp, httpPort);
     await testSkipInput(cdp, httpPort);
+    await testMeasureWidth(cdp, httpPort);
     await testAlphaTabView(cdp, httpPort);
     await testAlphaTexSongs(cdp, httpPort);
 
