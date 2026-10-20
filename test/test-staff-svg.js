@@ -40,7 +40,7 @@ function count(svg, className){
 
 // 배치에서 센 기대값
 function expected(measure){
-  const out = { heads: 0, ledger: 0, acc: 0, ties: 0, slurs: (measure.slurs || []).length, rests: 0, tuplets: measure.tuplets.length, beams: 0, flags: 0, stems: 0, uncertainHeads: 0, uncertainRests: 0, dots: 0 };
+  const out = { heads: 0, ledger: 0, acc: 0, ties: 0, slurs: (measure.slurs || []).length, rolls: 0, rests: 0, tuplets: measure.tuplets.length, beams: 0, flags: 0, stems: 0, uncertainHeads: 0, uncertainRests: 0, dots: 0 };
   const inBeam = new Set();
   measure.beams.forEach(function(beam){
     beam.items.forEach(function(index){ inBeam.add(index); });
@@ -67,6 +67,7 @@ function expected(measure){
       if (item.tieFromPrev && index === 0) out.ties++;
     });
     if (item.stem) out.stems++;
+    if (item.roll) out.rolls++;
     out.uncertainHeads += item.notes.filter(function(note){ return note.uncertain; }).length;
     if (BEAM_LEVEL[item.value.base] && !inBeam.has(index)) out.flags += BEAM_LEVEL[item.value.base];
   });
@@ -82,6 +83,7 @@ function checkCounts(svg, measure, label){
   assert.equal(count(svg, 'st-acc'), want.acc, label + ': accidentals');
   assert.equal(count(svg, 'st-tie'), want.ties, label + ': ties');
   assert.equal(count(svg, 'st-slur'), want.slurs, label + ': slur curves');
+  assert.equal(count(svg, 'st-roll'), want.rolls, label + ': roll waves');
   assert.equal(count(svg, 'st-rest'), want.rests, label + ': rests');
   assert.equal(count(svg, 'st-tuplet'), want.tuplets, label + ': tuplet numbers');
   assert.equal(count(svg, 'st-beam'), want.beams, label + ': beams');
@@ -421,6 +423,105 @@ test('slur curve height: grows with the span up to a cap, and every coordinate s
     if (index % 2 === 1) assert.ok(value >= 0 && value <= svgApi.STAFF_HEIGHT, 'y ' + value + ' is inside the SVG');
   });
   assert.equal(Math.min(high[0].y1, high[0].c1y, high[0].c2y, high[0].y2), 2, 'the top is cut to 2px from the edge');
+});
+
+// 롤 물결선: 롤 화음 머리(임시표가 있으면 그 임시표) 왼쪽의 세로 물결. 화음마다 <g class="st-chord"> 안에 있다.
+function chordGroups(svg){
+  return svg.split('<g class="st-chord"').slice(1).map(function(part){ return part.slice(0, part.indexOf('</g>')); });
+}
+// 물결선 path 의 d(M, Q, T 절대 좌표)에서 끝점과 제어점을 모두 뽑는다. T 의 제어점은 앞 제어점을 현재 점에 대해 뒤집은 것이다.
+function wavePoints(d){
+  const points = [];
+  let cur = null, control = null;
+  (d.match(/[MQT][^MQT]*/g) || []).forEach(function(seg){
+    const nums = seg.slice(1).trim().split(/[ ,]+/).map(Number);
+    if (seg[0] === 'M'){ cur = { x: nums[0], y: nums[1] }; points.push(cur); return; }
+    if (seg[0] === 'Q'){ control = { x: nums[0], y: nums[1] }; cur = { x: nums[2], y: nums[3] }; }
+    else { control = { x: 2 * cur.x - control.x, y: 2 * cur.y - control.y }; cur = { x: nums[0], y: nums[1] }; }
+    points.push(control, cur);
+  });
+  return points;
+}
+function chordFacts(group){
+  const heads = (group.match(/<(?:ellipse|polygon) class="st-head[^>]*>/g) || []).map(function(tag){
+    if (tag.startsWith('<ellipse')) return { x: Number(tag.match(/ cx="([-0-9.]+)"/)[1]), y: Number(tag.match(/ cy="([-0-9.]+)"/)[1]), rx: Number(tag.match(/ rx="([-0-9.]+)"/)[1]) };
+    const pts = tag.match(/points="([^"]+)"/)[1].split(' ').map(function(pair){ return pair.split(',').map(Number); });
+    const xs = pts.map(function(q){ return q[0]; }), ys = pts.map(function(q){ return q[1]; });
+    return { x: (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2, y: (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2, rx: (Math.max.apply(null, xs) - Math.min.apply(null, xs)) / 2 };
+  });
+  const accX = (group.match(/<text class="st-acc"[^>]* x="[-0-9.]+"/g) || []).map(function(tag){ return Number(tag.match(/ x="([-0-9.]+)"/)[1]); });
+  const wave = group.match(/<path class="st-roll"[^>]* d="([^"]+)"/);
+  const points = wave ? wavePoints(wave[1]) : [];
+  return {
+    heads: heads, accX: accX, rolled: !!wave, points: points,
+    headLeft: Math.min.apply(null, heads.map(function(h){ return h.x - h.rx; })),
+    headTop: Math.min.apply(null, heads.map(function(h){ return h.y; })), headBottom: Math.max.apply(null, heads.map(function(h){ return h.y; })),
+    waveRight: Math.max.apply(null, points.map(function(q){ return q.x; })),
+    waveTop: Math.min.apply(null, points.map(function(q){ return q.y; })), waveBottom: Math.max.apply(null, points.map(function(q){ return q.y; }))
+  };
+}
+
+test('roll wave: one path.st-roll per rolled chord, none on plain chords or rests', function(){
+  const result = layout('~E2@6+B3@2+G4@1 E2@6+B3@2+G4@1 ~E2@6+B3@2 r');
+  const svg = draw(result);
+  checkCounts(svg, result.measures[0], 'rolls');
+  assert.equal(count(svg, 'st-roll'), 2);
+  const groups = chordGroups(svg);
+  assert.equal(groups.length, 3);
+  assert.deepEqual(groups.map(function(group){ return /class="st-roll"/.test(group); }), [true, false, true]);
+  const restOnly = layout('r r r r');
+  assert.equal(count(draw(restOnly), 'st-roll'), 0, 'a rest has no wave');
+  assert.equal(count(draw(layout('E2@6+B3@2+G4@1 r r r')), 'st-roll'), 0, 'a plain chord has no wave');
+  const tag = svg.match(/<path class="st-roll"[^>]*>/)[0];
+  assert.match(tag, /fill="none"/);
+  assert.match(tag, /stroke="currentColor"/);
+});
+
+test('roll wave sits left of the leftmost head, and left of the accidentals when there are some', function(){
+  const gap = svgApi.ROLL_GAP, amp = svgApi.ROLL_AMP, accW = svgApi.ROLL_ACC_W;
+  const plain = chordFacts(chordGroups(draw(layout('~E2@6+B3@2+G4@1 r r r')))[0]);
+  assert.ok(plain.rolled && plain.accX.length === 0);
+  assert.ok(plain.waveRight < plain.headLeft, 'the wave is left of the leftmost head: ' + plain.waveRight + ' < ' + plain.headLeft);
+  assert.ok(Math.abs(plain.waveRight - (plain.headLeft - gap + amp)) < 0.2, 'the wave center sits ROLL_GAP left of the head and sticks out by ROLL_AMP');
+  // 임시표가 있는 화음
+  const one = chordFacts(chordGroups(draw(layout('~C#3@5+E4@2+G#4@1 r r r')))[0]);
+  assert.ok(one.rolled && one.accX.length === 2, 'two accidentals');
+  assert.ok(one.waveRight < Math.min.apply(null, one.accX) - accW, 'the wave is left of the left end of the accidentals: ' + JSON.stringify({ right: one.waveRight, acc: one.accX }));
+  assert.ok(one.waveRight < one.headLeft);
+  // 임시표가 여러 열로 갈라지는 화음(가까운 음에 모두 임시표)
+  const stacked = chordFacts(chordGroups(draw(layout('~C#3+D#3+F#3 r r r')))[0]);
+  assert.ok(stacked.rolled);
+  assert.ok(new Set(stacked.accX).size >= 2, 'the accidentals use more than one column: ' + JSON.stringify(stacked.accX));
+  assert.ok(stacked.waveRight < Math.min.apply(null, stacked.accX) - accW, 'the wave clears the leftmost accidental column: ' + JSON.stringify({ right: stacked.waveRight, acc: stacked.accX }));
+  // 임시표가 있으면 물결이 머리에서 더 멀다
+  assert.ok(plain.headLeft - plain.waveRight < one.headLeft - one.waveRight);
+});
+
+test('roll wave covers the top and bottom heads and stays inside the SVG', function(){
+  const parser = require('../src/parser.js');
+  const top = parser.noteNameForMidi(parser.STRINGS[0].midi + require('../src/notation.js').MAX_FRET, false);
+  const low = parser.noteNameForMidi(parser.STRINGS[5].midi, false);
+  ['~E2@6+B3@2+G4@1 r r r', '~' + low + '@6+' + top + '@1 r r r', '~E4+F4 r r r'].forEach(function(text){
+    const facts = chordFacts(chordGroups(draw(layout(text)))[0]);
+    assert.ok(facts.rolled, text);
+    assert.ok(facts.waveTop <= facts.headTop && facts.waveBottom >= facts.headBottom, text + ': the wave covers the top and bottom heads ' + JSON.stringify({ wave: [facts.waveTop, facts.waveBottom], heads: [facts.headTop, facts.headBottom] }));
+    facts.points.forEach(function(point){ assert.ok(point.y >= 0 && point.y <= svgApi.STAFF_HEIGHT, text + ': y ' + point.y + ' is inside the SVG'); });
+  });
+  // 물결 모양: 끝점 x 는 모두 같고 제어점 x 는 좌우로 번갈아 나온다
+  const points = chordFacts(chordGroups(draw(layout('~E2@6+G4@1 r r r')))[0]).points;
+  const ends = points.filter(function(q, i){ return i % 2 === 0; }), controls = points.filter(function(q, i){ return i % 2 === 1; });
+  assert.ok(controls.length >= 2);
+  assert.ok(ends.every(function(q){ return Math.abs(q.x - ends[0].x) < 0.2; }), 'the wave endpoints share one x');
+  controls.forEach(function(q, i){ assert.ok((i % 2 === 0) === (q.x > ends[0].x), 'the control points alternate right and left'); });
+});
+
+test('roll wave across the barline: the tied piece after it has no wave', function(){
+  const result = layout('r r r ~E2@6+B3@2+G4@1\n- - r r');
+  const first = draw(result, 0), second = draw(result, 1);
+  checkCounts(first, result.measures[0], 'rolled piece');
+  checkCounts(second, result.measures[1], 'tied piece');
+  assert.equal(count(first, 'st-roll'), 1);
+  assert.equal(count(second, 'st-roll'), 0);
 });
 
 process.stdout.write('1..' + checks + '\n');

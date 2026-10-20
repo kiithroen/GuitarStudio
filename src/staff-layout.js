@@ -81,7 +81,8 @@
   }
 
   function notesForPart(part){
-    var notes = String(part.tok || '').split('+').map(parseComponent);
+    // 롤 기호 ~ 는 화음 맨 앞에 붙은 표시라 음 읽기 전에 뗀다(roll 여부는 buildLayout이 part.rolled로 싣는다).
+    var notes = String(part.tok || '').replace(/^\s*~/, '').split('+').map(parseComponent);
     // 낮은 음부터. 같은 높이는 원래 순서를 지킨다.
     return notes.map(function(note, index){ return { note: note, index: index }; })
       .sort(function(a, b){ return a.note.midi - b.note.midi || a.index - b.index; })
@@ -268,6 +269,8 @@
               item.tieToNext = false;
               if (prev) prev.tieToNext = true;
               item.source = { measureIndex: event.measureIndex, beatIndex: event.beatIndex, subIndex: event.subIndex };
+              // 롤 물결선은 사건의 첫 토막에만(붙임줄로 이어진 뒤 토막은 다시 치지 않는다).
+              item.roll = !spanOfSegment.has(piece.segment) && !!(event.part && event.part.rolled);
               item.notes = baseNotes.map(function(note){
                 var copy = {
                   name: note.name, letter: note.letter, alter: note.alter, octave: note.octave, step: note.step,

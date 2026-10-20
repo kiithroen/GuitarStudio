@@ -35,6 +35,10 @@
   var TIME_GAP = 6;
   var TIME_W = 14;
   var HEADER_RIGHT = 6;
+  // 롤 물결선
+  var ROLL_GAP = 5;                 // 물결선 가운데와 머리·임시표 사이
+  var ROLL_AMP = 2.5;               // 물결 가로 진폭
+  var ROLL_ACC_W = 9;               // 임시표 글자 폭(text-anchor end 기준 왼쪽으로)
 
   function yOf(step){ return BASE_Y - step * STEP; }
   function n(value){ return String(Math.round(value * 10) / 10); }
@@ -152,21 +156,47 @@
     return out;
   }
 
-  function drawAccidentals(info){
+  // 임시표가 있는 머리마다 놓을 열(0이 머리에 가장 가깝다). 임시표 그리기와 롤 물결선 자리가 같이 쓴다.
+  function accidentalColumns(info){
     var out = [];
     var columns = [];   // 열마다 마지막으로 놓은 음의 step
     info.heads.slice().sort(function(a, b){ return b.note.step - a.note.step; }).forEach(function(head){
-      var kind = head.note.accidental;
-      if (!kind) return;
+      if (!head.note.accidental) return;
       var col = 0;
       while (col < columns.length && columns[col] - head.note.step < 6) col++;
       columns[col] = head.note.step;
-      var x = info.left - 3 - col * 11;
-      out.push(text('st-acc', x, head.y + ACC_BASELINE[kind], ACC_GLYPH[kind], {
-        'text-anchor': 'end', 'font-size': ACC_SIZE, 'font-family': MUSIC_FONT
-      }));
+      out.push({ head: head, col: col });
     });
     return out;
+  }
+
+  function drawAccidentals(info){
+    return accidentalColumns(info).map(function(entry){
+      var head = entry.head, kind = head.note.accidental;
+      var x = info.left - 3 - entry.col * 11;
+      return text('st-acc', x, head.y + ACC_BASELINE[kind], ACC_GLYPH[kind], {
+        'text-anchor': 'end', 'font-size': ACC_SIZE, 'font-family': MUSIC_FONT
+      });
+    });
+  }
+
+  // 롤 물결선: 머리(임시표가 있으면 가장 왼쪽 임시표 열) 왼쪽의 세로 물결. 가장 위 머리부터 가장 아래 머리까지, 그림 높이 안으로 자른다.
+  function drawRoll(info){
+    var cols = accidentalColumns(info);
+    var rightX = info.left;
+    if (cols.length){
+      var maxCol = Math.max.apply(null, cols.map(function(entry){ return entry.col; }));
+      rightX = info.left - 3 - maxCol * 11 - ROLL_ACC_W;
+    }
+    var x = rightX - ROLL_GAP;
+    var yTop = clamp(info.top - HEAD_RY - 2, 2, STAFF_HEIGHT - 2);
+    var yBottom = clamp(info.bottom + HEAD_RY + 2, 2, STAFF_HEIGHT - 2);
+    var count = Math.max(2, Math.ceil((yBottom - yTop) / 3));
+    var step = (yBottom - yTop) / count;
+    // 절대 좌표라 반올림이 쌓이지 않는다. 첫 구간의 제어점이 오른쪽(ROLL_AMP)이고 이후는 T가 좌우로 뒤집는다.
+    var d = 'M' + n(x) + ' ' + n(yTop) + ' Q' + n(x + ROLL_AMP) + ' ' + n(yTop + step / 2) + ' ' + n(x) + ' ' + n(yTop + step);
+    for (var k = 2; k <= count; k++) d += ' T' + n(x) + ' ' + n(yTop + step * k);
+    return '<path class="st-roll"' + attrs({ d: d, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.2 }) + '/>';
   }
 
   function dotSteps(info){
@@ -284,6 +314,7 @@
       Array.prototype.push.apply(g, drawLedgers(info));
       info.heads.forEach(function(head){ g.push(drawHead(head, item, open)); });
       Array.prototype.push.apply(g, drawAccidentals(info));
+      if (item.roll) g.push(drawRoll(info));
       if (item.value.dots){
         dotSteps(info).forEach(function(step){ g.push(drawDot(info.right + 4, step)); });
       }
@@ -436,7 +467,8 @@
     headerWidth: headerWidth,
     STAFF_HEIGHT: STAFF_HEIGHT,
     BASE_Y: BASE_Y,
-    LINE_GAP: LINE_GAP
+    LINE_GAP: LINE_GAP,
+    ROLL_GAP: ROLL_GAP, ROLL_AMP: ROLL_AMP, ROLL_ACC_W: ROLL_ACC_W
   };
   if (typeof window !== 'undefined') window.GuitarStaffSvg = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

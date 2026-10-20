@@ -343,6 +343,53 @@ test('a source note split by ties curves from its last piece, and a split target
   assert.equal(across.measures[1].slurs[0].toEdge, true);
 });
 
+// 롤(~): 화음 item 의 roll 은 롤 사건의 첫 토막에만 true 다. 쉼 item 에는 roll 이 없다.
+function rolls(result){
+  return result.measures.map(function(measure){
+    return measure.items.map(function(item){ return item.type === 'chord' ? item.roll : null; });
+  });
+}
+
+test('roll: a rolled chord item carries roll true, a plain chord carries false, rests carry none', function(){
+  const result = layout('~E2@6+B3@2+G4@1 E2@6+B3@2+G4@1 ~E2@6+B3@2 r');
+  const items = result.measures[0].items;
+  assert.deepEqual(items.map(function(item){ return item.type === 'chord' ? item.roll : null; }), [true, false, true, null]);
+  assert.equal(items[3].type, 'rest');
+  assert.ok(!('roll' in items[3]), 'a rest has no roll field');
+  assert.equal(items[0].notes.length, 3, 'the roll mark is not read as part of a note name');
+  assert.deepEqual(items[0].notes.map(function(note){ return note.name; }), ['E2', 'B3', 'G4']);
+  rolls(layout('E2@6+B3@2+G4@1 - - -')).forEach(function(row){ row.forEach(function(value){ assert.equal(value, false); }); });
+});
+
+test('roll: only the first piece of a rolled chord that is tied across cells or the barline carries roll', function(){
+  const held = layout('~E2@6+B3@2+G4@1 - - -');
+  assert.deepEqual(rolls(held), [[true]], 'a whole-note chord is a single piece');
+  const cells = layout('~E2@6+B3@2+G4@1 - - - - G4 - -', 8);
+  const cellItems = cells.measures[0].items;
+  const cellChords = cellItems.filter(function(item){ return item.type === 'chord' && item.notes.length === 3; });
+  assert.ok(cellChords.length >= 2, 'the rolled chord is cut into several pieces');
+  assert.deepEqual(cellChords.map(function(item){ return item.roll; }), cellChords.map(function(item, index){ return index === 0; }), 'only the first piece has roll');
+  assert.equal(cellChords[1].tieFromPrev, true);
+  const across = layout('r r r ~E2@6+B3@2+G4@1\n- - r r');
+  assert.deepEqual(rolls(across)[0].filter(function(value){ return value !== null; }), [true], 'the struck piece has roll');
+  const next = across.measures[1].items;
+  assert.equal(next[0].tieFromPrev, true);
+  assert.deepEqual(rolls(across)[1].filter(function(value){ return value !== null; }), [false], 'the piece after the barline has no roll');
+  const split = layout('~E2@6+B3@2+G4@1 - - ~E2@6+B3@2+G4@1\n- - - -');
+  assert.deepEqual(rolls(split), [[true, true], [false]], 'two struck chords roll, the piece held into the next measure does not');
+});
+
+test('roll: in a split cell only the rolled piece carries roll', function(){
+  const result = layout('C3@5/~A3@3+D4@2+F#4@1 - - -');
+  const chords = result.measures[0].items.filter(function(item){ return item.type === 'chord'; });
+  const struck = chords.filter(function(item){ return !item.tieFromPrev; });
+  assert.equal(struck.length, 2);
+  assert.deepEqual(struck.map(function(item){ return item.roll; }), [false, true], 'the single note before it is not rolled, the chord piece is');
+  chords.filter(function(item){ return item.tieFromPrev; }).forEach(function(item){ assert.equal(item.roll, false, 'the tied rest of the chord is not rolled'); });
+  const both = layout('~E2@6+B3@2/~A3@3+D4@2 - - -');
+  assert.deepEqual(both.measures[0].items.filter(function(item){ return !item.tieFromPrev && item.type === 'chord'; }).map(function(item){ return item.roll; }), [true, true]);
+});
+
 test('invalid scores return an error', function(){
   assert.ok(layoutApi.layoutScore('E4 - -', 4, 0).error, 'too few cells');
   assert.ok(layoutApi.layoutScore('- E4 r r', 4, 0).error, 'orphan hold');

@@ -2302,8 +2302,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=roll-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=roll-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=roll-2')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=roll-2">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -4261,17 +4261,60 @@ async function testRollMarks(client, httpPort) {
   const target = path.join(root, 'test-artifacts', 'practice-roll.png');
   fs.writeFileSync(target, Buffer.from(shot.data, 'base64'));
   process.stdout.write('Artifact: ' + target + '\n');
+
+  // 오선(둘 다): 롤 조각마다 물결선 하나. 붙임줄로 이어진 뒤 토막과 롤 아닌 화음에는 없다.
+  const staffRolls = await client.evaluate(`(function(){
+    var s = document.getElementById('scoreViewSelect'); s.value = 'both'; s.dispatchEvent(new Event('change', { bubbles: true }));
+    var layer = '#measuresGrid .tab-staff-layer ';
+    return { staffRolls: document.querySelectorAll(layer + 'path.st-roll').length, staffChords: document.querySelectorAll(layer + 'g.st-chord').length, tabMarks: document.querySelectorAll('#measuresGrid .roll-mark').length };
+  })()`);
+  assert.equal(staffRolls.staffRolls, result.total, 'the staff draws one wave per rolled piece (same count as the TAB marks): ' + JSON.stringify(staffRolls));
+  assert.ok(staffRolls.staffChords > staffRolls.staffRolls, 'plain and tied chords of the staff have no wave');
+  assert.equal(staffRolls.tabMarks, result.total, 'the TAB marks stay with the staff view on');
+  const staffShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const staffTarget = path.join(root, 'test-artifacts', 'practice-roll-staff.png');
+  fs.writeFileSync(staffTarget, Buffer.from(staffShot.data, 'base64'));
+  process.stdout.write('Artifact: ' + staffTarget + '\n');
+
+  // 악보 입력 화면 카드의 오선에도 같은 물결선이 그려진다.
+  await client.evaluate(`(function(){ Object.keys(localStorage).filter(function(key){ return key.indexOf('gs.tabInput.') === 0; }).forEach(function(key){ localStorage.removeItem(key); }); return true; })()`);
+  const inputBefore = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+  await client.send('Page.navigate', { url: `http://127.0.0.1:${httpPort}/score-input.html` });
+  await waitForPageLoadAfter(client, inputBefore);
+  await waitForCondition(client, 'document.readyState === "complete" && document.querySelectorAll("#tiMeasures .ti-measure").length >= 1', 8000);
+  await client.evaluate(`(function(){
+    window.confirm = function(){ return true; };
+    document.getElementById('tiImportBtn').click();
+    var area = document.getElementById('tiImportText');
+    area.value = ${JSON.stringify(rollLines.join('\n'))};
+    area.dispatchEvent(new Event('input', { bubbles:true }));
+    document.getElementById('tiImportApplyBtn').click();
+    return true;
+  })()`);
+  assert.equal(await client.evaluate(`document.getElementById('tiImportError').textContent`), '', 'the roll score imports without error');
+  const inputRolls = await client.evaluate(`({
+    waves: document.querySelectorAll('#tiMeasures .ti-staff-wrap svg path.st-roll').length,
+    heads: document.querySelectorAll('#tiMeasures .ti-staff-wrap svg .st-head').length,
+    text: document.getElementById('tiScoreText').value
+  })`);
+  assert.equal(inputRolls.text, rollLines.join('\n'), 'the exported text keeps the roll marks');
+  assert.ok(inputRolls.heads > 0, 'the cards draw a staff');
+  assert.equal(inputRolls.waves, result.total, 'the input cards draw one staff wave per rolled piece: ' + JSON.stringify(inputRolls));
+  const inputShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const inputTarget = path.join(root, 'test-artifacts', 'score-input-roll.png');
+  fs.writeFileSync(inputTarget, Buffer.from(inputShot.data, 'base64'));
+  process.stdout.write('Artifact: ' + inputTarget + '\n');
   await client.send('Emulation.clearDeviceMetricsOverride');
   assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the roll steps run without console errors');
   client.dialogHandler = null;
-  process.stdout.write('Browser checkpoint: roll waves in practice TAB passed\n');
+  process.stdout.write('Browser checkpoint: roll waves in practice TAB and staff, and in score input card staffs, passed\n');
 }
 
 async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=roll-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=roll-2')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
