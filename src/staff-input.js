@@ -13,6 +13,7 @@
   var MAX_MIDI = GuitarParser.STRINGS[0].midi + GuitarNotation.MAX_FRET; // 1번 줄 개방 + 최고 프렛
   var RANGE_ERROR = '기타 음역(' + GuitarParser.noteNameForMidi(MIN_MIDI, false) + '~' + GuitarParser.noteNameForMidi(MAX_MIDI, false) + ') 밖입니다.';
   var NO_STRING_ERROR = '이 음을 칠 빈 줄이 없습니다.';
+  var HARMONIC_ERROR = '하모닉스 음은 오선 입력으로 옮길 수 없습니다. 타브 입력에서 다시 넣으세요.';
   var LETTER_SEMITONE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   var SHARP_ORDER = 'FCGDAEB';
   var FLAT_ORDER = 'BEADGCF';
@@ -29,7 +30,7 @@
   function slotMidis(slot){
     var list = [];
     slot.notes.forEach(function(note, index){
-      if (note) list.push(GuitarTabInput.noteMidi(index + 1, note.fret));
+      if (note) list.push(GuitarTabInput.noteMidiOf(index + 1, note));
     });
     return list;
   }
@@ -131,14 +132,14 @@
     if (!hasNote) return fail('화음에 더할 음이 없습니다. 먼저 음을 넣으세요.');
     var same = [];
     slot.notes.forEach(function(note, index){
-      if (note && GuitarTabInput.noteMidi(index + 1, note.fret) === midi) same.push(index + 1);
+      if (note && GuitarTabInput.noteMidiOf(index + 1, note) === midi) same.push(index + 1);
     });
     if (same.length){
       same.forEach(function(str){ GuitarTabInput.removeNote(doc, pos, str); });
       var top = null;
       slot.notes.forEach(function(note, index){
         if (!note) return;
-        var m = GuitarTabInput.noteMidi(index + 1, note.fret);
+        var m = GuitarTabInput.noteMidiOf(index + 1, note);
         if (!top || m > top.midi) top = { str: index + 1, midi: m };
       });
       if (!top){
@@ -179,7 +180,7 @@
   function stringCandidates(doc, pos, str){
     var slot = GuitarTabInput.getSlot(doc, pos);
     if (!slot || !isInt(str) || str < 1 || str > GuitarTabInput.STRING_COUNT || !slot.notes[str - 1]) return [];
-    var midi = GuitarTabInput.noteMidi(str, slot.notes[str - 1].fret);
+    var midi = GuitarTabInput.noteMidiOf(str, slot.notes[str - 1]);
     return playableStrings(slot, midi, str).map(function(item){
       return { str: item.str, fret: item.fret, current: item.str === str };
     });
@@ -200,7 +201,8 @@
     if (!slot || !isInt(fromStr) || fromStr < 1 || fromStr > GuitarTabInput.STRING_COUNT || !slot.notes[fromStr - 1]){
       return fail('옮길 음이 없습니다.');
     }
-    var midi = GuitarTabInput.noteMidi(fromStr, slot.notes[fromStr - 1].fret);
+    if (slot.notes[fromStr - 1].art === 'h') return fail(HARMONIC_ERROR);
+    var midi = GuitarTabInput.noteMidiOf(fromStr, slot.notes[fromStr - 1]);
     var allowed = stringCandidates(doc, pos, fromStr).some(function(item){ return item.str === toStr; });
     if (!allowed) return fail('그 줄에서는 이 음을 칠 수 없습니다.');
     if (toStr === fromStr) return { ok: true, str: toStr };
@@ -222,7 +224,7 @@
           for (var i = 0; i < slots[s].notes.length; i++){
             var note = slots[s].notes[i];
             if (!note) continue;
-            var parsed = /^([A-G])(#|b)?(-?\d+)$/.exec(GuitarTabInput.noteLabel(doc, i + 1, note.fret));
+            var parsed = /^([A-G])(#|b)?(-?\d+)$/.exec(GuitarTabInput.noteLabelOf(doc, i + 1, note));
             if (parsed && parsed[1] === name && Number(parsed[3]) === soundingOctave){
               found = parsed[2] === '#' ? 1 : (parsed[2] === 'b' ? -1 : 0);
             }
@@ -294,7 +296,8 @@
     if (!slot || !isInt(str) || str < 1 || str > GuitarTabInput.STRING_COUNT || !slot.notes[str - 1]) return fail('옮길 음이 없습니다.');
     if (!isInt(semitones)) return fail('옮길 반음 수가 올바르지 않습니다.');
     var note = slot.notes[str - 1];
-    var target = GuitarTabInput.noteMidi(str, note.fret) + semitones;
+    if (note.art === 'h') return fail(HARMONIC_ERROR);
+    var target = GuitarTabInput.noteMidiOf(str, note) + semitones;
     if (target < MIN_MIDI || target > MAX_MIDI) return fail(RANGE_ERROR);
     var fret = target - GuitarParser.STRINGS[str - 1].midi;
     if (fret >= 0 && fret <= GuitarTabInput.MAX_FRET){
@@ -405,7 +408,7 @@
       }
     } else {
       slot.notes.forEach(function(note, index){
-        if (note) placed.push({ str: index + 1, midi: GuitarTabInput.noteMidi(index + 1, note.fret) });
+        if (note) placed.push({ str: index + 1, midi: GuitarTabInput.noteMidiOf(index + 1, note) });
       });
       placed.sort(function(a, b){ return a.midi - b.midi || b.str - a.str; });
     }

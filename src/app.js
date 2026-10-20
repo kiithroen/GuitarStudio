@@ -343,13 +343,16 @@ function curCapo(){
 
   // TAB 알약 안 프렛 글자. 왼손·오른손 운지와 주법은 원문에 적힌 것만 넣는다(buildFretLabel 이 모양을 만든다).
   // 유지 알약(고스트)은 이미 친 음의 표시라 오른손 글자는 넣지 않는다(skipRightHand).
-  // 유지 알약(isHeld)은 다시 치지 않으니 오른손과 주법 색을 빼고 왼손만 남긴다.
+  // 유지 알약(isHeld)은 다시 치지 않으니 오른손과 아포얀도 색을 빼고 왼손만 남긴다. 하모닉스는 손 위치 표시라 유지 알약에도 남긴다.
   function appendPillFretLabel(pill, note, token, componentIndex, isHeld){
+    var art = null;
+    if (note.explicitArticulation && note.articulation === 'harmonic') art = 'harmonic';
+    else if (!isHeld && note.explicitArticulation && note.articulation === 'apoyando') art = note.articulation;
     pill.appendChild(buildFretLabel({
       fret: note.fret != null ? note.fret : 0,
       lh: getExplicitLeftHand(token, componentIndex),
       rh: isHeld ? null : (getExplicitRightHand(token, componentIndex) || null),
-      art: !isHeld && note.explicitArticulation && note.articulation === 'apoyando' ? note.articulation : null
+      art: art
     }));
   }
 

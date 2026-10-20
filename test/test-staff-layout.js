@@ -54,6 +54,32 @@ test('staff position: written octave is one higher, step counts from E4, ledger 
   assert.deepEqual(result.measures[0].items[0].notes.map(function(note){ return note.name; }), ['E2', 'G3', 'B3'], 'chord notes are sorted low to high');
 });
 
+test('natural harmonics are placed at the hand position pitch and marked harmonic', function(){
+  const HARMONICS = require('../src/notation.js').NATURAL_HARMONICS;
+  let count = 0;
+  Object.keys(HARMONICS).forEach(function(handFret){
+    parser.STRINGS.forEach(function(string){
+      const soundName = parser.noteNameForMidi(string.midi + HARMONICS[handFret], false);
+      const handName = parser.noteNameForMidi(string.midi + Number(handFret), false);
+      const harmonic = firstNote(layout('h' + soundName + '@' + string.str + ' r r r'), 0, 0);
+      const plain = firstNote(layout(handName + '@' + string.str + ' r r r'), 0, 0);
+      assert.equal(harmonic.harmonic, true, soundName + ' is marked harmonic');
+      assert.equal(plain.harmonic, undefined, 'a plain note is not marked');
+      assert.equal(harmonic.step, plain.step, 'step follows the hand position, not the sounding pitch');
+      assert.deepEqual(harmonic.ledger, plain.ledger);
+      assert.equal(harmonic.name, plain.name);
+      assert.equal(harmonic.str, string.str);
+      assert.equal(harmonic.fret, Number(handFret));
+      count++;
+    });
+  });
+  assert.equal(count, Object.keys(HARMONICS).length * parser.STRINGS.length);
+  // 화음 안에서도 구성음마다 표시가 따로
+  const top = parser.STRINGS[0].midi + HARMONICS[Object.keys(HARMONICS)[0]];
+  const chord = layout(parser.noteNameForMidi(parser.STRINGS[5].midi, false) + '@6+h' + parser.noteNameForMidi(top, false) + '@1 r r r');
+  assert.deepEqual(chord.measures[0].items[0].notes.map(function(note){ return !!note.harmonic; }), [false, true]);
+});
+
 test('layout shape: time signature, grid and the sum of the lengths', function(){
   const times = { 2: [2, 4], 3: [3, 4], 4: [4, 4], 6: [6, 8], 8: [4, 4], 9: [9, 8] };
   Object.keys(times).forEach(function(beats){

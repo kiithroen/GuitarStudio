@@ -168,4 +168,27 @@ assert.equal(crossBarResume.length, 1, 'parsed start-inside-hold resumes once');
 assert.equal(crossBarResume[0].note, parsedCrossBar[0].beats[0], 'parsed resume keeps the source note');
 assert.equal(crossBarResume[0].duration, 2, 'parsed resume uses only the remaining cross-bar hold duration');
 
+{
+  const HARMONICS = require('../src/notation.js').NATURAL_HARMONICS;
+  const handFret = Number(Object.keys(HARMONICS)[0]);
+  const string = parser.STRINGS[0];
+  const soundMidi = string.midi + HARMONICS[handFret];
+  const soundName = parser.noteNameForMidi(soundMidi, false);
+  const bassName = parser.noteNameForMidi(parser.STRINGS[5].midi, false);
+  const harmonicScore = parser.parseScore('[-] h' + soundName + '@1 ' + bassName + '@6+h' + soundName + '@1 h' + soundName + '@1/r r', 4);
+  assert.deepEqual(harmonicScore.errors, []);
+  const harmonicMeasures = harmonicScore.measures;
+  const single = context.getBeatGuideEvents(harmonicMeasures[0].beats[0], { startTime:0, slotDuration:0.5, measures:harmonicMeasures });
+  assert.deepEqual(Array.from(single, event => [event.note.midi, event.str, event.articulation, event.gain]), [[soundMidi, 1, 'harmonic', 1.0]],
+    'a harmonic plays the sounding pitch on its string, with unchanged gain');
+  const withChord = context.getBeatGuideEvents(harmonicMeasures[0].beats[1], { startTime:0, slotDuration:0.5, measures:harmonicMeasures });
+  assert.deepEqual(Array.from(withChord, event => event.note.midi), [parser.STRINGS[5].midi, soundMidi], 'a harmonic chord component keeps the sounding pitch');
+  const split = context.getBeatGuideEvents(harmonicMeasures[0].beats[2], { startTime:0, slotDuration:0.5, measures:harmonicMeasures });
+  assert.deepEqual(Array.from(split.filter(event => event.kind === 'note'), event => event.note.midi), [soundMidi], 'a harmonic in a subdivision plays the sounding pitch');
+  calls.length = 0;
+  context.scheduleBeatGuide(harmonicMeasures[0].beats[0], { startTime:1, slotDuration:0.5, measures:harmonicMeasures, capo:2 });
+  assert.deepEqual(calls.filter(call => call[0] === 'note').map(call => [call[1], call[5], call[6]]), [[soundMidi + 2, 'harmonic', 1]],
+    'scheduling hands the capo-shifted sounding pitch and the string to playGuitarNote');
+}
+
 process.stdout.write('Result: guide events passed (parsed and synthetic subdivision timing, simultaneous chords, articulation gain, rests, cross-bar holds, resume, loop clipping, capo, and legacy wrapper)\n');

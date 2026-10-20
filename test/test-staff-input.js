@@ -439,6 +439,39 @@ test('toggleChordNote adds a new pitch, removes the same pitch, turns the last n
   assert.equal(afterG.str, g4, 'the highest remaining note is G4');
 });
 
+test('harmonic notes (art h) cannot be transposed or moved to another string, and their sounding pitch is used elsewhere', function(){
+  const HARMONICS = require('../src/notation.js').NATURAL_HARMONICS;
+  const parser = require('../src/parser.js');
+  const fret = Number(Object.keys(HARMONICS)[0]);
+  const string = parser.STRINGS[1];
+  const soundMidi = string.midi + HARMONICS[fret];
+  const text = '[-] h' + parser.noteNameForMidi(soundMidi, false) + '@' + string.str + ' r r r | ""';
+  const loaded = ti.scoreToDoc({ beats: 4, raw: text });
+  assert.equal(loaded.error, undefined);
+  const doc = loaded.doc;
+  const at = pos(0);
+  assert.equal(noteAt(doc, at, string.str).art, 'h');
+  const message = '하모닉스 음은 오선 입력으로 옮길 수 없습니다. 타브 입력에서 다시 넣으세요.';
+  const before = snapshot(doc);
+  const up = si.transposeNote(doc, at, string.str, 1);
+  assert.equal(up.ok, false);
+  assert.equal(up.error, message);
+  assert.deepEqual(snapshot(doc), before, 'transposeNote leaves the document unchanged');
+  const down = si.transposeNote(doc, at, string.str, -12);
+  assert.equal(down.error, message);
+  const other = string.str === 1 ? 2 : 1;
+  const moved = si.moveToString(doc, at, string.str, other);
+  assert.equal(moved.ok, false);
+  assert.equal(moved.error, message);
+  assert.deepEqual(snapshot(doc), before, 'moveToString leaves the document unchanged');
+  assert.equal(si.moveToString(doc, at, string.str, string.str).error, message, 'even the same string is refused');
+  // 울리는 음을 쓰는 곳: 같은 음 토글은 하모닉스 음을 지운다
+  const toggled = si.toggleChordNote(doc, at, soundMidi);
+  assert.equal(toggled.ok, true);
+  assert.equal(toggled.removed, true);
+  assert.equal(noteAt(doc, at, string.str), null);
+});
+
 test('random operations keep the document valid and failures leave it untouched', function(){
   let seed = 20261019;
   function random(){

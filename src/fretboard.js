@@ -189,7 +189,7 @@ function initFretboard(){
 
       var notesToHighlight = (targetNote.chordNotes && targetNote.chordNotes.length >= 2)
         ? targetNote.chordNotes
-        : [{ str: str, fret: fret, lh: lh, ko: info.ko, en: info.en }];
+        : [{ str: str, fret: fret, lh: lh, ko: info.ko, en: info.en, articulation: artic }];
 
       notesToHighlight.forEach(function(nt, componentIndex){
         var explicitLH = getExplicitLeftHand(sourceToken, targetNote.chordNotes && targetNote.chordNotes.length >= 2 ? componentIndex : undefined);
@@ -202,7 +202,7 @@ function initFretboard(){
         if (targetContainer){
           targetContainer.textContent = '';
           var tmk = document.createElement('span');
-          tmk.className = 'fb-marker target-note';
+          tmk.className = 'fb-marker target-note' + (nt.articulation === 'harmonic' ? ' is-harmonic' : '');
           var noteLabel = isSolfege ? nt.ko : (nt.en ? nt.en.replace(/\d+$/, '') : (nt.ko || ''));
           tmk.textContent = noteLabel + (explicitLH != null ? '(' + explicitLH + ')' : '');
           targetContainer.appendChild(tmk);

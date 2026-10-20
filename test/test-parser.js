@@ -477,4 +477,69 @@ test('guitar range runs to GuitarNotation.MAX_FRET on the first string, and defa
   assert.ok(codes(overName).indexOf('GUITAR_RANGE') >= 0);
 });
 
+test('natural harmonics: h + sounding pitch + @string, hand fret from the table, no range limit', function(){
+  const HARMONICS = require('../src/notation.js').NATURAL_HARMONICS;
+  const STRINGS = parser.STRINGS;
+  const MAX_FRET = require('../src/notation.js').MAX_FRET;
+  const codes = function(text){ return parser.validateScore('[-] ' + text + ' r r r', 4).errors.map(function(e){ return e.code; }); };
+  Object.keys(HARMONICS).forEach(function(handFret){
+    STRINGS.forEach(function(string){
+      const midi = string.midi + HARMONICS[handFret];
+      const token = 'h' + parser.noteNameForMidi(midi, false) + '@' + string.str;
+      assert.deepEqual(codes(token), [], token + ' is valid');
+      const parsed = parser.parseNoteToken(token, 0);
+      assert.equal(parsed.midi, midi, token + ' sounds the written pitch');
+      assert.equal(parsed.pos.str, string.str);
+      assert.equal(parsed.pos.fret, Number(handFret), token + ' reports the hand fret');
+      assert.equal(parsed.articulation, 'harmonic');
+      assert.equal(parsed.explicitArticulation, true);
+      assert.equal(parsed.harmonic, true);
+      assert.equal(parsed.customTok, token);
+    });
+  });
+  // 가장 높은 음(1번 줄, 손 대는 프렛이 가장 낮은 하모닉스)은 일반 음역(MAX_FRET) 밖이어도 받는다
+  const topOffset = Math.max.apply(null, Object.keys(HARMONICS).map(function(key){ return HARMONICS[key]; }));
+  const topMidi = STRINGS[0].midi + topOffset;
+  assert.ok(topOffset > MAX_FRET && topMidi > STRINGS[0].midi + MAX_FRET, 'the highest harmonic is above the normal range');
+  const topToken = 'h' + parser.noteNameForMidi(topMidi, false) + '@1';
+  assert.deepEqual(codes(topToken), []);
+  assert.equal(parser.midiInfo(topMidi).pos, null, 'the same pitch has no normal fingering');
+  assert.equal(parser.parseNoteToken(topToken, 0).pos.fret, Math.min.apply(null, Object.keys(HARMONICS).map(Number)));
+  // 운지와 확인 표시 (표의 첫 항목, 1번 줄)
+  const firstFret = Number(Object.keys(HARMONICS)[0]);
+  const firstMidi = STRINGS[0].midi + HARMONICS[firstFret];
+  const firstName = parser.noteNameForMidi(firstMidi, false);
+  const fingered = parser.parseNoteToken('h' + firstName + '@1:i?', 0);
+  assert.equal(fingered.pos.rh, 'i');
+  assert.equal(fingered.uncertain, true);
+  assert.equal(parser.parseNoteToken('h2' + firstName + '@1', 0).pos.lh, 2);
+  assert.equal(parser.parseNoteToken('h2' + firstName + '@1:i', 0).customTok, 'h2' + firstName + '@1:i');
+  // 오류: @줄 없음, 표에 없는 오프셋, 주법 조합
+  const tableOffsets = Object.keys(HARMONICS).map(function(key){ return HARMONICS[key]; });
+  let missingOffset = 1;
+  while (tableOffsets.indexOf(missingOffset) >= 0) missingOffset++;
+  const offTableToken = 'h' + parser.noteNameForMidi(STRINGS[0].midi + missingOffset, false) + '@1';
+  assert.ok(codes('h' + firstName).indexOf('INVALID_HARMONIC') >= 0, 'no @string');
+  assert.ok(codes(offTableToken).indexOf('INVALID_HARMONIC') >= 0, 'offset not in the table');
+  assert.equal(codes('h' + firstName + '@1').indexOf('INVALID_HARMONIC'), -1, 'control: valid harmonic');
+  ['!h' + firstName + '@1', 'h!' + firstName + '@1'].forEach(function(token){
+    assert.equal(parser.parseNoteToken(token, 0), null, token + ' is rejected');
+    assert.ok(codes(token).length > 0, token + ' is an error');
+  });
+  const detail = parser.validateScore('[-] h' + firstName + ' r r r', 4).errors;
+  const harmonicErrors = detail.filter(function(e){ return e.code === 'INVALID_HARMONIC'; });
+  assert.equal(harmonicErrors.length, 1);
+  assert.ok(harmonicErrors[0].message.indexOf(require('../src/notation.js').naturalHarmonicFretsText() + '프렛') >= 0 && harmonicErrors[0].message.indexOf('h' + firstName) >= 0);
+  assert.equal(detail.filter(function(e){ return e.code === 'INVALID_STRING_OVERRIDE'; }).length, 0);
+  // 화음: 구성음마다 따로 붙고 chordNotes에 실린다
+  const bassToken = parser.noteNameForMidi(STRINGS[5].midi, false) + '@6';
+  const chordText = bassToken + '+h' + firstName + '@1';
+  const chordScore = parser.parseScore('[-] ' + chordText + ' r r r', 4);
+  assert.deepEqual(chordScore.errors, []);
+  const chord = chordScore.measures[0].beats[0];
+  assert.deepEqual(chord.chordNotes.map(function(note){ return [note.tok, note.midi, note.str, note.fret, note.articulation, note.explicitArticulation]; }),
+    [[bassToken, STRINGS[5].midi, 6, 0, null, false], ['h' + firstName + '@1', firstMidi, 1, firstFret, 'harmonic', true]]);
+  assert.equal(chord.tok, chordText);
+});
+
 process.stdout.write('1..' + checks + '\n');

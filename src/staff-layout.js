@@ -55,7 +55,10 @@
     var text = String(component || '').trim();
     var parsed = GuitarParser.parseNoteToken(text, 0);
     if (!parsed) return fail('읽을 수 없는 음입니다: ' + text);
-    var core = text.replace(/\?$/, '').replace(/^!/, '');
+    // 하모닉스는 손 대는 자리의 음(줄 개방현 + 손 대는 프렛)으로 그린다. 이름은 그 음에서 다시 만든다(Docs/staff-notation.md).
+    var harmonic = parsed.articulation === 'harmonic' && !!parsed.pos;
+    var drawMidi = harmonic ? GuitarParser.STRINGS[parsed.pos.str - 1].midi + parsed.pos.fret : parsed.midi;
+    var core = harmonic ? GuitarParser.noteNameForMidi(drawMidi, false) : text.replace(/\?$/, '').replace(/^!/, '');
     var m = core.match(/^[0-4]?([A-G])([#b]?)([2-5])/);
     if (!m) return fail('음이름을 읽을 수 없습니다: ' + text);
     var letter = m[1];
@@ -64,9 +67,9 @@
     var step = written * 7 + LETTER_INDEX[letter] - (4 * 7 + LETTER_INDEX.E);
     return {
       name: letter + m[2] + m[3], letter: letter, alter: alter, octave: written, step: step,
-      midi: parsed.midi, accidental: null, ledger: ledgerFor(step),
+      midi: drawMidi, accidental: null, ledger: ledgerFor(step),
       str: parsed.pos ? parsed.pos.str : null, fret: parsed.pos ? parsed.pos.fret : null,
-      uncertain: !!parsed.uncertain
+      uncertain: !!parsed.uncertain, harmonic: harmonic
     };
   }
 
@@ -242,6 +245,7 @@
                   name: note.name, letter: note.letter, alter: note.alter, octave: note.octave, step: note.step,
                   accidental: null, ledger: note.ledger.slice(), str: note.str, fret: note.fret, uncertain: note.uncertain
                 };
+                if (note.harmonic) copy.harmonic = true;
                 if (!item.tieFromPrev){
                   if (currentAlter(copy) !== copy.alter){
                     copy.accidental = accidentalName(copy.alter);

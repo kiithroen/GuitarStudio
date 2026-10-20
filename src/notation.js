@@ -9,6 +9,12 @@
   // 시트 행·검사 도구·타브 입력 화면이 같이 쓰는 허용 칸 수 목록
   var SHEET_BEAT_COUNTS = [2, 3, 4, 6, 8, 9];
   var MAX_FRET = 19; // 클래식 기타 표준 19프렛. 음역은 E2(6번 줄 개방)~B5(1번 줄 19프렛)
+  var NATURAL_HARMONICS = { 12: 12, 7: 19, 5: 24, 4: 28 }; // 자연 하모닉스: 손 대는 프렛 → 개방현에서 울리는 음까지 반음 수(1/2·1/3·1/4·1/5 지점)
+
+  // 하모닉스 오류 문구의 프렛 목록(큰 순). 표의 키에서 만든다.
+  function naturalHarmonicFretsText(){
+    return Object.keys(NATURAL_HARMONICS).map(Number).sort(function(a, b){ return b - a; }).join('·');
+  }
 
   // 없앤 티란도 표시 ~ 가 붙은 음 토큰에 보이는 오류 문구 (이 문구를 만드는 곳은 여기 하나)
   var TIRANDO_MARK_REMOVED_MESSAGE = '티란도 표시 ~는 더 이상 쓰지 않습니다. ~를 지우세요(따로 적지 않은 음은 티란도로 칩니다).';
@@ -234,6 +240,11 @@
                 add(errors, 'UNKNOWN_NOTE', measureNo, beatIndex + 1, TIRANDO_MARK_REMOVED_MESSAGE);
                 return;
               }
+              if (plainChordPart.charAt(0) === 'h'){
+                add(errors, 'INVALID_HARMONIC', measureNo, beatIndex + 1,
+                  '하모닉스는 @줄을 적고, 그 줄의 ' + naturalHarmonicFretsText() + '프렛 자연 하모닉스 음이어야 합니다: ' + chordPart);
+                return;
+              }
               if (/@\d+(?::[pima])?$/.test(plainChordPart)){
                 add(errors, 'INVALID_STRING_OVERRIDE', measureNo, beatIndex + 1, '현 지정 음표를 기타에서 연주할 수 없습니다: ' + chordPart);
               }
@@ -301,6 +312,8 @@
     hasUncertainMark:hasUncertainMark,
     validateScore:validateScore,
     SHEET_BEAT_COUNTS:SHEET_BEAT_COUNTS,
-    MAX_FRET:MAX_FRET
+    MAX_FRET:MAX_FRET,
+    NATURAL_HARMONICS:NATURAL_HARMONICS,
+    naturalHarmonicFretsText:naturalHarmonicFretsText
   };
 });

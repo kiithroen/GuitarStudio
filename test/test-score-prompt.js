@@ -127,9 +127,16 @@ assert.equal(run.status, 0, run.stderr);
 assert.equal(run.stdout, prompt);
 pass('the node -e command in the project prompt prints the full conversion rules');
 
-assert.ok(promptLines.some(line => line.indexOf('| 주법 | `!` 아포얀도 |') === 0 && line.indexOf('~') < 0), 'the articulation row names only the apoyando mark !');
+assert.ok(promptLines.some(line => line.indexOf('| 주법 | `!` 아포얀도, `h` 자연 하모닉스 |') === 0 && line.indexOf('~') < 0), 'the articulation row names only the apoyando mark ! and the harmonic mark h');
 assert.ok(promptLines.some(line => line.indexOf('| 티란도 표시') === 0 && line.indexOf('적지 않아') > 0), 'the exceptions table says to leave tirando marks out');
 assert.ok(!/(\s|,)`~`/.test(prompt) && !/\s~[A-G0-4]/.test(prompt), 'the prompt never shows the removed ~ mark as a token');
 pass('the prompt teaches apoyando only and says tirando is the unmarked note');
+
+const harmonicExample = prompt.match(/`(hF#5@2)`/);
+assert.ok(harmonicExample, 'the prompt shows the natural harmonic example');
+const harmonicParsed = parser.parseNoteToken(harmonicExample[1], 0);
+assert.ok(harmonicParsed && harmonicParsed.articulation === 'harmonic' && harmonicParsed.en === 'F#5' && harmonicParsed.pos.str === 2, 'the prompt harmonic example parses as a natural harmonic');
+assert.ok(promptLines.some(line => line.indexOf('| 자연 하모닉스(') === 0 && line.indexOf('인공 하모닉스') > 0), 'the exceptions table has the natural harmonic row');
+pass('the prompt teaches the natural harmonic h mark with a parsable example');
 
 process.stdout.write('1..' + checks + '\n');

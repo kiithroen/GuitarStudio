@@ -356,15 +356,18 @@
     // >와 ^는 더 이상 아포얀도 별칭이 아니다.
     if (/[>^]/.test(tok)) return null;
 
-    // 악보 주법 명시 기호 추출: ! (아포얀도). 따로 적지 않은 음이 티란도다.
+    // 악보 주법 명시 기호 추출: ! (아포얀도), h (자연 하모닉스). 따로 적지 않은 음이 티란도다. 둘은 한 음에 하나만 온다.
     var explicitArtic = null;
     if (/^!/.test(tok)){
       explicitArtic = 'apoyando';
       tok = tok.slice(1).trim();
+    } else if (/^h/.test(tok)){
+      explicitArtic = 'harmonic';
+      tok = tok.slice(1).trim();
     }
     if (!tok || tok === '-' || tok === '.') return null;
 
-    var articPfx = explicitArtic === 'apoyando' ? '!' : '';
+    var articPfx = explicitArtic === 'apoyando' ? '!' : (explicitArtic === 'harmonic' ? 'h' : '');
 
     var m = tok.match(/^([0-4])?([A-G])([#b]?)([2-6])(?:@([1-6]))?$/);
     if (m){
@@ -374,6 +377,24 @@
       var pitch = semitones[m[2]] + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0);
       var oct = Number(m[4]);
       var strOverride = m[5] ? Number(m[5]) : null;
+      if (pitch >= -1 && explicitArtic === 'harmonic'){
+        // 하모닉스: 적힌 음은 울리는 음높이. 손 대는 프렛은 개방현과의 반음 수로 표에서 찾고 음역(MAX_FRET) 제한은 받지 않는다.
+        if (!strOverride) return null;
+        var harmonicMidi = (oct + 1) * 12 + pitch;
+        var harmonicOffset = harmonicMidi - STRINGS[strOverride - 1].midi;
+        var handFret = null;
+        Object.keys(GuitarNotation.NATURAL_HARMONICS).forEach(function(fretKey){
+          if (GuitarNotation.NATURAL_HARMONICS[fretKey] === harmonicOffset) handFret = Number(fretKey);
+        });
+        if (handFret == null) return null;
+        var harmonicInf = midiInfo(harmonicMidi);
+        harmonicInf.pos = { str: strOverride, fret: handFret, lh: lhOverride, rh: explicitRh };
+        harmonicInf.customTok = 'h' + (lhOverride != null ? lhOverride : '') + harmonicInf.en + '@' + strOverride + (explicitRh ? ':' + explicitRh : '');
+        harmonicInf.articulation = 'harmonic';
+        harmonicInf.explicitArticulation = true;
+        harmonicInf.harmonic = true;
+        return harmonicInf;
+      }
       if (pitch >= -1){
         var midi = (oct + 1) * 12 + pitch;
         var inf = midiInfo(midi);

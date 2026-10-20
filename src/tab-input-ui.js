@@ -98,14 +98,14 @@
 
   // ---------- 소리
 
-  function articulationName(art){ return art === '!' ? 'apoyando' : null; }
+  function articulationName(art){ return art === '!' ? 'apoyando' : (art === 'h' ? 'harmonic' : null); }
 
   function playNotes(items){
     if (!ui.sound || !items.length) return;
     try {
       var capo = T.docCapo(doc);
       items.forEach(function(item){
-        playGuitarNote(soundingMidi(T.noteMidi(item.str, item.note.fret), capo), 1.6, null, null, articulationName(item.note.art), item.str);
+        playGuitarNote(soundingMidi(T.noteMidiOf(item.str, item.note), capo), 1.6, null, null, articulationName(item.note.art), item.str);
       });
     } catch (error) {
       // 오디오가 없거나 실패해도 입력은 계속한다
@@ -235,10 +235,11 @@
   // ---------- 그리기: 마디 카드
 
   function noteTitle(str, note){
-    var parts = [str + '번 줄 ' + note.fret + '프렛 · ' + T.noteLabel(doc, str, note.fret)];
+    var parts = [str + '번 줄 ' + note.fret + '프렛 · ' + T.noteLabelOf(doc, str, note)];
     if (note.lh != null) parts.push('왼손 ' + note.lh);
     if (note.rh) parts.push('오른손 ' + note.rh);
-    if (note.art) parts.push('아포얀도');
+    if (note.art === '!') parts.push('아포얀도');
+    if (note.art === 'h') parts.push('자연 하모닉스');
     if (note.uncertain) parts.push('확인 필요');
     return parts.join(' · ');
   }
@@ -837,7 +838,7 @@
     var topMidi = -Infinity;
     slot.notes.forEach(function(note, index){
       if (!note) return;
-      var midi = T.noteMidi(index + 1, note.fret);
+      var midi = T.noteMidiOf(index + 1, note);
       if (midi > topMidi){ topMidi = midi; top = index + 1; }
     });
     if (!top) return null;

@@ -2289,8 +2289,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=fret19-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=fret19-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=harmonics-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=harmonics-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -3656,11 +3656,105 @@ async function testFretLabel(client, httpPort) {
   process.stdout.write('Browser checkpoint: shared fret label in practice and score input (articulation colors, active beat, check mark, screenshots) passed\n');
 }
 
+// 자연 하모닉스(h): 연습 화면의 TAB 알약 <손 대는 프렛>, 지판 마름모 마커, 오선 마름모 머리. 값은 NATURAL_HARMONICS에서 셈한다.
+async function testNaturalHarmonics(client, httpPort) {
+  client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
+  const errorsBefore = client.consoleErrors.length;
+  const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false });
+  await client.send('Page.navigate', { url: `http://127.0.0.1:${httpPort}/index.html` });
+  await waitForPageLoadAfter(client, before);
+  await waitForCondition(client, 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= ' + builtinSongCount + ' && window.curSong != null', 8000);
+
+  const result = await client.evaluate(`(function(){
+    var table = GuitarNotation.NATURAL_HARMONICS;
+    var handFret = Number(Object.keys(table)[0]);
+    var string = GuitarParser.STRINGS[1];
+    var soundName = GuitarParser.noteNameForMidi(string.midi + table[handFret], false);
+    var plainFret = 3;
+    var plainName = GuitarParser.noteNameForMidi(GuitarParser.STRINGS[0].midi + plainFret, false);
+    var bassName = GuitarParser.noteNameForMidi(GuitarParser.STRINGS[5].midi, false);
+    var topName = GuitarParser.noteNameForMidi(GuitarParser.STRINGS[0].midi + table[handFret], false);
+    var lines = ['[-] h' + soundName + '@' + string.str + ' ' + plainName + '@1 ' + bassName + '@6+h' + topName + '@1 -'];
+    var song = scoreDrafts.createFromScore({ title: '하모닉스 시험', beats: 4, bpm: 60, lines: lines, origin: 'tab-input' });
+    rebuildSongSelect(song.id);
+    var s = document.getElementById('scoreViewSelect'); s.value = 'both'; s.dispatchEvent(new Event('change', { bubbles: true }));
+    appState.clickMode = 'off';
+    function pills(beat){
+      var cell = document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="' + beat + '"]');
+      return Array.prototype.map.call(cell.querySelectorAll('.tab-fret-pill'), function(pill){
+        var label = pill.querySelector('.fret-label');
+        return { top: pill.style.top, text: pill.textContent, cls: label.className, held: pill.classList.contains('tab-held-fret') };
+      });
+    }
+    var out = { handFret: handFret, harmonic: pills(0), plain: pills(1), chord: pills(2), held: pills(3), plainFret: plainFret };
+    // 지판: 하모닉스를 목표로 칠한다
+    var beat0 = curSong.measures[0].beats[0];
+    highlightFretboard('', beat0, false, false, 0);
+    var marker = document.querySelector('#fretboard .fb-cell[data-str="' + string.str + '"][data-fret="' + handFret + '"] .fb-marker.target-note');
+    var shown = marker && getComputedStyle(marker);
+    var before = marker && getComputedStyle(marker, '::before');
+    out.marker = marker && { cls: marker.className, text: marker.textContent, bg: shown.backgroundColor, matrix: shown.transform, beforeTransform: before.transform, beforeBg: before.backgroundColor, beforeContent: before.content };
+    highlightFretboard('', curSong.measures[0].beats[1], false, false, 1);
+    var plainMarker = document.querySelector('#fretboard .fb-marker.target-note');
+    out.plainMarkerCls = plainMarker && plainMarker.className;
+    highlightFretboard('', curSong.measures[0].beats[2], false, false, 2);
+    out.chordMarkers = Array.prototype.map.call(document.querySelectorAll('#fretboard .fb-marker.target-note'), function(el){ return el.className; });
+    // 오선: 손 대는 자리 음에 마름모
+    out.staffPolygons = document.querySelectorAll('#measuresGrid .tab-staff-layer polygon.st-head.is-harmonic').length;
+    out.staffEllipses = document.querySelectorAll('#measuresGrid .tab-staff-layer ellipse.st-head').length;
+    updateActiveCursor(0, 0, false);
+    return out;
+  })()`);
+  const handFret = result.handFret;
+  assert.equal(result.harmonic.length, 1, 'one pill for the harmonic beat');
+  assert.equal(result.harmonic[0].text, '<' + handFret + '>', 'the harmonic pill shows the hand fret in angle brackets: ' + result.harmonic[0].text);
+  assert.ok(/\bis-harmonic\b/.test(result.harmonic[0].cls), 'the harmonic label has is-harmonic: ' + result.harmonic[0].cls);
+  assert.equal(result.plain[0].text, String(result.plainFret), 'a plain note keeps its bare fret');
+  assert.ok(!/\bis-harmonic\b/.test(result.plain[0].cls), 'a plain note is not is-harmonic');
+  const chordTexts = result.chord.map(pill => pill.text).sort();
+  assert.deepEqual(chordTexts, ['0', '<' + handFret + '>'].sort(), 'a chord marks only the harmonic component');
+  assert.ok(result.held.length >= 1 && result.held.every(pill => pill.held), 'the held beat shows ghost pills');
+  assert.ok(result.held.some(pill => pill.text === '<' + handFret + '>' && /\bis-harmonic\b/.test(pill.cls)), 'a held harmonic keeps the hand position label');
+  assert.ok(result.marker, 'the harmonic target gets a marker on the hand fret');
+  assert.ok(/\bis-harmonic\b/.test(result.marker.cls), 'the target marker has is-harmonic: ' + result.marker.cls);
+  assert.equal(result.marker.bg, 'rgba(0, 0, 0, 0)', 'the harmonic marker itself is transparent (the diamond is its ::before)');
+  const matrix = result.marker.matrix.match(/matrix\(([^)]+)\)/);
+  assert.ok(matrix, 'marker transform is a matrix: ' + result.marker.matrix);
+  const parts = matrix[1].split(',').map(Number);
+  assert.ok(Math.abs(parts[0] - 1) < 1e-6 && Math.abs(parts[1]) < 1e-6, 'the marker text is not rotated: ' + result.marker.matrix);
+  const behind = result.marker.beforeTransform.match(/matrix\(([^)]+)\)/);
+  assert.ok(behind, 'the diamond has a transform: ' + result.marker.beforeTransform);
+  const behindParts = behind[1].split(',').map(Number);
+  assert.ok(Math.abs(Math.abs(behindParts[0]) - Math.SQRT1_2) < 1e-3 && Math.abs(Math.abs(behindParts[1]) - Math.SQRT1_2) < 1e-3, 'the diamond is rotated 45 degrees: ' + result.marker.beforeTransform);
+  assert.notEqual(result.marker.beforeBg, 'rgba(0, 0, 0, 0)', 'the diamond is filled');
+  assert.ok(!/\bis-harmonic\b/.test(result.plainMarkerCls), 'a plain target marker is not a diamond: ' + result.plainMarkerCls);
+  assert.deepEqual(result.chordMarkers.map(cls => /\bis-harmonic\b/.test(cls)).sort(), [false, true], 'in a chord only the harmonic component marker is a diamond: ' + result.chordMarkers.join(' | '));
+  assert.ok(result.staffPolygons >= 2, 'the staff draws the harmonic heads as polygons: ' + result.staffPolygons);
+  assert.ok(result.staffEllipses >= 1, 'plain notes keep ellipse heads');
+
+  const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  const target = path.join(root, 'test-artifacts', 'practice-harmonic.png');
+  fs.writeFileSync(target, Buffer.from(shot.data, 'base64'));
+  process.stdout.write('Artifact: ' + target + '\n');
+  await client.evaluate(`highlightFretboard('', curSong.measures[0].beats[0], false, false, 0); document.getElementById('fretboard').scrollIntoView({ block: 'center' }); true`);
+  const fbShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const fbTarget = path.join(root, 'test-artifacts', 'practice-harmonic-fretboard.png');
+  fs.writeFileSync(fbTarget, Buffer.from(fbShot.data, 'base64'));
+  process.stdout.write('Artifact: ' + fbTarget + '\n');
+
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the natural harmonic steps run without console errors');
+  client.dialogHandler = null;
+  process.stdout.write('Browser checkpoint: natural harmonic TAB label, fretboard diamond marker, staff diamond head passed\n');
+}
+
 async function main() {
-  const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=fret19-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=harmonics-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -4175,6 +4269,7 @@ async function main() {
     await testStaffInputMode(cdp, httpPort);
     await testTextInputMode(cdp, httpPort);
     await testFretLabel(cdp, httpPort);
+    await testNaturalHarmonics(cdp, httpPort);
 
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');

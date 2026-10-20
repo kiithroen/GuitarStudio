@@ -154,6 +154,39 @@ test('ledger lines, accidentals, dots and open heads', function(){
   assert.equal(count(svgWhole, 'st-stem'), 0, 'no stem on a whole note');
 });
 
+test('natural harmonic heads are diamonds (polygon, is-harmonic) with the same center as a plain head', function(){
+  const HARMONICS = require('../src/notation.js').NATURAL_HARMONICS;
+  const parser = require('../src/parser.js');
+  const fret = Number(Object.keys(HARMONICS)[Object.keys(HARMONICS).length - 1]);
+  const string = parser.STRINGS[1];
+  const soundName = parser.noteNameForMidi(string.midi + HARMONICS[fret], false);
+  const handName = parser.noteNameForMidi(string.midi + fret, false);
+  const harmonicLayout = layout('h' + soundName + '@' + string.str + ' r r r');
+  const svg = draw(harmonicLayout);
+  checkCounts(svg, harmonicLayout.measures[0], 'harmonic');
+  assert.equal((svg.match(/<polygon class="st-head[^"]*is-harmonic/g) || []).length, 1, 'one diamond head');
+  assert.equal((svg.match(/<ellipse class="st-head/g) || []).length, 0, 'no ellipse head');
+  const plainSvg = draw(layout(handName + '@' + string.str + ' r r r'));
+  assert.equal((plainSvg.match(/<ellipse class="st-head/g) || []).length, 1);
+  assert.equal((plainSvg.match(/is-harmonic/g) || []).length, 0, 'a plain note has no harmonic class');
+  const ellipse = plainSvg.match(/<ellipse class="st-head[^>]*cx="([\d.]+)" cy="([\d.]+)" rx="([\d.]+)" ry="([\d.]+)"/);
+  const points = svg.match(/<polygon class="st-head[^>]*points="([^"]+)"/)[1].split(' ').map(function(pair){ return pair.split(',').map(Number); });
+  assert.equal(points.length, 4);
+  const xs = points.map(function(p){ return p[0]; }), ys = points.map(function(p){ return p[1]; });
+  const near = function(a, b){ return Math.abs(a - b) < 0.11; };
+  assert.ok(near((Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2, Number(ellipse[1])), 'same center x');
+  assert.ok(near((Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2, Number(ellipse[2])), 'same center y');
+  assert.ok(near((Math.max.apply(null, xs) - Math.min.apply(null, xs)) / 2, Number(ellipse[3])), 'same horizontal radius');
+  assert.ok(near((Math.max.apply(null, ys) - Math.min.apply(null, ys)) / 2, Number(ellipse[4])), 'same vertical radius');
+  // 빈 머리(온음표)와 확인 표시
+  const wholeLayout = layout('h' + soundName + '@' + string.str + ' - - -');
+  const wholeSvg = draw(wholeLayout);
+  checkCounts(wholeSvg, wholeLayout.measures[0], 'harmonic whole');
+  assert.match(wholeSvg, /<polygon class="st-head is-open is-harmonic"[^>]*fill="none"/, 'an open diamond keeps fill none');
+  const unsure = draw(layout('h' + soundName + '@' + string.str + '? r r r'));
+  assert.match(unsure, /<polygon class="st-head is-uncertain is-harmonic"/, 'uncertain mark keeps its class on the diamond');
+});
+
 test('chords: second intervals stay beside the stem, every note has a head', function(){
   const chord = layout('E4+F4+G4 r r r');
   const svg = draw(chord);

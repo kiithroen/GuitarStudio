@@ -185,8 +185,10 @@ doc = { version: 1, title, beats, bpm, description, accidentals: 'sharp' | 'flat
 measure = { chord, memo, cells: [cell] }          // cells 개수 = beats
 cell = { slots: [slot] }                          // slots 개수 = 나눈 수 1~4
 slot = { rest, restUncertain, notes: [note|null × 6] }   // notes[0]이 1번 줄
-note = { fret: 0~19, lh: null|0~4, rh: null|'p'|'i'|'m'|'a', art: null|'!'|'~', uncertain }
+note = { fret: 0~19, lh: null|0~4, rh: null|'p'|'i'|'m'|'a', art: null|'!'|'h'|'~', uncertain }
 ```
+
+`art`가 `'h'`(자연 하모닉스)이면 `fret`은 손 대는 프렛이고 `GuitarNotation.NATURAL_HARMONICS`의 키여야 해. 울리는 음은 `noteMidiOf(줄, 음)`이 개방현 + 표의 반음 수로 셈하고, 텍스트 악보의 음이름도 울리는 음이야. 하모닉스는 2026-10-20 1단계에서 모델로 받고 내보내기만 하고, 넣는 UI는 아직 없어(입력판을 누르면 보통 음이 돼). 오선 입력의 반음 옮기기·줄 옮기기는 하모닉스 음을 거절해([오선 입력](staff-input.md)). 문법은 [악보 문법](score-format.md#하모닉스).
 
 ## 검증
 

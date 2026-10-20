@@ -17,11 +17,12 @@
   var KEY_MIN = -5;
   var KEY_MAX = 5;
   var RH_VALUES = ['p', 'i', 'm', 'a'];
-  var ART_VALUES = ['!'];
+  var ART_VALUES = ['!', 'h'];
   // 티란도 표시 ~ 를 없애기 전에 저장된 문서의 주법 값. 읽을 때 없음(null)으로 바꾼다.
   var REMOVED_ART_VALUE = '~';
 
   function isInt(value){ return typeof value === 'number' && Number.isInteger(value); }
+  function isHarmonicFret(fret){ return Object.prototype.hasOwnProperty.call(GuitarNotation.NATURAL_HARMONICS, fret); }
   function beatsListText(){ return GuitarNotation.SHEET_BEAT_COUNTS.join(', '); }
   function isAllowedBeats(beats){ return GuitarNotation.SHEET_BEAT_COUNTS.indexOf(beats) >= 0; }
   function copyJson(value){ return JSON.parse(JSON.stringify(value)); }
@@ -73,7 +74,8 @@
     if (!isInt(note.fret) || note.fret < 0 || note.fret > MAX_FRET) return where + ': 프렛은 0~' + MAX_FRET + '의 정수여야 합니다.';
     if (note.lh !== null && !(isInt(note.lh) && note.lh >= 0 && note.lh <= 4)) return where + ': 왼손 운지는 없음 또는 0~4여야 합니다.';
     if (note.rh !== null && RH_VALUES.indexOf(note.rh) < 0) return where + ': 오른손 운지는 없음 또는 p·i·m·a여야 합니다.';
-    if (note.art !== null && ART_VALUES.indexOf(note.art) < 0) return where + ': 주법은 없음 또는 !여야 합니다.';
+    if (note.art !== null && ART_VALUES.indexOf(note.art) < 0) return where + ': 주법은 없음, ! 또는 h여야 합니다.';
+    if (note.art === 'h' && !isHarmonicFret(note.fret)) return where + ': 하모닉스 프렛은 ' + GuitarNotation.naturalHarmonicFretsText() + ' 중 하나여야 합니다.';
     if (typeof note.uncertain !== 'boolean') return where + ': 확인 표시는 true/false여야 합니다.';
     return null;
   }
@@ -258,10 +260,11 @@
     var a = attrs || {};
     if ('lh' in a && !(a.lh === null || (isInt(a.lh) && a.lh >= 0 && a.lh <= 4))) throw new Error('왼손 운지는 null 또는 0~4여야 합니다: ' + a.lh);
     if ('rh' in a && !(a.rh === null || RH_VALUES.indexOf(a.rh) >= 0)) throw new Error('오른손 운지는 null 또는 p·i·m·a여야 합니다: ' + a.rh);
-    if ('art' in a && !(a.art === null || ART_VALUES.indexOf(a.art) >= 0)) throw new Error('주법은 null 또는 !여야 합니다: ' + a.art);
+    if ('art' in a && !(a.art === null || ART_VALUES.indexOf(a.art) >= 0)) throw new Error('주법은 null, ! 또는 h여야 합니다: ' + a.art);
     if ('uncertain' in a && typeof a.uncertain !== 'boolean') throw new Error('확인 표시는 true/false여야 합니다: ' + a.uncertain);
     var note = slot.notes[str - 1];
     if (!note) return { ok: false };
+    if (a.art === 'h' && !isHarmonicFret(note.fret)) throw new Error('하모닉스 프렛은 ' + GuitarNotation.naturalHarmonicFretsText() + ' 중 하나여야 합니다: ' + note.fret);
     ['lh', 'rh', 'art', 'uncertain'].forEach(function(key){ if (key in a) note[key] = a[key]; });
     return { ok: true };
   }
@@ -443,22 +446,37 @@
     return GuitarParser.STRINGS[str - 1].midi + fret;
   }
 
-  function noteLabel(doc, str, fret){
+  // 울리는 음의 MIDI. 하모닉스(art 'h')는 fret이 손 대는 프렛이라 개방현 + 표의 반음 수다.
+  function noteMidiOf(str, note){
+    if (note.art === 'h') return GuitarParser.STRINGS[str - 1].midi + GuitarNotation.NATURAL_HARMONICS[note.fret];
+    return noteMidi(str, note.fret);
+  }
+
+  function midiLabel(doc, midi){
     var key = isInt(doc.key) ? doc.key : 0;
     var preferFlats = key < 0 || (key === 0 && doc.accidentals === 'flat');
-    return GuitarParser.noteNameForMidi(noteMidi(str, fret), preferFlats);
+    return GuitarParser.noteNameForMidi(midi, preferFlats);
+  }
+
+  function noteLabel(doc, str, fret){
+    return midiLabel(doc, noteMidi(str, fret));
+  }
+
+  // 울리는 음의 이름(하모닉스는 손 대는 자리가 아니라 울리는 음).
+  function noteLabelOf(doc, str, note){
+    return midiLabel(doc, noteMidiOf(str, note));
   }
 
   function noteToken(doc, str, note){
     return (note.art || '') + (note.lh == null ? '' : String(note.lh)) +
-      noteLabel(doc, str, note.fret) + '@' + str +
+      noteLabelOf(doc, str, note) + '@' + str +
       (note.rh ? ':' + note.rh : '') + (note.uncertain ? '?' : '');
   }
 
   function slotNoteToken(doc, slot){
     var items = [];
     slot.notes.forEach(function(note, index){
-      if (note) items.push({ str: index + 1, midi: noteMidi(index + 1, note.fret), note: note });
+      if (note) items.push({ str: index + 1, midi: noteMidiOf(index + 1, note), note: note });
     });
     items.sort(function(a, b){ return a.midi - b.midi || b.str - a.str; });
     return items.map(function(item){ return noteToken(doc, item.str, item.note); }).join('+');
@@ -574,7 +592,7 @@
       if (slot.notes[str - 1]) return { error: where + ': 두 음이 ' + str + '번 줄에 겹칩니다. 원문에 @줄을 적으세요.' };
       var art = null;
       if (parsed.explicitArticulation){
-        art = parsed.articulation === 'apoyando' ? '!' : null;
+        art = parsed.articulation === 'apoyando' ? '!' : (parsed.articulation === 'harmonic' ? 'h' : null);
       }
       slot.notes[str - 1] = {
         fret: parsed.pos.fret,
@@ -694,7 +712,7 @@
     insertEmptyMeasure: insertEmptyMeasure, duplicateRange: duplicateRange, deleteRange: deleteRange,
     clearRange: clearRange, copyRange: copyRange, pasteAfter: pasteAfter,
     createHistory: createHistory,
-    noteMidi: noteMidi, noteLabel: noteLabel, noteToken: noteToken,
+    noteMidi: noteMidi, noteMidiOf: noteMidiOf, noteLabel: noteLabel, noteLabelOf: noteLabelOf, noteToken: noteToken,
     slotTokens: slotTokens, docToMeasureObjects: docToMeasureObjects, docToScoreLines: docToScoreLines, docScoreText: docScoreText,
     validateDoc: validateDoc, docCapo: docCapo, buildHandoff: buildHandoff,
     scoreToDoc: scoreToDoc, parseImportText: parseImportText, replaceMeasuresFromText: replaceMeasuresFromText

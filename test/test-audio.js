@@ -467,4 +467,28 @@ test('repeated stop requests never extend an already scheduled voice end', funct
   assert.deepEqual(stopped, [1.515], 'later request does not reschedule an extended stop');
 });
 
+test('harmonic pitches (above the normal range) give finite KS profiles and buffers on every string', function(){
+  const HARMONICS = require('../src/notation.js').NATURAL_HARMONICS;
+  const { context } = makeContext(0);
+  const hooks = context.__audioHooks;
+  let rendered = 0;
+  context.STRINGS.forEach(function(string){
+    Object.keys(HARMONICS).forEach(function(handFret){
+      const midi = string.midi + HARMONICS[handFret];
+      const profile = hooks.getNaturalDecayProfile(midi, false, string.str);
+      ['frequency', 'fret', 't60Fund', 't60High', 'duration'].forEach(function(key){
+        assert.ok(Number.isFinite(profile[key]) && profile[key] >= 0, key + ' is finite for midi ' + midi + ' on string ' + string.str);
+      });
+      const buffer = hooks.renderKsString(context.actx, midi, false, string.str);
+      const data = buffer.getChannelData(0);
+      assert.ok(data.length > 0);
+      let finite = true;
+      for (let i = 0; i < data.length; i++) if (!Number.isFinite(data[i])) { finite = false; break; }
+      assert.ok(finite, 'rendered samples are finite for midi ' + midi + ' on string ' + string.str);
+      rendered++;
+    });
+  });
+  assert.equal(rendered, context.STRINGS.length * Object.keys(HARMONICS).length);
+});
+
 process.stdout.write('1..' + checks + '\n');

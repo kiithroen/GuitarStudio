@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=fret19-1">
+<link rel="stylesheet" href="src/base.css?v=harmonics-1">
 <style>
 #sheetLoadStatus{margin-top:8px;padding:7px 11px;border-radius:8px;border:1px solid var(--off);background:var(--off-soft);color:var(--off);font-weight:600}
 
@@ -390,6 +390,8 @@ body.practice-compact .fretboard{
 .fb-marker{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-num);font-size:11px;font-weight:700;background:rgba(255,255,255,.18);color:#fff;white-space:nowrap;line-height:1;transition:transform .1s,background-color .1s;pointer-events:none;z-index:3}
 .fb-marker.chord-tone{background:var(--accent);color:#fff}
 .fb-marker.target-note{width:auto;min-width:34px;height:22px;padding:0 6px;border-radius:999px;background:#56e38f;color:#041b0c;font-size:11.5px;font-weight:800;border:1.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);z-index:5}
+.fb-marker.target-note.is-harmonic{min-width:26px;padding:0 3px;border:0;border-radius:0;background:transparent;box-shadow:none}
+.fb-marker.target-note.is-harmonic::before{content:'';position:absolute;left:50%;top:50%;width:21px;height:21px;margin:-10.5px 0 0 -10.5px;box-sizing:border-box;border-radius:4px;background:#56e38f;border:1.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);transform:rotate(45deg);z-index:-1}
 
 .finger-guide{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
 .fg-card{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:3px}
@@ -876,23 +878,23 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=fret19-1"></script>
-<script src="src/app-state.js?v=fret19-1"></script>
-<script src="src/notation.js?v=fret19-1"></script>
-<script src="src/rhythm.js?v=fret19-1"></script>
-<script src="src/parser.js?v=fret19-1"></script>
-<script src="src/staff-layout.js?v=fret19-1"></script>
-<script src="src/staff-svg.js?v=fret19-1"></script>
-<script src="src/score-drafts.js?v=fret19-1"></script>
-<script src="src/score.js?v=fret19-1"></script>
-<script src="src/audio.js?v=fret19-1"></script>
-<script src="src/guide.js?v=fret19-1"></script>
-<script src="src/image-analysis.js?v=fret19-1"></script>
-<script src="src/fretboard.js?v=fret19-1"></script>
-<script src="src/score-ui.js?v=fret19-1"></script>
-<script src="src/sheets.js?v=fret19-1"></script>
-<script src="src/score-prompt.js?v=fret19-1"></script>
-<script src="src/score-editor.js?v=fret19-1"></script>
-<script src="src/app.js?v=fret19-1"></script>
+<script src="src/storage.js?v=harmonics-1"></script>
+<script src="src/app-state.js?v=harmonics-1"></script>
+<script src="src/notation.js?v=harmonics-1"></script>
+<script src="src/rhythm.js?v=harmonics-1"></script>
+<script src="src/parser.js?v=harmonics-1"></script>
+<script src="src/staff-layout.js?v=harmonics-1"></script>
+<script src="src/staff-svg.js?v=harmonics-1"></script>
+<script src="src/score-drafts.js?v=harmonics-1"></script>
+<script src="src/score.js?v=harmonics-1"></script>
+<script src="src/audio.js?v=harmonics-1"></script>
+<script src="src/guide.js?v=harmonics-1"></script>
+<script src="src/image-analysis.js?v=harmonics-1"></script>
+<script src="src/fretboard.js?v=harmonics-1"></script>
+<script src="src/score-ui.js?v=harmonics-1"></script>
+<script src="src/sheets.js?v=harmonics-1"></script>
+<script src="src/score-prompt.js?v=harmonics-1"></script>
+<script src="src/score-editor.js?v=harmonics-1"></script>
+<script src="src/app.js?v=harmonics-1"></script>
 </body>
 </html>

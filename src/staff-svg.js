@@ -111,6 +111,7 @@
   // ---------- 그리기 조각
 
   function drawHead(head, item, open){
+    if (head.note.harmonic) return drawHarmonicHead(head, open);
     var map = { cx: n(head.x), cy: n(head.y), rx: HEAD_RX, ry: HEAD_RY, 'data-str': head.note.str == null ? '' : head.note.str, 'data-note': head.index };
     if (open){
       map.fill = 'none';
@@ -122,6 +123,23 @@
     }
     var cls = 'st-head' + (open ? ' is-open' : '') + (head.note.uncertain ? ' is-uncertain' : '');
     return '<ellipse class="' + cls + '"' + attrs(map) + '/>';
+  }
+
+  // 하모닉스 머리: 같은 중심·반지름의 마름모. 빈 머리와 확인 표시 처리는 보통 머리와 같다.
+  function drawHarmonicHead(head, open){
+    var cx = head.x, cy = head.y;
+    var points = [[cx - HEAD_RX, cy], [cx, cy - HEAD_RY], [cx + HEAD_RX, cy], [cx, cy + HEAD_RY]]
+      .map(function(point){ return n(point[0]) + ',' + n(point[1]); }).join(' ');
+    var map = { points: points, 'data-str': head.note.str == null ? '' : head.note.str, 'data-note': head.index };
+    if (open){
+      map.fill = 'none';
+      map.stroke = 'currentColor';
+      map['stroke-width'] = 1.5;
+    } else {
+      map.fill = 'currentColor';
+    }
+    var cls = 'st-head' + (open ? ' is-open' : '') + (head.note.uncertain ? ' is-uncertain' : '') + ' is-harmonic';
+    return '<polygon class="' + cls + '"' + attrs(map) + '/>';
   }
 
   function drawLedgers(info){

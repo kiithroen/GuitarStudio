@@ -623,4 +623,69 @@ test('replaceMeasuresFromText: keeps metadata, swaps only the measures, never to
   assert.equal(ti.replaceMeasuresFromText(flatBase, '[-] E4 - - - | ""').doc.accidentals, 'sharp', 'with key 0 the accidentals follow the typed text');
 });
 
+test('natural harmonics: imported into the model as art h with the hand fret, exported with the sounding pitch', function(){
+  const HARMONICS = notation.NATURAL_HARMONICS;
+  const STRINGS = parser.STRINGS;
+  const frets = Object.keys(HARMONICS).map(Number);
+  // 표의 모든 항목을 줄마다 한 칸씩 (2·3·4칸 마디 제약을 피하려 8칸 마디에 나눠 담는다)
+  const tokens = [];
+  frets.forEach(function(handFret){
+    STRINGS.forEach(function(string){
+      tokens.push('h' + parser.noteNameForMidi(string.midi + HARMONICS[handFret], false) + '@' + string.str);
+    });
+  });
+  const lines = [];
+  for (let i = 0; i < tokens.length; i += 4){
+    const row = tokens.slice(i, i + 4);
+    while (row.length < 4) row.push('r');
+    lines.push('[-] ' + row.join(' ') + ' | ""');
+  }
+  const text = lines.join('\n');
+  const result = ti.scoreToDoc({ beats: 4, raw: text });
+  assert.equal(result.error, undefined);
+  const doc = result.doc;
+  const found = [];
+  doc.measures.forEach(function(measure){
+    measure.cells.forEach(function(cell){
+      cell.slots.forEach(function(slot){
+        slot.notes.forEach(function(note, index){ if (note) found.push({ str: index + 1, note: note }); });
+      });
+    });
+  });
+  assert.equal(found.length, tokens.length);
+  found.forEach(function(item){
+    assert.equal(item.note.art, 'h');
+    assert.ok(frets.indexOf(item.note.fret) >= 0, 'fret is the hand fret');
+  });
+  assert.deepEqual(ti.validateDoc(doc).errors, []);
+  assert.equal(ti.docScoreText(doc), text, 'exported text equals the imported text');
+  // 문서 -> 악보 줄 -> 문서 왕복도 같다
+  const again = ti.scoreToDoc({ beats: 4, raw: ti.docScoreText(doc) });
+  assert.deepEqual(again.doc.measures, doc.measures);
+  // 울리는 음 / 이름
+  const one = fresh();
+  ti.setNote(one, pos(0), 2, frets[0]);
+  ti.setNoteAttrs(one, pos(0), 2, { art: 'h' });
+  const note = one.measures[0].cells[0].slots[0].notes[1];
+  assert.equal(ti.noteMidiOf(2, note), STRINGS[1].midi + HARMONICS[frets[0]]);
+  assert.equal(ti.noteMidiOf(2, { fret: frets[0], lh: null, rh: null, art: null, uncertain: false }), STRINGS[1].midi + frets[0]);
+  assert.equal(ti.noteLabelOf(one, 2, note), parser.noteNameForMidi(STRINGS[1].midi + HARMONICS[frets[0]], false));
+  assert.equal(ti.noteToken(one, 2, note), 'h' + ti.noteLabelOf(one, 2, note) + '@2');
+  // 모양 검사: 표에 없는 프렛은 오류, 표의 프렛은 통과
+  const missingFret = (function(){ let f = 0; while (frets.indexOf(f) >= 0) f++; return f; })();
+  const badDoc = ti.cloneDoc(one);
+  badDoc.measures[0].cells[0].slots[0].notes[1].fret = missingFret;
+  const badResult = ti.normalizeDoc(badDoc);
+  assert.equal(badResult.doc, undefined);
+  assert.ok(badResult.error.indexOf('하모닉스 프렛은 ' + notation.naturalHarmonicFretsText()) >= 0, badResult.error);
+  assert.ok(ti.normalizeDoc(one).doc, 'a valid harmonic document is accepted');
+  const wrongArt = ti.cloneDoc(one);
+  wrongArt.measures[0].cells[0].slots[0].notes[1].art = '>';
+  assert.match(ti.normalizeDoc(wrongArt).error, /주법은 없음, ! 또는 h여야 합니다\./);
+  assert.throws(function(){ ti.setNoteAttrs(one, pos(0), 2, { art: '>' }); }, /주법은 null, ! 또는 h여야 합니다: /);
+  const plain = fresh();
+  ti.setNote(plain, pos(0), 2, missingFret);
+  assert.throws(function(){ ti.setNoteAttrs(plain, pos(0), 2, { art: 'h' }); }, /하모닉스 프렛은 /);
+});
+
 process.stdout.write('1..' + checks + '\n');

@@ -3,11 +3,12 @@
 var RIGHT_HAND_NAMES = { p: '엄지', i: '검지', m: '중지', a: '약지' };
 
 // TAB 프렛 글자 하나. 연습 화면 알약과 악보 입력 화면 칸이 같이 쓰는 유일한 생성 함수다.
-// spec = {fret, lh: null|0~4, rh: null|'p'|'i'|'m'|'a', art: null|'apoyando'}
+// spec = {fret, lh: null|0~4, rh: null|'p'|'i'|'m'|'a', art: null|'apoyando'|'harmonic'}
+// 하모닉스는 손 대는 프렛을 <7> 로 적는다(Guitar Pro 등 TAB 표기).
 function buildFretLabel(spec){
   var label = document.createElement('span');
-  label.className = 'fret-label' + (spec.art === 'apoyando' ? ' is-apoyando' : '');
-  label.appendChild(document.createTextNode(String(spec.fret)));
+  label.className = 'fret-label' + (spec.art === 'apoyando' ? ' is-apoyando' : '') + (spec.art === 'harmonic' ? ' is-harmonic' : '');
+  label.appendChild(document.createTextNode(spec.art === 'harmonic' ? '<' + spec.fret + '>' : String(spec.fret)));
   var hasLh = spec.lh != null;
   if (hasLh || spec.rh){
     var fing = document.createElement('span');
