@@ -258,14 +258,9 @@ function initFretboard(){
 
   // 4칸 창을 그린다. 짚는 프렛 최댓값이 4 이하면 1프렛부터(너트 굵은 선),
   // 4를 넘으면 가장 낮게 짚는 프렛부터 4칸을 그리고 1번 줄 오른쪽에 시작 프렛을 적는다.
-  // 왼쪽에 적으면 6번 줄 점에 가려져서 오른쪽에 둔다. 그 글자 자리만큼 폭을 넓혔다.
+  // 왼쪽에 적으면 6번 줄 점에 가려져서 오른쪽에 둔다. 글자가 있는 카드만 그 자리만큼 폭을 넓히고,
+  // 두 자리 프렛("10fr")은 더 넓힌다. 폭 100에서는 "3fr"도 끝이 살짝 잘렸다(글자 상자로 확인).
   function buildChordSvg(frets, fingers){
-    var ns = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', '0 0 100 86');
-    svg.setAttribute('width', '96');
-    svg.setAttribute('height', '82');
-
     var maxFret = 0, minFret = 0;
     for (var i = 0; i < frets.length; i++){
       if (frets[i] > 0){
@@ -274,6 +269,12 @@ function initFretboard(){
       }
     }
     var baseFret = maxFret > 4 ? minFret : 1;
+
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + (baseFret >= 10 ? 108 : (baseFret > 1 ? 104 : 100)) + ' 86');
+    svg.setAttribute('width', '96');
+    svg.setAttribute('height', '82');
 
     var x0 = 14, y0 = 16, sw = 13.5, fh = 15;
     // 너트

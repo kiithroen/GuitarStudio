@@ -668,6 +668,25 @@ async function testEditHandoff(client, httpPort) {
   await client.evaluate(`setCompactPractice(true); true`);
   assert.equal(await client.evaluate(`document.getElementById('compactStatusBadge').getClientRects().length > 0`), true, '900px compact mode still shows the BPM badge');
   await client.evaluate(`setCompactPractice(false); true`);
+  // 코드 카드의 시작 프렛 글자("3fr", "10fr")가 그림 폭 안에 다 들어가는지 실제 글자 상자로 본다.
+  const clippedFretLabels = await client.evaluate(`(function(){
+    var host = document.createElement('div');
+    document.body.appendChild(host);
+    var clipped = [];
+    Object.keys(GuitarParser.CHORD_DB).forEach(function(name){
+      var svg = buildChordSvg(GuitarParser.CHORD_DB[name].frets, GuitarParser.CHORD_DB[name].fingers);
+      host.appendChild(svg);
+      var width = Number(svg.getAttribute('viewBox').split(' ')[2]);
+      Array.prototype.forEach.call(svg.querySelectorAll('text'), function(text){
+        if (!/fr$/.test(text.textContent)) return;
+        var box = text.getBBox();
+        if (box.x < 0 || box.x + box.width > width) clipped.push(name + ' ' + text.textContent + ' ' + Math.round(box.x + box.width) + '>' + width);
+      });
+    });
+    host.remove();
+    return clipped;
+  })()`);
+  assert.deepEqual(clippedFretLabels, [], 'chord card start-fret labels fit inside the drawing: ' + clippedFretLabels.join(', '));
   await client.send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false });
   await client.evaluate('window.scrollTo(0, document.getElementById("scoreToolbar").getBoundingClientRect().top + window.scrollY - 8); true');
   await shot('practice-capo-badge.png', 1024, 768);
@@ -3630,7 +3649,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=measure-memo-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=chord-cards-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
