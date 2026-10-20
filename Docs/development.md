@@ -36,6 +36,8 @@ alphaTab 보기 창은 `app.js` 없이 따로 스크립트를 부른다. 구성�
 | `src/score-to-alphatex.js` | 텍스트 악보 → alphaTex 변환기(`GuitarAlphaTex`). `GuitarStaffLayout.layoutScore` 결과만 쓴다 |
 | `alphatab.html`, `src/alphatab-view.js` | 새 탭 alphaTab 보기 창. `gs.alphaTab.view`를 읽어 변환하고 플레이어를 띄운다. 불러오는 스크립트는 notation·rhythm·parser·staff-layout·score-to-alphatex·vendor alphaTab 순이다 |
 | `vendor/alphatab/` | alphaTab 1.8.4(MPL-2.0) 배포본. 고치지 않는다. 앱 기본 화면은 불러오지 않고 보기 창에서만 쓴다 |
+| `tools/score-to-alphatex.js` | 시트 한 행 TSV·내장곡 → alphaTex 명령줄 도구(`GuitarAlphaTex.toAlphaTex`만 쓴다). 사용법은 [alphaTab 보기](alphatab.md#명령줄-도구) |
+| `tools/alphatab-to-score.js` | alphaTex·Guitar Pro·MusicXML → 시트 한 행 TSV 명령줄 도구(vendor alphaTab을 Node에서 `require`). 가져오기 규칙과 한계는 [alphaTab 보기](alphatab.md#명령줄-도구) |
 
 악보 입력 화면 `score-input.html`은 `app.js` 없이 따로 스크립트를 부른다. 구성과 결정은 [악보 입력](tab-input.md)에 있다. 2026-10-19 결정: 두 화면이 같이 쓰는 색 토큰과 기본 컨트롤 스타일(`:root`, `.btn`, `.panel`, `.badge` 등)을 `index.html` 인라인 스타일에서 `src/base.css`로 옮겼다. `index.html`은 `<style>` 앞에서 불러 캐스케이드 순서를 지킨다. 같은 날 `app.js` 맨 위의 설정 상태와 오디오 런타임 전역도 `src/app-state.js`로 옮겼다. 입력 화면이 `audio.js`로 음을 들려주려면 이 전역이 있어야 하는데, 복사하면 마스터 음량 같은 값이 두 군데가 되기 때문이다.
 
@@ -133,6 +135,7 @@ node test/test-staff-layout.js
 node test/test-staff-svg.js
 node test/test-staff-input.js
 node test/test-score-to-alphatex.js
+node test/test-alphatab-tools.js
 node test/test-audio.js
 node test/test-guide.js
 node test/test-storage.js

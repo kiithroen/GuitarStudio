@@ -1,6 +1,6 @@
 # Guitar Studio 에이전트 지침
 
-세션마다 통째로 읽히는 파일이라 규칙과 함정만 둔다. 내용과 결정은 문서에 있다: [사용](Docs/usage.md) · [악보 문법](Docs/score-format.md) · [모듈·저장·검증](Docs/development.md) · [리듬·오디오](Docs/beginner-rhythm.md) · [화면·조작](Docs/ui.md) · [악보 입력](Docs/tab-input.md) · [오선 미리보기](Docs/staff-notation.md) · [오선 입력](Docs/staff-input.md) · [내장곡 출처](Docs/builtin-sources.md). 일하기 전에 해당 문서만 읽는다.
+세션마다 통째로 읽히는 파일이라 규칙과 함정만 둔다. 내용과 결정은 문서에 있다: [사용](Docs/usage.md) · [악보 문법](Docs/score-format.md) · [모듈·저장·검증](Docs/development.md) · [리듬·오디오](Docs/beginner-rhythm.md) · [화면·조작](Docs/ui.md) · [악보 입력](Docs/tab-input.md) · [오선 미리보기](Docs/staff-notation.md) · [오선 입력](Docs/staff-input.md) · [내장곡 출처](Docs/builtin-sources.md) · [alphaTab 보기·변환](Docs/alphatab.md). 일하기 전에 해당 문서만 읽는다.
 
 ## 문서
 - 결정은 그 시스템 문서에 날짜(`YYYY-MM-DD`)와 이유를 달아 적는다. 화면·조작은 `ui.md`, 리듬·재생은 `beginner-rhythm.md`, 모듈·저장·검증은 `development.md`.
@@ -13,6 +13,7 @@
 - 카포처럼 전역 피치에 영향을 주는 값은 TAB·코드 카드·지판·가이드음 모든 경로에 같이 반영한다.
 - 악보 입력 화면(`score-input.html`)은 `app.js`를 불러오지 않는다. 두 화면이 같이 쓰는 전역은 `src/app-state.js`, 스타일은 `src/base.css`에 둔다. 칸 수 목록은 `GuitarNotation.SHEET_BEAT_COUNTS`, 음이름은 `noteNameForMidi`만 쓴다.
 - UI 문구(상태 줄·알림·확인 창·오류 메시지)는 `~습니다`·`~하세요`·명사형으로 쓰고 반말·해요체를 쓰지 않는다. `src/score-prompt.js`의 AI 프롬프트 본문은 해당하지 않는다. 문서·코드 주석·커밋 메시지는 해라체(`~한다`·`~했다`)로 쓰고 반말을 쓰지 않는다. 규칙은 `Docs/development.md`의 UI 톤 절.
+- `vendor/alphatab/`은 받은 그대로 두고 고치지 않는다. alphaTab은 보기 창(`alphatab.html`)과 `tools/`에서만 불러오고 앱 기본 화면에는 싣지 않는다.
 - `tools/sheet-import-script.js`는 시트의 Apps Script에 붙여 넣는 파일이다. `require`·`module`·`import`를 쓰지 않고, 악보 문법 검사를 옮기지 않는다.
 
 ## 악보·재생
