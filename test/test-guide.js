@@ -368,4 +368,27 @@ assert.equal(crossBarResume[0].duration, 2, 'parsed resume uses only the remaini
   assert.equal('glide' in optionsOf(calls.filter(call => call[0] === 'note')[0]), false, 'a plain note passes no glide');
 }
 
-process.stdout.write('Result: guide events passed (parsed and synthetic subdivision timing, simultaneous chords, articulation gain, rests, cross-bar holds, resume, loop clipping, capo, and legacy wrapper)\n');
+{
+  // 빈칸 _ : 이벤트 0, 시간 0. 유지는 빈칸을 건너 이어지고 길이에 빈칸이 들어가지 않는다
+  const skipScore = parser.parseScore('[Am] A2+E3 - - _\n[C] - E4 _ _\n[-] _ _ _ G4', 4);
+  assert.deepEqual(skipScore.errors, []);
+  const [shortEnd, shortMid, pickup] = skipScore.measures;
+  const guideOf = (beat, options) => Array.from(context.getBeatGuideEvents(beat, Object.assign({ startTime:2, slotDuration:0.5, measures:skipScore.measures }, options || {})));
+  assert.deepEqual(guideOf(shortEnd.beats[3]), [], 'a skip cell emits no event');
+  assert.deepEqual(guideOf(shortEnd.beats[3], { resumeHold:true }), [], 'a skip cell emits nothing even when resuming a hold');
+  assert.deepEqual(guideOf(shortMid.beats[2]), []);
+  assert.deepEqual(guideOf(pickup.beats[0]), []);
+  assert.equal(context.scheduleBeatGuide(pickup.beats[1], { startTime:2, slotDuration:0.5, measures:skipScore.measures }).length, 0);
+  const noteCalls = calls.length;
+  context.scheduleBeatGuide(shortEnd.beats[3], { startTime:2, slotDuration:0.5, measures:skipScore.measures });
+  assert.equal(calls.length, noteCalls, 'scheduling a skip cell plays and stops nothing');
+  const chordEvents = guideOf(shortEnd.beats[0]);
+  assert.deepEqual(chordEvents.map(event => event.duration), [2, 2], 'the chord lasts the 3 written cells plus the hold after the skip cell: 4 cells x 0.5 s, the skip cell adds nothing');
+  assert.equal(shortEnd.beats[0].durationUnits, 48);
+  const resumed = guideOf(shortMid.beats[0], { resumeHold:true });
+  assert.deepEqual(resumed.map(event => [event.note.midi, event.when, event.duration]), [[45, 2, 0.5], [52, 2, 0.5]], 'resuming at the hold after the skip cell restores the chord for the remaining real length');
+  const eventsAfterSkips = guideOf(pickup.beats[3], { startTime:5 });
+  assert.deepEqual(eventsAfterSkips.map(event => [event.when, event.duration]), [[5, 0.5]], 'the pickup note starts on its own cell time');
+}
+
+process.stdout.write('Result: guide events passed (parsed and synthetic subdivision timing, simultaneous chords, articulation gain, rests, cross-bar holds, resume, loop clipping, capo, skip cells, and legacy wrapper)\n');

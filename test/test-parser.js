@@ -590,4 +590,23 @@ test('natural harmonics: h + sounding pitch + @string, hand fret from the table,
   assert.equal(chord.tok, chordText);
 });
 
+test('skip cells parse into note-less cell objects that are not rests', function(){
+  const pickup = parse('[-] _ _ _ E3@4/G3@3', 4);
+  assert.deepEqual(pickup.errors, []);
+  const cells = pickup.measures[0].beats;
+  assert.equal(cells.length, 4, 'a skip cell keeps its place in the measure');
+  for (const cell of cells.slice(0, 3)){
+    assert.deepEqual([cell.tok, cell.kind, cell.isSubdivided, cell.midi, cell.str, cell.chordNotes, cell.uncertain], ['_', 'skip', false, null, null, null, false]);
+    assert.equal(cell.ko, '빈칸');
+  }
+  assert.equal(cells[3].isSubdivided, true, 'the cell after the skip cells is a normal subdivision');
+  const shortMeasure = parse('[G] B3 D4 _ _', 4);
+  assert.deepEqual(shortMeasure.errors, []);
+  assert.deepEqual(shortMeasure.measures[0].beats.map(cell => cell.kind), ['note', 'note', 'skip', 'skip']);
+  const shortEnd = parse('[Am] A2+E3 - - _', 4);
+  assert.deepEqual(shortEnd.errors, []);
+  assert.deepEqual(shortEnd.measures[0].beats.map(cell => cell.kind), ['note', 'hold', 'hold', 'skip']);
+  assert.equal(parser.serializeScoreMeasures(pickup.measures, '\n').split(' | ')[0], '[-] _ _ _ E3@4/G3@3', 'a skip cell serializes as _');
+  assert.equal(require('../src/notation.js').isRestToken('_'), false);
+});
 process.stdout.write('1..' + checks + '\n');

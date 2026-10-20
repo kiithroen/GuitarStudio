@@ -29,6 +29,7 @@ var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./
         return {isRest:true,kind:'rest',svg:restSvg,label:'쉼',durName:'쉼'};
       }
       if (kind === 'hold') return {isRest:false,kind:'hold',svg:'',label:'유지',durName:'유지'};
+      if (kind === 'skip') return {isRest:false,kind:'skip',svg:'',label:'빈칸',durName:'빈칸'};
       if (kind === 'invalid' || !part || part.kind !== 'note') return {isRest:false,kind:'invalid',svg:'',label:'오류',durName:'오류'};
       var units = part.durationUnits;
       if (!Number.isFinite(units)) units = part.slotUnits || 12;
@@ -63,6 +64,7 @@ var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./
     if (!note || note.kind === 'invalid') return '오류';
     if (note.kind === 'rest') return '쉼';
     if (note.kind === 'hold') return '유지';
+    if (note.kind === 'skip') return '빈칸';
     if (mode === 'solfege'){
       return omitOctave ? (note.ko || '') : ((note.ko || '') + (note.en ? (note.en.match(/\d+$/) || [''])[0] : ''));
     }
@@ -81,6 +83,7 @@ var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./
       if (!part || part.kind === 'invalid') return '오류';
       if (part.kind === 'rest') return '쉼';
       if (part.kind === 'hold') return '유지';
+      if (part.kind === 'skip') return '빈칸';
       if (Array.isArray(part.chordNotes) && part.chordNotes.length){
         return part.chordNotes.map(function(note){ return formatNote(note, omitOctave); }).join('+');
       }
@@ -90,6 +93,7 @@ var GuitarRhythm = typeof module !== 'undefined' && module.exports ? require('./
     if (beat.kind === 'invalid') return '오류';
     if (beat.kind === 'rest') return '쉼';
     if (beat.kind === 'hold') return '유지';
+    if (beat.kind === 'skip') return '빈칸';
     if (isGroup){
       return beat.subNotes.map(function(part){ return formatPart(part, compact); }).join(compact ? '·' : ' · ');
     }

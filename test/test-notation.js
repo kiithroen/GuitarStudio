@@ -351,4 +351,53 @@ test('parseScore: slideType (up or down) and slideFromMidi land on the note, the
   const acrossMeasures = parser.parseScore('[-] E4 - - -\n[-] gF4 - - -', 4);
   assert.equal(acrossMeasures.measures[1].beats[0].slideType, 'up');
 });
+test('isSkipToken: only a lone underscore (trimmed) is a skip cell', function(){
+  assert.equal(notation.isSkipToken('_'), true);
+  assert.equal(notation.isSkipToken('  _ '), true);
+  for (const tok of ['', null, undefined, '__', '_?', '!_', 'E4_', '_/_', 'r', '-', '~_', '_+E4']) assert.equal(notation.isSkipToken(tok), false, String(tok));
+  assert.equal(notation.isRestToken('_'), false, 'a skip cell is not a rest');
+});
+test('skip cells: leading pickup, short middle measure, and short last measure validate', function(){
+  const codes = raw => parser.validateScore(raw, 4).errors.map(e => e.code);
+  assert.deepEqual(codes('[-] _ _ _ E3@4/G3@3'), [], 'pickup measure');
+  assert.deepEqual(codes('[G] B3 D4 _ _'), [], 'short measure in the middle of a 4-cell song');
+  assert.deepEqual(codes('[Am] A2+E3 - - _'), [], 'short last measure');
+  assert.deepEqual(codes('[-] _ _ _ E3\n[G] B3 D4 _ _\n[Am] A2+E3 - - _'), [], 'several skip groups in one score');
+  assert.deepEqual(codes('[-] _ E3 F3 G3'), [], 'one leading skip');
+});
+test('skip cells: INVALID_SKIP when inside a subdivision, inside a chord, or not one leading/trailing group', function(){
+  const errorsOf = raw => parser.validateScore(raw, 4).errors;
+  const skipErrors = raw => errorsOf(raw).filter(e => e.code === 'INVALID_SKIP');
+  assert.equal(skipErrors('[G] E4/_ F4 G4 A4').length, 1, 'skip inside a subdivision');
+  assert.deepEqual(errorsOf('[G] E4/_ F4 G4 A4').map(e => e.code), ['INVALID_SKIP'], 'and nothing else is reported for it');
+  assert.equal(skipErrors('[G] _/E4 F4 G4 A4').length, 1);
+  assert.equal(skipErrors('[G] E4+_ F4 G4 A4').length, 1, 'skip inside a chord');
+  assert.equal(skipErrors('[G] E4 _ G4 A4').length, 1, 'skip in the middle');
+  assert.equal(skipErrors('[G] E4 _ G4 A4')[0].beat, 2, 'the error points at the offending cell');
+  assert.equal(skipErrors('[G] _ E4 _ _').length, 1, 'skip on both ends');
+  assert.equal(skipErrors('[G] _ E4 _ _')[0].beat, 3);
+  assert.equal(skipErrors('[G] _ E4 F4 _').length, 1);
+  assert.equal(skipErrors('[G] _ _ _ _').length, 1, 'every cell of the measure is a skip');
+  assert.equal(skipErrors('[G] _ _ _ _ // [G] E4 F4 G4 A4').length, 1);
+  assert.ok(errorsOf('[G] _? E4 F4 G4').length > 0, 'a mark glued to the underscore is rejected');
+  assert.equal(skipErrors('[G] _? E4 F4 G4').length, 0, '_? is an unknown note, not a skip');
+  assert.deepEqual(Array.from(new Set(errorsOf('[G] !_ E4 F4 G4').map(e => e.code))), ['UNKNOWN_NOTE']);
+  assert.deepEqual(Array.from(new Set(errorsOf('[G] _? E4 F4 G4').map(e => e.code))), ['UNKNOWN_NOTE']);
+});
+test('skip cells count as one cell for TOO_MANY_BEATS and MISSING_BEATS', function(){
+  const missing = parser.validateScore('[G] E4 F4 _', 4).errors;
+  assert.deepEqual(missing.map(e => e.code), ['MISSING_BEATS']);
+  assert.ok(missing[0].message.includes('r, 음표 또는 빈칸 _ 으로 직접 입력하세요'), 'the new hint mentions the skip cell: ' + missing[0].message);
+  assert.deepEqual(parser.validateScore('[G] E4 _ _ _ _', 4).errors.map(e => e.code).filter(c => c === 'TOO_MANY_BEATS'), ['TOO_MANY_BEATS']);
+});
+test('skip cells are transparent to slur and slide linking', function(){
+  const linked = parser.parseScore('[-] E4@1 - - -\n[-] _ _ _ sF4@1', 4);
+  assert.deepEqual(linked.errors, [], 'the slur links to the last note played on the same string across the skip cells');
+  assert.equal(linked.measures[1].beats[3].slurType, 'hammer');
+  const slide = parser.parseScore('[-] E4@1 - - -\n[-] _ _ _ gF4@1', 4);
+  assert.deepEqual(slide.errors, []);
+  assert.equal(slide.measures[1].beats[3].slideType, 'up');
+  const rest = parser.validateScore('[-] E4@1 r _ _\n[-] sF4@1 r r r', 4);
+  assert.ok(rest.errors.some(e => e.code === 'INVALID_SLUR'), 'a rest still cuts the link');
+});
 process.stdout.write('1..'+checks+'\n');

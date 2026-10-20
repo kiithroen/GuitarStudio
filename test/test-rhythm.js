@@ -193,4 +193,65 @@ test('uncertain mark keeps rest and hold meaning in the rhythm chain', function(
   assert.deepEqual(parser.validateScore('r? E4 ? E4',4).errors,[]);
 });
 
+test('skip cells: kind, zero length, and positions in real time', function(){
+  const parsed=parse('[-] _ _ _ E4\n[C] E4 - - -',4);
+  assert.deepEqual(parsed.errors,[]);
+  const [pickup,full]=parsed.measures;
+  for (const cell of pickup.beats.slice(0,3)){
+    assert.deepEqual([cell.kind,cell.slotUnits,cell.durationUnits,cell.startUnits],['skip',0,0,0],'a skip part has no length and sits at the time reached so far');
+  }
+  assert.deepEqual([pickup.beats[3].startUnits,pickup.beats[3].durationUnits],[0,12],'the pickup note starts at time 0');
+  assert.equal(full.beats[0].startUnits,12,'the next measure starts right after the pickup note');
+  assert.equal(full.beats[0].durationUnits,48);
+  assert.equal(rhythm.annotate(parsed.measures,4).totalUnits,5*12,'totalUnits leaves out the skip cells');
+  assert.deepEqual(rhythm.annotate(parsed.measures,4).events.map(event=>[event.startUnits,event.durationUnits]),[[0,12],[12,48]],'skip cells make no event');
+});
+test('without skip cells startUnits and totalUnits are the measure and cell index times 12', function(){
+  const parsed=parse('[C] E4 F4 G4 A4\n[C] B4 - r C5\n[C] E4/F4 G4 - A4',4);
+  assert.deepEqual(parsed.errors,[]);
+  parsed.measures.forEach((measure,mi)=>measure.beats.forEach((beat,bi)=>{
+    assert.equal(beat.startUnits,(mi*4+bi)*12);
+    if (beat.subNotes) beat.subNotes.forEach((sub,si)=>assert.equal(sub.startUnits,(mi*4+bi)*12+si*6));
+  }));
+  assert.equal(rhythm.annotate(parsed.measures,4).totalUnits,3*4*12);
+  assert.equal(rhythm.countPlayableSlots(parsed.measures,0,0,2),12);
+  assert.equal(rhythm.countPlayableSlots(parsed.measures,1,2,2),6);
+});
+test('a hold chain runs across skip cells and the skip cells add no length', function(){
+  const parsed=parse('[Am] A2+E3 - - _\n[C] - E4 _ _\n[C] G4 - - -',4);
+  assert.deepEqual(parsed.errors,[]);
+  const [first,second,third]=parsed.measures;
+  assert.equal(first.beats[0].durationUnits,48,'the chord lasts three cells and then the next measure hold continues it');
+  assert.equal(second.beats[0].kind,'hold');
+  assert.deepEqual(second.beats[0].tieFrom,{measureIndex:0,beatIndex:0,subIndex:null});
+  assert.equal(first.beats[0].durationUnits,first.beats[1].durationUnits+12,'the chain length counts only the cells that take time');
+  assert.equal(second.beats[0].startUnits,36,'the hold right after the skip cell continues at the time the skip cell reached');
+  assert.equal(first.beats[3].startUnits,36);
+  assert.deepEqual([second.beats[2].kind,second.beats[2].startUnits,second.beats[3].startUnits],['skip',60,60]);
+  assert.equal(third.beats[0].startUnits,60,'the measure after the short measure starts at the end of its last real cell');
+  const across=parse('[Am] A2+E3 - _ _\n[C] - - E4 F4',4);
+  assert.deepEqual(across.errors,[]);
+  assert.equal(across.measures[0].beats[0].durationUnits,48,'a chain through a skip run lasts only the cells that take time (A2+E3, hold, hold, hold)');
+  assert.equal(across.measures[1].beats[1].durationUnits,12);
+  const orphan=parse('[-] _ _ - E4',4);
+  assert.ok(orphan.errors.some(error=>error.code==='ORPHAN_HOLD'),'a hold right after leading skip cells at the start of the song has no note to hold');
+  const keepsChain=parse('[-] E4 - _ _\n[-] - r r r',4);
+  assert.equal(keepsChain.measures[0].beats[0].durationUnits,36,'the chain survives the skip cells and ends at the next rest');
+});
+test('rest after a skip cell still cuts the chain and a skip cell is not a rest', function(){
+  const parsed=parse('[-] E4 - _ _\n[-] r - r r',4);
+  assert.ok(parsed.errors.some(error=>error.code==='ORPHAN_HOLD'));
+  assert.equal(parsed.measures[0].beats[0].durationUnits,24);
+  assert.equal(parsed.measures[0].beats[2].kind,'skip');
+  assert.notEqual(parsed.measures[0].beats[2].kind,'rest');
+});
+test('getSoundingNotes uses the real-time position', function(){
+  const parsed=parse('[Am] A2+E3 - - _\n[C] - E4 _ _',4);
+  assert.deepEqual(parsed.errors,[]);
+  const hold=parsed.measures[1].beats[0];
+  assert.equal(hold.startUnits,36);
+  assert.deepEqual(rhythm.getSoundingNotes(parsed.measures,hold.startUnits).map(item=>[item.note.midi,item.remainingUnits]),[[45,12],[52,12]],'the chord is still sounding at the hold after the skip cell');
+  assert.deepEqual(rhythm.getSoundingNotes(parsed.measures,parsed.measures[1].beats[2].startUnits),[],'at the skip run after the last note nothing is sounding');
+});
+
 process.stdout.write('1..' + checks + '\n');

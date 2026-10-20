@@ -135,6 +135,11 @@
     return /^(?:r\??|\?)$/.test(String(tok || '').trim());
   }
 
+  // 빈칸 토큰 판별의 SSOT. 빈칸 _ 은 칸 자리는 차지하고 시간은 0인 칸이다(Docs/score-format.md 빈칸).
+  function isSkipToken(tok){
+    return String(tok == null ? '' : tok).trim() === '_';
+  }
+
   // 슬러(해머링·풀링)·슬라이드 잇기 규칙의 SSOT. 검사·파싱 결과·악보 입력 화면이 같이 쓴다(Docs/score-format.md 슬러·슬라이드).
   // pieces: 시간 순 조각 [{rest, hold, notes:[{str, midi, slur}]}]. 마디를 넘어 이어 본다.
   // slur 는 "앞 음에서 왼손으로 이어지는 음"(슬러·슬라이드) 표시다.
@@ -234,7 +239,25 @@
       if (quoted) add(errors, 'UNBALANCED_DELIMITER', measureNo, null, '따옴표가 닫히지 않았습니다.');
 
       if (tokens.length > bpb) add(errors, 'TOO_MANY_BEATS', measureNo, bpb + 1, '마디의 박 수가 설정된 ' + bpb + '박을 초과합니다.');
-      if (tokens.length < bpb) add(errors, 'MISSING_BEATS', measureNo, tokens.length + 1, '마디에 ' + (bpb - tokens.length) + '칸이 부족합니다. 누락된 칸을 r 또는 음표로 직접 입력하세요.');
+      if (tokens.length < bpb) add(errors, 'MISSING_BEATS', measureNo, tokens.length + 1, '마디에 ' + (bpb - tokens.length) + '칸이 부족합니다. 누락된 칸을 r, 음표 또는 빈칸 _ 으로 직접 입력하세요.');
+
+      // 빈칸 _ 은 마디 앞쪽이나 뒤쪽에 이어진 묶음 하나로만 쓴다. 전부 빈칸인 마디도 안 된다.
+      var skipIndexes = [];
+      tokens.forEach(function(token, index){ if (isSkipToken(token)) skipIndexes.push(index); });
+      if (skipIndexes.length){
+        if (skipIndexes.length === tokens.length){
+          add(errors, 'INVALID_SKIP', measureNo, 1, '마디의 모든 칸이 빈칸입니다. 빈칸 _ 은 마디에 소리 나는 칸이 하나 이상 있어야 합니다.');
+        } else {
+          var leadingSkips = 0, trailingSkips = 0;
+          while (leadingSkips < tokens.length && isSkipToken(tokens[leadingSkips])) leadingSkips++;
+          while (trailingSkips < tokens.length && isSkipToken(tokens[tokens.length - 1 - trailingSkips])) trailingSkips++;
+          if (skipIndexes.length !== leadingSkips && skipIndexes.length !== trailingSkips){
+            var offending = skipIndexes.filter(function(index){ return index >= leadingSkips; })[0];
+            if (offending == null) offending = skipIndexes[0];
+            add(errors, 'INVALID_SKIP', measureNo, offending + 1, '빈칸 _ 은 마디 앞쪽이나 뒤쪽에 이어서만 쓸 수 있습니다. 가운데에 두거나 앞뒤 양쪽에 나누어 쓰지 마세요.');
+          }
+        }
+      }
 
       tokens.forEach(function(token, beatIndex){
         var parts = splitBeatSubtokens(token);
@@ -243,6 +266,11 @@
         }
 
         parts.forEach(function(part){
+          if (isSkipToken(part)){
+            // 칸 하나 통째로만 쓴다. 슬러·슬라이드 잇기에는 조각을 만들지 않는다(없는 칸처럼 투명).
+            if (parts.length > 1) add(errors, 'INVALID_SKIP', measureNo, beatIndex + 1, '빈칸 _ 은 칸 하나 전체로만 쓸 수 있습니다. 분할(/) 안에는 쓰지 마세요.');
+            return;
+          }
           if (part === '.'){
             add(errors, 'AMBIGUOUS_REST_TOKEN', measureNo, beatIndex + 1, '점(.)은 쉼인지 유지인지 모호합니다. 쉼은 r, 유지는 -로 입력하세요.');
             return;
@@ -278,6 +306,10 @@
           chordParts.forEach(function(chordPart){
             chordPart = chordPart.trim();
             if (!chordPart) return;
+            if (isSkipToken(chordPart)){
+              add(errors, 'INVALID_SKIP', measureNo, beatIndex + 1, '빈칸 _ 은 칸 하나 전체로만 쓸 수 있습니다. 화음(+) 안에는 쓰지 마세요.');
+              return;
+            }
             var parsed = parseNoteToken ? parseNoteToken(chordPart, measureIndex * bpb + beatIndex) : null;
             var plainChordPart = chordPart.replace(/\?$/, '');
             if (!parsed){
@@ -380,6 +412,7 @@
     decodeMeasureLine:decodeMeasureLine,
     serializeScoreMeasures:serializeScoreMeasures,
     isRestToken:isRestToken,
+    isSkipToken:isSkipToken,
     linkSlurs:linkSlurs,
     hasUncertainMark:hasUncertainMark,
     validateScore:validateScore,

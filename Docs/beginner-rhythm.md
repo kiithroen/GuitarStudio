@@ -6,7 +6,9 @@
 
 `GuitarRhythm.getGridInfo(slotsPerBar)`는 `{slotsPerBar,numerator,denominator,slotQuarterLength,bpmUnitLabel}`을 반환한다. 6·9·12칸은 각각 6/8·9/8·12/8이고 한 칸은 4분음표 길이 기준 0.5이다. 8칸은 4/4의 8분음표 칸(0.5), 나머지 유효한 1~12칸은 n/4 박자에 4분음표 칸(1)이다. UI에서 선택 가능한 칸 수는 2, 3, 4, 6, 8, 9이다.
 
-`GuitarRhythm.annotate(measures, slotsPerBar)`는 입력 `beats`와 `subNotes`를 시간순으로 분석하고 `{events,totalUnits,errors}`를 반환한다. `UNITS_PER_SLOT`은 12이다. 단일 part의 `kind`는 `note`, `rest`, `hold`, `invalid` 중 하나고, 분할 beat는 `group`이다. 각 part에는 `startUnits`, `slotUnits`, `durationUnits`, `tieFrom`이 붙는다. `startUnits`는 곡 시작부터의 절대 정수 위치고 마디 시작은 `measureIndex * slotsPerBar * 12`이다. `slotUnits`는 part 자체 길이(12 또는 12/분할수)이다. 이벤트와 `tieFrom`의 위치 참조에서 일반 beat의 `subIndex`는 null이고 분할 part는 0부터 시작하는 분할 인덱스를 쓴다.
+`GuitarRhythm.annotate(measures, slotsPerBar)`는 입력 `beats`와 `subNotes`를 시간순으로 분석하고 `{events,totalUnits,errors}`를 반환한다. `UNITS_PER_SLOT`은 12이다. 단일 part의 `kind`는 `note`, `rest`, `hold`, `skip`, `invalid` 중 하나고, 분할 beat는 `group`이다. 각 part에는 `startUnits`, `slotUnits`, `durationUnits`, `tieFrom`이 붙는다. `startUnits`는 곡 시작부터 빈칸([악보 문법](score-format.md#빈칸))을 뺀 실제 시간의 절대 정수 위치다. 앞의 모든 칸 중 빈칸이 아닌 칸 수 × 12이므로, 빈칸이 없는 악보에서는 마디 시작이 `measureIndex * slotsPerBar * 12`이고 빈칸이 있으면 그보다 앞선다. 마디 시작 위치가 필요한 코드는 이 식으로 따로 셈하지 말고 `startUnits`를 쓴다. `totalUnits`도 빈칸을 뺀 합이다. `slotUnits`는 part 자체 길이(12 또는 12/분할수)이다.
+
+빈칸(`skip`) part는 `slotUnits`와 `durationUnits`가 0이고 이벤트를 만들지 않으며, `startUnits`는 그 자리까지 쌓인 시간이라 바로 다음 칸과 같다. 시간이 흐르지 않으니 유지 사슬은 빈칸에서 끊기지 않고 건너 이어지며 유지 길이에 빈칸은 들어가지 않는다. 쉼이 아니라서 사슬을 끊거나 소리를 정리하지 않는다. `GuitarRhythm.isSkipBeat`가 칸 하나 통째로의 빈칸을 가리고, `GuitarRhythm.countPlayableSlots`가 어느 칸부터 구간 끝 마디까지 빈칸이 아닌 칸 수를 센다. 빈칸 판별 자체는 `GuitarNotation.isSkipToken` 하나다. 이벤트와 `tieFrom`의 위치 참조에서 일반 beat의 `subIndex`는 null이고 분할 part는 0부터 시작하는 분할 인덱스를 쓴다.
 
 음과 화음은 현재 칸 또는 `/` 분할로 정해지는 part 공통 길이를 쓴다. `-`는 앞 음이나 화음 전체를 이어지는 다음 탄현이나 쉼까지 유지한다. 화음 구성음별 음가, 독립 성부 레인, 성부별 쉼, 화음 일부의 붙임줄은 지원하지 않는다.
 
@@ -26,7 +28,11 @@ note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}`, rest
 
 일반 진행에서 hold는 새 note-on을 만들지 않는다. `resumeHold:true`는 `-`가 이어지는 위치에서 원음 또는 화음 전체를 남은 공통 길이로 한 번 복원한다. 이 동작은 정지 상태 칸 미리듣기, 중간 시작, 루프 시작과 재생 도중 기타 시뮬레이션을 다시 켠 뒤의 다음 박에서 사용된다. 이전 재생의 자연 여운이나 리버브는 복원 대상이 아니고, 지속음 위치의 전체 반주를 과거부터 다시 합성하지 않는다. 복원된 악보상 길이는 곡·loop 끝에서 잘리고, 그 뒤 내부 hold는 다시 치지 않는다. 기존 스케줄러를 사용하며 중간 시각에 새 이벤트를 추가 예약하지 않는다.
 
-`maxDurationSlots`는 현재 칸 시작부터 재생·루프 끝까지 남은 칸 수다. 분할 위치를 고려해 이벤트를 루프 경계에서 자른다. `getSubdividedGuideEvents`와 `scheduleSubdividedGuide`는 `subStep`을 `slotDuration = subStep * subNotes.length`로 바꿔 공통 경로를 사용한다. `getSubdividedGuideEvents` 반환값은 기존대로 note 이벤트만 포함한다.
+`getBeatGuideEvents`와 `scheduleBeatGuide`는 빈칸 beat에 빈 이벤트 목록을 돌려주고(`resumeHold`여도 같다), 아무것도 예약하지 않는다.
+
+재생 스케줄러(`schedulerTick`)는 칸마다 메트로놈 클릭, 가이드음, 화면 동기화를 예약하고 `nextBeatTime`에 칸 길이를 더한 뒤 다음 칸으로 간다. 칸이 빈칸이면 이 세 가지를 예약하지 않고 `nextBeatTime`도 더하지 않고 다음 칸으로 넘어간다. 마디 첫 칸이 빈칸이면 강박 표시 클릭도 없다(그 칸을 건너뛰니 다음 실제 칸은 강박 칸이 아니다). 카운트인은 그대로다. 빈칸에서 시작하는 재생·정지 상태 미리듣기는 소리 없이 다음 칸으로 가고, `resumeHold`는 소리가 나는 첫 칸에서 한 번 복원한다(`getSoundingNotes`가 그 칸의 실제 시간 위치로 찾는다).
+
+`maxDurationSlots`는 현재 칸 시작부터 재생·루프 끝까지 남은 칸 수이고 빈칸은 세지 않는다(`GuitarRhythm.countPlayableSlots`). 분할 위치를 고려해 이벤트를 루프 경계에서 자른다. `getSubdividedGuideEvents`와 `scheduleSubdividedGuide`는 `subStep`을 `slotDuration = subStep * subNotes.length`로 바꿔 공통 경로를 사용한다. `getSubdividedGuideEvents` 반환값은 기존대로 note 이벤트만 포함한다.
 
 ## 오디오 출력
 

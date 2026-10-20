@@ -282,7 +282,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=alphatex-prompt-1')), 'every app script uses the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=skip-cell-1')), 'every app script uses the shared revision');
   for (const id of ['editInInputBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
     assert.match(html, new RegExp('id="' + id + '"'), 'draft UI includes #' + id);
   }
@@ -388,6 +388,73 @@ async function main(){
     context.playGuitarNote = savedPractice.playGuitarNote;
     context.stopGuitarNotes = savedPractice.stopGuitarNotes;
     Object.assign(context.appState, savedPractice.appState);
+    context.renderSong();
+  }
+
+  // 빈칸 _ : 재생 스케줄러가 빈칸 칸에서 클릭·가이드음을 예약하지 않고 시간도 더하지 않는다
+  const savedSkip = {
+    song: context.curSong, measure: context.curMeasureIdx, beat: context.curBeatIdx, actx: context.actx,
+    playing: context.isPlaying, session: context.playSession,
+    scheduleMetronomeClick: context.scheduleMetronomeClick, playGuitarNote: context.playGuitarNote,
+    stopGuitarNotes: context.stopGuitarNotes, highlightFretboard: context.highlightFretboard, ensureAudioCtx: context.ensureAudioCtx,
+    appState: { bpm: context.appState.bpm, beats: context.appState.beats, loopStart: context.appState.loopStart, loopEnd: context.appState.loopEnd,
+      loopEnable: context.appState.loopEnable, guideSound: context.appState.guideSound, clickMode: context.appState.clickMode }
+  };
+  try {
+    const skipParsed = context.parseScore('[-] _ _ _ E4\n[Am] G4 - _ _\n[C] A4 B4 C5 D5', 4);
+    assert.equal(skipParsed.errors.length, 0, 'the skip-cell score parses without errors');
+    const skipSong = { id: 'skip-test', title: '빈칸 시험', type: 'structured', builtin: false, bpm: 120, beats: 4, capo: 0, measures: skipParsed.measures, notationVersion: 2 };
+    const clicks = [];
+    const noteCalls = [];
+    context.scheduleMetronomeClick = function(time, accent){ clicks.push({ time, accent }); };
+    context.playGuitarNote = function(midi, duration, when, gain, articulation, str, options){ noteCalls.push({ midi, duration, when, hardStopAt: options && options.hardStopAt }); };
+    context.stopGuitarNotes = function(){};
+    context.highlightFretboard = function(){};
+    context.ensureAudioCtx = function(){};
+    context.curSong = skipSong;
+    context.actx = { currentTime: 0, outputLatency: 0.02, baseLatency: 0.01 };
+    Object.assign(context.appState, { bpm: 120, beats: 4, loopStart: 1, loopEnd: 3, loopEnable: false, guideSound: true, clickMode: 'all' });
+    const spb = 0.5;
+    const session = { inCountIn: false, nextBeatTime: 1, measureStartTime: 1, spb, bpb: 4, bIdx: 0, mIdx: 0, loopCompleted: 0, endScheduled: false, resumeNextHold: true };
+    context.playSession = session;
+    context.isPlaying = true;
+    for (let guard = 0; guard < 40 && !session.endScheduled; guard++){
+      context.actx.currentTime = session.nextBeatTime - 0.01;
+      context.schedulerTick();
+    }
+    assert.equal(session.endScheduled, true, 'a score that starts on skip cells still reaches its end');
+    assert.deepEqual(clicks.map(click => click.time), [0, 1, 2, 3, 4, 5, 6].map(i => 1 + i * spb), 'seven playable cells click on consecutive cell times; the five skip cells add no time');
+    assert.deepEqual(clicks.map(click => click.accent), [false, true, false, true, false, false, false], 'a pickup does not click an accent; the first real cell of a measure that starts on a note does');
+    assert.deepEqual(noteCalls.map(call => [call.when, call.duration]), [[1, 0.5], [1.5, 1], [2.5, 0.5], [3, 0.5], [3.5, 0.5], [4, 0.5]], 'notes start on their real cell times and the hold lasts only the cells that take time');
+    assert.equal(session.nextBeatTime, 1 + 7 * spb, 'the session clock moved only for the playable cells');
+    for (const call of noteCalls) assert.equal(call.hardStopAt, 1 + 7 * spb, 'the remaining length to the song end leaves out the skip cells');
+
+    // 정지 상태 미리듣기: 빈칸 칸은 소리 없이 지나가고 다음 칸의 유지가 이어 울린다
+    noteCalls.length = 0;
+    context.appState.guideSound = true;
+    context.updateActiveCursor(0, 1, true);
+    assert.equal(noteCalls.length, 0, 'clicking a skip cell previews no sound');
+    context.updateActiveCursor(1, 0, true);
+    assert.deepEqual(noteCalls.map(call => call.midi), [context.parseNoteToken('G4', 0).midi], 'the first real cell previews its note');
+
+    // 화면: 빈칸 칸은 slot-skip 클래스를 달고 음 표시가 없다
+    context.renderSong();
+    const skipCells = elements.get('measuresGrid').querySelectorAll('.beat-cell').filter(cell => cell.classList.contains('slot-skip'));
+    assert.equal(skipCells.length, 5, 'every skip cell is drawn with the slot-skip class');
+    assert.equal(skipCells[0].querySelectorAll('.tab-fret-pill').length + skipCells[0].querySelectorAll('.tab-rest-dash').length, 0, 'a skip cell draws no fret and no rest mark');
+  } finally {
+    context.curSong = savedSkip.song;
+    context.curMeasureIdx = savedSkip.measure;
+    context.curBeatIdx = savedSkip.beat;
+    context.actx = savedSkip.actx;
+    context.isPlaying = savedSkip.playing;
+    context.playSession = savedSkip.session;
+    context.scheduleMetronomeClick = savedSkip.scheduleMetronomeClick;
+    context.playGuitarNote = savedSkip.playGuitarNote;
+    context.stopGuitarNotes = savedSkip.stopGuitarNotes;
+    context.highlightFretboard = savedSkip.highlightFretboard;
+    context.ensureAudioCtx = savedSkip.ensureAudioCtx;
+    Object.assign(context.appState, savedSkip.appState);
     context.renderSong();
   }
 

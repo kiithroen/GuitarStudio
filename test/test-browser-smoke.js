@@ -2305,8 +2305,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=alphatex-prompt-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=alphatex-prompt-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=skip-cell-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=skip-cell-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -4668,6 +4668,71 @@ async function testRollMarks(client, httpPort) {
   process.stdout.write('Browser checkpoint: roll waves in practice TAB and staff, and in score input card staffs, passed\n');
 }
 
+// 빈칸 _ 연습 화면: 칸 자리는 그대로 두고(slot-skip 클래스, 음·쉼 표시 없음), TAB·카드·오선 보기가 빈칸 마디에서 콘솔 오류를 내지 않는다. 규칙은 Docs/score-format.md 빈칸.
+async function testSkipCells(client, httpPort) {
+  const errorsBefore = client.consoleErrors.length;
+  const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 900, deviceScaleFactor: 2, mobile: false });
+  await client.send('Page.navigate', { url: `http://127.0.0.1:${httpPort}/index.html` });
+  await waitForPageLoadAfter(client, before);
+  await waitForCondition(client, 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= ' + builtinSongCount + ' && window.curSong != null', 8000);
+  const skipLines = [
+    '[-] _ _ _ E3@4/G3@3 | ""',
+    '[G] B3 D4 _ _ | ""',
+    '[Am] A2+E3 - - _ | ""',
+    '[C] E4 F4 G4 A4 | ""'
+  ];
+  const probe = view => client.evaluate(`(function(){
+    var s = document.getElementById('scoreViewSelect'); s.value = '${view}'; s.dispatchEvent(new Event('change', { bubbles: true }));
+    var skip = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell.slot-skip'));
+    return {
+      count: skip.length,
+      cells: skip.map(function(cell){ return cell.dataset.m + ',' + cell.dataset.b; }),
+      marks: skip.reduce(function(sum, cell){ return sum + cell.querySelectorAll('.tab-fret-pill, .tab-rest-dash').length; }, 0),
+      titles: skip.map(function(cell){ return cell.title; }),
+      labels: skip.map(function(cell){ var l = cell.querySelector('.b-skip-label'); return l ? l.textContent : ''; }),
+      opacity: skip.length ? getComputedStyle(skip[skip.length - 1]).opacity : null, // 첫 칸은 커서가 있어 활성 표시가 이긴다
+      staffLayers: document.querySelectorAll('#measuresGrid .tab-staff-layer').length,
+      cards: document.querySelectorAll('#measuresGrid .measure-card').length
+    };
+  })()`);
+  await client.evaluate(`(function(){
+    var song = scoreDrafts.createFromScore({ title: '빈칸 시험', beats: 4, bpm: 60, lines: ${JSON.stringify(skipLines)}, origin: 'tab-input' });
+    rebuildSongSelect(song.id);
+    appState.clickMode = 'off';
+    return true;
+  })()`);
+  const tab = await probe('tab');
+  assert.equal(tab.count, 6, 'TAB: every skip cell is drawn with slot-skip: ' + JSON.stringify(tab));
+  assert.deepEqual(tab.cells, ['0,0', '0,1', '0,2', '1,2', '1,3', '2,3']);
+  assert.equal(tab.marks, 0, 'TAB: a skip cell draws no fret and no rest mark');
+  assert.ok(tab.titles.every(title => title.includes('빈칸') && !title.includes('길이')), 'TAB: skip cell titles say 빈칸 and name no length: ' + JSON.stringify(tab.titles));
+  assert.ok(Number(tab.opacity) < 1, 'TAB: skip cells are dimmed: ' + tab.opacity);
+  const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  const target = path.join(root, 'test-artifacts', 'practice-skip.png');
+  fs.writeFileSync(target, Buffer.from(shot.data, 'base64'));
+  process.stdout.write('Artifact: ' + target + '\n');
+  const card = await probe('card');
+  assert.equal(card.count, 6, 'card view: every skip cell has slot-skip');
+  assert.deepEqual(card.labels, Array(6).fill('빈칸'), 'card view: a skip cell reads 빈칸');
+  const cardShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const cardTarget = path.join(root, 'test-artifacts', 'practice-skip-card.png');
+  fs.writeFileSync(cardTarget, Buffer.from(cardShot.data, 'base64'));
+  process.stdout.write('Artifact: ' + cardTarget + '\n');
+  const both = await probe('both');
+  assert.equal(both.count, 6, 'staff view on: skip cells keep the slot-skip class');
+  const bothShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const bothTarget = path.join(root, 'test-artifacts', 'practice-skip-both.png');
+  fs.writeFileSync(bothTarget, Buffer.from(bothShot.data, 'base64'));
+  process.stdout.write('Artifact: ' + bothTarget + '\n');
+  await probe('staff');
+  await probe('tab');
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the skip-cell steps run without console errors');
+  process.stdout.write('Browser checkpoint: skip cells in practice TAB, card, and staff views passed\n');
+}
+
 // 롤(~) 악보 입력 화면: 카드 TAB 물결선(위치는 실제 상자로 잰다), 입력판 단추, ` 키, 들어보기 소리. 규칙은 Docs/tab-input.md.
 async function testRollInput(client, httpPort) {
   client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
@@ -5302,7 +5367,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=alphatex-prompt-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=skip-cell-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -5822,6 +5887,7 @@ async function main() {
     await testSlideLabels(cdp, httpPort);
     await testRollMarks(cdp, httpPort);
     await testRollInput(cdp, httpPort);
+    await testSkipCells(cdp, httpPort);
     await testAlphaTabView(cdp, httpPort);
     await testAlphaTexSongs(cdp, httpPort);
 

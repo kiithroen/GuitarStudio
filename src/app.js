@@ -504,6 +504,7 @@ function curCapo(){
             extraCls += ' arp-group-start';
           }
           if (b.uncertain) extraCls += ' is-uncertain';
+          if (b.kind === 'skip') extraCls += ' slot-skip';
           cell.className = 'beat-cell' + extraCls;
           cell.dataset.m = mIdx;
           cell.dataset.b = bIdx;
@@ -513,7 +514,7 @@ function curCapo(){
           var articDesc = uniformArticulation === 'apoyando' ? ' [악보 지정 아포얀도]' : '';
           var tabDurationInfo = getBeatDurationInfo(m.beats, bIdx, curSong.beats);
           cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + (pitchLabel ? ': ' + pitchLabel : '') +
-            (pitchLabel && tabDurationInfo.durName && tabDurationInfo.kind !== 'rest' && tabDurationInfo.kind !== 'hold' ? ' · 길이: ' + tabDurationInfo.durName : '') +
+            (pitchLabel && tabDurationInfo.durName && tabDurationInfo.kind !== 'rest' && tabDurationInfo.kind !== 'hold' && tabDurationInfo.kind !== 'skip' ? ' · 길이: ' + tabDurationInfo.durName : '') +
             articDesc + ' (클릭: 운지 보기 및 음 듣기)' + (b.uncertain ? ' · 확인 필요(?)' : '');
 
           var topRow = document.createElement('div');
@@ -662,7 +663,7 @@ function curCapo(){
                 gridEl.appendChild(mPill);
               }
               if (b.rolled) appendRollMark(gridEl, chordNoteStrs(b.chordNotes), diffFret ? '38%' : '50%');
-            } else if (!hasMel && !hasBass){
+            } else if (!hasMel && !hasBass && b.kind !== 'skip'){
               var dash = document.createElement('span');
               dash.className = 'tab-rest-dash ' + (b.kind === 'hold' ? 'tab-hold-mark' : 'tab-rest-mark');
               dash.textContent = b.kind === 'hold' ? '—' : 'r';
@@ -712,6 +713,7 @@ function curCapo(){
           if (mainKind === 'rest'){
             extraCls += ' is-rest';
           }
+          if (mainKind === 'skip') extraCls += ' slot-skip';
           if (b.uncertain) extraCls += ' is-uncertain';
           cell.className = 'beat-cell' + extraCls;
           cell.dataset.m = mIdx;
@@ -720,7 +722,7 @@ function curCapo(){
           var articDesc = uniformArticulation === 'apoyando' ? ' [악보 지정 아포얀도]' : '';
 
           var detailDesc = m.no + '마디 ' + (bIdx + 1) + '박: ' +
-            (mainKind === 'rest' ? '쉼' : (mainKind === 'hold' ? '유지' : (pitchLabel + ' · ' + durInfo.durName))) +
+            (mainKind === 'rest' ? '쉼' : (mainKind === 'hold' ? '유지' : (mainKind === 'skip' ? '빈칸' : (pitchLabel + ' · ' + durInfo.durName)))) +
             (durInfo.kind === 'group' ? ' · 분할별 길이: ' + durInfo.durName : '') +
             articDesc + ' (클릭: 음 듣기 및 지판 확인)' + (b.uncertain ? ' · 확인 필요(?)' : '');
           cell.title = detailDesc;
@@ -787,6 +789,11 @@ function curCapo(){
           } else if (mainKind === 'hold') {
             koEl.className = 'b-ko-main b-hold-label';
             koEl.textContent = '유지';
+            cell.appendChild(koEl);
+          } else if (mainKind === 'skip') {
+            koEl.className = 'b-ko-main b-skip-label';
+            koEl.textContent = '빈칸';
+            koEl.title = '시간이 흐르지 않는 칸';
             cell.appendChild(koEl);
           } else {
             koEl.className = 'b-ko-main b-rest-sym';
@@ -1282,7 +1289,7 @@ function curCapo(){
         : beatObj;
       if (targetForFb && targetForFb.kind === 'hold' && typeof GuitarRhythm !== 'undefined'){
         targetForFb = GuitarRhythm.resolveHold(curSong.measures, targetForFb);
-      } else if (targetForFb && targetForFb.kind === 'rest'){
+      } else if (targetForFb && (targetForFb.kind === 'rest' || targetForFb.kind === 'skip')){
         targetForFb = null;
       }
       highlightFretboard(m.chord, targetForFb, false, m.autoChord, bIdx);
@@ -1293,7 +1300,7 @@ function curCapo(){
         var songCapo = getSongCapo(curSong);
         if (beatObj && typeof scheduleBeatGuide === 'function'){
           var previewEndMeasure = Math.min(getMeasureCount(curSong) - 1, appState.loopEnd - 1);
-          var previewRemainingSlots = Math.max(0, ((previewEndMeasure - mIdx + 1) * curSong.beats) - bIdx);
+          var previewRemainingSlots = GuitarRhythm.countPlayableSlots(curSong.measures, mIdx, bIdx, previewEndMeasure);
           scheduleBeatGuide(beatObj, {
             startTime:nowT,
             slotDuration:60 / appState.bpm,
@@ -1468,77 +1475,82 @@ function curCapo(){
           s.measureStartTime = s.nextBeatTime;
         }
       } else {
-        var isFirstBeat = s.bIdx === 0;
-        var isTripletSub = (s.bpb === 9 && s.bIdx % 3 !== 0);
-        if (appState.clickMode === 'all'){
-          scheduleMetronomeClick(t, isFirstBeat, isTripletSub);
-        }
-        var m = curSong.type === 'structured' ? curSong.measures[s.mIdx] : null;
-
-        // 구조화 악보의 명시 리듬과 음표 길이를 공통 가이드 스케줄러로 처리
-        if (appState.guideSound){
-          var songCapo = getSongCapo(curSong);
-          if (curSong.type === 'structured'){
-            if (m && m.beats[s.bIdx]){
-              var bObj = m.beats[s.bIdx];
-              var loopEndMeasure = Math.min(getMeasureCount(curSong) - 1, appState.loopEnd - 1);
-              var remainingSlots = Math.max(0, ((loopEndMeasure - s.mIdx + 1) * s.bpb) - s.bIdx);
-              scheduleBeatGuide(bObj, {
-                startTime:t,
-                slotDuration:s.spb,
-                measures:curSong.measures,
-                resumeHold:s.resumeNextHold || (isFirstBeat && s.mIdx === Math.max(0, appState.loopStart - 1)),
-                maxDurationSlots:remainingSlots,
-                capo:songCapo
-              });
-              s.resumeNextHold = false;
-            }
-          } else if (isFirstBeat){
-            var bar = getFlatImageBar(s.mIdx);
-            if (bar && bar.note){
-              var pn = parseNoteToken(bar.note, 0);
-              if (pn && pn.midi) playGuitarNote(soundingMidi(pn.midi, songCapo), s.spb * 1.2, t, 1.0, null, pn.pos && pn.pos.str);
-            }
+        // 빈칸 칸은 클릭·가이드음·화면 동기화 없이, 시간도 더하지 않고 다음 칸으로 넘어간다.
+        var curBeatForSkip = curSong.type === 'structured' && curSong.measures[s.mIdx] ? curSong.measures[s.mIdx].beats[s.bIdx] : null;
+        var skipBeat = GuitarRhythm.isSkipBeat(curBeatForSkip);
+        if (!skipBeat){
+          var isFirstBeat = s.bIdx === 0;
+          var isTripletSub = (s.bpb === 9 && s.bIdx % 3 !== 0);
+          if (appState.clickMode === 'all'){
+            scheduleMetronomeClick(t, isFirstBeat, isTripletSub);
           }
-        }
+          var m = curSong.type === 'structured' ? curSong.measures[s.mIdx] : null;
 
-        // UI 동기화 예약 (WebAudio 하드웨어 버퍼 출력 지연 baseLatency + outputLatency + 블루투스 오프셋 보정)
-        (function(mI, bI, loopCnt, beatTime, spbVal, curBObj, curM){
-          var hwLat = (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010) + ((appState.audioOffsetMs || 0) / 1000);
-          var delay = Math.max(0, (beatTime + hwLat - actx.currentTime) * 1000);
-          setTimeout(function(){
-            if (playSession !== s) return;
-            curMeasureIdx = mI;
-            curBeatIdx = bI;
-            setLeds(bI);
-            $('#phaseTxt').textContent = (mI + 1) + '마디 · ' + (bI + 1) + '/' + appState.beats + '박 진행 중 (' + appState.bpm + ' BPM)';
-            updateActiveCursor(mI, bI, false, bI / appState.beats);
-            $('#loopCountBadge').textContent = loopCnt + '회 완주';
-          }, delay);
-
-          if (curBObj && curBObj.isSubdivided && curBObj.subNotes && curBObj.subNotes.length > 1){
-            var numSubs = curBObj.subNotes.length;
-            var subStepMs = (spbVal / numSubs) * 1000;
-            curBObj.subNotes.forEach(function(sn, sIdx){
-              if (sIdx > 0){
-                var subDelay = Math.max(0, delay + (sIdx * subStepMs));
-                setTimeout(function(){
-                  if (playSession !== s) return;
-                  if (curMeasureIdx === mI && curBeatIdx === bI){
-                    var subTarget = sn;
-                    if (sn.kind === 'rest') subTarget = null;
-                    else if (sn.kind === 'hold' && typeof GuitarRhythm !== 'undefined') subTarget = GuitarRhythm.resolveHold(curSong.measures, sn);
-                    highlightFretboard(curM ? curM.chord : null, subTarget, false, curM ? curM.autoChord : false, bI);
-                  }
-                }, subDelay);
+          // 구조화 악보의 명시 리듬과 음표 길이를 공통 가이드 스케줄러로 처리
+          if (appState.guideSound){
+            var songCapo = getSongCapo(curSong);
+            if (curSong.type === 'structured'){
+              if (m && m.beats[s.bIdx]){
+                var bObj = m.beats[s.bIdx];
+                var loopEndMeasure = Math.min(getMeasureCount(curSong) - 1, appState.loopEnd - 1);
+                var remainingSlots = GuitarRhythm.countPlayableSlots(curSong.measures, s.mIdx, s.bIdx, loopEndMeasure);
+                scheduleBeatGuide(bObj, {
+                  startTime:t,
+                  slotDuration:s.spb,
+                  measures:curSong.measures,
+                  resumeHold:s.resumeNextHold || (s.mIdx === Math.max(0, appState.loopStart - 1) && m.beats.slice(0, s.bIdx).every(GuitarRhythm.isSkipBeat)),
+                  maxDurationSlots:remainingSlots,
+                  capo:songCapo
+                });
+                s.resumeNextHold = false;
               }
-            });
+            } else if (isFirstBeat){
+              var bar = getFlatImageBar(s.mIdx);
+              if (bar && bar.note){
+                var pn = parseNoteToken(bar.note, 0);
+                if (pn && pn.midi) playGuitarNote(soundingMidi(pn.midi, songCapo), s.spb * 1.2, t, 1.0, null, pn.pos && pn.pos.str);
+              }
+            }
           }
-        })(s.mIdx, s.bIdx, s.loopCompleted, t, s.spb, m && m.beats ? m.beats[s.bIdx] : null, m);
+
+          // UI 동기화 예약 (WebAudio 하드웨어 버퍼 출력 지연 baseLatency + outputLatency + 블루투스 오프셋 보정)
+          (function(mI, bI, loopCnt, beatTime, spbVal, curBObj, curM){
+            var hwLat = (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010) + ((appState.audioOffsetMs || 0) / 1000);
+            var delay = Math.max(0, (beatTime + hwLat - actx.currentTime) * 1000);
+            setTimeout(function(){
+              if (playSession !== s) return;
+              curMeasureIdx = mI;
+              curBeatIdx = bI;
+              setLeds(bI);
+              $('#phaseTxt').textContent = (mI + 1) + '마디 · ' + (bI + 1) + '/' + appState.beats + '박 진행 중 (' + appState.bpm + ' BPM)';
+              updateActiveCursor(mI, bI, false, bI / appState.beats);
+              $('#loopCountBadge').textContent = loopCnt + '회 완주';
+            }, delay);
+
+            if (curBObj && curBObj.isSubdivided && curBObj.subNotes && curBObj.subNotes.length > 1){
+              var numSubs = curBObj.subNotes.length;
+              var subStepMs = (spbVal / numSubs) * 1000;
+              curBObj.subNotes.forEach(function(sn, sIdx){
+                if (sIdx > 0){
+                  var subDelay = Math.max(0, delay + (sIdx * subStepMs));
+                  setTimeout(function(){
+                    if (playSession !== s) return;
+                    if (curMeasureIdx === mI && curBeatIdx === bI){
+                      var subTarget = sn;
+                      if (sn.kind === 'rest') subTarget = null;
+                      else if (sn.kind === 'hold' && typeof GuitarRhythm !== 'undefined') subTarget = GuitarRhythm.resolveHold(curSong.measures, sn);
+                      highlightFretboard(curM ? curM.chord : null, subTarget, false, curM ? curM.autoChord : false, bI);
+                    }
+                  }, subDelay);
+                }
+              });
+            }
+          })(s.mIdx, s.bIdx, s.loopCompleted, t, s.spb, m && m.beats ? m.beats[s.bIdx] : null, m);
+        }
 
         // 다음 박자/마디 이동
         s.bIdx++;
-        s.nextBeatTime += s.spb;
+        if (!skipBeat) s.nextBeatTime += s.spb;
         if (s.bIdx >= s.bpb){
           s.bIdx = 0;
           s.mIdx++;

@@ -34,6 +34,7 @@ function guidePartKind(part){
   if (part && part.kind) return part.kind;
   var tok = String(part && part.tok || '').trim();
   var N = typeof GuitarNotation !== 'undefined' ? GuitarNotation : (typeof module !== 'undefined' && module.exports ? require('./notation.js') : null);
+  if (N.isSkipToken(tok)) return 'skip';
   if (N.isRestToken(tok)) return 'rest';
   if (tok === '-') return 'hold';
   return part && part.midi != null ? 'note' : 'invalid';
@@ -55,6 +56,7 @@ function getBeatGuideEvents(beat, options){
   if (!(slotDuration > 0)) return [];
   var measures = options.measures;
   var firstKind = guidePartKind(parts[0]);
+  if (count === 1 && firstKind === 'skip') return []; // 빈칸 칸은 시간이 없고 소리도 없다
   var annotatedResume = options.resumeHold && firstKind !== 'rest' && beat && Number.isFinite(Number(beat.startUnits)) &&
     typeof GuitarRhythm !== 'undefined' && typeof GuitarRhythm.getSoundingNotes === 'function'
     ? GuitarRhythm.getSoundingNotes(measures, Number(beat.startUnits)) : [];

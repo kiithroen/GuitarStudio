@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=alphatex-prompt-1">
+<link rel="stylesheet" href="src/base.css?v=skip-cell-1">
 <style>
 #sheetLoadStatus{margin-top:8px;padding:7px 11px;border-radius:8px;border:1px solid var(--off);background:var(--off-soft);color:var(--off);font-weight:600}
 
@@ -139,6 +139,9 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .beat-cell.active-beat .b-note-sub{color:var(--accent-ink);opacity:.95;font-weight:700}
 .beat-cell.is-rest{opacity:.75}
 .beat-cell.is-rest:hover,.beat-cell.is-rest.active-beat{opacity:1}
+/* 빈칸 _ : 칸 자리만 있고 시간이 흐르지 않는 칸. 흐리게 하고 빗금으로 구분한다(Docs/score-format.md 빈칸) */
+.beat-cell.slot-skip:not(.active-beat){opacity:.55;background-image:repeating-linear-gradient(135deg,transparent 0 6px,var(--line) 6px 7px)}
+.b-ko-main.b-skip-label{font-size:13px;font-weight:600;color:var(--muted)}
 
 /* 6현 타브 (TAB) 악보 렌더링 스타일 */
 .tab-stave-wrap{position:relative;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-top:2px}
@@ -879,23 +882,23 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=alphatex-prompt-1"></script>
-<script src="src/app-state.js?v=alphatex-prompt-1"></script>
-<script src="src/notation.js?v=alphatex-prompt-1"></script>
-<script src="src/rhythm.js?v=alphatex-prompt-1"></script>
-<script src="src/parser.js?v=alphatex-prompt-1"></script>
-<script src="src/staff-layout.js?v=alphatex-prompt-1"></script>
-<script src="src/staff-svg.js?v=alphatex-prompt-1"></script>
-<script src="src/score-drafts.js?v=alphatex-prompt-1"></script>
-<script src="src/score.js?v=alphatex-prompt-1"></script>
-<script src="src/audio.js?v=alphatex-prompt-1"></script>
-<script src="src/guide.js?v=alphatex-prompt-1"></script>
-<script src="src/image-analysis.js?v=alphatex-prompt-1"></script>
-<script src="src/fretboard.js?v=alphatex-prompt-1"></script>
-<script src="src/score-ui.js?v=alphatex-prompt-1"></script>
-<script src="src/sheets.js?v=alphatex-prompt-1"></script>
-<script src="src/score-prompt.js?v=alphatex-prompt-1"></script>
-<script src="src/score-editor.js?v=alphatex-prompt-1"></script>
-<script src="src/app.js?v=alphatex-prompt-1"></script>
+<script src="src/storage.js?v=skip-cell-1"></script>
+<script src="src/app-state.js?v=skip-cell-1"></script>
+<script src="src/notation.js?v=skip-cell-1"></script>
+<script src="src/rhythm.js?v=skip-cell-1"></script>
+<script src="src/parser.js?v=skip-cell-1"></script>
+<script src="src/staff-layout.js?v=skip-cell-1"></script>
+<script src="src/staff-svg.js?v=skip-cell-1"></script>
+<script src="src/score-drafts.js?v=skip-cell-1"></script>
+<script src="src/score.js?v=skip-cell-1"></script>
+<script src="src/audio.js?v=skip-cell-1"></script>
+<script src="src/guide.js?v=skip-cell-1"></script>
+<script src="src/image-analysis.js?v=skip-cell-1"></script>
+<script src="src/fretboard.js?v=skip-cell-1"></script>
+<script src="src/score-ui.js?v=skip-cell-1"></script>
+<script src="src/sheets.js?v=skip-cell-1"></script>
+<script src="src/score-prompt.js?v=skip-cell-1"></script>
+<script src="src/score-editor.js?v=skip-cell-1"></script>
+<script src="src/app.js?v=skip-cell-1"></script>
 </body>
 </html>
