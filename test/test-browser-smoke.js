@@ -2289,8 +2289,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=harmonics-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=harmonics-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=harmonics-2')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=harmonics-2">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -3627,11 +3627,61 @@ async function testFretLabel(client, httpPort) {
   assert.equal(input.apoColor, input.near, 'the apoyando label is drawn in the --near color');
   assert.ok(input.scoreText.indexOf('!') >= 0, 'the score text still carries the ! mark: ' + input.scoreText);
   assert.equal(input.hasTildeButton, false, 'the input panel has no ~ tirando button');
-  assert.equal(input.artButtons, '|없음,!|! 아포얀도', 'the articulation buttons are only none and apoyando: ' + input.artButtons);
+  assert.equal(input.artButtons, '|없음,!|! 아포얀도,h|<> 하모닉스', 'the articulation buttons are none, apoyando and harmonic: ' + input.artButtons);
   assert.ok(input.attrsText.indexOf('티란도') < 0, 'the input panel never mentions tirando');
   assert.equal(input.buttonApo, input.near, 'the apoyando button text is drawn in the --near color');
   assert.ok(/\bis-apoyando\b/.test(input.unsureClass) && /\bis-uncertain\b/.test(input.unsureParent), 'a checked note keeps its articulation class');
   assert.equal(input.unsureColor, input.off, 'a check mark (red) beats the articulation color');
+
+  // 하모닉스 단추: 값은 NATURAL_HARMONICS, STRINGS에서 셈한다
+  const harm = await client.evaluate(`(function(){
+    var t = __tiTest;
+    var table = GuitarNotation.NATURAL_HARMONICS;
+    var hf = Number(Object.keys(table)[0]);
+    var plainFret = 1;
+    for (var f = 1; f <= 19; f++) { if (!Object.prototype.hasOwnProperty.call(table, f)) { plainFret = f; break; } }
+    var string = GuitarParser.STRINGS[1];
+    var hName = GuitarParser.noteNameForMidi(string.midi + table[hf], false);
+    var plainName = GuitarParser.noteNameForMidi(string.midi + hf, false);
+    var out = { hf: hf, hName: hName, plainName: plainName };
+    function tokens(){ return t.text().split(/\\s+/); }
+    function label(){ return t.pos(0,1,0,2).querySelector('.ti-pos-label'); }
+    var hBtn = t.attr('art','h');
+    t.pos(0,1,0,2).click();
+    out.disabledEmpty = hBtn.disabled;
+    t.fret(2, plainFret).click();
+    out.disabledPlain = hBtn.disabled;
+    t.fret(2, hf).click();
+    out.disabledHarmonic = hBtn.disabled;
+    hBtn.click();
+    out.hTokens = tokens().filter(function(x){ return x.indexOf('h' + hName + '@2') >= 0; }).length;
+    out.hLabel = label().textContent;
+    out.hPressed = hBtn.getAttribute('aria-pressed');
+    out.hDisabled = hBtn.disabled;
+    t.attr('art','!').click();
+    out.apoHTokens = tokens().filter(function(x){ return x.indexOf('h' + hName + '@2') >= 0; }).length;
+    out.apoTokens = tokens().filter(function(x){ return x.indexOf('!' + plainName) === 0 && x.indexOf('@2') >= 0; }).length;
+    out.apoHPressed = hBtn.getAttribute('aria-pressed');
+    hBtn.click();
+    t.attr('art','').click();
+    out.noneHTokens = tokens().filter(function(x){ return x.indexOf('h' + hName + '@2') >= 0; }).length;
+    out.nonePlain = tokens().filter(function(x){ return x.replace(/^[^A-G]*/, '').indexOf(plainName) === 0 && x.indexOf('@2') >= 0 && x.indexOf('h') < 0; }).length;
+    out.noneLabel = label().textContent;
+    return out;
+  })()`);
+  assert.equal(harm.disabledEmpty, true, 'the harmonic button is disabled without a cursor note');
+  assert.equal(harm.disabledPlain, true, 'the harmonic button is disabled on a non-harmonic fret');
+  assert.equal(harm.disabledHarmonic, false, 'the harmonic button is enabled on a harmonic fret');
+  assert.ok(harm.hTokens >= 1, 'pressing it writes h + sounding pitch + @2: ' + JSON.stringify(harm));
+  assert.ok(harm.hLabel.indexOf('<' + harm.hf + '>') >= 0, 'the TAB label shows <fret>: ' + harm.hLabel);
+  assert.equal(harm.hPressed, 'true', 'the harmonic button is pressed while the note is a harmonic');
+  assert.equal(harm.hDisabled, false, 'a harmonic note keeps the button enabled');
+  assert.equal(harm.apoHTokens, 0, 'apoyando replaces the harmonic');
+  assert.ok(harm.apoTokens >= 1, 'apoyando writes ! on the plain pitch: ' + JSON.stringify(harm));
+  assert.equal(harm.apoHPressed, 'false', 'the harmonic button is released after apoyando');
+  assert.equal(harm.noneHTokens, 0, 'none removes the harmonic');
+  assert.ok(harm.nonePlain >= 1, 'none leaves the plain note of that fret: ' + JSON.stringify(harm));
+  assert.ok(harm.noneLabel.indexOf('<') < 0, 'the TAB label has no brackets after none: ' + harm.noneLabel);
 
   // 입력 화면 스크린샷: 로망스 1부
   const romance = builtinSongsJson.find(item => item.id === 'builtin-lv6-romance-full');

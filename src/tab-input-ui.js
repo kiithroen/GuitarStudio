@@ -498,6 +498,7 @@
       var attr = btn.dataset.attr;
       var current = cursorNote ? (cursorNote[attr] == null ? '' : String(cursorNote[attr])) : null;
       btn.disabled = !cursorNote;
+      if (attr === 'art' && btn.dataset.value === 'h' && cursorNote && cursorNote.art !== 'h' && !T.isHarmonicFret(cursorNote.fret)) btn.disabled = true;
       btn.setAttribute('aria-pressed', String(cursorNote != null && current === btn.dataset.value));
     });
     var uncertain = $('tiUncertainBtn');
@@ -1812,6 +1813,7 @@
     });
     attrButtons = Array.prototype.slice.call($('tiAttrs').querySelectorAll('[data-attr]'));
     attrButtons.forEach(function(btn){
+      if (btn.dataset.attr === 'art' && btn.dataset.value === 'h') btn.title = '자연 하모닉스(' + GuitarNotation.naturalHarmonicFretsText() + '프렛 음에서만)';
       btn.addEventListener('click', function(){ setAttr(btn.dataset.attr, btn.dataset.value); });
     });
     $('tiUncertainBtn').addEventListener('click', toggleUncertain);

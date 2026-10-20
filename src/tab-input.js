@@ -714,7 +714,7 @@
     createHistory: createHistory,
     noteMidi: noteMidi, noteMidiOf: noteMidiOf, noteLabel: noteLabel, noteLabelOf: noteLabelOf, noteToken: noteToken,
     slotTokens: slotTokens, docToMeasureObjects: docToMeasureObjects, docToScoreLines: docToScoreLines, docScoreText: docScoreText,
-    validateDoc: validateDoc, docCapo: docCapo, buildHandoff: buildHandoff,
+    validateDoc: validateDoc, docCapo: docCapo, buildHandoff: buildHandoff, isHarmonicFret: isHarmonicFret,
     scoreToDoc: scoreToDoc, parseImportText: parseImportText, replaceMeasuresFromText: replaceMeasuresFromText
   };
   if (typeof window !== 'undefined') window.GuitarTabInput = api;
