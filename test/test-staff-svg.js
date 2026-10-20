@@ -40,7 +40,7 @@ function count(svg, className){
 
 // 배치에서 센 기대값
 function expected(measure){
-  const out = { heads: 0, ledger: 0, acc: 0, ties: 0, rests: 0, tuplets: measure.tuplets.length, beams: 0, flags: 0, stems: 0, uncertainHeads: 0, uncertainRests: 0, dots: 0 };
+  const out = { heads: 0, ledger: 0, acc: 0, ties: 0, slurs: (measure.slurs || []).length, rests: 0, tuplets: measure.tuplets.length, beams: 0, flags: 0, stems: 0, uncertainHeads: 0, uncertainRests: 0, dots: 0 };
   const inBeam = new Set();
   measure.beams.forEach(function(beam){
     beam.items.forEach(function(index){ inBeam.add(index); });
@@ -81,6 +81,7 @@ function checkCounts(svg, measure, label){
   assert.equal(count(svg, 'st-ledger'), want.ledger, label + ': ledger lines');
   assert.equal(count(svg, 'st-acc'), want.acc, label + ': accidentals');
   assert.equal(count(svg, 'st-tie'), want.ties, label + ': ties');
+  assert.equal(count(svg, 'st-slur'), want.slurs, label + ': slur curves');
   assert.equal(count(svg, 'st-rest'), want.rests, label + ': rests');
   assert.equal(count(svg, 'st-tuplet'), want.tuplets, label + ': tuplet numbers');
   assert.equal(count(svg, 'st-beam'), want.beams, label + ': beams');
@@ -324,6 +325,102 @@ test('the highest guitar note fits inside the SVG with its ledger lines, head an
     });
     values('st-head', 'cy').forEach(function(y){ assert.ok(y - svgApi.LINE_GAP / 2 >= 0 && y + svgApi.LINE_GAP / 2 <= svgApi.STAFF_HEIGHT, text + ': head cy ' + y + ' is inside the SVG'); });
   });
+});
+
+// 슬러 곡선: 도착 음의 기둥이 위면 머리 아래, 아래면 위. 마디를 넘으면 반쪽씩.
+function slurPaths(svg){
+  const out = [];
+  (svg.match(/<path class="st-slur[^"]*"[^>]*>/g) || []).forEach(function(tag){
+    const cls = tag.match(/class="([^"]*)"/)[1];
+    const d = tag.match(/ d="([^"]*)"/)[1];
+    const nums = d.match(/-?[0-9.]+/g).map(Number);   // M x y C x y x y x y
+    assert.equal(nums.length, 8, 'a slur path is one cubic curve: ' + d);
+    out.push({ cls: cls, d: d, x1: nums[0], y1: nums[1], c1y: nums[3], c2y: nums[5], x2: nums[6], y2: nums[7], all: nums });
+  });
+  return out;
+}
+function headYs(svg){
+  return (svg.match(/<(?:ellipse|polygon) class="st-head[^>]*>/g) || []).map(function(tag){ return Number(tag.match(/ cy="([-0-9.]+)"/)[1]); });
+}
+
+test('slur curve: below the heads when the target stem is up, above when it is down, above for a stemless whole note', function(){
+  const low = layout('G3 sA3 - -');
+  assert.equal(low.measures[0].items[1].stem, 'up');
+  const lowSvg = draw(low);
+  checkCounts(lowSvg, low.measures[0], 'low slur');
+  const lowPaths = slurPaths(lowSvg);
+  assert.equal(lowPaths.length, 1);
+  const lowHeads = headYs(lowSvg);
+  assert.equal(lowPaths[0].cls, 'st-slur', 'a slur inside the measure has no half class');
+  assert.ok(lowPaths[0].y1 > lowHeads[0] && lowPaths[0].y2 > lowHeads[1], 'the ends sit under the heads');
+  assert.ok(lowPaths[0].c1y > lowHeads[0] && lowPaths[0].c2y > lowHeads[1], 'the control points are under the heads');
+  assert.ok(lowPaths[0].c1y > lowPaths[0].y1, 'the curve bulges downward');
+
+  const high = layout('B4 sC5 - -');
+  assert.equal(high.measures[0].items[1].stem, 'down');
+  const highSvg = draw(high);
+  const highPaths = slurPaths(highSvg);
+  const highHeads = headYs(highSvg);
+  assert.ok(highPaths[0].y1 < highHeads[0] && highPaths[0].y2 < highHeads[1], 'the ends sit over the heads');
+  assert.ok(highPaths[0].c1y < highHeads[0] && highPaths[0].c2y < highHeads[1], 'the control points are over the heads');
+
+  const whole = layout('r r r E4\nsF4 - - -');
+  assert.equal(whole.measures[1].items[0].stem, null);
+  const wholeSvg = draw(whole, 1);
+  const wholePaths = slurPaths(wholeSvg);
+  assert.equal(wholePaths.length, 1);
+  assert.ok(wholePaths[0].c1y < headYs(wholeSvg)[0], 'a stemless target gets the curve above');
+});
+
+test('slur curve: only the target note of a chord is curved, and the curve follows that head', function(){
+  const result = layout('E2@6+E4@1 E2@6+sF4@1 - r');
+  const svg = draw(result);
+  checkCounts(svg, result.measures[0], 'chord slur');
+  const paths = slurPaths(svg);
+  assert.equal(paths.length, 1);
+  const stem = result.measures[0].items[1].stem;
+  const heads = (svg.match(/<(?:ellipse|polygon) class="st-head[^>]*data-note="1"[^>]*>/g) || []).map(function(tag){ return Number(tag.match(/ cy="([-0-9.]+)"/)[1]); });
+  assert.equal(heads.length, 2, 'the upper heads of both chords');
+  assert.ok(Math.abs(paths[0].y1 - heads[0]) < 10 && Math.abs(paths[0].y2 - heads[1]) < 10, 'the curve ends sit next to the upper heads');
+  assert.equal(paths[0].y2 > heads[1], stem === 'up');
+});
+
+test('slur curve across the barline: a half leaves through the right edge, a half enters from the left', function(){
+  const result = layout('r r r E4\nsF4 - - -');
+  const first = draw(result, 0), second = draw(result, 1);
+  checkCounts(first, result.measures[0], 'source measure');
+  checkCounts(second, result.measures[1], 'target measure');
+  const out = slurPaths(first);
+  const into = slurPaths(second);
+  assert.equal(out.length, 1);
+  assert.equal(into.length, 1);
+  assert.equal(out[0].cls, 'st-slur is-start');
+  assert.equal(into[0].cls, 'st-slur is-end');
+  const widthOf = function(svg){ return Number(svg.match(/^<svg [^>]*width="([0-9.]+)"/)[1]); };
+  assert.equal(out[0].x2, widthOf(first) - 2, 'the outgoing half ends 2px before the right edge');
+  assert.equal(out[0].y2, out[0].y1, 'the outgoing half stays level');
+  assert.equal(into[0].x1, LEFT_PAD + 2, 'the incoming half starts 2px after the left edge of the first event area');
+  assert.equal(into[0].y2, into[0].y1, 'the incoming half stays level');
+  const held = layout('r r r E4\n- - - -\nsF4 - - -');
+  assert.deepEqual(slurPaths(draw(held, 1)).map(function(p){ return p.cls; }), ['st-slur is-start'], 'a held measure between the halves draws only the outgoing half');
+  assert.deepEqual(slurPaths(draw(held, 2)).map(function(p){ return p.cls; }), ['st-slur is-end']);
+});
+
+test('slur curve height: grows with the span up to a cap, and every coordinate stays inside the SVG', function(){
+  const near = slurPaths(draw(layout('G3 sA3 - -')))[0];
+  const wide = slurPaths(draw(layout('G3 - - sA3')))[0];
+  const rise = function(p){ return Math.abs(((p.c1y + p.c2y) / 2 - (p.y1 + p.y2) / 2) * 0.75); };
+  assert.ok(rise(wide) > rise(near), 'a wider slur arches higher');
+  assert.ok(rise(wide) <= 10 + 0.1, 'the arch height is capped');
+  // 높은 음 위로 그리는 곡선은 그림 높이 안으로 자른다
+  const result = layout('A5 sB5 - -');
+  const high = slurPaths(draw(result));
+  assert.equal(high.length, 1);
+  assert.equal(result.measures[0].items[1].stem, 'down');
+  high[0].all.forEach(function(value, index){
+    if (index % 2 === 1) assert.ok(value >= 0 && value <= svgApi.STAFF_HEIGHT, 'y ' + value + ' is inside the SVG');
+  });
+  assert.equal(Math.min(high[0].y1, high[0].c1y, high[0].c2y, high[0].y2), 2, 'the top is cut to 2px from the edge');
 });
 
 process.stdout.write('1..' + checks + '\n');

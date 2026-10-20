@@ -67,7 +67,7 @@
     var step = written * 7 + LETTER_INDEX[letter] - (4 * 7 + LETTER_INDEX.E);
     return {
       name: letter + m[2] + m[3], letter: letter, alter: alter, octave: written, step: step,
-      midi: drawMidi, accidental: null, ledger: ledgerFor(step),
+      midi: drawMidi, soundMidi: parsed.midi, slur: parsed.articulation === 'slur', accidental: null, ledger: ledgerFor(step),
       str: parsed.pos ? parsed.pos.str : null, fret: parsed.pos ? parsed.pos.fret : null,
       uncertain: !!parsed.uncertain, harmonic: harmonic
     };
@@ -148,6 +148,30 @@
     return down > up ? 'up' : 'down';
   }
 
+  // 슬러 곡선: 판정은 GuitarNotation.linkSlurs 하나이고, 여기서는 그 결과를 마디별 배치에 싣기만 한다(Docs/staff-notation.md 슬러 곡선).
+  // 붙임줄로 나뉜 음은 곡선이 출발 음의 마지막 토막에서 나가 슬러 음의 첫 토막으로 들어간다.
+  function attachSlurs(result, segments, spanOfSegment){
+    var pieces = segments.map(function(segment){
+      if (segment.kind === 'rest') return { rest: true, hold: false, notes: [] };
+      return { rest: false, hold: false, notes: segment.baseNotes.map(function(note){
+        return { str: note.str, midi: note.soundMidi, slur: note.slur };
+      }) };
+    });
+    GuitarNotation.linkSlurs(pieces).forEach(function(results, pieceIndex){
+      results.forEach(function(link, noteIndex){
+        if (!link || !link.ok) return;
+        var from = spanOfSegment.get(segments[link.from.piece]).last;
+        var to = spanOfSegment.get(segments[pieceIndex]).first;
+        if (from.measure === to.measure){
+          result[from.measure].slurs.push({ fromItem: from.item, fromHead: link.from.note, toItem: to.item, toHead: noteIndex });
+        } else {
+          result[from.measure].slurs.push({ fromItem: from.item, fromHead: link.from.note, toEdge: true });
+          result[to.measure].slurs.push({ fromEdge: true, toItem: to.item, toHead: noteIndex });
+        }
+      });
+    });
+  }
+
   function buildLayout(text, beats, key){
     if (!Number.isInteger(key) || key < KEY_MIN || key > KEY_MAX) fail('조표는 ' + KEY_MIN + '~' + KEY_MAX + '의 정수여야 합니다: ' + key);
     var parsed = GuitarParser.parseScore(text, beats);
@@ -183,6 +207,9 @@
       cursor = event.startUnits + event.durationUnits;
     });
     if (cursor < annotated.totalUnits) segments.push({ kind: 'rest', start: cursor, end: annotated.totalUnits });
+    segments.forEach(function(segment){
+      if (segment.kind === 'chord') segment.baseNotes = notesForPart(segment.event.part);
+    });
 
     // 마디 경계에서 자른다.
     var perMeasure = [];
@@ -201,6 +228,7 @@
     var keyMap = keyAlterByLetter(key);
     var pendingTie = {}; // 사건 -> 앞 토막 item (붙임줄 연결용)
     var lastItemOfSegment = new Map();
+    var spanOfSegment = new Map(); // 사건 -> 첫·마지막 토막의 자리 { first: {measure, item}, last: {measure, item} } (슬러 곡선용)
     var result = [];
 
     perMeasure.forEach(function(pieces, measureIndex){
@@ -221,7 +249,7 @@
       } else {
         pieces.forEach(function(piece){
           var isChord = piece.segment.kind === 'chord';
-          var baseNotes = isChord ? notesForPart(piece.segment.event.part) : null;
+          var baseNotes = isChord ? piece.segment.baseNotes : null;
           var chordUncertain = isChord && baseNotes.some(function(note){ return note.uncertain; });
           splitPiece(piece.start, piece.end, isChord, cellQuarter).forEach(function(cut){
             var item = {
@@ -260,6 +288,12 @@
               item.uncertain = restUncertain(absStart, absStart + cut.length);
             }
             items.push(item);
+            if (isChord){
+              var spot = { measure: measureIndex, item: items.length - 1 };
+              var span = spanOfSegment.get(piece.segment);
+              if (!span) spanOfSegment.set(piece.segment, span = { first: spot, last: spot });
+              span.last = spot;
+            }
           });
         });
       }
@@ -300,8 +334,10 @@
         else tuplets.push({ cell: item.cell, items: [index] });
       });
 
-      result.push({ index: measureIndex, items: items, beams: beams, tuplets: tuplets });
+      result.push({ index: measureIndex, items: items, beams: beams, tuplets: tuplets, slurs: [] });
     });
+
+    attachSlurs(result, segments, spanOfSegment);
 
     return {
       beats: beats, key: key,

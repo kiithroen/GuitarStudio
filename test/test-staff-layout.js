@@ -254,6 +254,95 @@ test('whole rest and check marks', function(){
   assert.equal(mixed.measures[0].items[1].uncertain, true);
 });
 
+// 슬러 곡선: 판정은 GuitarNotation.linkSlurs 하나이고, 배치는 그 결과를 마디별 slurs 에 싣는다.
+function noteAt(result, measure, item, head){ return result.measures[measure].items[item].notes[head]; }
+
+test('slur in one measure: one curve from the source head to the slurred head', function(){
+  const result = layout('E4/sF4 - - -');
+  const slurs = result.measures[0].slurs;
+  assert.equal(slurs.length, 1);
+  const slur = slurs[0];
+  assert.deepEqual(Object.keys(slur).sort(), ['fromHead', 'fromItem', 'toHead', 'toItem']);
+  assert.equal(noteAt(result, 0, slur.fromItem, slur.fromHead).name, 'E4');
+  assert.equal(noteAt(result, 0, slur.toItem, slur.toHead).name, 'F4');
+  assert.equal(slur.toItem, slur.fromItem + 1);
+  assert.deepEqual(layout('E4 F4 - -').measures[0].slurs, [], 'no slur letter, no curve');
+  const chain = layout('E4 sF4 sG4 - ').measures[0].slurs;
+  assert.equal(chain.length, 2, 'a chain of slurs is one curve per slurred note');
+  assert.equal(chain[1].fromItem, chain[0].toItem, 'the second curve starts where the first ends');
+});
+
+test('slur across the barline: the source measure leaves through the right edge, the target measure enters from the left', function(){
+  const result = layout('r r r E4\nsF4 - - -');
+  assert.deepEqual(result.measures[0].slurs.map(function(s){ return Object.keys(s).sort(); }), [['fromHead', 'fromItem', 'toEdge']]);
+  assert.deepEqual(result.measures[1].slurs.map(function(s){ return Object.keys(s).sort(); }), [['fromEdge', 'toHead', 'toItem']]);
+  const out = result.measures[0].slurs[0], into = result.measures[1].slurs[0];
+  assert.equal(out.toEdge, true);
+  assert.equal(into.fromEdge, true);
+  assert.equal(noteAt(result, 0, out.fromItem, out.fromHead).name, 'E4');
+  assert.equal(noteAt(result, 1, into.toItem, into.toHead).name, 'F4');
+});
+
+test('slur two measures apart: only the source measure and the target measure get a half each', function(){
+  const far = layout('r r r E4\n- - - -\nsF4 - - -');
+  assert.deepEqual(far.measures.map(function(m){ return m.slurs.length; }), [0, 1, 1], 'the source note is last cut in the held measure');
+  assert.equal(far.measures[1].slurs[0].toEdge, true);
+  assert.equal(far.measures[2].slurs[0].fromEdge, true);
+  const wide = layout('r r r E4\n- - - -\n- - - -\nsF4 - - -');
+  assert.deepEqual(wide.measures.map(function(m){ return m.slurs.length; }), [0, 0, 1, 1], 'no curve is drawn in the measures in between');
+});
+
+test('a slur after a rest is an invalid score, so the layout fails', function(){
+  const result = layoutApi.layoutScore('E4 r sF4 -', 4, 0);
+  assert.ok(result.error, 'no source after a rest');
+  assert.ok(layoutApi.layoutScore('sF4 r r r', 4, 0).error, 'no source at the start of the song');
+});
+
+test('slur inside a chord: only the slurred component gets a curve, between the same-string heads', function(){
+  const result = layout('E2@6+E4@1 E2@6+sF4@1 - r');
+  const slurs = result.measures[0].slurs;
+  assert.equal(slurs.length, 1);
+  const slur = slurs[0];
+  assert.equal(noteAt(result, 0, slur.fromItem, slur.fromHead).name, 'E4');
+  assert.equal(noteAt(result, 0, slur.toItem, slur.toHead).name, 'F4');
+  assert.equal(slur.fromHead, 1, 'the upper head of the two-note chord');
+  assert.equal(slur.toHead, 1);
+  // 화음 안에서 낮은 줄끼리 이어도 그 구성음 머리를 가리킨다
+  const low = layout('E2@6+E4@1 sF2@6+E4@1 - r').measures[0].slurs;
+  assert.equal(low.length, 1);
+  assert.equal(low[0].fromHead, 0);
+  assert.equal(low[0].toHead, 0);
+});
+
+test('slur judging uses the sounding pitch of a harmonic, not the hand position', function(){
+  // 7프렛 하모닉스는 손 대는 자리가 B2, 울리는 음은 B3. 손 대는 자리 B2로 판정했다면 같은 높이 오류가 났을 것이다.
+  const result = layout('hB3@6 sB2@6 - -');
+  assert.equal(result.measures[0].slurs.length, 1);
+  assert.equal(noteAt(result, 0, 0, 0).harmonic, true);
+  assert.equal(noteAt(result, 0, 0, 0).name, 'B2', 'the harmonic head sits at the hand position');
+});
+
+test('a source note split by ties curves from its last piece, and a split target gets the curve at its first piece', function(){
+  const source = layout('E4 - - - - sF4 - -', 8);
+  const items = source.measures[0].items;
+  assert.deepEqual(briefs(source), ['c:half 0.0/48>', '<c:eighth 4.0/12', 'c:quarter. 5.0/36']);
+  const slur = source.measures[0].slurs[0];
+  assert.equal(items.length, 3);
+  assert.equal(slur.fromItem, 1, 'the source curve leaves the last tied piece');
+  assert.equal(slur.toItem, 2);
+  const target = layout('E4 sF4 - - - - - -', 8);
+  const tItems = target.measures[0].items;
+  assert.ok(tItems.length >= 3, 'the slurred note is cut into several pieces');
+  const tslur = target.measures[0].slurs[0];
+  assert.equal(tslur.fromItem, 0);
+  assert.equal(tslur.toItem, 1, 'the curve ends at the first piece of the slurred note');
+  assert.equal(tItems[tslur.toItem].tieFromPrev, false);
+  // 마디를 넘는 붙임줄 음에서 나가는 슬러는 마지막 토막이 있는 마디에서 나간다
+  const across = layout('E4 - - -\n- - - -\nsF4 - - -');
+  assert.deepEqual(across.measures.map(function(m){ return m.slurs.length; }), [0, 1, 1]);
+  assert.equal(across.measures[1].slurs[0].toEdge, true);
+});
+
 test('invalid scores return an error', function(){
   assert.ok(layoutApi.layoutScore('E4 - -', 4, 0).error, 'too few cells');
   assert.ok(layoutApi.layoutScore('- E4 r r', 4, 0).error, 'orphan hold');

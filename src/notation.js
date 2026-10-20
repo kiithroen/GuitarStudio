@@ -141,10 +141,11 @@
   // 슬러(해머링·풀링) 잇기 규칙의 SSOT. 검사·파싱 결과·악보 입력 화면이 같이 쓴다(Docs/score-format.md 슬러).
   // pieces: 시간 순 조각 [{rest, hold, notes:[{str, midi, slur}]}]. 마디를 넘어 이어 본다.
   // 돌려주는 값: 조각마다 notes와 같은 순서의 배열. 슬러가 아닌 음은 null,
-  // 슬러 음은 {ok:true, type:'hammer'|'pull', fromMidi} 또는 {ok:false, reason:'no-source'|'same-pitch'}.
+  // 슬러 음은 {ok:true, type:'hammer'|'pull', fromMidi, from:{piece, note}} 또는 {ok:false, reason:'no-source'|'same-pitch'}.
+  // from 은 출발 음의 자리다: pieces 안 조각 번호와 그 조각 notes 안 번호(오선 곡선이 쓴다).
   function linkSlurs(pieces){
-    var last = Object.create(null); // 줄 번호 → 그 줄에서 마지막으로 친 음의 midi
-    return (pieces || []).map(function(piece){
+    var last = Object.create(null); // 줄 번호 → 그 줄에서 마지막으로 친 음 {midi, piece, note}
+    return (pieces || []).map(function(piece, pieceIndex){
       var notes = piece && Array.isArray(piece.notes) ? piece.notes : [];
       var none = notes.map(function(){ return null; });
       if (piece && piece.rest){
@@ -156,10 +157,10 @@
         if (!note.slur) return null;
         var from = last[note.str];
         if (from == null) return {ok:false, reason:'no-source'};
-        if (from === note.midi) return {ok:false, reason:'same-pitch'};
-        return {ok:true, type:note.midi > from ? 'hammer' : 'pull', fromMidi:from};
+        if (from.midi === note.midi) return {ok:false, reason:'same-pitch'};
+        return {ok:true, type:note.midi > from.midi ? 'hammer' : 'pull', fromMidi:from.midi, from:{piece:from.piece, note:from.note}};
       });
-      notes.forEach(function(note){ last[note.str] = note.midi; });
+      notes.forEach(function(note, noteIndex){ last[note.str] = {midi:note.midi, piece:pieceIndex, note:noteIndex}; });
       return results;
     });
   }

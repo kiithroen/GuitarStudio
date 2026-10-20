@@ -2289,8 +2289,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=slur-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=slur-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=slur-2')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=slur-2">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -3941,6 +3941,7 @@ async function testSlurLabels(client, httpPort) {
       plain: pills(0, 0), hammer: pills(0, 1), held: pills(0, 2), pull: pills(0, 3),
       split: pills(1, 0), chord: pills(2, 1),
       staffEllipses: document.querySelectorAll('#measuresGrid .tab-staff-layer ellipse.st-head').length,
+      staffSlurs: document.querySelectorAll('#measuresGrid .tab-staff-layer path.st-slur').length,
       mark: (function(){ var el = document.querySelector('#measuresGrid .fret-slur'); var cs = getComputedStyle(el); var label = getComputedStyle(el.parentNode); return { fontSize: parseFloat(cs.fontSize), labelFontSize: parseFloat(label.fontSize), weight: cs.fontWeight, opacity: cs.opacity, color: cs.color, labelColor: label.color }; })()
     };
     updateActiveCursor(0, 0, false);
@@ -3958,6 +3959,7 @@ async function testSlurLabels(client, httpPort) {
   assert.deepEqual(practice.split.map(pill => pill.text), [open, 'h' + up, 'p' + open], 'subdivided slurs read h then p: ' + JSON.stringify(practice.split));
   assert.deepEqual(practice.chord.map(pill => pill.text).sort(), ['h' + up, open].sort(), 'in a chord only the slurred component has the letter: ' + JSON.stringify(practice.chord));
   assert.ok(practice.staffEllipses >= 1, 'the staff draws slurred notes as ordinary heads');
+  assert.equal(practice.staffSlurs, 5, 'the staff layer draws one curve per slurred note (2 + 2 + 1): ' + practice.staffSlurs);
   assert.ok(practice.mark.fontSize < practice.mark.labelFontSize, 'the direction letter is smaller than the fret number: ' + JSON.stringify(practice.mark));
   assert.ok(Number(practice.mark.opacity) < 1 && Number(practice.mark.weight) >= 700, 'the letter is bold and slightly faded: ' + JSON.stringify(practice.mark));
   assert.equal(practice.mark.color, practice.mark.labelColor, 'the slur mark does not change the color');
@@ -4020,7 +4022,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=slur-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=slur-2')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

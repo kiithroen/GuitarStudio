@@ -344,6 +344,20 @@
       }
     });
 
+    // 슬러 곡선: 도착 음의 기둥이 위면 머리 아래, 아래면 머리 위. 마디를 넘는 슬러는 이 마디 쪽 반쪽만 그린다.
+    (layout.slurs || []).forEach(function(slur){
+      var from = slur.fromEdge ? null : infos[slur.fromItem];
+      var to = slur.toEdge ? null : infos[slur.toItem];
+      var fromHead = from && from.heads[slur.fromHead];
+      var toHead = to && to.heads[slur.toHead];
+      var anchor = to || from;   // 반쪽은 이 마디에 있는 음의 기둥을 따른다
+      if (!anchor || (!fromHead && !slur.fromEdge) || (!toHead && !slur.toEdge)) return;
+      var below = anchor.item.stem === 'up';
+      if (fromHead && toHead) out.push(drawSlur(fromHead.x, fromHead.y, toHead.x, toHead.y, below, ''));
+      else if (fromHead) out.push(drawSlur(fromHead.x, fromHead.y, width - 2, fromHead.y, below, 'is-start'));
+      else out.push(drawSlur(leftPad + 2, toHead.y, toHead.x, toHead.y, below, 'is-end'));
+    });
+
     // 셋잇단 숫자
     (layout.tuplets || []).forEach(function(tuplet){
       out.push(drawTuplet(tuplet, items, infos, geo));
@@ -359,6 +373,19 @@
     var span = Math.max(x2 - x1, 6);
     var d = 'M' + n(x1) + ' ' + n(yy) + ' Q' + n(x1 + span / 2) + ' ' + n(yy + sign * 8) + ' ' + n(x1 + span) + ' ' + n(yy);
     return '<path class="st-tie"' + attrs({ d: d, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.3 }) + '/>';
+  }
+
+  // 슬러 곡선(3차 베지어). 양 끝은 머리에서 띄우고, 가운데 높이는 가로 거리에 따라 늘린다. 모든 y는 그림 안에 넣는다.
+  function drawSlur(x1, y1, x2, y2, below, cls){
+    var sign = below ? 1 : -1;
+    var ya = y1 + sign * (HEAD_RY + 1);
+    var yb = y2 + sign * (HEAD_RY + 1);
+    var rise = Math.min(10, 4 + Math.abs(x2 - x1) * 0.08);
+    var reach = rise * 4 / 3;   // 양쪽 제어점이 이만큼 올라가면 가운데는 rise 만큼 올라간다
+    var dx = x2 - x1;
+    function cy(y){ return n(clamp(y, 2, STAFF_HEIGHT - 2)); }
+    var d = 'M' + n(x1) + ' ' + cy(ya) + ' C' + n(x1 + dx * 0.25) + ' ' + cy(ya + sign * reach) + ' ' + n(x1 + dx * 0.75) + ' ' + cy(yb + sign * reach) + ' ' + n(x2) + ' ' + cy(yb);
+    return '<path class="st-slur' + (cls ? ' ' + cls : '') + '"' + attrs({ d: d, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.3 }) + '/>';
   }
 
   function drawTuplet(tuplet, items, infos, geo){
