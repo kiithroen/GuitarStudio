@@ -114,6 +114,7 @@
     '| 못갖춘마디 | `\\ac` (못갖춘마디인 첫 마디 앞) |',
     '| 리허설 기호(A, B, B\') | `\\section ("A")`, `\\section ("B\'")` (인쇄된 글 그대로, 괄호로 감싸) |',
     '| 이동 표시 | `\\jump 이름` (아래) |',
+    '- 곡 중간에 박자표가 바뀌면(예: 4/4 곡의 2/4 한 마디) 그 마디의 첫 음 앞에 `\\ts (2 4)`를 적고, 다음 마디가 원래 박자면 그 마디 첫 음 앞에 `\\ts (4 4)`를 다시 적어. 박자표를 바꾸지 않고 쉼으로 채우지 마.',
     '1·2번 괄호가 있는 도돌이는 이렇게 적어: `\\ro 0.1.1 | 1.1.1 | \\ae 1 \\rc 2 3.1.1 | \\ae 2 0.2.1 | 1.2.1 |`',
     '- 이동 표시는 해당 표시가 적힌 마디 앞에 `\\jump 이름`을 적어. 세뇨 표지는 `\\jump segno`, 코다 표지는 `\\jump coda`, "To Coda"는 `\\jump dacoda`, "Fine"은 `\\jump fine`이야. D.S.는 `dalsegno`, D.S. al Coda는 `dalsegnoalcoda`, D.S. al Fine은 `dalsegnoalfine`, D.C.는 `dacapo`, D.C. al Coda는 `dacapoalcoda`, D.C. al Fine은 `dacapoalfine`이야. 겹세뇨·둘째 코다는 `segnosegno`, `doublecoda`, `dadoublecoda`, `dalsegnosegno`, `dalsegnosegnoalcoda`, `dalsegnosegnoalfine`, `dacapoaldoublecoda`, `dalsegnoaldoublecoda`, `dalsegnosegnoaldoublecoda`로 적어.',
     '- 세뇨 표지나 D.S.·D.C. 옆에 (with Repeat)·(반복 있음)이 적혀 있으면 D.S.·D.C.가 적힌 마디의 박에 `{txt "with Repeat"}`를 적어. 세뇨 옆에 적혀 있어도 세뇨 마디가 아니라 D.S. 마디에 적어.',

@@ -204,8 +204,8 @@ function unstring(score, bar, beat, noteIndex, midi){
 }
 
 const SOURCE_MEMO = '원본: ';
-// 곡 중간의 짧은 마디 메모와 4/4 곡의 8칸 설명 문구(채운 칸 수와 종류가 뒤에 붙는다)
-const SHORT_BAR_MEMO = '원본 2/4 마디 → 뒤 2칸 ';
+// 곡 중간의 짧은 마디 메모와 4/4 곡의 8칸 설명 문구
+const SHORT_BAR_MEMO = '원본 2/4 마디';
 const EIGHT_CELLS_NOTE = '8칸(8분음표 칸): 4칸으로는 맞지 않는 리듬이 있음';
 const EXAMPLES = [
   {
@@ -258,7 +258,7 @@ const EXAMPLES = [
   },
   {
     file: 'pickup.tex', title: 'Pickup', beats: 4, bpm: 100, capo: 0, descriptionHas: [],
-    measures: ['[-] r r r ' + n(1, 0) + ' | "못갖춘마디"', '[-] ' + n(1, 1) + ' - - -']
+    measures: ['[-] _ _ _ ' + n(1, 0) + ' | "못갖춘마디"', '[-] ' + n(1, 1) + ' - - -']
   },
   {
     // 카포는 음높이에 넣지 않고(프렛 그대로) 설명 열의 Capo 표기로 남긴다.
@@ -355,31 +355,31 @@ const EXAMPLES = [
     measures: skeletonMeasures(false)
   },
   {
-    // 4/4 곡 가운데 2/4 마디(끝이 음): 4칸으로 만들고 뒤 2칸은 앞 음을 이어 `-` 로 채운다.
+    // 4/4 곡 가운데 2/4 마디(끝이 음): 4칸으로 만들고 뒤 2칸은 빈칸 `_` 으로 채운다.
     file: 'short-bar.tex', title: 'Short Bar', beats: 4, bpm: 80, capo: 0, descriptionHas: [],
     measures: [
       '[-] ' + [n(1, 0), n(1, 1), n(1, 3), n(2, 0)].join(' '),
-      '[-] ' + [n(3, 0), n(4, 0), '-', '-'].join(' ') + ' | "' + SHORT_BAR_MEMO + '유지"',
+      '[-] ' + [n(3, 0), n(4, 0), '_', '_'].join(' ') + ' | "' + SHORT_BAR_MEMO + '"',
       '[-] ' + [n(3, 1), n(3, 3), n(4, 0), n(4, 1)].join(' ')
     ]
   },
   {
-    // 2/4 마디의 끝이 쉼이면 `r` 로 채우고 메모는 `쉼`
+    // 2/4 마디의 끝이 쉼이어도 뒤 2칸은 빈칸 `_` 이고 쉼은 그대로 쉼이다.
     file: 'short-bar-rest.tex', title: 'Short Bar Rest', beats: 4, bpm: 80, capo: 0, descriptionHas: [],
     measures: [
       '[-] ' + [n(1, 0), n(1, 1), n(1, 3), n(2, 0)].join(' '),
-      '[-] ' + [n(3, 0), 'r', 'r', 'r'].join(' ') + ' | "' + SHORT_BAR_MEMO + '쉼"',
+      '[-] ' + [n(3, 0), 'r', '_', '_'].join(' ') + ' | "' + SHORT_BAR_MEMO + '"',
       '[-] ' + [n(3, 1), n(3, 3), n(4, 0), n(4, 1)].join(' ')
     ]
   },
   {
-    // 도돌이 안의 짧은 마디는 펼친 사본마다 같은 채움과 메모를 단다.
+    // 도돌이 안의 짧은 마디는 펼친 사본마다 같은 빈칸과 메모를 단다.
     file: 'short-bar-repeat.tex', title: 'Short Bar Repeat', beats: 4, bpm: 80, capo: 0, descriptionHas: [],
     measures: [
       '[-] ' + [n(1, 0), n(1, 1), n(1, 3), n(2, 0)].join(' ') + ' | "도돌이 펼침"',
-      '[-] ' + [n(3, 0), n(4, 0), '-', '-'].join(' ') + ' | "' + SHORT_BAR_MEMO + '유지"',
+      '[-] ' + [n(3, 0), n(4, 0), '_', '_'].join(' ') + ' | "' + SHORT_BAR_MEMO + '"',
       '[-] ' + [n(1, 0), n(1, 1), n(1, 3), n(2, 0)].join(' '),
-      '[-] ' + [n(3, 0), n(4, 0), '-', '-'].join(' ') + ' | "' + SHORT_BAR_MEMO + '유지"',
+      '[-] ' + [n(3, 0), n(4, 0), '_', '_'].join(' ') + ' | "' + SHORT_BAR_MEMO + '"',
       '[-] ' + [n(3, 1), n(3, 3), n(4, 0), n(4, 1)].join(' ')
     ]
   },
@@ -1190,8 +1190,8 @@ test('mutant (다): overwriting an existing .tex is caught', function(){
   gpMutantFailures('overwrite', null, [['if (texBases.has(base)){', 'if (false){'], ["flag: 'wx'", "flag: 'w'"]]);
 });
 
-test('mid-song meter change: a bar shorter than the grid bar and a whole number of cells is filled; a longer bar or a bar that is not a whole number of cells is refused with its number and meter', function(){
-  // 끝이 음이면 유지, 끝이 쉼이면 r (예제 short-bar, short-bar-rest, short-bar-repeat 가 줄 전체를 견준다). 여기서는 거절과 칸 수를 본다.
+test('mid-song meter change: a bar shorter than the grid bar and a whole number of cells gets trailing skip cells; a longer bar or a bar that is not a whole number of cells is refused with its number and meter', function(){
+  // 모자란 칸은 빈칸 _ (예제 short-bar, short-bar-rest, short-bar-repeat 가 줄 전체를 견준다). 여기서는 거절과 칸 수를 본다.
   const head = '\\title "M" \\tempo 80 \\ts (4 4)\n0.1.4 1.1.4 3.1.4 0.2.4 |\n';
   const longer = tool.convertScore(importCleanTex(head + '\\ts (5 4) 0.1.4 1.1.4 3.1.4 0.2.4 0.3.4 |\n', 'longer'), {});
   assert.equal(longer.ok, false);
@@ -1200,17 +1200,24 @@ test('mid-song meter change: a bar shorter than the grid bar and a whole number 
   const half = tool.convertScore(importCleanTex(head + '\\ts (3 8) 0.1.8 1.1.8 3.1.8 |\n', 'half'), {});
   assert.equal(half.ok, false);
   assert.match(half.error, /곡 중간에 박자표가 바뀝니다\(2마디 3\/8\)/);
-  // 3/4 마디는 4칸 중 3칸을 쓰고 1칸을 채운다
+  // 3/4 마디는 4칸 중 3칸을 쓰고 1칸은 빈칸이다
   const three = convertTex(head + '\\ts (3 4) 0.1.4 1.1.4 3.1.4 |\n');
   assert.equal(three.ok, true, three.error);
-  assert.equal(three.measures[1], '[-] ' + [n(1, 0), n(1, 1), n(1, 3), '-'].join(' ') + ' | "원본 3/4 마디 → 뒤 1칸 유지"');
+  assert.equal(three.measures[1], '[-] ' + [n(1, 0), n(1, 1), n(1, 3), '_'].join(' ') + ' | "원본 3/4 마디"');
   // 메모는 변환기 근사 메모 쪽이라 박의 글 뒤에 붙는다
   const withText = convertTex(head + '\\ts (2 4) 0.1.4 {txt "글"} 1.1.4 |\n');
-  assert.equal(withText.measures[1], '[-] ' + [n(1, 0), n(1, 1), '-', '-'].join(' ') + ' | "글 · 원본 2/4 마디 → 뒤 2칸 유지"');
-  // 박자표 변경이 없는 곡 끝의 짧은 마디는 지금처럼 이 메모 없이 r 로 채운다
+  assert.equal(withText.measures[1], '[-] ' + [n(1, 0), n(1, 1), '_', '_'].join(' ') + ' | "글 · 원본 2/4 마디"');
+  // 박자표 변경이 없는 곡 끝의 짧은 마디는 이 메모 없이 뒤를 빈칸으로 채운다
   const tail = convertTex(head + '0.1.4 1.1.4 |\n');
   assert.equal(tail.ok, true, tail.error);
+  assert.equal(tail.measures[1], '[-] ' + [n(1, 0), n(1, 1), '_', '_'].join(' '));
   assert.equal(tail.measures[1].indexOf('원본 '), -1);
+});
+
+test('skip cells: pickup, small remainder inside a cell, short mid-song bar, short last bar, total time, and the round trip of a score with skip cells', function(){
+  const failures = skipCellFailures(tool);
+  if (failures.length) process.stdout.write(failures.join('\n') + '\n');
+  assert.deepEqual(failures, []);
 });
 
 test('eight cells: a 4/4 song with rhythm the 4-cell grid cannot hold uses 8 cells only when it moves fewer notes and the doubled BPM stays within the limit; other meters keep their cells', function(){
@@ -1263,11 +1270,80 @@ test('same note in two voices: one token, empty fingers are taken from the dropp
   assert.match(otherText.measures[0], / \| "a · b"$/);
 });
 
+// ---------- 빈칸 _ 검사 (alphaTex <-> 우리 악보)
+
+// 변환기가 만드는 마디 메모 중 왕복에서 원래 악보에 없던 것(못갖춘마디, 박자표가 바뀐 마디)을 뗀다.
+function withoutConverterMemo(line){
+  return line.replace(/ \| "(?:못갖춘마디|원본 \d+\/\d+ 마디)"$/, '');
+}
+
+// 빈칸 악보의 기대 마디와 어긋난 곳의 목록. 변환기(toolModule)와 우리 악보 -> alphaTex 변환기(forwardModule)를 바꿔 끼워 일부러 어긋난 사본을 넣을 수 있다.
+function skipCellFailures(toolModule, forwardModule){
+  const forward = forwardModule || converter;
+  const failures = [];
+  function expectLines(label, result, want){
+    if (!result.ok){ failures.push(label + ': 변환 실패 ' + result.error); return; }
+    if (JSON.stringify(result.measures) !== JSON.stringify(want)) failures.push(label + ': 마디\n      기대 ' + want.join('\n           ') + '\n      결과 ' + result.measures.join('\n           '));
+    if (result.errors.length) failures.push(label + ': 검사 오류 ' + result.errors.map(function(error){ return error.code; }).join(','));
+  }
+  function convertText(tex){ return toolModule.convertScore(importCleanTex(tex, 'skip'), { sourceName: 'skip.tex' }); }
+  const head = '\\title "K" \\tempo 80 \\ts (4 4)\n';
+  const full = [n(1, 0), n(1, 1), n(1, 3), n(2, 0)];
+
+  // (1) 4/4 곡의 한 박 못갖춘마디: 앞쪽 빈칸 셋
+  expectLines('한 박 못갖춘마디', convertText(head + '\\ac 0.1.4 |\n0.1.4 1.1.4 3.1.4 0.2.4 |\n'),
+    ['[-] _ _ _ ' + n(1, 0) + ' | "못갖춘마디"', '[-] ' + full.join(' ')]);
+  // (2) 칸보다 작은 못갖춘마디(2/4 곡의 16분음표 둘): 빈칸 하나 + 그 칸 안의 쉼
+  expectLines('칸보다 작은 못갖춘마디', convertText('\\title "K" \\tempo 80 \\ts (2 4)\n\\ac :16 0.1 1.1 |\n0.1.4 1.1.4 |\n'),
+    ['[-] _ r/r/' + n(1, 0) + '/' + n(1, 1) + ' | "못갖춘마디"', '[-] ' + [n(1, 0), n(1, 1)].join(' ')]);
+  // (3) 곡 중간 2/4 마디: 음 음 _ _ + 메모(음이 쉼으로 끝나도 같다)
+  expectLines('곡 중간 2/4 마디', convertText(head + '0.1.4 1.1.4 3.1.4 0.2.4 |\n\\ts (2 4) 0.1.4 1.1.4 |\n\\ts (4 4) 0.1.4 1.1.4 3.1.4 0.2.4 |\n'),
+    ['[-] ' + full.join(' '), '[-] ' + [n(1, 0), n(1, 1), '_', '_'].join(' ') + ' | "원본 2/4 마디"', '[-] ' + full.join(' ')]);
+  // (4) 짧은 끝마디: 박자표를 바꾸지 않아도 뒤가 빈칸이고 메모가 없다. 칸보다 작은 나머지는 그 칸의 쉼이다.
+  expectLines('짧은 끝마디', convertText(head + '0.1.4 1.1.4 3.1.4 0.2.4 |\n0.1.4 1.1.4 |\n'),
+    ['[-] ' + full.join(' '), '[-] ' + [n(1, 0), n(1, 1), '_', '_'].join(' ')]);
+  expectLines('칸보다 짧은 끝마디', convertText(head + '0.1.4 1.1.4 3.1.4 0.2.4 |\n:16 0.1 1.1 3.1 |\n'),
+    ['[-] ' + full.join(' '), '[-] ' + [n(1, 0), n(1, 1), n(1, 3)].join('/') + '/r _ _ _']);
+  // 시간: 빈칸을 뺀 시간이 alphaTab 내용 길이의 합(한 박 못갖춘마디 + 4 + 2 + 2박)과 같다
+  const timed = convertText(head + '\\ac 0.1.4 |\n0.1.4 1.1.4 3.1.4 0.2.4 |\n\\ts (2 4) 0.1.4 1.1.4 |\n\\ts (4 4) 0.1.4 1.1.4 |\n');
+  if (!timed.ok) failures.push('시간: 변환 실패 ' + timed.error);
+  else {
+    const totalUnits = rhythm.annotate(parser.parseScore(timed.measures.join('\n'), timed.beats).measures, timed.beats).totalUnits;
+    if (totalUnits !== (1 + 4 + 2 + 2) * rhythm.UNITS_PER_SLOT) failures.push('시간: 전체 길이 ' + totalUnits + ' (기대 ' + (1 + 4 + 2 + 2) * rhythm.UNITS_PER_SLOT + ')');
+    if (timed.errors.length) failures.push('시간: 검사 오류 ' + timed.errors[0].code);
+  }
+
+  // (7) 왕복: 빈칸이 든 우리 악보 -> alphaTex -> 우리 악보(변환기 메모만 뗀다)
+  const lines = [
+    '[-] _ _ _ ' + n(1, 0),
+    '[-] ' + [n(1, 1), n(1, 3), n(2, 0), n(2, 1)].join(' '),
+    '[-] ' + [n(3, 0), n(3, 1), '_', '_'].join(' '),
+    '[-] ' + full.join(' '),
+    '[-] ' + [n(3, 0), 'r', '_', '_'].join(' ')
+  ];
+  const out = forward.toAlphaTex({ title: 'K', beats: 4, bpm: 80, capo: 0, lines: lines });
+  if (out.error) failures.push('왕복: alphaTex 변환 실패 ' + out.error);
+  else {
+    const imported = importTex(out.tex);
+    if (imported.diagnostics.length || imported.thrown) failures.push('왕복: alphaTex 읽기 실패 ' + imported.diagnostics.join(' / '));
+    else {
+      const back = toolModule.convertScore(imported.score, { sourceName: 'skip.tex' });
+      if (!back.ok) failures.push('왕복: 되돌리기 실패 ' + back.error);
+      else {
+        if (back.errors.length) failures.push('왕복: 변환 결과 검사 오류 ' + back.errors[0].code);
+        if (JSON.stringify(back.measures.map(withoutConverterMemo)) !== JSON.stringify(lines)) failures.push('왕복: 마디\n      원본 ' + lines.join('\n           ') + '\n      결과 ' + back.measures.join('\n           '));
+        if (back.beats !== 4 || back.bpm !== 80) failures.push('왕복: 칸 수·BPM ' + back.beats + ' ' + back.bpm);
+      }
+    }
+  }
+  return failures;
+}
+
 // 새 검사가 실제로 잡는지: 일부러 어긋난 사본을 같은 검사에 넣어 사본에서만 새로 생기는 실패가 있어야 한다.
 function mutantCaught(label, from, to){
-  const baseline = new Set(roundTripFailures(tool).concat(allExampleFailures(tool)));
+  const baseline = new Set(roundTripFailures(tool).concat(allExampleFailures(tool), skipCellFailures(tool)));
   const mutant = loadMutant(from, to);
-  const caught = roundTripFailures(mutant).concat(allExampleFailures(mutant)).filter(function(failure){ return !baseline.has(failure); });
+  const caught = roundTripFailures(mutant).concat(allExampleFailures(mutant), skipCellFailures(mutant)).filter(function(failure){ return !baseline.has(failure); });
   assert.ok(caught.length > 0, label + ' 사본이 검사에 걸리지 않았습니다');
   process.stdout.write('  ' + label + ': caught by ' + caught.length + ' failure(s), e.g. ' + caught[0].split('\n')[0] + '\n');
 }
@@ -1337,8 +1413,20 @@ test('mutant (l): treating a string-less note in a 6-string track as stringed is
   mutantCaught('stringed branch for every note', 'if (hasStrings && note.isStringed && note.string >= 1){', 'if (hasStrings){');
 });
 
-test('mutant (너): filling a short bar with rests only is caught', function(){
-  mutantCaught('short bar filled with r', "if (!fillKind) fillKind = collected.records.length && lastPiece !== null && lastPiece !== 'rest' ? '-' : 'r';", "if (!fillKind) fillKind = 'r';");
+test('mutant (너): filling a pickup bar with rests instead of skip cells is caught', function(){
+  mutantCaught('pickup filled with r', "if (cellPlan.blank){ cellTexts.push('_'); return; }", "if (cellPlan.blank){ cellTexts.push(anacrusis ? 'r' : '_'); return; }");
+});
+
+test('mutant (버): filling a short mid-song bar with holds instead of skip cells is caught', function(){
+  mutantCaught('short bar filled with -', "if (cellPlan.blank){ cellTexts.push('_'); return; }", "if (cellPlan.blank){ cellTexts.push(shortBar ? '-' : '_'); return; }");
+});
+
+test('mutant (서): writing a skip cell as a quarter rest in alphaTex is caught', function(){
+  const baseline = new Set(skipCellFailures(tool));
+  const mutant = loadMutant("return prefix + out.join(' ') + ' |';", "return out.concat(new Array(skipCount + 1).join('r.4,').split(',').slice(0, skipCount)).join(' ') + ' |';", FORWARD_SOURCE_PATH);
+  const caught = skipCellFailures(tool, mutant).filter(function(failure){ return !baseline.has(failure); });
+  assert.ok(caught.length > 0, '빈칸을 4분쉼으로 내보내는 사본이 검사에 걸리지 않았습니다');
+  process.stdout.write('  skip as rest: caught by ' + caught.length + ' failure(s), e.g. ' + caught[0].split('\n')[0] + '\n');
 });
 
 test('mutant (더): never switching a 4/4 song to 8 cells is caught', function(){

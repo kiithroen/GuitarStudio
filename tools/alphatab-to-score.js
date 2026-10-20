@@ -523,14 +523,14 @@ function convert(score, opts, forcedGrid){
   const grid = forcedGrid || chooseGrid(signatureBar.timeSignatureNumerator, signatureBar.timeSignatureDenominator, quarterTempo);
   const barTicks = grid.cells * grid.slotTicks;
   // 박자표가 다른 마디: 못갖춘마디가 아니고, 격자 마디보다 짧고, 칸 길이의 정수배여야 한다. 아니면 변환하지 않는다.
-  // shortBars[마디 index] = { ticks, used(원래 내용이 차지하는 칸 수), numerator, denominator }
+  // shortBars[마디 index] = { ticks(원래 마디 길이), numerator, denominator }. 모자란 칸은 뒤쪽 빈칸 _ 으로 채운다.
   const shortBars = new Map();
   meterChanges.forEach(function(masterBar){
     const ticks = signatureTicks(masterBar);
     if (masterBar.isAnacrusis || !(ticks < barTicks) || ticks % grid.slotTicks !== 0){
       refuse('곡 중간에 박자표가 바뀝니다(' + (masterBar.index + 1) + '마디 ' + masterBar.timeSignatureNumerator + '/' + masterBar.timeSignatureDenominator + '). 변환하지 않습니다.');
     }
-    shortBars.set(masterBar.index, { ticks: ticks, used: ticks / grid.slotTicks, numerator: masterBar.timeSignatureNumerator, denominator: masterBar.timeSignatureDenominator });
+    shortBars.set(masterBar.index, { ticks: ticks, numerator: masterBar.timeSignatureNumerator, denominator: masterBar.timeSignatureDenominator });
   });
 
   const rawBpm = quarterTempo / grid.slotQuarter;
@@ -709,8 +709,18 @@ function convert(score, opts, forcedGrid){
     seen.set(index, occurrence + 1);
     const collected = collectBar(index);
     const shortBar = shortBars.get(index) || null;
-    // 이 마디의 원래 길이(짧은 마디는 채우기 전 길이)
-    const barLen = shortBar ? shortBar.ticks : barTicks;
+    // 이 마디의 실제 길이. 못갖춘마디는 안에 든 내용의 길이, 박자표가 바뀐 짧은 마디는 그 박자표의 길이, 곡의 마지막 마디는 내용의 길이(격자보다 짧을 때)다.
+    // 격자 마디보다 모자란 길이 중 칸 길이의 정수배는 빈칸 _ 으로 채운다(못갖춘마디는 앞쪽, 나머지는 뒤쪽). 칸보다 작은 나머지는 그 칸 안의 쉼 r 이 된다.
+    const anacrusis = masterBar.isAnacrusis && pad[index] > 0;
+    let actualLen = shortBar ? shortBar.ticks : barTicks;
+    if (anacrusis) actualLen = barTicks - pad[index];
+    else if (position === order.length - 1 && staff.bars[index]){
+      const content = staff.bars[index].calculateDuration();
+      if (content > 0 && content < actualLen) actualLen = content;
+    }
+    let blankCount = Math.min(grid.cells - 1, Math.floor((Math.max(0, barTicks - actualLen) + TOLERANCE_TICKS) / grid.slotTicks));
+    // 못갖춘마디의 음은 pad 만큼 밀려 있으니 그 프레임에서 마디 끝은 격자 마디 끝이다.
+    const barLen = anacrusis ? barTicks : actualLen;
     const memos = collected.memos.slice();
     if (masterBar.isAnacrusis) memos.push(MEMO.anacrusis);
     // 이동 표시(D.S. 등)가 붙은 마디 다음에 순서대로가 아닌 마디가 오고 그 마디가 그 이동의 도착지면, 이동해서 들어온 첫 마디다.
@@ -742,6 +752,16 @@ function convert(score, opts, forcedGrid){
       record.offset = Math.max(0, record.start - record.cell * grid.slotTicks);
       cells[record.cell].push(record);
     });
+    // 빈칸 칸에는 음이 들어가지 않는다. 음이 있는 칸까지는 빈칸으로 만들지 않는다.
+    let firstNoteCell = grid.cells;
+    let lastNoteCell = -1;
+    cells.forEach(function(cellRecords, c){
+      if (!cellRecords.length) return;
+      if (c < firstNoteCell) firstNoteCell = c;
+      if (c > lastNoteCell) lastNoteCell = c;
+    });
+    if (lastNoteCell >= 0) blankCount = Math.min(blankCount, anacrusis ? firstNoteCell : grid.cells - 1 - lastNoteCell);
+    const isBlankCell = function(c){ return blankCount > 0 && (anacrusis ? c < blankCount : c >= grid.cells - blankCount); };
 
     // 쉼이 시작하는 자리: 칸 안에서 음이 끝났는데 그 자리 뒤로 울리는 음(다른 성부, 붙임줄로 이어진 음, 앞 마디에서 이어진 음)이 하나도 없는 자리.
     const restsByCell = [];
@@ -763,6 +783,7 @@ function convert(score, opts, forcedGrid){
     const startTimes = [];
     // 1차: 칸별 분할과 자리 정하기
     const plan = cells.map(function(cellRecords, c){
+      if (isBlankCell(c)) return { blank: true };
       const restOffsets = restsByCell[c];
       if (!cellRecords.length && !restOffsets.length) return { division: 1, byPosition: [[]] };
       const choice = chooseDivision(cellRecords.map(function(record){ return record.offset; }), restOffsets, grid.slotTicks);
@@ -784,15 +805,9 @@ function convert(score, opts, forcedGrid){
     });
 
     // 2차: 조각 문자열 만들기
-    let fillKind = '';
     plan.forEach(function(cellPlan, c){
-      // 짧은 마디의 모자란 칸: 마지막 조각이 음이나 유지면 `-`, 쉼이거나 음이 없는 마디면 `r`
-      if (shortBar && c >= shortBar.used){
-        if (!fillKind) fillKind = collected.records.length && lastPiece !== null && lastPiece !== 'rest' ? '-' : 'r';
-        cellTexts.push(fillKind);
-        lastPiece = fillKind === '-' ? 'hold' : 'rest';
-        return;
-      }
+      // 빈칸은 시간이 없어서 유지 사슬(lastPiece)을 건드리지 않는다.
+      if (cellPlan.blank){ cellTexts.push('_'); return; }
       const pieces = [];
       for (let k = 0; k < cellPlan.division; k++){
         const time = c * grid.slotTicks + k * grid.slotTicks / cellPlan.division;
@@ -820,9 +835,7 @@ function convert(score, opts, forcedGrid){
       }
       cellTexts.push(pieces.join('/'));
     });
-    if (shortBar){
-      memos.push('원본 ' + shortBar.numerator + '/' + shortBar.denominator + ' 마디 → 뒤 ' + (grid.cells - shortBar.used) + '칸 ' + (fillKind === '-' ? '유지' : '쉼'));
-    }
+    if (shortBar) memos.push('원본 ' + shortBar.numerator + '/' + shortBar.denominator + ' 마디');
 
     // 길이가 다른 음이 겹치는지(둘 이상의 성부가 있을 때)
     let overlap = false;

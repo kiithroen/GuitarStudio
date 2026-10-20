@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const Module = require('node:module');
 const alphaTab = require('../vendor/alphatab/dist/alphaTab.min.js');
 const converter = require('../src/score-to-alphatex.js');
 const layoutApi = require('../src/staff-layout.js');
@@ -417,6 +418,70 @@ test('apoyando and confirm marks are not written to alphaTex, and the result is 
   assert.doesNotMatch(out.tex, /apoyando|!|\?/);
   assert.equal(importTex(out.tex).diagnostics.length, 0);
   assert.deepEqual(Object.keys(converter.toAlphaTex({ title: 'T', beats: 4, bpm: 60, capo: 0, lines: ['E4 r r'] })), ['error']);
+});
+
+// 빈칸 _ 악보를 변환한 결과의 문제 목록. 변환기 모듈(또는 일부러 어긋난 사본)을 받는다.
+function skipCellProblems(converterModule){
+  const problems = [];
+  function convertWith(song){
+    const result = converterModule.toAlphaTex(Object.assign({ title: 'T', beats: 4, bpm: 60, capo: 0 }, song));
+    if (result.error){ problems.push('변환 실패: ' + result.error); return null; }
+    const imported = importTex(result.tex);
+    if (imported.diagnostics.length || imported.thrown){ problems.push('alphaTab 진단: ' + imported.diagnostics.join(' / ') + '\n' + result.tex); return null; }
+    return { tex: result.tex, score: imported.score, staff: imported.score.tracks[0].staves[0], bars: result.tex.split('\n').slice(3).filter(Boolean) };
+  }
+  // 4칸: 첫 마디 앞쪽 빈칸 -> \ac, 가운데 짧은 마디 -> \ts (2 4) 와 다음 마디의 \ts (4 4), 끝마디의 뒤쪽 빈칸 -> \ts (2 4)
+  const lines = ['[-] _ _ _ E4@1', '[-] E4@1 F4@1 G4@1 B3@2', '[-] G3@3 D3@4 _ _', '[-] E4@1 F4@1 G4@1 B3@2', '[-] E4@1 r _ _'];
+  const out = convertWith({ lines: lines });
+  if (out){
+    const grid = rhythm.getGridInfo(4);
+    const base = '\\ts (' + grid.numerator + ' ' + grid.denominator + ') ';
+    const want = ['\\ac ', '', '\\ts (2 4) ', base, '\\ts (2 4) '];
+    want.forEach(function(prefix, index){
+      const bar = out.bars[index] || '';
+      if (prefix ? bar.indexOf(prefix) !== 0 : /^\\(?:ac|ts)/.test(bar)) problems.push((index + 1) + '마디 앞 표시가 ' + JSON.stringify(prefix) + ' 이어야 합니다: ' + bar);
+    });
+    if (!out.score.masterBars[0].isAnacrusis) problems.push('첫 마디가 못갖춘마디가 아닙니다');
+    const measures = parser.parseScore(lines.join('\n'), 4).measures;
+    const total = [];
+    out.staff.bars.forEach(function(bar, index){
+      const cells = measures[index].beats.filter(function(beat){ return !rhythm.isSkipBeat(beat); }).length;
+      const ticks = bar.voices[0].beats.reduce(function(sum, beat){ return sum + beat.playbackDuration; }, 0);
+      if (ticks !== cells * TICKS_PER_QUARTER) problems.push((index + 1) + '마디 길이 ' + ticks + ' (기대 ' + cells * TICKS_PER_QUARTER + ')');
+      total.push(ticks);
+    });
+    const sum = total.reduce(function(a, b){ return a + b; }, 0);
+    const units = rhythm.annotate(measures, 4).totalUnits;
+    if (sum / TICKS_PER_QUARTER * rhythm.UNITS_PER_SLOT !== units) problems.push('전체 길이 ' + sum + ' 틱이 리듬 길이 ' + units + ' 와 다릅니다');
+    const numerators = out.score.masterBars.map(function(masterBar){ return masterBar.timeSignatureNumerator + '/' + masterBar.timeSignatureDenominator; });
+    if (numerators.join(' ') !== '4/4 4/4 2/4 4/4 2/4') problems.push('박자표 ' + numerators.join(' '));
+  }
+  // 8분음표 8칸: 칸 음표가 8분음표라 빈칸이 아닌 칸 수와 8 로 쓴다.
+  const eight = convertWith({ beats: 8, lines: ['[-] _ _ _ _ _ _ E4@1 F4@1', '[-] E4@1 F4@1 G4@1 B3@2 E4@1 F4@1 G4@1 B3@2', '[-] E4@1 F4@1 G4@1 _ _ _ _ _'] });
+  if (eight){
+    if (eight.bars[0].indexOf('\\ac ') !== 0) problems.push('8칸 첫 마디가 \\ac 가 아닙니다');
+    if (eight.bars[2].indexOf('\\ts (3 8) ') !== 0) problems.push('8칸 끝마디가 \\ts (3 8) 가 아닙니다: ' + eight.bars[2]);
+    const ticks = eight.staff.bars.map(function(bar){ return bar.voices[0].beats.reduce(function(sum, beat){ return sum + beat.playbackDuration; }, 0); });
+    if (ticks.join(' ') !== [2, 8, 3].map(function(count){ return count * TICKS_PER_QUARTER / 2; }).join(' ')) problems.push('8칸 마디 길이 ' + ticks.join(' '));
+  }
+  return problems;
+}
+
+test('skip cells: leading skips of the first bar become \\ac, other skip bars get a \\ts change and the next bar restores the meter, bar lengths leave out the skip cells', function(){
+  const problems = skipCellProblems(converter);
+  assert.deepEqual(problems, []);
+});
+
+test('mutant: writing a skip cell as a quarter rest instead of a meter change is caught', function(){
+  const source = fs.readFileSync(path.join(__dirname, '../src/score-to-alphatex.js'), 'utf8');
+  const from = "return prefix + out.join(' ') + ' |';";
+  assert.equal(source.split(from).length - 1, 1, '사본을 만들 자리가 하나여야 합니다');
+  const filename = path.join(__dirname, '../src/score-to-alphatex.mutant.js');
+  const mutant = new Module(filename, module);
+  mutant.filename = filename;
+  mutant.paths = Module._nodeModulePaths(path.dirname(filename));
+  mutant._compile(source.replace(from, "return out.concat(new Array(skipCount + 1).join('r.4,').split(',').slice(0, skipCount)).join(' ') + ' |';"), filename);
+  assert.notDeepEqual(skipCellProblems(mutant.exports), []);
 });
 
 test('errors: layout errors come back as a message, never a thrown exception', function(){

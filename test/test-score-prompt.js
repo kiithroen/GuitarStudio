@@ -135,6 +135,7 @@ const SNIPPETS = [
   { find: '\\ro 0.1.1 | 1.1.1 | \\ae 1 \\rc 2 3.1.1 | \\ae 2 0.2.1 | 1.2.1 |', tex: HEADER + '\\ro 0.1.1 | 1.1.1 | \\ae 1 \\rc 2 3.1.1 | \\ae 2 0.2.1 | 1.2.1 |', check: function(score){ assert.equal(score.masterBars.length, 5); } },
   { find: '\\section ("A")', tex: HEADER + '\\section ("A") 0.1.1 |', check: function(score){ assert.equal(score.masterBars[0].section.text, 'A'); } },
   { find: '\\section ("B\'")', tex: HEADER + '\\section ("B\'") C4.1 |', check: function(score){ assert.equal(score.masterBars[0].section.text, 'B\''); } },
+  { find: '`\\ts (2 4)`', tex: HEADER + '0.1.4 0.1.4 0.1.4 0.1.4 | \\ts (2 4) 0.1.4 0.1.4 | \\ts (4 4) 0.1.1 |', check: function(score){ assert.equal(score.masterBars.length, 3); assert.equal(score.masterBars[1].timeSignatureNumerator, 2); assert.equal(score.masterBars[1].timeSignatureDenominator, 4); assert.equal(score.masterBars[2].timeSignatureNumerator, 4); } },
   { find: '\\ae 1 \\rc 2 3.1.1', tex: HEADER + '\\ro 0.1.1 | \\ae 1 \\rc 2 3.1.1 | \\ae 2 0.2.1 |' },
   { find: '`0.1`', tex: HEADER + '0.1.1 |', check: function(score){ assert.equal(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].string, 6); } },
   { find: '`3.2`', tex: HEADER + '3.2.1 |' },
@@ -220,7 +221,7 @@ const REQUIRED = [
   ['\\title', 'title'], ['\\notices', 'notices'], [' · ', 'notices joiner'], ['\\tempo (', 'tempo'], ['4분음표 기준', 'tempo is quarter based'], ['\\tempo (64)', 'default tempo'], ['템포 표기 없음(64 가정)', 'default tempo note'],
   ['\\ts (', 'time signature'], ['\\capo', 'capo'], ['\\tuning', 'tuning'],
   // 3 마디
-  ['`|`로 나눠', 'bars split by |'], ['\\ro', 'repeat open'], ['\\rc', 'repeat close'], ['\\ae', 'alternate ending'], ['\\ac', 'anacrusis'], ['\\section', 'section'], ['\\jump', 'jump'], ['펼치지 말고', 'do not expand repeats'], ['(with Repeat)·(반복 있음)', 'D.S. with Repeat'], ['세뇨 옆에 적혀 있어도', 'with Repeat beside the segno goes on the D.S. bar'], ['al Coda·al Fine이 인쇄되지 않아도', 'D.S. without al Coda still jumps to the coda'],
+  ['`|`로 나눠', 'bars split by |'], ['\\ro', 'repeat open'], ['\\rc', 'repeat close'], ['\\ae', 'alternate ending'], ['\\ac', 'anacrusis'], ['박자표가 바뀌면', 'a mid-song meter change is written with \\ts, not filled with rests'], ['\\section', 'section'], ['\\jump', 'jump'], ['펼치지 말고', 'do not expand repeats'], ['(with Repeat)·(반복 있음)', 'D.S. with Repeat'], ['세뇨 옆에 적혀 있어도', 'with Repeat beside the segno goes on the D.S. bar'], ['al Coda·al Fine이 인쇄되지 않아도', 'D.S. without al Coda still jumps to the coda'],
   // 4 음
   ['프렛.줄', 'fret.string'], ['1번 줄이 가장 높은 줄', 'string 1 is the highest'], ['음이름+옥타브', 'note name plus octave'], ['한 옥타브 높게', 'guitar staff is written an octave up'], ['옥타브 숫자에서 1을 빼', 'minus one octave'], ['`#`·`b`', 'accidentals'], ['추측해서 만들지 마', 'do not guess strings'], ['섞지 마', 'do not mix fretted and named notes'],
   // 5 길이·묶음
@@ -275,7 +276,11 @@ assert.notDeepEqual(snippetProblems(brokenRule.buildScoreImagePrompt()), []);
 // 규칙 문장을 지운 사본은 규칙 검사에 걸린다.
 const droppedRule = loadPromptMutant("'| 페르마타 | 박 효과 `{fermata medium}` |',", "");
 assert.notDeepEqual(requiredProblems(droppedRule.buildScoreImagePrompt()), []);
-pass('mutants are caught: a misspelled jump name or unclosed brace in an example, a wrong effect in a rule snippet, a deleted rule row');
+// (라) 박자표 변경 줄을 뺀 사본은 규칙 검사와 조각 검사에 걸린다.
+const droppedMeterRule = loadPromptMutant("    '- 곡 중간에 박자표가 바뀌면(예: 4/4 곡의 2/4 한 마디) 그 마디의 첫 음 앞에 `\\\\ts (2 4)`를 적고, 다음 마디가 원래 박자면 그 마디 첫 음 앞에 `\\\\ts (4 4)`를 다시 적어. 박자표를 바꾸지 않고 쉼으로 채우지 마.',\n", "");
+assert.notDeepEqual(requiredProblems(droppedMeterRule.buildScoreImagePrompt()), []);
+assert.notDeepEqual(snippetProblems(droppedMeterRule.buildScoreImagePrompt()), []);
+pass('mutants are caught: a misspelled jump name or unclosed brace in an example, a wrong effect in a rule snippet, a deleted rule row, a deleted meter-change rule');
 
 // ---------- 우리 악보 예시(검사 도구·시트 가져오기 스크립트 시험 자료)와 음 길이 표
 
