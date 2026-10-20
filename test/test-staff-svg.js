@@ -638,4 +638,21 @@ test('roll wave across the barline: the tied piece after it has no wave', functi
   assert.equal(count(second, 'st-roll'), 0);
 });
 
+test('skip cells: the pickup note is drawn under its TAB cell and nothing is drawn in the skip cells', function(){
+  const result = layout('[-] _ _ _ E4\n[C] E4 F4 G4 A4');
+  const svg = draw(result, 0);
+  checkCounts(svg, result.measures[0], 'pickup measure');
+  assert.equal(count(svg, 'st-chord'), 1);
+  assert.ok(/data-cell="3"/.test(svg), 'the note is in cell 3');
+  assert.equal(/data-cell="[012]"/.test(svg), false, 'no chord or rest in the skip cells');
+  const leftPad = LEFT_PAD + svgApi.headerWidth({ key: result.key, time: result.time });
+  const cx = Number(/<ellipse[^>]* cx="([-0-9.]+)"/.exec(svg)[1]);
+  assert.ok(cx >= leftPad + 3 * WIDTH_PER_CELL, 'the head x is inside cell 3 and later: ' + cx);
+  const rest = layout('r r _ _\nE4 F4 G4 A4');
+  const restSvg = draw(rest, 0);
+  checkCounts(restSvg, rest.measures[0], 'rest measure with skips');
+  assert.equal(count(restSvg, 'st-rest'), 1);
+  assert.equal(rest.measures[0].items[0].value.base, 'half');
+});
+
 process.stdout.write('1..' + checks + '\n');

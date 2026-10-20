@@ -1049,4 +1049,174 @@ test('slideCheck: same judgment as slurCheck with slide texts, and the document 
   assert.equal(slurred.measures[0].cells[1].slots[0].notes[1].art, 's');
 });
 
+// 빈칸 _ : 칸 자리는 있고 시간은 0인 칸. 문서 모델은 cell.skip 이다(Docs/tab-input.md 빈칸).
+test('skip cell: _ is read as a skip cell and written back as _, and the round trip keeps the text', function(){
+  const text = '[-] _ _ _ E4@1\n[C] E4@1 F4@1 G4@1 A4@1\n[G] B3@2 D4@2 _ _';
+  const result = ti.scoreToDoc({ beats: 4, raw: text });
+  assert.equal(result.error, undefined);
+  const doc = result.doc;
+  assert.deepEqual(doc.measures[0].cells.map(c => c.skip), [true, true, true, false]);
+  assert.deepEqual(doc.measures[1].cells.map(c => c.skip), [false, false, false, false]);
+  assert.deepEqual(doc.measures[2].cells.map(c => c.skip), [false, false, true, true]);
+  assert.equal(doc.measures[0].cells[0].slots.length, 1, 'a skip cell is one undivided cell');
+  assert.deepEqual(tokens(doc)[0], ['_', '_', '_', 'E4@1']);
+  assert.deepEqual(tokens(doc)[2], ['B3@2', 'D4@2', '_', '_']);
+  const exported = text.split('\n').map(line => line + ' | ""').join('\n');
+  assert.equal(ti.docScoreText(doc), exported);
+  assert.deepEqual(ti.validateDoc(doc).errors, [], 'the exported text passes the score check');
+  const again = ti.parseImportText(ti.docScoreText(doc), { beats: 4 });
+  assert.equal(again.error, undefined);
+  assert.equal(ti.docScoreText(again.doc), exported);
+  // 불러오기: 분할 안의 _ 와 가운데·양쪽의 _ 는 거절한다
+  assert.match(ti.scoreToDoc({ beats: 4, raw: 'E4/_ F4 G4 A4' }).error, /빈칸/);
+  assert.match(ti.scoreToDoc({ beats: 4, raw: 'E4 _ F4 G4' }).error, /빈칸/);
+  assert.match(ti.scoreToDoc({ beats: 4, raw: '_ E4 _ _' }).error, /빈칸/);
+  assert.match(ti.scoreToDoc({ beats: 4, raw: '_ _ _ _' }).error, /빈칸/);
+  // 텍스트 모드의 반영도 같은 길이다
+  const replaced = ti.replaceMeasuresFromText(ti.createDoc(), '_ _ E4@1 F4@1');
+  assert.deepEqual(replaced.doc.measures[0].cells.map(c => c.skip), [true, true, false, false]);
+});
+
+test('setSkip: turning it on clears every slot of the cell, off leaves an empty cell, and the history restores it', function(){
+  const doc = fresh();
+  ti.setDivision(doc, 0, 1, 3);
+  ti.setNote(doc, pos(0, 1, 0), 1, 0);
+  ti.setRest(doc, pos(0, 1, 2), true);
+  const history = ti.createHistory(10);
+  history.record(ti.cloneDoc(doc));
+  const on = ti.setSkip(doc, pos(0, 1, 2), true);
+  assert.deepEqual(on, { ok: true, removed: 2 });
+  assert.equal(doc.measures[0].cells[1].skip, true);
+  assert.equal(doc.measures[0].cells[1].slots.length, 1, 'the divided cell becomes one slot');
+  assert.equal(ti.getSlot(doc, pos(0, 1, 0)).notes.every(n => n === null) && !ti.getSlot(doc, pos(0, 1, 0)).rest, true, 'the content is gone');
+  assert.equal(ti.isSkipCell(doc, pos(0, 1)), true);
+  const off = ti.setSkip(doc, pos(0, 1), false);
+  assert.deepEqual(off, { ok: true });
+  assert.equal(doc.measures[0].cells[1].skip, false);
+  assert.equal(doc.measures[0].cells[1].slots.length, 1);
+  assert.equal(ti.isSkipCell(doc, pos(0, 1)), false);
+  assert.throws(() => ti.setSkip(doc, pos(9, 0), true), /올바르지 않은 위치/);
+  // 되돌리기 기록으로 켜기 전 문서(3분할과 음·쉼)로 돌아간다
+  const before = history.undo(doc);
+  assert.equal(before.measures[0].cells[1].slots.length, 3);
+  assert.equal(before.measures[0].cells[1].slots[0].notes[0].fret, 0);
+  assert.equal(before.measures[0].cells[1].slots[2].rest, true);
+  assert.equal(before.measures[0].cells[1].skip, false);
+});
+
+test('a skip cell turns off first when a note, fret, rest, clear or division is put into it', function(){
+  const make = () => { const d = fresh(); ti.setSkip(d, pos(0, 1), true); return d; };
+  let doc = make();
+  ti.setNote(doc, pos(0, 1), 2, 3);
+  assert.equal(doc.measures[0].cells[1].skip, false, 'setNote');
+  assert.equal(ti.getSlot(doc, pos(0, 1)).notes[1].fret, 3);
+  doc = make();
+  assert.equal(ti.toggleNote(doc, pos(0, 1), 3, 2).action, 'set');
+  assert.equal(doc.measures[0].cells[1].skip, false, 'toggleNote');
+  doc = make();
+  ti.setRest(doc, pos(0, 1), true);
+  assert.equal(doc.measures[0].cells[1].skip, false, 'setRest on');
+  assert.equal(ti.getSlot(doc, pos(0, 1)).rest, true);
+  doc = make();
+  ti.setRest(doc, pos(0, 1), false);
+  assert.equal(doc.measures[0].cells[1].skip, true, 'removing a rest from a skip cell changes nothing');
+  doc = make();
+  ti.clearSlot(doc, pos(0, 1));
+  assert.equal(doc.measures[0].cells[1].skip, false, 'clearSlot (the empty-cell button)');
+  doc = make();
+  ti.setDivision(doc, 0, 1, 1);
+  assert.equal(doc.measures[0].cells[1].skip, true, 'dividing by 1 keeps the skip');
+  ti.setDivision(doc, 0, 1, 2);
+  assert.equal(doc.measures[0].cells[1].skip, false, 'a divided cell is never a skip cell');
+  assert.equal(doc.measures[0].cells[1].slots.length, 2);
+});
+
+test('slotTokens over skip cells: a skip cell is _ and does not change what the next empty slot becomes', function(){
+  // 소리가 이어지는 중: 음 - 빈칸 빈칸 | 빈 조각 -> 빈 조각은 -(빈칸 앞 칸 기준)
+  const holding = fresh();
+  ti.setNote(holding, pos(0, 0), 1, 0);
+  ti.setSkip(holding, pos(0, 2), true);
+  ti.setSkip(holding, pos(0, 3), true);
+  ti.insertEmptyMeasure(holding, 1);
+  assert.deepEqual(tokens(holding), [['E4@1', '-', '_', '_'], ['-', '-', '-', '-']]);
+  // 쉼 뒤: 빈칸을 건너도 쉼이 이어진다(r)
+  const resting = fresh();
+  ti.setRest(resting, pos(0, 0), true);
+  ti.setSkip(resting, pos(0, 3), true);
+  ti.insertEmptyMeasure(resting, 1);
+  assert.deepEqual(tokens(resting), [['r', 'r', 'r', '_'], ['r', 'r', 'r', 'r']]);
+  // 곡 처음의 앞 빈칸: 아직 소리가 없으니 빈 조각은 r
+  const start = fresh();
+  ti.setSkip(start, pos(0, 0), true);
+  ti.setSkip(start, pos(0, 1), true);
+  ti.setNote(start, pos(0, 3), 1, 0);
+  assert.deepEqual(tokens(start)[0], ['_', '_', 'r', 'E4@1']);
+  assert.deepEqual(ti.validateDoc(start).errors, []);
+  // 앞 빈칸 뒤의 빈 조각은 빈칸 앞(앞 마디 끝)의 소리가 이어진다
+  const across = fresh();
+  ti.setNote(across, pos(0, 3), 1, 0);
+  ti.insertEmptyMeasure(across, 1);
+  ti.setSkip(across, pos(1, 0), true);
+  ti.setSkip(across, pos(1, 1), true);
+  assert.deepEqual(tokens(across)[1], ['_', '_', '-', '-']);
+  assert.deepEqual(ti.validateDoc(across).errors, []);
+});
+
+test('skip cells are transparent to slur links, and a slur reaches over a skip cell to the earlier note', function(){
+  const doc = fresh();
+  ti.setNote(doc, pos(0, 0), 2, 3);
+  ti.setSkip(doc, pos(0, 2), true);
+  ti.setSkip(doc, pos(0, 3), true);
+  ti.insertEmptyMeasure(doc, 1);
+  ti.setNote(doc, pos(1, 0), 2, 5);
+  ti.setNoteAttrs(doc, pos(1, 0), 2, { art: 's' });
+  const links = ti.slurLinks(doc);
+  assert.deepEqual(links[0][2][0], [null, null, null, null, null, null], 'a skip cell has no links');
+  const link = links[1][0][0][1];
+  assert.equal(link.ok, true);
+  assert.deepEqual(link.fromPos, { m: 0, c: 0, s: 0, str: 2 });
+  assert.equal(ti.slurCheck(doc, pos(1, 0), 2).ok, true);
+  assert.deepEqual(ti.validateDoc(doc).errors, []);
+});
+
+test('documents saved before the skip field read it as false; wrong skip values are refused', function(){
+  const doc = fresh();
+  doc.measures.push(JSON.parse(JSON.stringify(doc.measures[0])));
+  const old = JSON.parse(JSON.stringify(doc));
+  old.measures.forEach(m => m.cells.forEach(cell => { delete cell.skip; }));
+  assert.equal(old.measures[0].cells[0].skip, undefined);
+  const result = ti.normalizeDoc(old);
+  assert.equal(result.error, undefined);
+  assert.ok(result.doc.measures.every(m => m.cells.every(cell => cell.skip === false)));
+  assert.equal(ti.docScoreText(result.doc), ti.docScoreText(doc), 'an old document exports the same text');
+  // 새로 만든 칸은 skip: false 를 가진다
+  assert.equal(ti.createCell(2).skip, false);
+  assert.equal(ti.createMeasure(4).cells[0].skip, false);
+  const bad = JSON.parse(JSON.stringify(doc));
+  bad.measures[0].cells[0].skip = 'yes';
+  assert.match(ti.normalizeDoc(bad).error, /빈칸 표시는 true\/false/);
+  const divided = JSON.parse(JSON.stringify(doc));
+  divided.measures[0].cells[0].skip = true;
+  divided.measures[0].cells[0].slots.push(ti.createSlot());
+  assert.match(ti.normalizeDoc(divided).error, /빈칸 칸은 나누지 않은 칸/);
+  const good = JSON.parse(JSON.stringify(doc));
+  good.measures[0].cells[1].skip = true;
+  assert.equal(ti.normalizeDoc(good).doc.measures[0].cells[1].skip, true);
+});
+
+test('a document with only a skip cell counts as having content; copy and paste keep skip cells', function(){
+  const doc = fresh();
+  assert.equal(ti.hasContent(doc), false);
+  ti.setSkip(doc, pos(0, 0), true);
+  assert.equal(ti.hasContent(doc), true);
+  const copy = ti.copyRange(doc, 0, 0);
+  ti.pasteAfter(doc, 0, copy);
+  assert.deepEqual(doc.measures[1].cells.map(c => c.skip), [true, false, false, false]);
+  assert.equal(ti.setBeats(doc, 3).lost, 0);
+  ti.setBeats(doc, 6);
+  assert.ok(doc.measures.every(m => m.cells.length === 6));
+  assert.equal(doc.measures[0].cells[0].skip, true);
+  assert.equal(doc.measures[0].cells[5].skip, false, 'padded cells are plain empty cells');
+});
+
 process.stdout.write('1..' + checks + '\n');

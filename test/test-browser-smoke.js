@@ -2305,8 +2305,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=skip-cell-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=skip-cell-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=skip-cell-2')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=skip-cell-2">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -4692,6 +4692,14 @@ async function testSkipCells(client, httpPort) {
       titles: skip.map(function(cell){ return cell.title; }),
       labels: skip.map(function(cell){ var l = cell.querySelector('.b-skip-label'); return l ? l.textContent : ''; }),
       opacity: skip.length ? getComputedStyle(skip[skip.length - 1]).opacity : null, // 첫 칸은 커서가 있어 활성 표시가 이긴다
+      stripes: skip.length ? getComputedStyle(skip[skip.length - 1]).backgroundImage : null,
+      staffHeads: Array.prototype.map.call(document.querySelectorAll('#measuresGrid .tab-staff-layer .st-chord'), function(chord){
+        var layer = chord.closest('.tab-staff-layer');
+        var cell = document.querySelector('#measuresGrid .beat-cell[data-m="' + layer.dataset.m + '"][data-b="' + chord.dataset.cell + '"]');
+        var chordRect = chord.getBoundingClientRect(), cellRect = cell ? cell.getBoundingClientRect() : null;
+        var center = chordRect.left + chordRect.width / 2;
+        return { m: layer.dataset.m, cell: chord.dataset.cell, inside: !!cellRect && center >= cellRect.left && center <= cellRect.right, skipCell: !!cell && cell.classList.contains('slot-skip') };
+      }),
       staffLayers: document.querySelectorAll('#measuresGrid .tab-staff-layer').length,
       cards: document.querySelectorAll('#measuresGrid .measure-card').length
     };
@@ -4708,6 +4716,7 @@ async function testSkipCells(client, httpPort) {
   assert.equal(tab.marks, 0, 'TAB: a skip cell draws no fret and no rest mark');
   assert.ok(tab.titles.every(title => title.includes('빈칸') && !title.includes('길이')), 'TAB: skip cell titles say 빈칸 and name no length: ' + JSON.stringify(tab.titles));
   assert.ok(Number(tab.opacity) < 1, 'TAB: skip cells are dimmed: ' + tab.opacity);
+  assert.match(tab.stripes, /repeating-linear-gradient/, 'TAB: skip cells are hatched by the shared base.css rule: ' + tab.stripes);
   const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
   fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
   const target = path.join(root, 'test-artifacts', 'practice-skip.png');
@@ -4722,6 +4731,10 @@ async function testSkipCells(client, httpPort) {
   process.stdout.write('Artifact: ' + cardTarget + '\n');
   const both = await probe('both');
   assert.equal(both.count, 6, 'staff view on: skip cells keep the slot-skip class');
+  assert.ok(both.staffHeads.length >= 8, 'staff view on: the staff layer draws the notes: ' + JSON.stringify(both.staffHeads));
+  assert.ok(both.staffHeads.every(head => head.inside && !head.skipCell), 'staff view on: every staff note sits over its own TAB cell and none over a skip cell: ' + JSON.stringify(both.staffHeads));
+  assert.deepEqual(both.staffHeads.filter(head => head.m === '0').map(head => head.cell), ['3', '3'], 'the pickup measure notes (a split cell) are in cell 3');
+  assert.deepEqual(both.staffHeads.filter(head => head.m === '1').map(head => head.cell), ['0', '1'], 'the short measure notes are in cells 0 and 1');
   const bothShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
   const bothTarget = path.join(root, 'test-artifacts', 'practice-skip-both.png');
   fs.writeFileSync(bothTarget, Buffer.from(bothShot.data, 'base64'));
@@ -4731,6 +4744,150 @@ async function testSkipCells(client, httpPort) {
   await client.send('Emulation.clearDeviceMetricsOverride');
   assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the skip-cell steps run without console errors');
   process.stdout.write('Browser checkpoint: skip cells in practice TAB, card, and staff views passed\n');
+}
+
+// 빈칸 _ 악보 입력 화면: - 키·단추로 칸 전체를 켜고 끄기(두 모드), 카드 빗금과 오선 위치, 오선 모드의 거절·이동. 규칙은 Docs/tab-input.md, Docs/staff-input.md 빈칸.
+async function testSkipInput(client, httpPort) {
+  client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
+  const errorsBefore = client.consoleErrors.length;
+  const inputUrl = `http://127.0.0.1:${httpPort}/score-input.html`;
+  async function load() {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await client.send('Page.navigate', { url: inputUrl });
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, 'document.readyState === "complete" && document.querySelectorAll("#tiMeasures .ti-measure").length >= 1', 8000);
+  }
+  async function shot(name) {
+    const data = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+    const target = path.join(root, 'test-artifacts', name);
+    fs.writeFileSync(target, Buffer.from(data.data, 'base64'));
+    process.stdout.write('Artifact: ' + target + '\n');
+  }
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false });
+  await load();
+  await client.evaluate(`(function(){ Object.keys(localStorage).filter(function(key){ return key.indexOf('gs.tabInput.') === 0; }).forEach(function(key){ localStorage.removeItem(key); }); return true; })()`);
+  await load();
+  await client.evaluate(`window.__tiTest = {
+    pos: function(m, c, s, str){ return document.querySelector('.ti-slot[data-m="'+m+'"][data-c="'+c+'"][data-s="'+s+'"] .ti-pos[data-str="'+str+'"]'); },
+    fret: function(str, fret){ return document.querySelector('.ti-fret[data-str="'+str+'"][data-fret="'+fret+'"]'); },
+    text: function(){ return document.getElementById('tiScoreText').value; },
+    press: function(key, code, extra){ var e = new KeyboardEvent('keydown', Object.assign({ key:key, code:code, bubbles:true, cancelable:true }, extra || {})); document.body.dispatchEvent(e); return e.defaultPrevented; },
+    state: function(){ return {
+      skips: Array.prototype.map.call(document.querySelectorAll('#tiMeasures .ti-measure:first-child .ti-cell'), function(cell){ return cell.classList.contains('slot-skip'); }),
+      text: document.getElementById('tiScoreText').value.split('\\n')[0],
+      cursor: document.getElementById('tiCursorLabel').textContent,
+      pressed: document.getElementById('tiSkipBtn').getAttribute('aria-pressed'),
+      diagnostics: document.getElementById('tiDiagnostics').textContent,
+      status: document.getElementById('tiStatus').textContent
+    }; }
+  }; true`);
+  const t = expression => client.evaluate('(function(){ var __tiTest = window.__tiTest; return ' + expression + '; })()');
+
+  // 1. 타브 모드: 단추와 힌트, - 키로 앞 세 칸을 빈칸으로, 마지막 칸에 음
+  assert.match(await t('document.getElementById("tiSkipBtn").textContent'), /빈칸/, 'the dock has a skip button');
+  await t('(__tiTest.pos(0,3,0,1).click(), __tiTest.fret(1,0).click(), __tiTest.pos(0,0,0,1).click(), true)');
+  assert.equal(await t('__tiTest.press("-", "Minus")'), true, 'the - key is handled');
+  let state = await t('__tiTest.state()');
+  assert.deepEqual(state.skips, [true, false, false, false], 'the - key makes the cursor cell a skip cell');
+  assert.equal(state.pressed, 'true');
+  assert.match(state.cursor, /빈칸/, 'the cursor label says 빈칸: ' + state.cursor);
+  await t('(__tiTest.press("ArrowRight", "ArrowRight"), __tiTest.press("_", "Minus", { shiftKey: true }), true)');
+  await t('(__tiTest.press("ArrowRight", "ArrowRight"), document.getElementById("tiSkipBtn").click(), true)');
+  state = await t('__tiTest.state()');
+  assert.deepEqual(state.skips, [true, true, true, false], 'Shift+- and the dock button also turn skip cells on');
+  assert.equal(state.text, '[-] _ _ _ E4@1 | ""', 'the result text writes _ for the skip cells');
+  assert.equal(state.diagnostics, '오류 없음', 'a leading run of skip cells passes the score check');
+  // 숫자패드 빼기는 받지 않는다
+  await t('(__tiTest.press("-", "NumpadSubtract"), true)');
+  assert.deepEqual((await t('__tiTest.state()')).skips, [true, true, true, false], 'the numpad minus key does nothing');
+  // 카드: 빗금 클래스와 흐림, 빈칸 글자, 오선의 음은 4번째 칸 아래
+  const card = await t(`(function(){
+    var cells = document.querySelectorAll('#tiMeasures .ti-measure:first-child .ti-cell');
+    var skipCell = cells[0];
+    var cs = getComputedStyle(skipCell);
+    var chord = document.querySelector('#tiMeasures .ti-measure:first-child .st-chord');
+    var chordRect = chord ? chord.getBoundingClientRect() : null;
+    var fourth = cells[3].getBoundingClientRect();
+    return { opacity: cs.opacity, stripes: cs.backgroundImage, label: getComputedStyle(skipCell.querySelector('.ti-slot'), '::after').content,
+      chords: document.querySelectorAll('#tiMeasures .ti-measure:first-child .st-chord').length,
+      chordCell: chord ? chord.dataset.cell : null,
+      inFourth: !!chordRect && chordRect.left + chordRect.width / 2 >= fourth.left && chordRect.left + chordRect.width / 2 <= fourth.right,
+      rests: document.querySelectorAll('#tiMeasures .ti-measure:first-child .st-rest').length };
+  })()`);
+  assert.ok(Number(card.opacity) < 1, 'a skip cell card is dimmed: ' + JSON.stringify(card));
+  assert.match(card.stripes, /repeating-linear-gradient/, 'a skip cell card is hatched: ' + card.stripes);
+  assert.match(card.label, /빈칸/, 'a skip slot reads 빈칸: ' + card.label);
+  assert.equal(card.chords, 1, 'the card staff draws only the real note');
+  assert.equal(card.chordCell, '3', 'the pickup note is in cell 3 of the card staff');
+  assert.equal(card.inFourth, true, 'the card staff note is above the TAB fourth cell');
+  assert.equal(card.rests, 0, 'nothing but the note is drawn: no rests in the skip cells');
+  await shot('score-input-skip-tab.png');
+  // 끄기와 되돌리기, 음을 넣으면 꺼진다
+  await t('(__tiTest.pos(0,2,0,1).click(), document.getElementById("tiSkipBtn").click(), true)');
+  assert.deepEqual((await t('__tiTest.state()')).skips, [true, true, false, false], 'the button turns the cursor cell back off');
+  assert.equal((await t('__tiTest.state()')).text, '[-] _ _ r E4@1 | ""', 'a cell that was turned off is an ordinary empty cell');
+  await t('(__tiTest.press("z", "KeyZ", { ctrlKey: true }), true)');
+  assert.deepEqual((await t('__tiTest.state()')).skips, [true, true, true, false], 'undo turns the skip cell back on');
+  await t('(__tiTest.pos(0,1,0,2).click(), __tiTest.fret(2,3).click(), true)');
+  state = await t('__tiTest.state()');
+  assert.deepEqual(state.skips, [true, false, true, false], 'putting a fret into a skip cell turns the skip off first');
+  assert.match(state.diagnostics, /빈칸/, 'a skip run broken in the middle is reported by the score check: ' + state.diagnostics);
+  await t('(__tiTest.press("z", "KeyZ", { ctrlKey: true }), true)');
+  assert.deepEqual((await t('__tiTest.state()')).skips, [true, true, true, false]);
+
+  // 2. 오선 모드: 빈칸에 걸리는 입력은 거절하고 문서는 그대로, 사건 이동은 빈칸을 건너뛴다
+  await t('(document.getElementById("tiNewBtn").click(), true)');
+  await client.evaluate(`(function(){
+    window.confirm = function(){ return true; };
+    document.getElementById('tiImportBtn').click();
+    var area = document.getElementById('tiImportText');
+    area.value = ${JSON.stringify('[-] E4@1 r _ _ | ""\n[-] F4@1 G4@1 A4@1 B3@2 | ""')};
+    area.dispatchEvent(new Event('input', { bubbles:true }));
+    document.getElementById('tiImportApplyBtn').click();
+    document.getElementById('tiModeStaff').click();
+    return true;
+  })()`);
+  assert.equal(await client.evaluate(`document.getElementById('tiImportError').textContent`), '', 'the skip score imports without error');
+  state = await t('__tiTest.state()');
+  assert.deepEqual(state.skips, [false, false, true, true], 'the imported skip cells are skip cells');
+  assert.equal(state.text, '[-] E4@1 r _ _ | ""');
+  await t('(document.querySelector(".ti-measure:first-child .ti-cell-head[data-c=\\"1\\"]").click(), true)');
+  const textBefore = await t('__tiTest.text()');
+  await t('(__tiTest.press("6", "Digit6"), true)');   // 2분음표: 쉼이 빈칸 칸으로 들어간다
+  state = await t('__tiTest.state()');
+  assert.equal(state.status, '빈칸을 건너서는 음을 넣을 수 없습니다.', 'a length that reaches a skip cell is refused with the status line: ' + state.status);
+  assert.equal(await t('__tiTest.text()'), textBefore, 'the refused input leaves the document unchanged');
+  await t('(__tiTest.press("5", "Digit5"), true)');   // 4분음표: 빈칸 앞에서 끝나는 길이
+  await t('(__tiTest.press("d", "KeyD"), true)');
+  state = await t('__tiTest.state()');
+  assert.equal(state.status, '', 'a note that ends at the skip cell is accepted: ' + state.status);
+  assert.deepEqual(state.skips, [false, false, true, true], 'the skip cells are kept');
+  assert.match(state.text, /^\[-\] E4@1 [A-G][b#]?\d@\d _ _/, 'the new note is in the second cell: ' + state.text);
+  // 빈칸 칸 위의 커서에서 입력
+  await t('(document.querySelector(".ti-measure:first-child .ti-cell-head[data-c=\\"2\\"]").click(), true)');
+  const skipText = await t('__tiTest.text()');
+  await t('(__tiTest.press("c", "KeyC"), true)');
+  assert.equal((await t('__tiTest.state()')).status, '빈칸을 건너서는 음을 넣을 수 없습니다.', 'a note on a skip cell is refused');
+  await t('(__tiTest.press("Delete", "Delete"), true)');
+  assert.match((await t('__tiTest.state()')).status, /빈칸/, 'Delete on a skip cell is refused with a skip message');
+  assert.equal(await t('__tiTest.text()'), skipText, 'the document is unchanged');
+  // 사건 이동: 둘째 칸에서 → 는 빈칸 두 칸을 건너 다음 마디 첫 칸
+  await t('(document.querySelector(".ti-measure:first-child .ti-cell-head[data-c=\\"1\\"]").click(), __tiTest.press("ArrowRight", "ArrowRight"), true)');
+  assert.ok((await t('__tiTest.state()')).cursor.startsWith('2마디 · 1칸'), 'the right arrow skips the skip cells: ' + (await t('__tiTest.state()')).cursor);
+  await t('(__tiTest.press("ArrowLeft", "ArrowLeft"), true)');
+  assert.ok((await t('__tiTest.state()')).cursor.startsWith('1마디 · 2칸'), 'the left arrow skips them back');
+  // 오선 모드에서도 - 키로 켜고 끈다
+  await t('(__tiTest.press("-", "Minus"), true)');
+  assert.deepEqual((await t('__tiTest.state()')).skips, [false, true, true, true], 'the - key works in staff mode too');
+  await t('(__tiTest.press("-", "Minus"), true)');
+  assert.deepEqual((await t('__tiTest.state()')).skips, [false, false, true, true]);
+  await shot('score-input-skip-staff.png');
+
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the skip input steps run without console errors');
+  client.dialogHandler = null;
+  process.stdout.write('Browser checkpoint: skip cells in score input (- key in both modes, card hatching, card staff position, staff mode refusal and moves) passed\n');
 }
 
 // 롤(~) 악보 입력 화면: 카드 TAB 물결선(위치는 실제 상자로 잰다), 입력판 단추, ` 키, 들어보기 소리. 규칙은 Docs/tab-input.md.
@@ -5367,7 +5524,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=skip-cell-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=skip-cell-2')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -5888,6 +6045,7 @@ async function main() {
     await testRollMarks(cdp, httpPort);
     await testRollInput(cdp, httpPort);
     await testSkipCells(cdp, httpPort);
+    await testSkipInput(cdp, httpPort);
     await testAlphaTabView(cdp, httpPort);
     await testAlphaTexSongs(cdp, httpPort);
 

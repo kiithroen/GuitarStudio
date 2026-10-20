@@ -59,6 +59,8 @@
 
 2026-10-21 결정: 빈칸 `_` 칸([악보 문법](score-format.md#빈칸))은 연습 화면 TAB과 박 카드 모두 `.beat-cell.slot-skip` 클래스를 달아 음·쉼 표시 없이 흐리게 빗금으로 그리고, 박 카드는 `빈칸` 글자(`.b-skip-label`)를 보인다. 색은 기존 토큰(`--line`·`--muted`)만 쓴다. 재생 커서는 빈칸에 머물지 않고 건너뛴다.
 
+2026-10-21 결정: `.slot-skip` 규칙(흐림과 빗금)과 `.b-skip-label`은 `index.html` 인라인 스타일에서 `src/base.css`로 옮겨 두 화면이 같이 쓴다. 악보 입력 화면 카드의 빈칸 칸(`.ti-cell.slot-skip`)이 같은 빗금을 쓰기 때문이다([악보 입력](tab-input.md#빈칸)). 연습 화면 TAB·박 카드는 `.beat-cell.slot-skip`이다.
+
 ## 확인 표시
 
 2026-10-19 결정: 원문에 확인 표시 `?`가 있는 칸은 TAB과 박자 카드 모두 `.beat-cell.is-uncertain`(경고색 안쪽 테두리와 배경)으로 칠하고 툴팁 끝에 `확인 필요(?)`를 붙인다. 악보 툴바의 `#uncertainBadge`는 확인 표시가 있는 칸 수를 `확인 N곳`으로 보여 주고, 0이거나 이미지 악보면 숨긴다. 개수는 `src/score.js`의 `countUncertainBeats`만 세. 긴 곡에서 표시를 놓치지 않게 하려고 둔 것이다. CSS 규칙은 `.beat-cell.tab-cell`(투명 배경)과 `.beat-cell.arp-group-start`(구분 그림자)보다 뒤에 두고 `:not(.active-beat)`로 특이도를 올린다. 앞에 두면 TAB 보기에서 배경이 지워지고 6·8·9칸 곡의 그룹 첫 칸에서는 표시가 통째로 사라진다. `arp-group-start` 칸은 구분 그림자와 경고 테두리를 한 `box-shadow`에 합친다. 재생 중 활성 칸은 활성 표시가 이긴다. 문법은 [악보 문법](score-format.md)의 확인 표시를 본다.

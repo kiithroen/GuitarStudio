@@ -190,8 +190,31 @@
     if (annotated.errors && annotated.errors.length) return { error: annotated.errors[0].message || '악보를 읽을 수 없습니다.' };
     var grid = GuitarRhythm.getGridInfo(beats);
     var cellQuarter = grid.slotQuarterLength;
-    var measureUnits = beats * UNITS;
     var measureCount = measures.length;
+
+    // 마디마다 실제 시간 경계. 빈칸 _ 은 시간이 없어서 마디 길이는 빈칸이 아닌 칸 수 × UNITS 이고, 마디 시작은 그 마디 첫 칸의 startUnits 다.
+    // lead 는 마디 앞쪽 빈칸 수(못갖춘마디의 음을 TAB 칸 아래로 미는 만큼), hasSkip 은 앞뒤 어느 쪽이든 빈칸이 있는 마디다.
+    var bounds = measures.map(function(measure){
+      var cellList = measure.beats || [];
+      var lead = 0, skips = 0;
+      cellList.forEach(function(beat, index){
+        if (!GuitarRhythm.isSkipBeat(beat)) return;
+        skips++;
+        if (lead === index) lead++;
+      });
+      var first = cellList[0];
+      return {
+        start: first && Number.isFinite(first.startUnits) ? first.startUnits : 0,
+        units: (cellList.length - skips) * UNITS,
+        lead: lead, hasSkip: skips > 0
+      };
+    });
+    var boundsCursor = 0;
+    function measureIndexAt(time){
+      if (boundsCursor > 0 && time < bounds[boundsCursor].start) boundsCursor = 0;
+      while (boundsCursor < measureCount - 1 && time >= bounds[boundsCursor].start + bounds[boundsCursor].units) boundsCursor++;
+      return boundsCursor;
+    }
 
     // 쉼 확인 표시: 쉼 토큰이 시작하는 위치(전체 1/12칸 단위).
     var uncertainRestStarts = [];
@@ -226,9 +249,9 @@
     segments.forEach(function(segment){
       var a = segment.start;
       while (a < segment.end){
-        var m = Math.floor(a / measureUnits);
-        var b = Math.min(segment.end, (m + 1) * measureUnits);
-        perMeasure[m].push({ segment: segment, start: a - m * measureUnits, end: b - m * measureUnits, absStart: a, absEnd: b });
+        var m = measureIndexAt(a);
+        var b = Math.min(segment.end, bounds[m].start + bounds[m].units);
+        perMeasure[m].push({ segment: segment, start: a - bounds[m].start, end: b - bounds[m].start, absStart: a, absEnd: b });
         a = b;
       }
     });
@@ -242,13 +265,16 @@
 
     perMeasure.forEach(function(pieces, measureIndex){
       var items = [];
+      var measureUnits = bounds[measureIndex].units;
+      var lead = bounds[measureIndex].lead;
       var accState = {}; // letter+적는 옥타브 -> 지금 변화
       function currentAlter(note){
         var k = note.letter + note.octave;
         return Object.prototype.hasOwnProperty.call(accState, k) ? accState[k] : (keyMap[note.letter] || 0);
       }
 
-      var wholeRest = pieces.length === 1 && pieces[0].segment.kind === 'rest' && pieces[0].start === 0 && pieces[0].end === measureUnits;
+      // 온쉼표는 빈칸이 없는 마디에서만. 빈칸이 있는 마디의 쉼은 길이대로 나눈 쉼표로 그린다.
+      var wholeRest = !bounds[measureIndex].hasSkip && pieces.length === 1 && pieces[0].segment.kind === 'rest' && pieces[0].start === 0 && pieces[0].end === measureUnits;
       if (wholeRest){
         items.push({
           type: 'rest', cell: 0, unit: 0, lengthUnits: measureUnits,
@@ -263,7 +289,7 @@
           splitPiece(piece.start, piece.end, isChord, cellQuarter).forEach(function(cut){
             var item = {
               type: isChord ? 'chord' : 'rest',
-              cell: Math.floor(cut.start / UNITS), unit: cut.start % UNITS,
+              cell: lead + Math.floor(cut.start / UNITS), unit: cut.start % UNITS,
               lengthUnits: cut.length,
               value: valueForUnits(cut.length, cellQuarter, cut.triplet),
               uncertain: false

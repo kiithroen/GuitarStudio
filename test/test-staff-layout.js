@@ -470,4 +470,54 @@ test('every built-in song lays out: lengths add up, strikes match, steps stay on
   process.stdout.write('  built-in songs: ' + count + '\n');
 });
 
+// 빈칸 _ : 마디 경계는 rhythm 의 실제 시간으로 자르고, 앞 빈칸 수만큼 칸을 밀어 TAB 칸 아래에 둔다(Docs/staff-notation.md).
+test('skip cells: the pickup measure note sits under its TAB cell and later measures start at cell 0', function(){
+  const result = layout('[-] _ _ _ E4\n[C] E4 F4 G4 A4');
+  assert.deepEqual(briefs(result, 0), ['c:quarter 3.0/12']);
+  assert.deepEqual(briefs(result, 1), ['c:quarter 0.0/12', 'c:quarter 1.0/12', 'c:quarter 2.0/12', 'c:quarter 3.0/12']);
+  assert.equal(result.measures[0].items.some(function(item){ return item.cell < 3; }), false, 'nothing is drawn in the skip cells');
+  // 앞 빈칸이 둘이면 두 칸 밀린다
+  const two = layout('[-] _ _ E4 F4\n[C] E4 F4 G4 A4');
+  assert.deepEqual(briefs(two, 0), ['c:quarter 2.0/12', 'c:quarter 3.0/12']);
+});
+
+test('skip cells: a short measure ending in skips, and a note after a middle pickup measure', function(){
+  const trailing = layout('[G] B3 D4 _ _\n[C] E4 F4 G4 A4');
+  assert.deepEqual(briefs(trailing, 0), ['c:quarter 0.0/12', 'c:quarter 1.0/12']);
+  assert.equal(trailing.measures[1].items[0].cell, 0, 'the next measure starts at its own cell 0');
+  assert.deepEqual(briefs(trailing, 1), ['c:quarter 0.0/12', 'c:quarter 1.0/12', 'c:quarter 2.0/12', 'c:quarter 3.0/12']);
+  const middle = layout('E4 F4 G4 A4\n_ _ B3 D4\nE4 F4 G4 A4');
+  assert.deepEqual(briefs(middle, 1), ['c:quarter 2.0/12', 'c:quarter 3.0/12']);
+  assert.equal(middle.measures[2].items[0].cell, 0);
+  assert.equal(middle.measures[2].items.length, 4);
+  const single = layout('E4 _ _ _\nF4 G4 A4 B3');
+  assert.deepEqual(briefs(single, 0), ['c:quarter 0.0/12']);
+  assert.equal(single.measures[1].items[0].cell, 0);
+});
+
+test('skip cells: a measure with skips never gets a whole rest, a measure without them still does', function(){
+  const front = layout('r r _ _\nE4 F4 G4 A4');
+  assert.deepEqual(briefs(front, 0), ['r:half 0.0/24'], 'rests are split by length, not a whole rest');
+  assert.equal(front.measures[0].items.some(function(item){ return item.value.base === 'whole'; }), false);
+  const back = layout('E4 F4 G4 A4\n_ _ r r');
+  assert.deepEqual(briefs(back, 1), ['r:half 2.0/24']);
+  const three = layout('r r r _\nE4 F4 G4 A4');
+  assert.deepEqual(briefs(three, 0), ['r:half. 0.0/36']);
+  const plain = layout('r r r r\nE4 F4 G4 A4');
+  assert.deepEqual(briefs(plain, 0), ['r:whole 0.0/48'], 'no skips: the whole rest is unchanged');
+  const mixed = layout('_ _ E4 F4\nr r r r');
+  assert.deepEqual(briefs(mixed, 1), ['r:whole 0.0/48']);
+});
+
+test('skip cells: beams follow the real cells, and ties cross the barline over trailing skips', function(){
+  const result = layout('_ _ E4/F4 G4\nA4 - - -');
+  assert.deepEqual(briefs(result, 0), ['c:eighth 2.0/6', 'c:eighth 2.6/6', 'c:quarter 3.0/12']);
+  assert.deepEqual(result.measures[0].beams[0].items, [0, 1]);
+  const sum = result.measures[0].items.reduce(function(total, item){ return total + item.lengthUnits; }, 0);
+  assert.equal(sum, 2 * 12, 'the measure length is the playable cells');
+  const tie = layout('E4 F4 G4 A4\nB3 D4 _ _\n- - E4 F4');
+  assert.equal(tie.measures[2].items[0].tieFromPrev, true);
+  assert.equal(tie.measures[1].items[1].tieToNext, true);
+});
+
 process.stdout.write('1..' + checks + '\n');

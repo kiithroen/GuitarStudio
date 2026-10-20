@@ -13,6 +13,8 @@
   var MAX_MIDI = GuitarParser.STRINGS[0].midi + GuitarNotation.MAX_FRET; // 1번 줄 개방 + 최고 프렛
   var RANGE_ERROR = '기타 음역(' + GuitarParser.noteNameForMidi(MIN_MIDI, false) + '~' + GuitarParser.noteNameForMidi(MAX_MIDI, false) + ') 밖입니다.';
   var NO_STRING_ERROR = '이 음을 칠 빈 줄이 없습니다.';
+  var SKIP_ERROR = '빈칸을 건너서는 음을 넣을 수 없습니다.';
+  var SKIP_REST_ERROR = '빈칸 칸에는 쉼을 넣을 수 없습니다. - 키로 빈칸을 끄세요.';
   var HARMONIC_ERROR = '하모닉스 음은 오선 입력으로 옮길 수 없습니다. 타브 입력에서 다시 넣으세요.';
   var LINK_STAFF_ERRORS = {
     s: '앞 음과 같은 줄에서 이을 수 있는 자리가 없어 슬러로 만들 수 없습니다.',
@@ -164,7 +166,8 @@
     var tokens = GuitarTabInput.slotTokens(doc);
     var p = GuitarTabInput.nextPos(doc, pos);
     while (p){
-      if (tokens[p.m][p.c][p.s] !== '-') return p;
+      var token = tokens[p.m][p.c][p.s];
+      if (token !== '-' && token !== '_') return p;   // '_' 는 빈칸 칸이라 사건이 없다
       p = GuitarTabInput.nextPos(doc, p);
     }
     return null;
@@ -175,7 +178,8 @@
     var tokens = GuitarTabInput.slotTokens(doc);
     var p = GuitarTabInput.prevPos(doc, pos);
     while (p){
-      if (tokens[p.m][p.c][p.s] !== '-') return p;
+      var token = tokens[p.m][p.c][p.s];
+      if (token !== '-' && token !== '_') return p;
       p = GuitarTabInput.prevPos(doc, p);
     }
     return null;
@@ -412,6 +416,7 @@
 
   function noteToRest(doc, pos){
     if (!GuitarTabInput.isValidPos(doc, pos)) return fail('올바르지 않은 위치입니다.');
+    if (GuitarTabInput.isSkipCell(doc, pos)) return fail(SKIP_REST_ERROR);
     GuitarTabInput.setRest(doc, pos, true);
     return { ok: true };
   }
@@ -464,6 +469,10 @@
     var work = GuitarTabInput.cloneDoc(doc);
     var t0 = posToUnits(work, pos);
     var t1 = t0 + D;
+    // 빈칸 칸에는 사건이 없다. [t0, t1)이 빈칸 칸에 걸리면 문서를 그대로 두고 거절한다.
+    for (var si = Math.floor(t0 / UNITS_PER_CELL); si * UNITS_PER_CELL < t1 && si * UNITS_PER_CELL < totalUnits(work); si++){
+      if (work.measures[Math.floor(si / work.beats)].cells[si % work.beats].skip === true) return fail(SKIP_ERROR);
+    }
     var oldEnd = eventEnd(work, pos);
     if (mode === 'keep' && oldEnd === null) return fail('길이를 바꿀 음이나 쉼이 없습니다.');
 
@@ -517,7 +526,14 @@
       appendMeasure(work);
       appended++;
     }
+    // t1 이 빈칸 칸이면 빈칸은 시간이 없으니, 그 뒤 처음으로 소리 나는 칸이 실제로 이 사건이 끝나는 자리다.
     var next = unitsToPos(work, t1);
+    while (next && GuitarTabInput.isSkipCell(work, next)) next = GuitarTabInput.nextPos(work, next);
+    if (!next){
+      appendMeasure(work);
+      appended++;
+      next = { m: work.measures.length - 1, c: 0, s: 0 };
+    }
     if (slotIsEmpty(GuitarTabInput.getSlot(work, next))) GuitarTabInput.setRest(work, next, true);
 
     // 6. t1 조각을 돌려준다(커서는 화면이 옮기지 않는다).

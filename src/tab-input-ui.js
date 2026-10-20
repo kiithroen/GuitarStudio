@@ -310,8 +310,9 @@
     });
   }
 
-  function buildSlot(m, c, s, slot){
+  function buildSlot(m, c, s, slot, skip){
     var slotEl = el('div', 'ti-slot');
+    if (skip) slotEl.classList.add('is-skip');
     slotEl.dataset.m = String(m);
     slotEl.dataset.c = String(c);
     slotEl.dataset.s = String(s);
@@ -382,12 +383,14 @@
     measure.cells.forEach(function(cell, c){
       var d = cell.slots.length;
       var cellEl = el('div', 'ti-cell');
+      // 빈칸 칸(시간 0)은 연습 화면 박 셀과 같은 .slot-skip 으로 빗금을 그린다(src/base.css)
+      if (cell.skip === true) cellEl.classList.add('slot-skip');
       cellEl.style.setProperty('--d', String(d));
       var cellHead = el('div', 'ti-cell-head', String(c + 1) + (d >= 2 ? ' ÷' + d : ''));
       cellHead.dataset.c = String(c);
       cellEl.appendChild(cellHead);
       var slotsEl = el('div', 'ti-slots');
-      cell.slots.forEach(function(slot, s){ slotsEl.appendChild(buildSlot(m, c, s, slot)); });
+      cell.slots.forEach(function(slot, s){ slotsEl.appendChild(buildSlot(m, c, s, slot, cell.skip === true)); });
       cellEl.appendChild(slotsEl);
       cells.appendChild(cellEl);
     });
@@ -536,12 +539,14 @@
     var division = doc.measures[cursor.m].cells[cursor.c].slots.length;
     var label = (cursor.m + 1) + '마디 · ' + (cursor.c + 1) + '칸';
     if (division > 1) label += ' · 조각 ' + (cursor.s + 1) + '/' + division;
+    if (T.isSkipCell(doc, cursor)) label += ' · 빈칸';
     label += ' · ' + cursor.str + '번 줄';
     $('tiCursorLabel').textContent = label;
     var staffMove = ui.inputMode === 'staff';
     $('tiPrevBtn').disabled = !(staffMove ? S.prevEventPos(doc, cursor) : T.prevPos(doc, cursor));
     $('tiNextBtn').disabled = !(staffMove ? S.nextEventPos(doc, cursor) : T.nextPos(doc, cursor));
     $('tiRestBtn').setAttribute('aria-pressed', String(!!slot.rest));
+    $('tiSkipBtn').setAttribute('aria-pressed', String(T.isSkipCell(doc, cursor)));
     for (var d = 1; d <= 4; d++) $('tiDiv' + d).setAttribute('aria-pressed', String(division === d));
     $('tiAutoAdvance').setAttribute('aria-pressed', String(ui.autoAdvance));
     $('tiSoundToggle').setAttribute('aria-pressed', String(ui.sound));
@@ -855,6 +860,16 @@
     var slot = T.getSlot(doc, pos);
     var on = !slot.rest;
     apply(function(d){ return T.setRest(d, pos, on); }, { measures: [pos.m] });
+  }
+
+  // 커서가 있는 칸 전체를 빈칸(시간 0)으로 켜고 끈다. 켜면 그 칸의 조각을 모두 비운다(Docs/tab-input.md 빈칸).
+  function toggleSkip(){
+    var pos = copyPos(cursor);
+    var on = !T.isSkipCell(doc, pos);
+    apply(function(d){ return T.setSkip(d, pos, on); }, {
+      measures: [pos.m],
+      onDone: function(){ lastEntry = null; noteSel = null; }
+    });
   }
 
   function clearSlotAtCursor(){
@@ -1946,6 +1961,7 @@
     $('tiNextBtn').addEventListener('click', function(){ moveCursor(1); });
     $('tiRestBtn').addEventListener('click', toggleRest);
     $('tiClearSlotBtn').addEventListener('click', clearSlotAtCursor);
+    $('tiSkipBtn').addEventListener('click', toggleSkip);
     for (var d = 1; d <= 4; d++){
       (function(count){ $('tiDiv' + count).addEventListener('click', function(){ setDivision(count); }); })(d);
     }
@@ -2047,6 +2063,14 @@
       return;
     }
     if (ui.inputMode === 'text') return;   // 텍스트 모드에서 편집기 밖의 키는 문서를 고치지 않는다
+    if (event.code === 'Minus'){   // 빈칸 켜고 끄기: 두 모드 공통, Shift(=_) 여부와 숫자패드 빼기는 구분하지 않거나 받지 않는다
+      event.preventDefault();
+      if (!event.repeat){
+        flushPending(true);
+        toggleSkip();
+      }
+      return;
+    }
     if (ui.inputMode === 'staff' && onStaffKey(event)) return;
     var key = event.key;
     var isDigit = key.length === 1 && key >= '0' && key <= '9';

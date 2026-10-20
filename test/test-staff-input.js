@@ -1070,4 +1070,72 @@ test('slideTarget on a harmonic note judges only its own string and the mark bec
   assert.deepEqual(si.slideTarget(lone, pos(0, 0), 3), { ok: false, error: '앞에 같은 줄 음이 없어 슬라이드로 이을 수 없습니다.' });
 });
 
+// 빈칸 _ : 오선 모드는 빈칸 칸에 사건을 넣지 않는다(Docs/staff-input.md 빈칸).
+const SKIP_ERROR = '빈칸을 건너서는 음을 넣을 수 없습니다.';
+
+test('placeEvent refuses an event that touches a skip cell and leaves the document unchanged', function(){
+  const doc = fresh();
+  ti.setSkip(doc, pos(0, 2), true);
+  ti.setSkip(doc, pos(0, 3), true);
+  const before = snapshot(doc);
+  // 2분음표가 칸 1에서 시작해 빈칸 칸 2 로 들어간다
+  const across = si.placeEvent(doc, pos(0, 1), 24, { midis: [64] });
+  assert.deepEqual(across, { ok: false, error: SKIP_ERROR });
+  assert.deepEqual(snapshot(doc), before);
+  // 커서가 빈칸 칸 위
+  assert.deepEqual(si.placeEvent(doc, pos(0, 2), 12, { midis: [64] }), { ok: false, error: SKIP_ERROR });
+  assert.deepEqual(si.placeEvent(doc, pos(0, 3), 12, { rest: true }), { ok: false, error: SKIP_ERROR });
+  assert.deepEqual(snapshot(doc), before);
+  // 빈칸 칸을 지나 곡 끝을 넘는 긴 음도 같다
+  assert.deepEqual(si.placeEvent(doc, pos(0, 0), 96, { midis: [64] }), { ok: false, error: SKIP_ERROR });
+  assert.deepEqual(snapshot(doc), before);
+});
+
+test('placeEvent before a skip cell fills the rest where the sound really ends and keeps the skip cells', function(){
+  const doc = fresh();
+  ti.setSkip(doc, pos(0, 2), true);
+  ti.setSkip(doc, pos(0, 3), true);
+  const result = put(doc, pos(0, 1), 12, { midis: [64] });
+  assert.deepEqual(result.next, pos(1, 0), 'the event ends at the first sounding cell after the skip cells');
+  assert.equal(doc.measures.length, 2, 'a measure is added for the rest');
+  assert.deepEqual(doc.measures[0].cells.map(c => c.skip), [false, false, true, true]);
+  assert.equal(ti.getSlot(doc, pos(1, 0)).rest, true);
+  assert.equal(noteAt(doc, pos(0, 1), 1) !== null, true);
+  assert.deepEqual(tokens(doc)[0], ['r', 'E4@1', '_', '_']);
+  // 뒤 빈칸이 아니라 다음 마디가 이미 있으면 거기에 쉼
+  const longer = fresh();
+  ti.setSkip(longer, pos(0, 3), true);
+  ti.insertEmptyMeasure(longer, 1);
+  const second = put(longer, pos(0, 2), 12, { midis: [64] });
+  assert.deepEqual(second.next, pos(1, 0));
+  assert.equal(longer.measures.length, 2);
+  assert.equal(ti.getSlot(longer, pos(1, 0)).rest, true);
+  assert.equal(longer.measures[0].cells[3].skip, true);
+});
+
+test('event moves skip skip cells in both directions, and Delete on a skip cell is refused', function(){
+  const doc = fresh();
+  ti.setNote(doc, pos(0, 0), 1, 0);
+  ti.setRest(doc, pos(0, 1), true);
+  ti.setSkip(doc, pos(0, 2), true);
+  ti.setSkip(doc, pos(0, 3), true);
+  ti.insertEmptyMeasure(doc, 1);
+  ti.setSkip(doc, pos(1, 0), true);
+  ti.setNote(doc, pos(1, 1), 1, 1);
+  assert.deepEqual(si.nextEventPos(doc, pos(0, 1)), pos(1, 1), 'from the rest, over trailing skips and leading skips');
+  assert.deepEqual(si.prevEventPos(doc, pos(1, 1)), pos(0, 1), 'and back');
+  assert.deepEqual(si.nextEventPos(doc, pos(0, 0)), pos(0, 1));
+  const stops = [];
+  for (let p = pos(0, 0); p; p = si.nextEventPos(doc, p)) {
+    assert.equal(ti.isSkipCell(doc, p), false, 'the cursor never lands on a skip cell');
+    stops.push(p.m + ':' + p.c);
+  }
+  assert.equal(stops.includes('0:2') || stops.includes('0:3') || stops.includes('1:0'), false);
+  const before = snapshot(doc);
+  const refused = si.noteToRest(doc, pos(0, 2));
+  assert.equal(refused.ok, false);
+  assert.match(refused.error, /빈칸/);
+  assert.deepEqual(snapshot(doc), before);
+});
+
 process.stdout.write('1..' + checks + '\n');

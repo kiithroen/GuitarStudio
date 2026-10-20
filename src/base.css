@@ -94,3 +94,6 @@ h3{margin:0;font-size:14.5px;font-weight:600}
 .roll-mark{position:absolute;width:6px;background:currentColor;opacity:.75;pointer-events:none;z-index:1;
   -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 8'%3E%3Cpath d='M3 0C6 2 6 2 3 4S0 6 3 8' fill='none' stroke='black' stroke-width='1.4'/%3E%3C/svg%3E") repeat-y center/6px 8px;
   mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 8'%3E%3Cpath d='M3 0C6 2 6 2 3 4S0 6 3 8' fill='none' stroke='black' stroke-width='1.4'/%3E%3C/svg%3E") repeat-y center/6px 8px}
+/* 빈칸 _ : 칸 자리만 있고 시간이 흐르지 않는 칸. 흐리게 하고 빗금으로 구분한다. 연습 화면 박 셀(.beat-cell)과 악보 입력 화면 칸(.ti-cell)이 같이 쓴다(Docs/score-format.md 빈칸, Docs/ui.md) */
+.beat-cell.slot-skip:not(.active-beat),.ti-cell.slot-skip{opacity:.55;background-image:repeating-linear-gradient(135deg,transparent 0 6px,var(--line) 6px 7px)}
+.b-ko-main.b-skip-label{font-size:13px;font-weight:600;color:var(--muted)}

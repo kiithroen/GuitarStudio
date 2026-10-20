@@ -39,7 +39,7 @@
     if (!isInt(count) || count < 1 || count > MAX_DIVISION) throw new Error('칸을 나눌 수는 1~' + MAX_DIVISION + '이어야 합니다: ' + division);
     var slots = [];
     for (var i = 0; i < count; i++) slots.push(createSlot());
-    return { slots: slots };
+    return { slots: slots, skip: false };
   }
 
   function createMeasure(beats){
@@ -107,6 +107,8 @@
         if (!cell || !Array.isArray(cell.slots) || cell.slots.length < 1 || cell.slots.length > MAX_DIVISION){
           return { error: cWhere + ': 나눈 수는 1~' + MAX_DIVISION + '이어야 합니다.' };
         }
+        if (cell.skip !== undefined && typeof cell.skip !== 'boolean') return { error: cWhere + ': 빈칸 표시는 true/false여야 합니다.' };
+        if (cell.skip === true && cell.slots.length !== 1) return { error: cWhere + ': 빈칸 칸은 나누지 않은 칸이어야 합니다.' };
         for (var s = 0; s < cell.slots.length; s++){
           var slot = cell.slots[s];
           var sWhere = cWhere + ', 조각 ' + (s + 1);
@@ -131,6 +133,7 @@
     if (doc.sourceId === undefined) doc.sourceId = null;
     doc.measures.forEach(function(measure){
       measure.cells.forEach(function(cell){
+        if (cell.skip === undefined) cell.skip = false;
         cell.slots.forEach(function(slot){
           if (slot.roll === undefined) slot.roll = false;
           slot.notes.forEach(function(note){ if (note && note.art === REMOVED_ART_VALUE) note.art = null; });
@@ -146,11 +149,16 @@
     return false;
   }
 
+  // 칸에 든 것이 있나: 빈칸 표시이거나 내용이 있는 조각이 있다.
+  function cellHasContent(cell){
+    return cell.skip === true || cell.slots.some(slotHasContent);
+  }
+
   function hasContent(doc){
     if (doc.measures.length >= 2) return true;
     return doc.measures.some(function(measure){
       if (String(measure.chord).trim() || String(measure.memo).trim()) return true;
-      return measure.cells.some(function(cell){ return cell.slots.some(slotHasContent); });
+      return measure.cells.some(cellHasContent);
     });
   }
 
@@ -226,10 +234,35 @@
     if (!isInt(fret) || fret < 0 || fret > MAX_FRET) throw new Error('프렛은 0~' + MAX_FRET + '이어야 합니다: ' + fret);
   }
 
+  // 빈칸 칸(cell.skip)이면 빈칸을 끈다. 음·쉼을 넣거나 칸을 비우거나 나누기 전에 부른다.
+  function releaseSkip(doc, pos){
+    var cell = doc.measures[pos.m].cells[pos.c];
+    if (cell.skip === true) cell.skip = false;
+  }
+
+  function isSkipCell(doc, pos){
+    return isValidPos(doc, pos) && doc.measures[pos.m].cells[pos.c].skip === true;
+  }
+
+  // 칸 전체를 빈칸으로 켜고 끈다. 켜면 그 칸의 조각을 모두 비우고 나누지 않은 칸 하나로 만든다. 끄면 빈 칸이 된다(Docs/tab-input.md 빈칸).
+  function setSkip(doc, pos, on){
+    requireSlot(doc, pos);
+    var cell = doc.measures[pos.m].cells[pos.c];
+    if (!on){
+      cell.skip = false;
+      return { ok: true };
+    }
+    var removed = cell.slots.filter(slotHasContent).length;
+    cell.slots = [createSlot()];
+    cell.skip = true;
+    return { ok: true, removed: removed };
+  }
+
   function setNote(doc, pos, str, fret){
     var slot = requireSlot(doc, pos);
     requireStr(str);
     requireFret(fret);
+    releaseSkip(doc, pos);
     slot.notes[str - 1] = { fret: fret, lh: null, rh: null, art: null, uncertain: false };
     slot.rest = false;
     slot.restUncertain = false;
@@ -279,6 +312,7 @@
       slot.restUncertain = false;
       return { ok: true, removedNotes: 0 };
     }
+    releaseSkip(doc, pos);
     slot.roll = false;
     var removed = 0;
     for (var i = 0; i < slot.notes.length; i++){
@@ -317,6 +351,7 @@
 
   function clearSlot(doc, pos){
     var slot = requireSlot(doc, pos);
+    releaseSkip(doc, pos);
     for (var i = 0; i < slot.notes.length; i++) slot.notes[i] = null;
     slot.rest = false;
     slot.restUncertain = false;
@@ -329,6 +364,7 @@
     var cell = measure && measure.cells[c];
     if (!cell) throw new Error('올바르지 않은 칸입니다: 마디 ' + m + ', 칸 ' + c);
     if (!isInt(division) || division < 1 || division > MAX_DIVISION) throw new Error('칸을 나눌 수는 1~' + MAX_DIVISION + '이어야 합니다: ' + division);
+    if (division !== 1) cell.skip = false;   // 나눈 칸은 빈칸일 수 없다
     var oldSlots = cell.slots;
     var d = oldSlots.length;
     var next = createCell(division).slots;
@@ -343,7 +379,7 @@
   }
 
   function cellContentCount(cell){
-    return cell.slots.filter(slotHasContent).length;
+    return cell.slots.filter(slotHasContent).length + (cell.skip === true ? 1 : 0);
   }
 
   function setKey(doc, key){
@@ -534,6 +570,8 @@
     var sounding = false;
     return doc.measures.map(function(measure){
       return measure.cells.map(function(cell){
+        // 빈칸 칸은 '_' 하나다. 시간이 없으니 소리 이어짐(sounding)을 건드리지 않고, 빈칸 다음 빈 조각의 -·r 은 빈칸 앞 칸 기준이다.
+        if (cell.skip === true) return ['_'];
         return cell.slots.map(function(slot){
           if (slot.rest){
             sounding = false;
@@ -559,6 +597,7 @@
     var sounding = false;
     doc.measures.forEach(function(measure, m){
       measure.cells.forEach(function(cell, c){
+        if (cell.skip === true) return;   // 빈칸은 조각을 만들지 않는다(없는 칸처럼 투명)
         cell.slots.forEach(function(slot, s){
           var notes = [];
           var strs = [];
@@ -676,6 +715,7 @@
   function parseSlotPart(part, where, flags){
     var text = part.trim();
     var slot = createSlot();
+    if (GuitarNotation.isSkipToken(text)) return { slot: slot, skip: true };
     if (text === '-') return { slot: slot };
     if (GuitarNotation.isRestToken(text)){
       slot.rest = true;
@@ -731,10 +771,14 @@
         var parts = GuitarNotation.splitBeatSubtokens(tokens[c]);
         var where = '마디 ' + (m + 1) + ', 칸 ' + (c + 1);
         if (parts.length < 1 || parts.length > MAX_DIVISION) return { error: where + ': 칸을 ' + parts.length + '개로 나눌 수 없습니다.' };
-        var cell = { slots: [] };
+        var cell = { slots: [], skip: false };
         for (var p = 0; p < parts.length; p++){
           var result = parseSlotPart(parts[p], where, flags);
           if (result.error) return { error: result.error };
+          if (result.skip){
+            if (parts.length > 1) return { error: where + ': 빈칸 _ 은 칸 하나 전체로만 쓸 수 있습니다.' };
+            cell.skip = true;
+          }
           cell.slots.push(result.slot);
         }
         measure.cells.push(cell);
@@ -810,6 +854,7 @@
     createDoc: createDoc, createMeasure: createMeasure, createCell: createCell, createSlot: createSlot,
     cloneDoc: cloneDoc, normalizeDoc: normalizeDoc, hasContent: hasContent,
     getSlot: getSlot, isValidPos: isValidPos, firstPos: firstPos, nextPos: nextPos, prevPos: prevPos, clampPos: clampPos,
+    setSkip: setSkip, isSkipCell: isSkipCell,
     setNote: setNote, removeNote: removeNote, toggleNote: toggleNote, setNoteAttrs: setNoteAttrs,
     setRest: setRest, setRestUncertain: setRestUncertain, clearSlot: clearSlot, setRoll: setRoll, slotRollShown: slotRollShown, ROLL_ERROR: ROLL_ERROR,
     setDivision: setDivision, setBeats: setBeats, setKey: setKey, setMeasureChord: setMeasureChord, setMeasureMemo: setMeasureMemo,
