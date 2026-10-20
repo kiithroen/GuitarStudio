@@ -101,7 +101,7 @@
 
   // ---------- 소리
 
-  function articulationName(art){ return art === '!' ? 'apoyando' : (art === 'h' ? 'harmonic' : (art === 's' ? 'slur' : null)); }
+  function articulationName(art){ return art === '!' ? 'apoyando' : (art === 'h' ? 'harmonic' : (art === 's' ? 'slur' : (art === 'g' ? 'slide' : null))); }
 
   // rolled 이면 연습 화면과 같은 rollDelays(src/guide.js) 순서와 간격으로 굴려 친다.
   function playNotes(items, rolled){
@@ -256,6 +256,7 @@
     if (note.art === '!') parts.push('아포얀도');
     if (note.art === 'h') parts.push('자연 하모닉스');
     if (note.art === 's') parts.push('슬러');
+    if (note.art === 'g') parts.push('슬라이드');
     if (note.uncertain) parts.push('확인 필요');
     return parts.join(' · ');
   }
@@ -272,14 +273,18 @@
     return pos;
   }
 
-  function buildPosLabel(note, slurType){
-    var label = buildFretLabel({ fret: note.fret, lh: note.lh, rh: note.rh, art: articulationName(note.art), slurType: slurType });
+  // link: 슬러·슬라이드 음의 판정 결과(T.slurLinks 의 항목). 없거나 실패면 방향 없이 그린다.
+  function buildPosLabel(note, link){
+    var ok = !!(link && link.ok);
+    var label = buildFretLabel({ fret: note.fret, lh: note.lh, rh: note.rh, art: articulationName(note.art),
+      slurType: note.art === 's' && ok ? link.type : undefined,
+      slideType: note.art === 'g' && ok ? (link.type === 'hammer' ? 'up' : 'down') : undefined });
     label.classList.add('ti-pos-label');
     return label;
   }
 
-  // 슬러 음 TAB 글자의 방향(h·p). 앞 음이 다른 마디에 있어도 바뀌니 편집마다 문서 전체를 다시 판정한다(규칙은 GuitarNotation.linkSlurs).
-  // 판정이 실패한 슬러 음은 방향 없이 ⌒로 그린다. 오류는 결과 영역의 검사가 보여 준다.
+  // 슬러·슬라이드 음 TAB 글자의 방향(슬러 h·p, 슬라이드 /·\). 앞 음이 다른 마디에 있어도 바뀌니 편집마다 문서 전체를 다시 판정한다(규칙은 GuitarNotation.linkSlurs).
+  // 판정이 실패한 슬러 음은 방향 없이 ⌒로, 슬라이드 음은 —로 그린다. 오류는 결과 영역의 검사가 보여 준다.
   function refreshSlurLabels(){
     var links = T.slurLinks(doc);
     Array.prototype.forEach.call($('tiMeasures').querySelectorAll('.ti-slot'), function(slotEl){
@@ -291,9 +296,8 @@
       Array.prototype.forEach.call(slotEl.querySelectorAll('.ti-pos.has-note'), function(posEl){
         var str = Number(posEl.dataset.str);
         var note = slot.notes[str - 1];
-        if (!note || note.art !== 's') return;
-        var result = links[m][c][s][str - 1];
-        posEl.replaceChild(buildPosLabel(note, result && result.ok ? result.type : undefined), posEl.querySelector('.ti-pos-label'));
+        if (!note || (note.art !== 's' && note.art !== 'g')) return;
+        posEl.replaceChild(buildPosLabel(note, links[m][c][s][str - 1]), posEl.querySelector('.ti-pos-label'));
       });
     });
   }

@@ -491,4 +491,73 @@ test('harmonic pitches (above the normal range) give finite KS profiles and buff
   assert.equal(rendered, context.STRINGS.length * Object.keys(HARMONICS).length);
 });
 
+test('a glide option makes the KS source pitch slide from the start pitch to its own pitch; without it the pluck bend stays', function(){
+  const { context } = makeContext(0, false);
+  context.appState.sympAmount = 0;
+  context.__audioHooks.replaceGetKsBuffer(() => ({ duration:4 }));
+  const midi = 65;
+  const glide = { fromMidi:62, sec:0.07 };
+  const ratio = Math.pow(2, (glide.fromMidi - midi) / 12);
+  const voice = context.__audioHooks.buildKsVoice(midi, 2, 1, 1, false, false, false, 1, false, NaN, true, glide);
+  assert.deepEqual(voice.srcs[0].playbackRate.events.map(event => event.slice(0, 3)),
+    [['set', ratio, 2], ['exponential', 1, 2 + glide.sec]], 'the rate starts at the start-pitch ratio and ends at 1 after the glide time');
+  assert.ok(ratio < 1, 'a slide up starts below the written pitch');
+  const down = context.__audioHooks.buildKsVoice(midi, 2, 1, 1, false, false, false, 1, false, NaN, true, { fromMidi:69, sec:0.05 });
+  assert.ok(down.srcs[0].playbackRate.events[0][1] > 1, 'a slide down starts above the written pitch');
+
+  const bendStart = voiceEvents => voiceEvents[0][1];
+  const plain = context.__audioHooks.buildKsVoice(midi, 2, 1, 1, false, false, false, 1, false, NaN, true, null);
+  const plainEvents = plain.srcs[0].playbackRate.events;
+  assert.ok(bendStart(plainEvents) > 1 && bendStart(plainEvents) < 1.02, 'without a glide the pluck bend starts just above the pitch');
+  assert.deepEqual([plainEvents[1][0], plainEvents[1][1]], ['exponential', 1], 'and settles to 1');
+  assert.ok(plainEvents[1][2] - 2 < glide.sec, 'the pluck bend settles faster than a glide');
+  const undefinedGlide = context.__audioHooks.buildKsVoice(midi, 2, 1, 1, false, false, false, 1, false, NaN, true);
+  assert.deepEqual(undefinedGlide.srcs[0].playbackRate.events, plainEvents, 'an undefined glide behaves like no glide');
+
+  context.playGuitarNote(midi, 1, 3, 1, 'slide', 1, { naturalDecay:true, glide:glide });
+  const played = context.trackedGuideVoices.at(-1).srcs[0].playbackRate.events;
+  assert.deepEqual(played.map(event => event.slice(0, 3)), [['set', ratio, 3], ['exponential', 1, 3 + glide.sec]], 'playGuitarNote hands the glide to the KS voice');
+  context.playGuitarNote(midi, 1, 4, 1, null, 1, { naturalDecay:true });
+  assert.deepEqual(context.trackedGuideVoices.at(-1).srcs[0].playbackRate.events.map(event => event.slice(0, 2)),
+    plainEvents.map(event => event.slice(0, 2)), 'no glide option, usual bend');
+  ['bad', null, { fromMidi:NaN, sec:0.05 }, { fromMidi:60, sec:0 }].forEach(bad => {
+    context.playGuitarNote(midi, 1, 5, 1, null, 1, { naturalDecay:true, glide:bad });
+    assert.deepEqual(context.trackedGuideVoices.at(-1).srcs[0].playbackRate.events.map(event => event.slice(0, 2)),
+      plainEvents.map(event => event.slice(0, 2)), 'an unusable glide is ignored');
+  });
+});
+
+test('a glide option makes the classic oscillators slide from the start pitch to their own pitch; without it the pluck bend stays', function(){
+  [false, true].forEach(isFx => {
+    const { context } = makeContext(0, isFx);
+    context.appState.sympAmount = 0;
+    const midi = 65;
+    const freq = 440 * Math.pow(2, (midi - 69) / 12);
+    const glide = { fromMidi:62, sec:0.07 };
+    const ratio = Math.pow(2, (glide.fromMidi - midi) / 12);
+    const voice = context.__audioHooks.buildClassicVoice(midi, 2, 1, 1, false, false, isFx, false, NaN, true, 1, glide);
+    [1, 2, 3].forEach((multiple, index) => {
+      const target = freq * multiple;
+      const events = voice.srcs[index].frequency.events.map(event => event.slice(0, 3));
+      assert.equal(events.length, 2, 'oscillator ' + (index + 1) + ' has a start and one ramp');
+      assert.equal(events[0][0], 'set');
+      assert.ok(Math.abs(events[0][1] - target * ratio) < 1e-9, 'oscillator ' + (index + 1) + ' starts at its own pitch times the ratio');
+      assert.equal(events[0][2], 2);
+      assert.deepEqual(events[1], ['exponential', target, 2 + glide.sec], 'oscillator ' + (index + 1) + ' ends at its own pitch after the glide time');
+    });
+
+    const plain = context.__audioHooks.buildClassicVoice(midi, 2, 1, 1, false, false, isFx, false, NaN, true, 1, null);
+    const bend = plain.srcs[0].frequency.events;
+    assert.ok(bend[0][1] > freq && bend[0][1] < freq * 1.02, 'without a glide o1 keeps the pluck bend just above its pitch');
+    assert.deepEqual([bend[1][0], bend[1][1]], ['exponential', freq], 'and settles to its pitch');
+    assert.ok(bend[1][2] - 2 < glide.sec, 'the pluck bend settles faster than a glide');
+    assert.equal(plain.srcs[2].frequency.events.length, 1, 'o3 has no ramp without a glide');
+
+    context.appState.synthEngine = 'classic';
+    context.playGuitarNote(midi, 1, 3, 1, 'slide', 1, { naturalDecay:true, glide:glide });
+    const played = context.trackedGuideVoices.at(-1).srcs[0].frequency.events;
+    assert.ok(Math.abs(played[0][1] - freq * ratio) < 1e-9 && played[1][2] === 3 + glide.sec, 'playGuitarNote hands the glide to the classic voice');
+  });
+});
+
 process.stdout.write('1..' + checks + '\n');

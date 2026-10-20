@@ -288,4 +288,67 @@ test('parseScore: slurType (hammer or pull) lands on the note, the subdivision p
   const acrossMeasures = parser.parseScore('[-] E4 - - -\n[-] sF4 - - -', 4);
   assert.equal(acrossMeasures.measures[1].beats[0].slurType, 'hammer');
 });
+
+// 슬라이드(g): 잇기 규칙은 슬러와 같은 linkSlurs, 오류 코드와 파싱 결과가 다르다.
+const slideCodes = function(raw, beats){ return parser.validateScore(raw, beats || 4).errors.filter(function(e){ return e.code === 'INVALID_SLIDE'; }); };
+
+test('validateScore: slide follows the slur linking rule but reports INVALID_SLIDE', function(){
+  assert.deepEqual(parser.validateScore('[-] E3@4/gF#3@4 - - -', 4).errors, [], 'a slide in a subdivision is valid');
+  assert.deepEqual(slideCodes('[-] F4 gE4 - -'), [], 'a downward slide');
+  assert.deepEqual(slideCodes('[-] E4 - - -\n[-] gF4 - - -'), [], 'across the measure line');
+  assert.deepEqual(slideCodes('[-] E4 - gF4 -'), [], 'a hold between the source and the slide');
+  assert.deepEqual(slideCodes('[-] E2@6+E4@1 - E2@6+gF4@1 -'), [], 'a slid chord component');
+  const afterRest = slideCodes('[-] r gF4 - -');
+  assert.equal(afterRest.length, 1);
+  assert.deepEqual([afterRest[0].measure, afterRest[0].beat], [1, 2]);
+  assert.equal(afterRest[0].message, '슬라이드 앞에 같은 줄에서 친 음이 없습니다(쉼 뒤나 곡 처음은 안 됩니다): gF4');
+  assert.equal(slideCodes('[-] gF4 - - -').length, 1, 'start of the song');
+  assert.equal(slideCodes('[-] E4 r gF4 -').length, 1, 'a rest between');
+  assert.equal(slideCodes('[-] B3 gF4@1 - -').length, 1, 'the previous note is on another string');
+  const same = slideCodes('[-] E4 gE4 - -');
+  assert.equal(same.length, 1);
+  assert.equal(same[0].message, '슬라이드는 다른 높이로 이어져야 합니다. 같은 음을 잇는 붙임줄은 -로 적으세요: gE4');
+  assert.equal(slurCodes('[-] gF4 - - -').length, 0, 'a slide never reports INVALID_SLUR');
+  assert.equal(slideCodes('[-] sF4 - - -').length, 0, 'a slur never reports INVALID_SLIDE');
+  assert.equal(slurCodes('[-] sF4 - - -').length, 1, 'the slur error is unchanged');
+});
+test('slide mark combines with nothing else and keeps the token readable', function(){
+  ['!gE4', 'g!E4', 'hgE4@1', 'ghE4@1', 'sgE4', 'gsE4', 'ggE4', 'gE4g'].forEach(function(token){
+    assert.equal(parser.parseNoteToken(token, 0), null, token + ' is rejected');
+    assert.ok(parser.validateScore('[-] E4 ' + token + ' - -', 4).errors.length > 0, token + ' is an error');
+  });
+  const parsed = parser.parseNoteToken('g1F4@1:i?', 0);
+  assert.equal(parsed.articulation, 'slide');
+  assert.equal(parsed.explicitArticulation, true);
+  assert.equal(parsed.customTok, 'g1F4@1:i');
+  assert.equal(parsed.uncertain, true);
+  assert.equal(parsed.midi, E4 + 1);
+  assert.deepEqual(parser.parseNoteToken('gF4', 0).pos, parser.parseNoteToken('F4', 0).pos, 'the default position is the same as a plain note');
+});
+test('parseScore: slideType (up or down) and slideFromMidi land on the note, the subdivision part, and chord components', function(){
+  const single = parser.parseScore('[-] E4 gF4 - gE4', 4);
+  assert.deepEqual(single.errors, []);
+  const beats = single.measures[0].beats;
+  assert.equal(beats[0].slideType, undefined);
+  assert.deepEqual([beats[1].articulation, beats[1].explicitArticulation, beats[1].slideType, beats[1].slideFromMidi], ['slide', true, 'up', E4]);
+  assert.equal(beats[1].slurType, undefined, 'a slide has no slurType');
+  assert.deepEqual([beats[3].slideType, beats[3].slideFromMidi], ['down', E4 + 1]);
+  const split = parser.parseScore('[-] E4/gF4/gE4 - - -', 4).measures[0].beats[0];
+  assert.deepEqual(split.subNotes.map(function(part){ return part.slideType; }), [undefined, 'up', 'down']);
+  const chord = parser.parseScore('[-] E2@6+E4@1 E2@6+gF4@1 gF2@6+F4@1 -', 4);
+  assert.deepEqual(chord.errors, []);
+  const top = chord.measures[0].beats[1];
+  assert.deepEqual([top.slideType, top.slideFromMidi], ['up', E4], 'the highest component is the beat itself');
+  assert.deepEqual(top.chordNotes.map(function(note){ return note.slideType; }), [undefined, 'up']);
+  assert.equal(top.bass.slideType, undefined);
+  const lowSlide = chord.measures[0].beats[2];
+  assert.deepEqual([lowSlide.bass.slideType, lowSlide.bass.slideFromMidi], ['up', parser.STRINGS[5].midi], 'the lowest component is the bass');
+  assert.deepEqual(lowSlide.chordNotes.map(function(note){ return note.slideType; }), ['up', undefined]);
+  assert.equal(lowSlide.slideType, undefined);
+  const broken = parser.parseScore('[-] r gF4 - -', 4);
+  assert.ok(broken.errors.some(function(e){ return e.code === 'INVALID_SLIDE'; }));
+  assert.equal(broken.measures[0].beats[1].slideType, undefined, 'a slide that does not link gets no direction');
+  const acrossMeasures = parser.parseScore('[-] E4 - - -\n[-] gF4 - - -', 4);
+  assert.equal(acrossMeasures.measures[1].beats[0].slideType, 'up');
+});
 process.stdout.write('1..'+checks+'\n');

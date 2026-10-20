@@ -303,4 +303,55 @@ assert.equal(crossBarResume[0].duration, 2, 'parsed resume uses only the remaini
   assert.equal(new Set(resumed.map(event => event.duration)).size, 1, 'resume components share one remaining length');
 }
 
+{
+  // 슬라이드(g): gain 은 슬러와 같고, 지금 치는 음의 이벤트에만 출발 음 높이 glideFrom 이 실리며, 복원은 미끄러지지 않는다
+  assert.ok(context.SLIDE_GLIDE_SEC > 0, 'the glide time is positive');
+  assert.ok(context.SLIDE_MAX_SHARE > 0 && context.SLIDE_MAX_SHARE <= 1, 'the glide share is at most the whole note');
+  const slideScore = parser.parseScore('[-] E4 gF4 - gE4@1/gF4@1 | ""\n[-] E2@6+E4@1 E2@6+gF4@1 - -', 4);
+  assert.deepEqual(slideScore.errors, []);
+  const slideMeasures = slideScore.measures;
+  const eventsOf = (m, b, extra) => Array.from(context.getBeatGuideEvents(slideMeasures[m].beats[b], Object.assign({ startTime:0, slotDuration:0.5, measures:slideMeasures }, extra || {})).filter(event => event.kind === 'note'));
+  const E4 = parser.parseNoteToken('E4', 0).midi;
+  const plainNote = eventsOf(0, 0)[0];
+  assert.equal('glideFrom' in plainNote, false, 'a plain note has no glideFrom');
+  const slideNote = eventsOf(0, 1)[0];
+  assert.equal(slideNote.articulation, 'slide');
+  assert.equal(slideNote.gain, context.SLUR_GAIN, 'a slide is as quiet as a slur');
+  assert.equal(slideNote.glideFrom, E4, 'the event carries the start pitch');
+  assert.equal(slideNote.note.midi, parser.parseNoteToken('F4', 0).midi, 'the pitch is unchanged');
+  assert.equal(slideNote.duration, 1, 'the written duration includes the hold');
+  const slideSplit = eventsOf(0, 3);
+  assert.deepEqual(slideSplit.map(event => event.glideFrom), [parser.parseNoteToken('F4', 0).midi, parser.parseNoteToken('E4@1', 0).midi], 'in a subdivision each slide starts from the note played just before it');
+  assert.deepEqual(slideSplit.map(event => event.articulation), ['slide', 'slide']);
+  const slideChord = eventsOf(1, 1);
+  assert.deepEqual(slideChord.map(event => [event.note.midi, event.gain, event.glideFrom]),
+    [[parser.STRINGS[5].midi, 1.0, undefined], [parser.parseNoteToken('F4', 0).midi, context.SLUR_GAIN, E4]], 'in a chord only the slid component glides');
+  assert.deepEqual(Object.keys(plainNote).sort(), ['articulation', 'duration', 'gain', 'kind', 'note', 'str', 'when'], 'other events gain no field');
+
+  // 복원(resumeHold)은 다시 치는 경로가 아니라 미끄러지지 않는다
+  const heldSlide = parser.parseScore('[-] E4 gF4 - r', 4);
+  assert.deepEqual(heldSlide.errors, []);
+  const restored = Array.from(context.getBeatGuideEvents(heldSlide.measures[0].beats[2], { startTime:1, slotDuration:0.5, measures:heldSlide.measures, resumeHold:true }).filter(event => event.kind === 'note'));
+  assert.ok(restored.length > 0, 'the hold is restored');
+  restored.forEach(event => assert.equal('glideFrom' in event, false, 'a restored slide note does not glide'));
+
+  // scheduleBeatGuide 가 playGuitarNote 에 glide 를 넘긴다: 출발 음 높이는 카포를 반영하고, 시간은 min(SLIDE_GLIDE_SEC, 음 길이 × SLIDE_MAX_SHARE)
+  const optionsOf = call => call[7];
+  calls.length = 0;
+  context.scheduleBeatGuide(slideMeasures[0].beats[1], { startTime:1, slotDuration:0.5, measures:slideMeasures, capo:2 });
+  const slideCall = calls.filter(call => call[0] === 'note')[0];
+  assert.equal(optionsOf(slideCall).glide.fromMidi, E4 + 2, 'the start pitch includes the capo');
+  assert.equal(slideCall[1], parser.parseNoteToken('F4', 0).midi + 2, 'the target pitch includes the capo');
+  assert.equal(optionsOf(slideCall).glide.sec, Math.min(context.SLIDE_GLIDE_SEC, slideNote.duration * context.SLIDE_MAX_SHARE), 'a long note glides for the glide time');
+  assert.equal(optionsOf(slideCall).naturalDecay, true, 'the existing options stay');
+  calls.length = 0;
+  context.scheduleBeatGuide(slideMeasures[0].beats[1], { startTime:0, slotDuration:0.05, measures:slideMeasures });
+  const shortCall = calls.filter(call => call[0] === 'note')[0];
+  assert.ok(0.05 * 2 * context.SLIDE_MAX_SHARE < context.SLIDE_GLIDE_SEC, 'the test note is short enough to cap the glide');
+  assert.ok(Math.abs(optionsOf(shortCall).glide.sec - 0.05 * 2 * context.SLIDE_MAX_SHARE) < 1e-9, 'a short note glides for its share of the length');
+  calls.length = 0;
+  context.scheduleBeatGuide(slideMeasures[0].beats[0], { startTime:0, slotDuration:0.5, measures:slideMeasures });
+  assert.equal('glide' in optionsOf(calls.filter(call => call[0] === 'note')[0]), false, 'a plain note passes no glide');
+}
+
 process.stdout.write('Result: guide events passed (parsed and synthetic subdivision timing, simultaneous chords, articulation gain, rests, cross-bar holds, resume, loop clipping, capo, and legacy wrapper)\n');

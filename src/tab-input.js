@@ -17,7 +17,7 @@
   var KEY_MIN = -5;
   var KEY_MAX = 5;
   var RH_VALUES = ['p', 'i', 'm', 'a'];
-  var ART_VALUES = ['!', 'h', 's'];
+  var ART_VALUES = ['!', 'h', 's', 'g'];
   // 티란도 표시 ~ 를 없애기 전에 저장된 문서의 주법 값. 읽을 때 없음(null)으로 바꾼다.
   var REMOVED_ART_VALUE = '~';
   var ROLL_ERROR = '롤은 두 음 이상 화음에만 붙일 수 있습니다.';
@@ -75,7 +75,7 @@
     if (!isInt(note.fret) || note.fret < 0 || note.fret > MAX_FRET) return where + ': 프렛은 0~' + MAX_FRET + '의 정수여야 합니다.';
     if (note.lh !== null && !(isInt(note.lh) && note.lh >= 0 && note.lh <= 4)) return where + ': 왼손 운지는 없음 또는 0~4여야 합니다.';
     if (note.rh !== null && RH_VALUES.indexOf(note.rh) < 0) return where + ': 오른손 운지는 없음 또는 p·i·m·a여야 합니다.';
-    if (note.art !== null && ART_VALUES.indexOf(note.art) < 0) return where + ': 주법은 없음, !, h 또는 s여야 합니다.';
+    if (note.art !== null && ART_VALUES.indexOf(note.art) < 0) return where + ': 주법은 없음, !, h, s 또는 g여야 합니다.';
     if (note.art === 'h' && !isHarmonicFret(note.fret)) return where + ': 하모닉스 프렛은 ' + GuitarNotation.naturalHarmonicFretsText() + ' 중 하나여야 합니다.';
     if (typeof note.uncertain !== 'boolean') return where + ': 확인 표시는 true/false여야 합니다.';
     return null;
@@ -263,7 +263,7 @@
     var a = attrs || {};
     if ('lh' in a && !(a.lh === null || (isInt(a.lh) && a.lh >= 0 && a.lh <= 4))) throw new Error('왼손 운지는 null 또는 0~4여야 합니다: ' + a.lh);
     if ('rh' in a && !(a.rh === null || RH_VALUES.indexOf(a.rh) >= 0)) throw new Error('오른손 운지는 null 또는 p·i·m·a여야 합니다: ' + a.rh);
-    if ('art' in a && !(a.art === null || ART_VALUES.indexOf(a.art) >= 0)) throw new Error('주법은 null, !, h 또는 s여야 합니다: ' + a.art);
+    if ('art' in a && !(a.art === null || ART_VALUES.indexOf(a.art) >= 0)) throw new Error('주법은 null, !, h, s 또는 g여야 합니다: ' + a.art);
     if ('uncertain' in a && typeof a.uncertain !== 'boolean') throw new Error('확인 표시는 true/false여야 합니다: ' + a.uncertain);
     var note = slot.notes[str - 1];
     if (!note) return { ok: false };
@@ -550,7 +550,7 @@
     });
   }
 
-  // 슬러 음의 해머링·풀링 판정. links[m][c][s][줄 - 1] = null | {ok, type|reason, fromMidi, from, fromPos}.
+  // 슬러('s')·슬라이드('g') 음의 판정(슬러는 해머링·풀링, 슬라이드는 위·아래는 type 의 hammer·pull 로 읽는다). links[m][c][s][줄 - 1] = null | {ok, type|reason, fromMidi, from, fromPos}.
   // from 은 조각 순서 번호(시간 순)와 그 안의 음 번호이고, ok 인 결과의 fromPos 는 출발 음의 문서 자리 {m, c, s, str} 다.
   // 조각 순서와 쉼·유지 해석은 slotTokens 와 같고, 잇기 규칙은 GuitarNotation.linkSlurs 하나다.
   function slurLinks(doc){
@@ -565,7 +565,7 @@
           if (!slot.rest){
             slot.notes.forEach(function(note, index){
               if (!note) return;
-              notes.push({ str: index + 1, midi: noteMidiOf(index + 1, note), slur: note.art === 's' });
+              notes.push({ str: index + 1, midi: noteMidiOf(index + 1, note), slur: note.art === 's' || note.art === 'g' });
               strs.push(index + 1);
             });
           }
@@ -692,7 +692,7 @@
       if (slot.notes[str - 1]) return { error: where + ': 두 음이 ' + str + '번 줄에 겹칩니다. 원문에 @줄을 적으세요.' };
       var art = null;
       if (parsed.explicitArticulation){
-        art = parsed.articulation === 'apoyando' ? '!' : (parsed.articulation === 'harmonic' ? 'h' : (parsed.articulation === 'slur' ? 's' : null));
+        art = parsed.articulation === 'apoyando' ? '!' : (parsed.articulation === 'harmonic' ? 'h' : (parsed.articulation === 'slur' ? 's' : (parsed.articulation === 'slide' ? 'g' : null)));
       }
       slot.notes[str - 1] = {
         fret: parsed.pos.fret,

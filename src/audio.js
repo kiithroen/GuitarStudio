@@ -439,13 +439,19 @@
     return Number.isFinite(hardStopAt) ? Math.min(stopAt, hardStopAt + 0.015) : stopAt;
   }
 
-  function buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, strNo, exactDuration, hardStopAt, naturalDecay){
+  function buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, strNo, exactDuration, hardStopAt, naturalDecay, glide){
     exactDuration = !!exactDuration && !naturalDecay;
     var src = actx.createBufferSource();
     src.buffer = getKsBuffer(midi, isApoyando, strNo);
-    // 강한 탄현 순간 장력이 커져 음정이 살짝 높게 시작했다 안착하는 현상 (아포얀도가 더 큼)
-    src.playbackRate.setValueAtTime(isApoyando ? 1.004 : 1.002, t);
-    src.playbackRate.exponentialRampToValueAtTime(1, t + 0.03);
+    if (glide){
+      // 슬라이드: 출발 음 높이에서 제 높이로 미끄러진다(재생 속도 비율)
+      src.playbackRate.setValueAtTime(Math.pow(2, (glide.fromMidi - midi) / 12), t);
+      src.playbackRate.exponentialRampToValueAtTime(1, t + glide.sec);
+    } else {
+      // 강한 탄현 순간 장력이 커져 음정이 살짝 높게 시작했다 안착하는 현상 (아포얀도가 더 큼)
+      src.playbackRate.setValueAtTime(isApoyando ? 1.004 : 1.002, t);
+      src.playbackRate.exponentialRampToValueAtTime(1, t + 0.03);
+    }
     var g = actx.createGain();
     var peakGain = KS_VOICE_GAIN * (isBass ? 1.0 : 0.9) * scale;
     g.gain.setValueAtTime(0, t);
@@ -464,7 +470,7 @@
   }
 
   // 기존 합성음 (삼각파 2개 + 사인파 + 로우패스 스윕): 물리 모델 음원과 A/B 비교용
-  function buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isFx, exactDuration, hardStopAt, naturalDecay, strNo){
+  function buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isFx, exactDuration, hardStopAt, naturalDecay, strNo, glide){
     var freq = 440 * Math.pow(2, (midi - 69) / 12);
     exactDuration = !!exactDuration && !naturalDecay;
     var toneDuration = exactDuration || naturalDecay ? Math.max(dur, legacyToneDuration(dur, isBass, isApoyando, isFx)) : dur;
@@ -482,12 +488,23 @@
     o3.type = 'sine';
 
     // 탄현 순간 줄의 장력으로 인해 음정이 아주 미세하게 높게 시작했다가 제자리로 안착하는 어쿠스틱 현 물리 특성
-    var bendRatio = isApoyando ? 1.008 : 1.005;
-    o1.frequency.setValueAtTime(freq * bendRatio, t);
-    o1.frequency.exponentialRampToValueAtTime(freq, t + 0.024);
-    o2.frequency.setValueAtTime(freq * 2 * 1.005, t);
-    o2.frequency.exponentialRampToValueAtTime(freq * 2, t + 0.022);
-    o3.frequency.setValueAtTime(freq * 3, t);
+    if (glide){
+      // 슬라이드: 세 오실레이터가 출발 음 높이에서 제 높이로 미끄러진다
+      var glideRatio = Math.pow(2, (glide.fromMidi - midi) / 12);
+      o1.frequency.setValueAtTime(freq * glideRatio, t);
+      o1.frequency.exponentialRampToValueAtTime(freq, t + glide.sec);
+      o2.frequency.setValueAtTime(freq * 2 * glideRatio, t);
+      o2.frequency.exponentialRampToValueAtTime(freq * 2, t + glide.sec);
+      o3.frequency.setValueAtTime(freq * 3 * glideRatio, t);
+      o3.frequency.exponentialRampToValueAtTime(freq * 3, t + glide.sec);
+    } else {
+      var bendRatio = isApoyando ? 1.008 : 1.005;
+      o1.frequency.setValueAtTime(freq * bendRatio, t);
+      o1.frequency.exponentialRampToValueAtTime(freq, t + 0.024);
+      o2.frequency.setValueAtTime(freq * 2 * 1.005, t);
+      o2.frequency.exponentialRampToValueAtTime(freq * 2, t + 0.022);
+      o3.frequency.setValueAtTime(freq * 3, t);
+    }
 
     var g1 = actx.createGain();
     var g2 = actx.createGain();
@@ -595,9 +612,11 @@
     var sNo = strNum || defaultStringFor(midi);
 
     var hardStopAt = (exactDuration || naturalDecay) && options ? Number(options.hardStopAt) : NaN;
+    var glide = options && options.glide && Number.isFinite(options.glide.fromMidi) && options.glide.sec > 0
+      ? { fromMidi:options.glide.fromMidi, sec:options.glide.sec } : null;
     var voice = appState.synthEngine === 'classic'
-      ? buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isFx, exactDuration, hardStopAt, naturalDecay, sNo)
-      : buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, sNo, exactDuration, hardStopAt, naturalDecay);
+      ? buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isFx, exactDuration, hardStopAt, naturalDecay, sNo, glide)
+      : buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, sNo, exactDuration, hardStopAt, naturalDecay, glide);
 
     // 같은 줄 재탄현 시 이 보이스만 독립적으로 끊을 수 있도록 엔벨로프 뒤에 별도 감쇠 게인을 둠
     var damp = actx.createGain();

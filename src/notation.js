@@ -135,10 +135,11 @@
     return /^(?:r\??|\?)$/.test(String(tok || '').trim());
   }
 
-  // 슬러(해머링·풀링) 잇기 규칙의 SSOT. 검사·파싱 결과·악보 입력 화면이 같이 쓴다(Docs/score-format.md 슬러).
+  // 슬러(해머링·풀링)·슬라이드 잇기 규칙의 SSOT. 검사·파싱 결과·악보 입력 화면이 같이 쓴다(Docs/score-format.md 슬러·슬라이드).
   // pieces: 시간 순 조각 [{rest, hold, notes:[{str, midi, slur}]}]. 마디를 넘어 이어 본다.
-  // 돌려주는 값: 조각마다 notes와 같은 순서의 배열. 슬러가 아닌 음은 null,
-  // 슬러 음은 {ok:true, type:'hammer'|'pull', fromMidi, from:{piece, note}} 또는 {ok:false, reason:'no-source'|'same-pitch'}.
+  // slur 는 "앞 음에서 왼손으로 이어지는 음"(슬러·슬라이드) 표시다.
+  // 돌려주는 값: 조각마다 notes와 같은 순서의 배열. 이어지는 음이 아닌 음은 null,
+  // 이어지는 음은 {ok:true, type:'hammer'|'pull', fromMidi, from:{piece, note}} 또는 {ok:false, reason:'no-source'|'same-pitch'}.
   // from 은 출발 음의 자리다: pieces 안 조각 번호와 그 조각 notes 안 번호(오선 곡선이 쓴다).
   function linkSlurs(pieces){
     var last = Object.create(null); // 줄 번호 → 그 줄에서 마지막으로 친 음 {midi, piece, note}
@@ -323,8 +324,9 @@
           var slurNotesMeta = [];
           components.forEach(function(component){
             if (!component.note.pos) return;
-            slurNotes.push({str:component.note.pos.str, midi:component.note.midi, slur:component.note.articulation === 'slur'});
-            slurNotesMeta.push({measure:measureNo, beat:beatIndex + 1, token:component.token});
+            var articulation = component.note.articulation;
+            slurNotes.push({str:component.note.pos.str, midi:component.note.midi, slur:articulation === 'slur' || articulation === 'slide'});
+            slurNotesMeta.push({measure:measureNo, beat:beatIndex + 1, token:component.token, slide:articulation === 'slide'});
           });
           slurPieces.push({rest:false, hold:false, notes:slurNotes});
           slurMeta.push(slurNotesMeta);
@@ -335,6 +337,12 @@
       results.forEach(function(result, noteIndex){
         if (!result || result.ok) return;
         var where = slurMeta[pieceIndex][noteIndex];
+        if (where.slide){
+          add(errors, 'INVALID_SLIDE', where.measure, where.beat, result.reason === 'same-pitch'
+            ? '슬라이드는 다른 높이로 이어져야 합니다. 같은 음을 잇는 붙임줄은 -로 적으세요: ' + where.token
+            : '슬라이드 앞에 같은 줄에서 친 음이 없습니다(쉼 뒤나 곡 처음은 안 됩니다): ' + where.token);
+          return;
+        }
         add(errors, 'INVALID_SLUR', where.measure, where.beat, result.reason === 'same-pitch'
           ? '슬러는 다른 높이로 이어져야 합니다. 같은 음을 잇는 붙임줄은 -로 적으세요: ' + where.token
           : '슬러 앞에 같은 줄에서 친 음이 없습니다(쉼 뒤나 곡 처음은 안 됩니다): ' + where.token);

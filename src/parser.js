@@ -364,7 +364,7 @@
     // >와 ^는 더 이상 아포얀도 별칭이 아니다.
     if (/[>^]/.test(tok)) return null;
 
-    // 악보 주법 명시 기호 추출: ! (아포얀도), h (자연 하모닉스), s (슬러). 따로 적지 않은 음이 티란도다. 셋은 한 음에 하나만 온다.
+    // 악보 주법 명시 기호 추출: ! (아포얀도), h (자연 하모닉스), s (슬러), g (슬라이드). 따로 적지 않은 음이 티란도다. 넷은 한 음에 하나만 온다.
     var explicitArtic = null;
     if (/^!/.test(tok)){
       explicitArtic = 'apoyando';
@@ -375,10 +375,13 @@
     } else if (/^s/.test(tok)){
       explicitArtic = 'slur';
       tok = tok.slice(1).trim();
+    } else if (/^g/.test(tok)){
+      explicitArtic = 'slide';
+      tok = tok.slice(1).trim();
     }
     if (!tok || tok === '-' || tok === '.') return null;
 
-    var articPfx = explicitArtic === 'apoyando' ? '!' : (explicitArtic === 'harmonic' ? 'h' : (explicitArtic === 'slur' ? 's' : ''));
+    var articPfx = explicitArtic === 'apoyando' ? '!' : (explicitArtic === 'harmonic' ? 'h' : (explicitArtic === 'slur' ? 's' : (explicitArtic === 'slide' ? 'g' : '')));
 
     var m = tok.match(/^([0-4])?([A-G])([#b]?)([2-6])(?:@([1-6]))?$/);
     if (m){
@@ -574,7 +577,8 @@
   }
   function serializeScoreMeasures(measures, separator){ return GuitarNotation.serializeScoreMeasures(measures, separator); }
 
-  // 슬러 음에 방향 slurType('hammer'|'pull')을 단다. 잇기 규칙은 GuitarNotation.linkSlurs 하나다.
+  // 슬러 음에 방향 slurType('hammer'|'pull')을, 슬라이드 음에 slideType('up'|'down')과 출발 음 높이 slideFromMidi를 단다.
+  // 잇기 규칙은 GuitarNotation.linkSlurs 하나다.
   // 단일 음은 beat(또는 분할 조각) 자신, 화음은 chordNotes 항목에 단다. 화음의 가장 낮은 음은 bass 에도,
   // 가장 높은 음은 beat(또는 조각) 자신에도 단다(연습 화면 TAB이 두 음 화음을 bass 와 beat 로 그린다).
   function attachSlurTypes(measures){
@@ -588,7 +592,7 @@
             var chord = Array.isArray(part.chordNotes) && part.chordNotes.length ? part.chordNotes : null;
             (chord || [part]).forEach(function(note, index, list){
               if (note.str == null || note.midi == null) return;
-              notes.push({ str: note.str, midi: note.midi, slur: note.articulation === 'slur' });
+              notes.push({ str: note.str, midi: note.midi, slur: note.articulation === 'slur' || note.articulation === 'slide' });
               noteTargets.push({ note: note, part: part, chord: !!chord, first: index === 0, last: index === list.length - 1 });
             });
           }
@@ -601,10 +605,18 @@
       results.forEach(function(result, noteIndex){
         if (!result || !result.ok) return;
         var target = targets[pieceIndex][noteIndex];
-        target.note.slurType = result.type;
+        var slide = target.note.articulation === 'slide';
+        var slideType = result.type === 'hammer' ? 'up' : 'down';
+        function mark(holder){
+          if (slide){
+            holder.slideType = slideType;
+            holder.slideFromMidi = result.fromMidi;
+          } else holder.slurType = result.type;
+        }
+        mark(target.note);
         if (!target.chord) return;
-        if (target.last) target.part.slurType = result.type;
-        if (target.first && target.part.bass) target.part.bass.slurType = result.type;
+        if (target.last) mark(target.part);
+        if (target.first && target.part.bass) mark(target.part.bass);
       });
     });
   }

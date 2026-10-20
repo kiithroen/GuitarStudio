@@ -2302,8 +2302,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=roll-3')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=roll-3">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=slide-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=slide-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -4199,6 +4199,113 @@ async function testSlurLabels(client, httpPort) {
   process.stdout.write('Browser checkpoint: slur direction letters in practice TAB and score input cards passed\n');
 }
 
+// 슬라이드(g): 연습 화면 TAB 알약은 프렛 앞에 방향 글자(/ 위, \ 아래)를 붙이고, 악보 입력 화면 카드도 같은 글자를 보인다. 프렛 값은 파서로 셈한다.
+async function testSlideLabels(client, httpPort) {
+  client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
+  const errorsBefore = client.consoleErrors.length;
+  async function loadPage(url, readyExpression) {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await client.send('Page.navigate', { url });
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, readyExpression, 8000);
+  }
+  const slideLines = [
+    '[-] E4@1 gF4@1 - gE4@1 | ""',
+    '[-] E4@1/gF4@1/gE4@1 - - r | ""',
+    '[-] E2@6+E4@1 E2@6+gF4@1 - r | ""'
+  ];
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false });
+  await loadPage(`http://127.0.0.1:${httpPort}/index.html`, 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= ' + builtinSongCount + ' && window.curSong != null');
+  const practice = await client.evaluate(`(function(){
+    var lines = ${JSON.stringify(slideLines)};
+    var song = scoreDrafts.createFromScore({ title: '슬라이드 시험', beats: 4, bpm: 60, lines: lines, origin: 'tab-input' });
+    rebuildSongSelect(song.id);
+    var s = document.getElementById('scoreViewSelect'); s.value = 'both'; s.dispatchEvent(new Event('change', { bubbles: true }));
+    appState.clickMode = 'off';
+    function pills(m, b){
+      var cell = document.querySelector('#measuresGrid .beat-cell[data-m="' + m + '"][data-b="' + b + '"]');
+      return Array.prototype.map.call(cell.querySelectorAll('.tab-fret-pill'), function(pill){
+        var label = pill.querySelector('.fret-label');
+        var mark = label.querySelector('.fret-slide');
+        return { top: pill.style.top, text: pill.textContent, cls: label.className, mark: mark && mark.textContent, markFirst: !!mark && label.firstChild === mark, held: pill.classList.contains('tab-held-fret'), left: parseFloat(pill.style.left) || 0 };
+      }).sort(function(a, b){ return a.left - b.left || a.top.localeCompare(b.top); });
+    }
+    var out = {
+      openFret: GuitarParser.parseNoteToken('E4@1', 0).pos.fret,
+      upFret: GuitarParser.parseNoteToken('F4@1', 0).pos.fret,
+      plain: pills(0, 0), up: pills(0, 1), held: pills(0, 2), down: pills(0, 3),
+      split: pills(1, 0), chord: pills(2, 1),
+      mark: (function(){ var el = document.querySelector('#measuresGrid .fret-slide'); var cs = getComputedStyle(el); var label = getComputedStyle(el.parentNode); return { fontSize: parseFloat(cs.fontSize), labelFontSize: parseFloat(label.fontSize), weight: cs.fontWeight, opacity: cs.opacity, color: cs.color, labelColor: label.color }; })()
+    };
+    updateActiveCursor(0, 0, false);
+    return out;
+  })()`);
+  const open = String(practice.openFret);
+  const up = String(practice.upFret);
+  const upMark = '/';
+  const downMark = '\\';
+  assert.deepEqual(practice.plain.map(pill => pill.text), [open], 'a plain note has no direction letter');
+  assert.ok(!/\bis-slide\b/.test(practice.plain[0].cls) && practice.plain[0].mark === null, 'a plain note has no slide mark');
+  assert.deepEqual(practice.up.map(pill => pill.text), [upMark + up], 'a higher slid note reads / + fret: ' + JSON.stringify(practice.up));
+  assert.ok(/\bis-slide\b/.test(practice.up[0].cls) && practice.up[0].markFirst && practice.up[0].mark === upMark, 'the letter is a .fret-slide span before the fret number');
+  assert.deepEqual(practice.down.map(pill => pill.text), [downMark + open], 'a lower slid note reads \\ + fret: ' + JSON.stringify(practice.down));
+  assert.ok(practice.down[0].markFirst && practice.down[0].mark === downMark);
+  assert.ok(practice.held.length >= 1 && practice.held.every(pill => pill.held && pill.mark === null && !/\bis-slide\b/.test(pill.cls)), 'a held pill shows no slide mark: ' + JSON.stringify(practice.held));
+  assert.deepEqual(practice.split.map(pill => pill.text), [open, upMark + up, downMark + open], 'subdivided slides read / then \\: ' + JSON.stringify(practice.split));
+  assert.deepEqual(practice.chord.map(pill => pill.text).sort(), [upMark + up, open].sort(), 'in a chord only the slid component has the letter: ' + JSON.stringify(practice.chord));
+  assert.ok(practice.mark.fontSize < practice.mark.labelFontSize, 'the direction letter is smaller than the fret number: ' + JSON.stringify(practice.mark));
+  assert.ok(Number(practice.mark.opacity) < 1 && Number(practice.mark.weight) >= 700, 'the letter is bold and slightly faded: ' + JSON.stringify(practice.mark));
+  assert.equal(practice.mark.color, practice.mark.labelColor, 'the slide mark does not change the color');
+
+  // 악보 입력 화면: 불러온 슬라이드 카드의 글자. 앞 음을 쉼으로 바꾸면 슬라이드가 끊겨 방향 없이 —로 보이고 검사가 오류를 낸다.
+  const inputUrl = `http://127.0.0.1:${httpPort}/score-input.html`;
+  const inputReady = 'document.readyState === "complete" && document.querySelectorAll("#tiMeasures .ti-measure").length >= 1';
+  await client.evaluate(`(function(){ Object.keys(localStorage).filter(function(key){ return key.indexOf('gs.tabInput.') === 0; }).forEach(function(key){ localStorage.removeItem(key); }); return true; })()`);
+  await loadPage(inputUrl, inputReady);
+  await client.evaluate(`(function(){
+    window.confirm = function(){ return true; };
+    document.getElementById('tiImportBtn').click();
+    var area = document.getElementById('tiImportText');
+    area.value = ${JSON.stringify(slideLines.join('\n'))};
+    area.dispatchEvent(new Event('input', { bubbles:true }));
+    document.getElementById('tiImportApplyBtn').click();
+    return true;
+  })()`);
+  assert.equal(await client.evaluate(`document.getElementById('tiImportError').textContent`), '', 'the slide score imports without error');
+  const readLabels = () => client.evaluate(`(function(){
+    function label(m, c, s, str){ var node = document.querySelector('.ti-slot[data-m="' + m + '"][data-c="' + c + '"][data-s="' + s + '"] .ti-pos[data-str="' + str + '"] .ti-pos-label'); return node && node.textContent; }
+    return { plain: label(0, 0, 0, 1), up: label(0, 1, 0, 1), down: label(0, 3, 0, 1), splitUp: label(1, 0, 1, 1), splitDown: label(1, 0, 2, 1), chordTop: label(2, 1, 0, 1),
+      text: document.getElementById('tiScoreText').value, errors: document.querySelectorAll('#tiDiagnostics .is-error').length };
+  })()`);
+  const labels = await readLabels();
+  assert.equal(labels.plain, open);
+  assert.equal(labels.up, upMark + up, 'the input card shows / before an upward slide: ' + JSON.stringify(labels));
+  assert.equal(labels.down, downMark + open);
+  assert.equal(labels.splitUp, upMark + up);
+  assert.equal(labels.splitDown, downMark + open);
+  assert.equal(labels.chordTop, upMark + up);
+  assert.equal(labels.text, slideLines.join('\n'), 'the exported text is the imported text');
+  assert.equal(labels.errors, 0, 'the diagnostics show no error');
+  await client.evaluate(`(function(){
+    document.querySelector('.ti-slot[data-m="0"][data-c="0"][data-s="0"] .ti-pos[data-str="1"]').click();
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key:'r', code:'KeyR', bubbles:true, cancelable:true }));
+    return true;
+  })()`);
+  const cut = await readLabels();
+  assert.equal(cut.up, '—' + up, 'a slide with no source falls back to the dash: ' + JSON.stringify(cut));
+  assert.equal(cut.down, downMark + open, 'a later slide that still links keeps its direction');
+  assert.ok(cut.errors >= 1, 'the diagnostics report the broken slide');
+  assert.ok(await client.evaluate(`document.querySelector('#tiMeasures .ti-measure .ti-measure-error').textContent.indexOf('슬라이드 앞에 같은 줄에서 친 음이 없습니다') >= 0`), 'the measure card shows the slide error');
+  await client.evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key:'z', code:'KeyZ', ctrlKey:true, bubbles:true, cancelable:true })); true`);
+  const restored = await readLabels();
+  assert.equal(restored.up, upMark + up, 'undoing the rest restores the direction letter');
+  assert.equal(restored.errors, 0);
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the slide steps run without console errors');
+  client.dialogHandler = null;
+  process.stdout.write('Browser checkpoint: slide direction letters in practice TAB and score input cards passed\n');
+}
+
 // 롤(~): 연습 화면 TAB 은 롤 화음 왼쪽에 세로 물결선(.roll-mark)을 그린다. 위치는 화음 알약의 실제 상자로 잰다.
 async function testRollMarks(client, httpPort) {
   client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
@@ -4544,7 +4651,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=roll-3')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=slide-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -5061,6 +5168,7 @@ async function main() {
     await testFretLabel(cdp, httpPort);
     await testNaturalHarmonics(cdp, httpPort);
     await testSlurLabels(cdp, httpPort);
+    await testSlideLabels(cdp, httpPort);
     await testRollMarks(cdp, httpPort);
     await testRollInput(cdp, httpPort);
 

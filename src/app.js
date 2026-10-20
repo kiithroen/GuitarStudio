@@ -349,12 +349,14 @@ function curCapo(){
     if (note.explicitArticulation && note.articulation === 'harmonic') art = 'harmonic';
     else if (!isHeld && note.explicitArticulation && note.articulation === 'apoyando') art = note.articulation;
     else if (!isHeld && note.explicitArticulation && note.articulation === 'slur') art = 'slur';
+    else if (!isHeld && note.explicitArticulation && note.articulation === 'slide') art = 'slide';
     pill.appendChild(buildFretLabel({
       fret: note.fret != null ? note.fret : 0,
       lh: getExplicitLeftHand(token, componentIndex),
       rh: isHeld ? null : (getExplicitRightHand(token, componentIndex) || null),
       art: art,
-      slurType: art === 'slur' ? note.slurType : undefined
+      slurType: art === 'slur' ? note.slurType : undefined,
+      slideType: art === 'slide' ? note.slideType : undefined
     }));
   }
 

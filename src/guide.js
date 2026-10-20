@@ -1,6 +1,8 @@
-var SLUR_GAIN = 0.6; // 슬러(해머링·풀링) 음은 오른손으로 다시 치지 않아 작게
+var SLUR_GAIN = 0.6; // 슬러·슬라이드 음은 오른손으로 다시 치지 않아 작게
 var ROLL_STEP = 0.04; // 롤(~) 구성음 사이 간격(초)
 var ROLL_MAX_SHARE = 0.5; // 롤 전체 퍼짐이 그 조각 길이에서 차지할 수 있는 몫
+var SLIDE_GLIDE_SEC = 0.08; // 슬라이드 음이 출발 음 높이에서 제 높이로 미끄러지는 시간(초)
+var SLIDE_MAX_SHARE = 0.5; // 미끄럼 시간이 그 음 길이에서 차지할 수 있는 몫
 
 // 롤(~): 줄 번호가 큰 음부터 간격을 두고 늦춰 친다(Docs/score-format.md 롤). notes는 { str, midi }를 가진 객체 배열.
 // 롤 순서(줄 번호 큰 것 먼저, 같거나 없으면 midi 작은 것, 그다음 원래 순서)대로 [{ note, delay }]를 돌려준다. 음이 둘 미만이면 원래 순서에 delay 0.
@@ -54,7 +56,7 @@ function getBeatGuideEvents(beat, options){
     ? GuitarRhythm.resolveHold(measures, parts[0]) : null;
   var events = [];
 
-  function pushForPart(part, index, kind, noteSource, allowRoll){
+  function pushForPart(part, index, kind, noteSource, struck){
     var offsetSlots = index / count;
     var when = startTime + offsetSlots * slotDuration;
     var slotUnits = Number(part && part.slotUnits) || 12 / count;
@@ -72,7 +74,7 @@ function getBeatGuideEvents(beat, options){
     if (kind !== 'note' || duration <= 0) return;
     var playNotes = guideNotes(noteSource).filter(function(note){ return note && note.midi; });
     // 롤(~)이면 rollDelays 순서와 간격으로 친다. 끝 시각은 그대로.
-    var timed = allowRoll && noteSource.rolled
+    var timed = struck && noteSource.rolled
       ? rollDelays(playNotes, duration)
       : playNotes.map(function(note){ return { note:note, delay:0 }; });
     timed.forEach(function(item){
@@ -82,9 +84,12 @@ function getBeatGuideEvents(beat, options){
       var articulation = hasChordComponents
         ? (note.articulation || null)
         : (note.articulation || noteSource.articulation || part.articulation || null);
-      var gain = articulation === 'apoyando' ? 1.16 : (articulation === 'slur' ? SLUR_GAIN : 1.0);
-      events.push({ kind:'note', note:note, duration:duration - delay, when:when + delay,
-        gain:gain, articulation:articulation, str:note.str });
+      var gain = articulation === 'apoyando' ? 1.16 : ((articulation === 'slur' || articulation === 'slide') ? SLUR_GAIN : 1.0);
+      var event = { kind:'note', note:note, duration:duration - delay, when:when + delay,
+        gain:gain, articulation:articulation, str:note.str };
+      // 슬라이드: 지금 치는 조각만 출발 음 높이에서 미끄러진다(resume 복원은 미끄러지지 않는다)
+      if (struck && articulation === 'slide' && typeof note.slideFromMidi === 'number') event.glideFrom = note.slideFromMidi;
+      events.push(event);
     });
   }
 
@@ -127,7 +132,11 @@ function scheduleBeatGuide(beat, options){
       return;
     }
     var midi = soundingMidi(event.note.midi, options.capo);
-    playGuitarNote(midi, event.duration, event.when, event.gain, event.articulation, event.str, { naturalDecay:true, hardStopAt:hardStopAt });
+    var playOptions = { naturalDecay:true, hardStopAt:hardStopAt };
+    if (event.glideFrom != null){
+      playOptions.glide = { fromMidi:soundingMidi(event.glideFrom, options.capo), sec:Math.min(SLIDE_GLIDE_SEC, event.duration * SLIDE_MAX_SHARE) };
+    }
+    playGuitarNote(midi, event.duration, event.when, event.gain, event.articulation, event.str, playOptions);
   });
   return events;
 }
