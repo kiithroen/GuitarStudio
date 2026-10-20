@@ -472,6 +472,46 @@ test('harmonic notes (art h) cannot be transposed or moved to another string, an
   assert.equal(noteAt(doc, at, string.str), null);
 });
 
+test('accidental history reads a harmonic as the hand position the staff draws, not the sounding note', function(){
+  const HARMONICS = require('../src/notation.js').NATURAL_HARMONICS;
+  const parser = require('../src/parser.js');
+  function inRange(midi){ return midi >= si.MIN_MIDI && midi <= si.MAX_MIDI; }
+  let found = null;
+  parser.STRINGS.forEach(function(string){
+    Object.keys(HARMONICS).map(Number).forEach(function(fret){
+      const handMidi = string.midi + fret;
+      if (found || parser.noteNameForMidi(handMidi, false).indexOf('#') < 0) return;
+      // 같은 글자의 제자리 음(손 대는 옥타브 위, 울리는 옥타브)이 모두 음역 안인 경우만 쓴다.
+      const natural = handMidi - 1;
+      const soundNatural = Math.floor((string.midi + HARMONICS[fret]) / 12) * 12 + natural % 12;
+      if (inRange(handMidi) && inRange(natural + 12) && inRange(soundNatural)) found = { string: string, fret: fret, handMidi: handMidi };
+    });
+  });
+  assert.ok(found, 'a harmonic fret whose hand position is a sharp note exists');
+  const soundMidi = found.string.midi + HARMONICS[found.fret];
+  const handName = parser.noteNameForMidi(found.handMidi, false);
+  const letter = handName.charAt(0);
+  const handOctave = Math.floor(found.handMidi / 12) - 1;
+  const naturalPitchClass = (found.handMidi - 1) % 12;
+  const text = '[-] h' + parser.noteNameForMidi(soundMidi, false) + '@' + found.string.str + ' r r r | ""';
+  const loaded = ti.scoreToDoc({ beats: 4, raw: text });
+  assert.equal(loaded.error, undefined);
+  const doc = loaded.doc;
+  assert.equal(noteAt(doc, pos(0), found.string.str).art, 'h');
+  const after = pos(0, 1, 0);
+  // 화면의 올림표가 이어진다: 손 대는 자리와 같은 글자·옥타브는 올림 음.
+  assert.equal(si.alterFor(doc, after, letter, handOctave), 1);
+  assert.deepEqual(si.writtenToMidi(doc, after, letter, handOctave + 1), { midi: found.handMidi });
+  // 울리는 음의 옥타브에는 표시된 올림표가 없으니 조표(없음)를 따른다.
+  const soundOctave = Math.floor(soundMidi / 12) - 1;
+  if (soundOctave !== handOctave){
+    assert.equal(si.alterFor(doc, after, letter, soundOctave), 0);
+    assert.deepEqual(si.writtenToMidi(doc, after, letter, soundOctave + 1), { midi: (soundOctave + 1) * 12 + naturalPitchClass });
+  }
+  const upOctave = handOctave + 1;
+  assert.deepEqual(si.writtenToMidi(doc, after, letter, upOctave + 1), { midi: (upOctave + 1) * 12 + naturalPitchClass });
+});
+
 // 하모닉스 켜기: 값은 NATURAL_HARMONICS·STRINGS에서 셈한다. 기대는 테스트 안에서 따로 브루트포스로 구한다.
 function harmonicSetup(){
   const notation = require('../src/notation.js');

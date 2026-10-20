@@ -321,7 +321,9 @@
           for (var i = 0; i < slots[s].notes.length; i++){
             var note = slots[s].notes[i];
             if (!note) continue;
-            var parsed = /^([A-G])(#|b)?(-?\d+)$/.exec(GuitarTabInput.noteLabelOf(doc, i + 1, note));
+            // 오선이 하모닉스를 손 대는 자리(줄 개방현 + 손 대는 프렛)로 그리므로 임시표 이력도 그 자리 음으로 읽는다.
+            var label = note.art === 'h' ? GuitarTabInput.noteLabel(doc, i + 1, note.fret) : GuitarTabInput.noteLabelOf(doc, i + 1, note);
+            var parsed = /^([A-G])(#|b)?(-?\d+)$/.exec(label);
             if (parsed && parsed[1] === name && Number(parsed[3]) === soundingOctave){
               found = parsed[2] === '#' ? 1 : (parsed[2] === 'b' ? -1 : 0);
             }
