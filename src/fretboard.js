@@ -260,20 +260,47 @@ function initFretboard(){
     });
   }
 
+  // 4칸 창을 그린다. 짚는 프렛 최댓값이 4 이하면 1프렛부터(너트 굵은 선),
+  // 4를 넘으면 가장 낮게 짚는 프렛부터 4칸을 그리고 1번 줄 오른쪽에 시작 프렛을 적는다.
+  // 왼쪽에 적으면 6번 줄 점에 가려져서 오른쪽에 둔다. 그 글자 자리만큼 폭을 넓혔다.
   function buildChordSvg(frets, fingers){
     var ns = 'http://www.w3.org/2000/svg';
     var svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', '0 0 96 86');
-    svg.setAttribute('width', '92');
+    svg.setAttribute('viewBox', '0 0 100 86');
+    svg.setAttribute('width', '96');
     svg.setAttribute('height', '82');
+
+    var maxFret = 0, minFret = 0;
+    for (var i = 0; i < frets.length; i++){
+      if (frets[i] > 0){
+        if (frets[i] > maxFret) maxFret = frets[i];
+        if (minFret === 0 || frets[i] < minFret) minFret = frets[i];
+      }
+    }
+    var baseFret = maxFret > 4 ? minFret : 1;
 
     var x0 = 14, y0 = 16, sw = 13.5, fh = 15;
     // 너트
     var nut = document.createElementNS(ns, 'line');
     nut.setAttribute('x1', x0); nut.setAttribute('y1', y0);
     nut.setAttribute('x2', x0 + sw * 5); nut.setAttribute('y2', y0);
-    nut.setAttribute('stroke', 'currentColor'); nut.setAttribute('stroke-width', '3');
+    nut.setAttribute('stroke', 'currentColor');
+    if (baseFret === 1){
+      nut.setAttribute('stroke-width', '3');
+    } else {
+      nut.setAttribute('stroke-width', '1'); nut.setAttribute('stroke-opacity', '0.35');
+    }
     svg.appendChild(nut);
+
+    if (baseFret > 1){
+      var bt = document.createElementNS(ns, 'text');
+      bt.setAttribute('x', x0 + sw * 5 + 7); bt.setAttribute('y', y0 + 0.5 * fh + 3);
+      bt.setAttribute('text-anchor', 'start');
+      bt.setAttribute('font-size', '8');
+      bt.setAttribute('fill', 'currentColor');
+      bt.textContent = baseFret + 'fr';
+      svg.appendChild(bt);
+    }
 
     // 프렛 가로선 4개
     for (var f = 1; f <= 4; f++){
@@ -302,8 +329,9 @@ function initFretboard(){
         tx.setAttribute('fill', 'currentColor');
         tx.textContent = fr === -1 ? 'X' : 'O';
         svg.appendChild(tx);
-      } else if (fr > 0 && fr <= 4){
-        var cy = y0 + (fr - 0.5) * fh;
+      } else if (fr > 0 && fr - baseFret + 1 >= 1 && fr - baseFret + 1 <= 4){
+        var row = fr - baseFret + 1;
+        var cy = y0 + (row - 0.5) * fh;
         var cir = document.createElementNS(ns, 'circle');
         cir.setAttribute('cx', x); cir.setAttribute('cy', cy); cir.setAttribute('r', '5.5');
         cir.setAttribute('fill', '#2d4c9b');

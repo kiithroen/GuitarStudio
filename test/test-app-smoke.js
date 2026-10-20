@@ -541,6 +541,35 @@ async function main(){
   assert.equal(songStore.has(temporaryId), false, 'temporary text score is never written to IndexedDB');
   assert.equal([...localValues.values()].some(value => String(value).includes('VM temporary score')), false,
     'temporary score text is not written to localStorage');
+  const chordDb = context.GuitarParser.CHORD_DB;
+  assert.ok(chordDb && Object.keys(chordDb).length > 0, 'the chord dictionary is reachable from the app context');
+  for (const chordName of Object.keys(chordDb)){
+    const chord = chordDb[chordName];
+    const frets = Array.from(chord.frets);
+    const svg = context.buildChordSvg(chord.frets, chord.fingers);
+    const circles = svg.children.filter(el => el.tagName === 'CIRCLE');
+    const texts = svg.children.filter(el => el.tagName === 'TEXT');
+    const lines = svg.children.filter(el => el.tagName === 'LINE');
+    const pressed = frets.filter(fr => fr > 0);
+    assert.equal(circles.length, pressed.length, chordName + ': one dot per pressed string');
+    const cys = circles.map(el => Number(el.getAttribute('cy')));
+    for (let a = 0; a < pressed.length; a++){
+      for (let b = 0; b < pressed.length; b++){
+        if (pressed[a] < pressed[b]) assert.ok(cys[a] < cys[b], chordName + ': a lower fret is drawn higher');
+        if (pressed[a] === pressed[b]) assert.equal(cys[a], cys[b], chordName + ': the same fret is drawn at the same height');
+      }
+    }
+    const rowYs = lines.filter(el => el.getAttribute('y1') === el.getAttribute('y2')).map(el => Number(el.getAttribute('y1')));
+    const topY = Math.min(...rowYs), bottomY = Math.max(...rowYs);
+    cys.forEach(cy => assert.ok(cy > topY && cy < bottomY, chordName + ': every dot sits inside the drawn window'));
+    const frLabels = texts.filter(el => /fr$/.test(el.textContent));
+    if (pressed.length && Math.max(...pressed) > 4){
+      assert.equal(frLabels.length, 1, chordName + ': exactly one start-fret label');
+      assert.equal(frLabels[0].textContent, Math.min(...pressed) + 'fr', chordName + ': the label shows the lowest pressed fret');
+    } else {
+      assert.equal(frLabels.length, 0, chordName + ': no start-fret label within 4 frets');
+    }
+  }
   process.stdout.write('Result: app VM smoke passed (versioned scripts, hand-off to score input and back, image-only persistence, fallback boot)\n');
 }
 
