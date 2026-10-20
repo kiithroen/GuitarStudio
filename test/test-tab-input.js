@@ -733,4 +733,89 @@ test('slur: art s round-trips with the same tokens, and slurLinks judges directi
   assert.equal(ti.slurLinks(one)[0][1][0][0].type, 'hammer');
 });
 
+test('slurLinks: ok results carry the document position of the source note', function(){
+  const doc = fresh();
+  ti.setNote(doc, pos(0, 0), 3, 2);
+  ti.setNote(doc, pos(0, 0), 2, 1);
+  ti.setNote(doc, pos(0, 1), 3, 4);
+  ti.setNoteAttrs(doc, pos(0, 1), 3, { art: 's' });
+  ti.insertEmptyMeasure(doc, 1);
+  ti.setNote(doc, pos(1, 0), 3, 2);
+  ti.setNoteAttrs(doc, pos(1, 0), 3, { art: 's' });
+  const links = ti.slurLinks(doc);
+  assert.deepEqual(links[0][1][0][2].fromPos, { m: 0, c: 0, s: 0, str: 3 }, 'the source is the earlier note on the same string, not the other chord note');
+  assert.equal(links[0][1][0][2].from.piece, 0, 'from keeps the piece number in time order');
+  assert.deepEqual(links[1][0][0][2].fromPos, { m: 0, c: 1, s: 0, str: 3 }, 'the source may sit in the previous measure');
+  assert.equal(links[1][0][0][2].from.piece, 1, 'the piece number counts every slot in time order, the empty ones too');
+  assert.equal(links[0][0][0][2], null, 'a plain note has no link');
+  const failing = fresh();
+  ti.setNote(failing, pos(0, 0), 1, 0);
+  ti.setNote(failing, pos(0, 1), 2, 0);
+  ti.setNoteAttrs(failing, pos(0, 1), 2, { art: 's' });
+  assert.equal('fromPos' in ti.slurLinks(failing)[0][1][0][1], false, 'a failed link has no source position');
+});
+
+test('slurCheck: judges a slur on a copy and never changes the document', function(){
+  const doc = fresh();
+  const hf = Number(Object.keys(notation.NATURAL_HARMONICS)[0]);
+  ti.setNote(doc, pos(0, 0), 2, 3);   // 2번 줄 기준 음
+  ti.setNote(doc, pos(0, 1), 2, 5);   // 위로: 해머링
+  ti.setNote(doc, pos(0, 2), 2, 1);   // 아래로: 풀링
+  ti.setNote(doc, pos(0, 3), 2, 1);   // 앞과 같은 높이
+  ti.setNote(doc, pos(0, 3), 3, 0);   // 이 줄은 앞에 친 음이 없다
+  ti.insertEmptyMeasure(doc, 1);
+  ti.setNote(doc, pos(1, 0), 2, 0);   // 앞 마디의 마지막 2번 줄 음에서
+  ti.setNote(doc, pos(1, 1), 4, 0);
+  ti.setRest(doc, pos(1, 2), true);
+  ti.setNote(doc, pos(1, 3), 4, 2);   // 쉼 뒤
+  const before = JSON.stringify(doc);
+  const midiOf = (str, fret) => parser.STRINGS[str - 1].midi + fret;
+
+  const hammer = ti.slurCheck(doc, pos(0, 1), 2);
+  assert.equal(hammer.ok, true);
+  assert.equal(hammer.type, 'hammer');
+  assert.equal(hammer.fromMidi, midiOf(2, 3));
+  assert.deepEqual(hammer.fromPos, { m: 0, c: 0, s: 0, str: 2 });
+  const pull = ti.slurCheck(doc, pos(0, 2), 2);
+  assert.equal(pull.ok, true);
+  assert.equal(pull.type, 'pull');
+  assert.equal(pull.fromMidi, midiOf(2, 5));
+  assert.deepEqual(pull.fromPos, { m: 0, c: 1, s: 0, str: 2 });
+  assert.equal(ti.slurCheck(doc, pos(1, 0), 2).type, 'pull', 'the source may be in the previous measure');
+  assert.deepEqual(ti.slurCheck(doc, pos(1, 0), 2).fromPos, { m: 0, c: 3, s: 0, str: 2 });
+
+  assert.deepEqual(ti.slurCheck(doc, pos(0, 3), 2), { ok: false, reason: 'same-pitch', error: '앞의 같은 줄 음과 높이가 같아 슬러로 이을 수 없습니다.' });
+  assert.deepEqual(ti.slurCheck(doc, pos(0, 3), 3), { ok: false, reason: 'no-source', error: '앞에 같은 줄 음이 없어 슬러로 이을 수 없습니다.' });
+  assert.deepEqual(ti.slurCheck(doc, pos(0, 0), 2), { ok: false, reason: 'no-source', error: '앞에 같은 줄 음이 없어 슬러로 이을 수 없습니다.' }, 'the very first note has no source');
+  assert.equal(ti.slurCheck(doc, pos(1, 3), 4).reason, 'no-source', 'a rest cuts the source off');
+  const noNote = '슬러로 바꿀 음이 없습니다.';
+  assert.deepEqual(ti.slurCheck(doc, pos(0, 1), 5), { ok: false, reason: 'no-note', error: noNote }, 'no note on that string');
+  assert.deepEqual(ti.slurCheck(doc, pos(1, 2), 4), { ok: false, reason: 'no-note', error: noNote }, 'a rest slot');
+  assert.deepEqual(ti.slurCheck(doc, pos(9, 0), 2), { ok: false, reason: 'no-note', error: noNote }, 'a position outside the document');
+  assert.equal(ti.slurCheck(doc, pos(0, 1), 7).reason, 'no-note', 'a string outside 1-6');
+  assert.equal(ti.slurCheck(doc, pos(0, 1), 0).reason, 'no-note');
+  assert.equal(ti.slurCheck(doc, pos(0, 1), null).reason, 'no-note');
+  assert.equal(JSON.stringify(doc), before, 'checking changes nothing in the document');
+
+  // 이미 주법이 든 음도 사본에서 슬러로 바꿔 그 프렛의 보통 음으로 판정한다.
+  const apo = ti.cloneDoc(doc);
+  ti.setNoteAttrs(apo, pos(0, 1), 2, { art: '!' });
+  assert.equal(ti.slurCheck(apo, pos(0, 1), 2).type, 'hammer', 'an apoyando note is judged as a slur');
+  assert.equal(apo.measures[0].cells[1].slots[0].notes[1].art, '!', 'and keeps its apoyando mark');
+  const harm = fresh();
+  ti.setNote(harm, pos(0, 0), 2, 0);
+  ti.setNote(harm, pos(0, 1), 2, hf);
+  ti.setNoteAttrs(harm, pos(0, 1), 2, { art: 'h' });
+  const harmCheck = ti.slurCheck(harm, pos(0, 1), 2);
+  assert.equal(harmCheck.ok, true, 'a harmonic note is judged as the plain note of its hand fret');
+  assert.equal(harmCheck.type, 'hammer');
+  assert.equal(harmCheck.fromMidi, midiOf(2, 0));
+  assert.equal(harm.measures[0].cells[1].slots[0].notes[1].art, 'h', 'the harmonic mark stays');
+
+  // 이미 슬러인 음은 그대로 판정된다.
+  const slurred = ti.cloneDoc(doc);
+  ti.setNoteAttrs(slurred, pos(0, 1), 2, { art: 's' });
+  assert.equal(ti.slurCheck(slurred, pos(0, 1), 2).type, 'hammer');
+});
+
 process.stdout.write('1..' + checks + '\n');

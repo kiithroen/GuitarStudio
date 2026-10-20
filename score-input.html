@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=slur-2">
+<link rel="stylesheet" href="src/base.css?v=slur-3">
 <style>
 /* 악보 입력 화면 전용. 색은 base.css 토큰만 쓴다. */
 body{padding-bottom:var(--ti-dock-h,0px)}
@@ -152,7 +152,8 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   #tiDockBody{flex-direction:row;align-items:flex-start;gap:12px}
   #tiDockBody .ti-fb-scroll,#tiDockBody .ti-staff-panel,#tiDockBody .ti-text-panel{flex:1 1 0;min-width:0}
   #tiAttrs{flex:none;width:272px;flex-direction:column;align-items:flex-start;gap:4px;padding-bottom:34px}
-  .ti-attr-group,.ti-attr-row{flex-wrap:nowrap}
+  .ti-attr-group{flex-wrap:nowrap}
+  .ti-attr-row{flex-wrap:wrap}
   .ti-attr-row{gap:4px 8px}
 }
 @media (min-width:900px){
@@ -317,13 +318,14 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
             <button class="btn" type="button" data-attr="art" data-value="">없음</button>
             <button class="btn" type="button" data-attr="art" data-value="!">! 아포얀도</button>
             <button class="btn" type="button" data-attr="art" data-value="h">&lt;&gt; 하모닉스</button>
+            <button class="btn" type="button" data-attr="art" data-value="s" title="슬러(해머링·풀링): 앞의 같은 줄 음에서 왼손으로 잇기">⌒ 슬러</button>
           </span>
           <button id="tiUncertainBtn" class="btn" type="button" aria-pressed="false">? 확인</button>
         </span>
       </div>
     </div>
-    <p id="tiTabHint" class="hint ti-dock-hint">숫자키 프렛 · 방향키 이동 · R 쉼표 · H 하모닉스 · Del 지우기 · Space 들어보기 · Ctrl+Z 되돌리기 · 오른쪽 클릭 지우기</p>
-    <p id="tiStaffHint" class="hint ti-dock-hint" hidden>C~B 음(같은 자리는 화음) · ←→ 이동 · 7~2 길이 · . 점 · T 셋잇단 · 0/R 쉼 · H 하모닉스 · ↑↓ 반음 · Del 쉼으로</p>
+    <p id="tiTabHint" class="hint ti-dock-hint">숫자키 프렛 · 방향키 이동 · R 쉼표 · H 하모닉스 · S 슬러 · Del·오른쪽 클릭 지우기 · Space 들어보기 · Ctrl+Z 되돌리기</p>
+    <p id="tiStaffHint" class="hint ti-dock-hint" hidden>C~B 음(같은 자리는 화음) · ←→ 이동 · 7~2 길이 · . 점 · T 셋잇단 · 0/R 쉼 · H 하모닉스 · S 슬러 · ↑↓ 반음 · Del 쉼으로</p>
   </div>
 </div>
 
@@ -339,18 +341,18 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   </div>
 </dialog>
 
-<script src="src/storage.js?v=slur-2"></script>
-<script src="src/app-state.js?v=slur-2"></script>
-<script src="src/notation.js?v=slur-2"></script>
-<script src="src/rhythm.js?v=slur-2"></script>
-<script src="src/parser.js?v=slur-2"></script>
-<script src="src/score-ui.js?v=slur-2"></script>
-<script src="src/score-prompt.js?v=slur-2"></script>
-<script src="src/audio.js?v=slur-2"></script>
-<script src="src/staff-layout.js?v=slur-2"></script>
-<script src="src/staff-svg.js?v=slur-2"></script>
-<script src="src/tab-input.js?v=slur-2"></script>
-<script src="src/staff-input.js?v=slur-2"></script>
-<script src="src/tab-input-ui.js?v=slur-2"></script>
+<script src="src/storage.js?v=slur-3"></script>
+<script src="src/app-state.js?v=slur-3"></script>
+<script src="src/notation.js?v=slur-3"></script>
+<script src="src/rhythm.js?v=slur-3"></script>
+<script src="src/parser.js?v=slur-3"></script>
+<script src="src/score-ui.js?v=slur-3"></script>
+<script src="src/score-prompt.js?v=slur-3"></script>
+<script src="src/audio.js?v=slur-3"></script>
+<script src="src/staff-layout.js?v=slur-3"></script>
+<script src="src/staff-svg.js?v=slur-3"></script>
+<script src="src/tab-input.js?v=slur-3"></script>
+<script src="src/staff-input.js?v=slur-3"></script>
+<script src="src/tab-input-ui.js?v=slur-3"></script>
 </body>
 </html>

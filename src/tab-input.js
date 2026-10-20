@@ -524,7 +524,8 @@
     });
   }
 
-  // 슬러 음의 해머링·풀링 판정. links[m][c][s][줄 - 1] = null | {ok, type|reason, fromMidi}.
+  // 슬러 음의 해머링·풀링 판정. links[m][c][s][줄 - 1] = null | {ok, type|reason, fromMidi, from, fromPos}.
+  // from 은 조각 순서 번호(시간 순)와 그 안의 음 번호이고, ok 인 결과의 fromPos 는 출발 음의 문서 자리 {m, c, s, str} 다.
   // 조각 순서와 쉼·유지 해석은 slotTokens 와 같고, 잇기 규칙은 GuitarNotation.linkSlurs 하나다.
   function slurLinks(doc){
     var pieces = [];
@@ -565,10 +566,32 @@
     GuitarNotation.linkSlurs(pieces).forEach(function(results, index){
       var ref = refs[index];
       results.forEach(function(result, noteIndex){
+        if (result && result.ok){
+          var fromRef = refs[result.from.piece];
+          result.fromPos = { m: fromRef.m, c: fromRef.c, s: fromRef.s, str: fromRef.strs[result.from.note] };
+        }
         links[ref.m][ref.c][ref.s][ref.strs[noteIndex] - 1] = result;
       });
     });
     return links;
+  }
+
+  var SLUR_ERRORS = {
+    'no-note': '슬러로 바꿀 음이 없습니다.',
+    'no-source': '앞에 같은 줄 음이 없어 슬러로 이을 수 없습니다.',
+    'same-pitch': '앞의 같은 줄 음과 높이가 같아 슬러로 이을 수 없습니다.'
+  };
+
+  // 그 음에 슬러를 붙이면 어떻게 판정되는지. 문서는 고치지 않고, 이미 든 주법(아포얀도·하모닉스)은 슬러로 바꾼 사본으로 본다.
+  function slurCheck(doc, pos, str){
+    var slot = isValidPos(doc, pos) ? getSlot(doc, pos) : null;
+    var note = slot && !slot.rest && Number.isInteger(str) && str >= 1 && str <= STRING_COUNT ? slot.notes[str - 1] : null;
+    if (!note) return { ok: false, reason: 'no-note', error: SLUR_ERRORS['no-note'] };
+    var copy = cloneDoc(doc);
+    getSlot(copy, pos).notes[str - 1].art = 's';
+    var link = slurLinks(copy)[pos.m][pos.c][pos.s][str - 1];
+    if (!link.ok) return { ok: false, reason: link.reason, error: SLUR_ERRORS[link.reason] };
+    return link;
   }
 
   function docToMeasureObjects(doc){
@@ -761,7 +784,7 @@
     createHistory: createHistory,
     noteMidi: noteMidi, noteMidiOf: noteMidiOf, noteLabel: noteLabel, noteLabelOf: noteLabelOf, noteToken: noteToken,
     slotTokens: slotTokens, docToMeasureObjects: docToMeasureObjects, docToScoreLines: docToScoreLines, docScoreText: docScoreText,
-    slurLinks: slurLinks, validateDoc: validateDoc, docCapo: docCapo, buildHandoff: buildHandoff, isHarmonicFret: isHarmonicFret,
+    slurLinks: slurLinks, slurCheck: slurCheck, validateDoc: validateDoc, docCapo: docCapo, buildHandoff: buildHandoff, isHarmonicFret: isHarmonicFret,
     scoreToDoc: scoreToDoc, parseImportText: parseImportText, replaceMeasuresFromText: replaceMeasuresFromText
   };
   if (typeof window !== 'undefined') window.GuitarTabInput = api;

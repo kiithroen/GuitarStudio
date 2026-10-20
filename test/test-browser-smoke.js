@@ -2302,8 +2302,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=slur-2')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=slur-2">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=slur-3')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=slur-3">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -2779,6 +2779,46 @@ async function testScoreInputStaff(client, httpPort) {
 }
 
 // 악보 입력 화면의 오선 입력 모드(음 고르는 오선, 길이 단추, 키보드): 규칙은 Docs/staff-input.md, 계산은 src/staff-input.js.
+// 입력판 운지 열(#tiAttrs, 폭 272px)이 넘치지 않고 단추가 잘리지 않으며 보이는 힌트와 겹치지 않는지. 입력판을 펼친 상태로 900×1000과 1024×768에서 잰다.
+async function checkAttrsColumn(client, mode) {
+  for (const [width, height] of [[900, 1000], [1024, 768]]) {
+    await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    await client.evaluate('window.scrollTo(0, 0); true');
+    const m = await client.evaluate(`(function(){
+      var attrs = document.getElementById('tiAttrs');
+      var box = attrs.getBoundingClientRect();
+      var buttons = Array.prototype.slice.call(attrs.querySelectorAll('.btn'));
+      var out = { collapsed: document.getElementById('tiDock').classList.contains('is-collapsed'), scroll: attrs.scrollWidth, client: attrs.clientWidth, buttons: buttons.length, overflowRight: 0, btnBottom: 0, labels: [], hints: [] };
+      buttons.forEach(function(btn){
+        var r = btn.getBoundingClientRect();
+        out.overflowRight = Math.max(out.overflowRight, r.right - box.right);
+        out.btnBottom = Math.max(out.btnBottom, r.bottom);
+      });
+      Array.prototype.forEach.call(attrs.querySelectorAll('.label'), function(label){
+        var style = getComputedStyle(label);
+        var lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.3;
+        out.labels.push({ text: label.textContent.trim(), height: label.getBoundingClientRect().height, lineHeight: lineHeight });
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('.ti-dock-hint'), function(hint){
+        if (getComputedStyle(hint).display === 'none' || hint.hidden || hint.getClientRects().length === 0) return;
+        out.hints.push({ id: hint.id, top: hint.getBoundingClientRect().top });
+      });
+      return out;
+    })()`);
+    const where = mode + ' mode at ' + width + 'x' + height + ' ' + JSON.stringify(m);
+    assert.equal(m.collapsed, false, 'the input dock is open: ' + where);
+    assert.ok(m.buttons > 0, 'the attribute column has buttons: ' + where);
+    assert.ok(m.scroll <= m.client + 1, 'the finger column does not overflow its width (scrollWidth ' + m.scroll + ' > clientWidth ' + m.client + '): ' + where);
+    assert.ok(m.overflowRight <= 1, 'no attribute button sticks out of the finger column on the right (' + m.overflowRight + 'px): ' + where);
+    m.labels.forEach(label => assert.ok(label.height <= label.lineHeight * 1.5, 'the label "' + label.text + '" stays on one line (height ' + label.height + ', line height ' + label.lineHeight + '): ' + where));
+    assert.equal(m.hints.length, 1, 'exactly one shortcut hint is visible: ' + where);
+    m.hints.forEach(hint => assert.ok(hint.top >= m.btnBottom, 'the shortcut hint does not overlap the attribute buttons (hint top ' + hint.top + ' < button bottom ' + m.btnBottom + '): ' + where));
+    process.stdout.write('Checks: ' + mode + ' finger column ' + width + 'x' + height + ' scroll ' + m.scroll + '/' + m.client + ' overflow ' + m.overflowRight + ' buttonBottom ' + m.btnBottom + ' hintTop ' + (m.hints[0] ? m.hints[0].top : '-') + '\n');
+  }
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate('window.scrollTo(0, 0); true');
+}
+
 async function testStaffInputMode(client, httpPort) {
   client.dialogHandler = async () => { await client.send('Page.handleJavaScriptDialog', { accept: true }); };
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
@@ -2961,6 +3001,7 @@ async function testStaffInputMode(client, httpPort) {
     picker:(function(){ var r = document.getElementById('tiPitchPicker').getBoundingClientRect(), p = document.getElementById('tiDock').getBoundingClientRect(); return { top:r.top - p.top, bottom:p.bottom - r.bottom, height:r.height }; })(),
     hint:getComputedStyle(document.getElementById('tiStaffHint')).display, tabHint:document.getElementById('tiTabHint').hidden })`);
   assert.ok(tablet.dock <= 230, 'the 1024x768 staff input dock is at most 230px tall (is ' + tablet.dock + ')');
+  await checkAttrsColumn(client, 'staff');
   assert.ok(tablet.info <= 150, 'the 1024x768 song info panel is at most 150px tall (is ' + tablet.info + ')');
   assert.ok(tablet.panel.scroll <= tablet.panel.client, 'the picker and buttons fit the dock at 1024px even with five sharps (' + JSON.stringify(tablet.panel) + ')');
   assert.deepEqual([tablet.hint !== 'none', tablet.tabHint], [true, true], 'the staff shortcut hint replaces the tab hint at 900px and wider');
@@ -2968,6 +3009,7 @@ async function testStaffInputMode(client, httpPort) {
   await client.evaluate(`document.getElementById('tiModeTab').click(); window.scrollTo(0, 0); true`);
   const tabDock = await client.evaluate('__tiTest.dock()');
   assert.ok(tabDock <= 210, 'the 1024x768 tab input dock stays at most 210px tall (is ' + tabDock + ')');
+  await checkAttrsColumn(client, 'tab');
   await client.evaluate(`document.getElementById('tiModeStaff').click(); true`);
 
   fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
@@ -3172,6 +3214,61 @@ async function testStaffInputMode(client, httpPort) {
   assert.equal(staffHarm.offPressed, 'false', 'the harmonic button is released after H again');
   assert.equal(staffHarm.buttonOn, staffHarm.expectedToken, 'the button turns it on again');
   assert.deepEqual(client.consoleErrors.slice(harmErrorsBefore), [], 'the staff harmonic steps run without console errors');
+
+  // 14. S 키와 슬러 단추(오선 모드): 바로 앞 음과 같은 줄에서 이어지도록 줄을 옮겨 켠다. 기대 줄·토큰은 STRINGS와 앞 음에서 따로 셈한다.
+  const slurErrorsBefore = client.consoleErrors.length;
+  await client.evaluate(`document.getElementById('tiNewBtn').click(); __tiTest.key('5', 'Digit5'); __tiTest.letter('D', false); __tiTest.key('ArrowRight', 'ArrowRight'); __tiTest.letter('E', false); true`);
+  const staffSlur = await client.evaluate(`(function(){
+    var t = __tiTest;
+    var sBtn = document.querySelector('[data-attr="art"][data-value="s"]');
+    function press(){ var e = new KeyboardEvent('keydown', { key:'s', code:'KeyS', bubbles:true, cancelable:true }); document.body.dispatchEvent(e); return e.defaultPrevented; }
+    function tokens(){ return t.text().split('\\n')[0].split(' '); }
+    function strOf(token){ return Number(token.match(/@(\\d)$/)[1]); }
+    function fretAt(c, str){ return Number(t.pos(0,c,0,str).querySelector('.ti-pos-label').textContent); }
+    var out = {};
+    var prevStr = strOf(tokens()[1]);
+    var curStr = strOf(tokens()[2]);
+    var prevMidi = GuitarParser.STRINGS[prevStr - 1].midi + fretAt(0, prevStr);
+    var midi = GuitarParser.STRINGS[curStr - 1].midi + fretAt(1, curStr);
+    var fretOnPrev = midi - GuitarParser.STRINGS[prevStr - 1].midi;
+    out.premise = { moved: prevStr !== curStr, differs: prevMidi !== midi, inRange: fretOnPrev >= 0 && fretOnPrev <= GuitarTabInput.MAX_FRET };
+    out.expectedStr = prevStr;
+    out.expectedToken = 's' + GuitarParser.noteNameForMidi(midi, false) + '@' + prevStr;
+    out.expectedOff = GuitarParser.noteNameForMidi(midi, false) + '@' + prevStr;
+    out.expectedFret = fretOnPrev;
+    out.expectedDirection = midi > prevMidi ? 'h' : 'p';
+    out.btnEnabled = !sBtn.disabled;
+    out.prevented = press();
+    out.token = tokens()[2];
+    out.cursor = t.cursor();
+    out.pressed = sBtn.getAttribute('aria-pressed');
+    out.btnAfter = !sBtn.disabled;
+    var node = t.pos(0,1,0,prevStr).querySelector('.ti-pos-label');
+    out.label = node ? node.textContent : '';
+    var beforeButton = t.text();
+    sBtn.click();
+    out.buttonKeepsOn = t.text() === beforeButton;
+    press();
+    out.offToken = tokens()[2];
+    out.offPressed = sBtn.getAttribute('aria-pressed');
+    sBtn.click();
+    out.buttonOn = tokens()[2];
+    out.otherToken = tokens()[1];
+    return out;
+  })()`);
+  assert.deepEqual(staffSlur.premise, { moved: true, differs: true, inRange: true }, 'the staff slur test note sits on another string than the earlier note: ' + JSON.stringify(staffSlur.premise));
+  assert.equal(staffSlur.btnEnabled, true, 'the slur button is enabled when another string can link');
+  assert.equal(staffSlur.prevented, true, 'the S key is handled in staff mode');
+  assert.equal(staffSlur.token, staffSlur.expectedToken, 'S writes the slur on the string of the earlier note: ' + JSON.stringify(staffSlur));
+  assert.ok(staffSlur.cursor.indexOf(staffSlur.expectedStr + '번 줄') >= 0, 'the cursor string follows the moved note: ' + staffSlur.cursor);
+  assert.equal(staffSlur.pressed, 'true', 'the slur button is pressed after S');
+  assert.equal(staffSlur.btnAfter, true, 'a slur note keeps the button enabled');
+  assert.equal(staffSlur.label, staffSlur.expectedDirection + staffSlur.expectedFret, 'the TAB label shows the direction letter and the fret on the new string: ' + staffSlur.label);
+  assert.equal(staffSlur.buttonKeepsOn, true, 'the button on a slur note leaves it as it is');
+  assert.equal(staffSlur.offToken, staffSlur.expectedOff, 'S again turns it off, the plain note stays on the moved string: ' + staffSlur.offToken);
+  assert.equal(staffSlur.offPressed, 'false', 'the slur button is released after S again');
+  assert.equal(staffSlur.buttonOn, staffSlur.expectedToken, 'the button turns it on again');
+  assert.deepEqual(client.consoleErrors.slice(slurErrorsBefore), [], 'the staff slur steps run without console errors');
 
   await client.send('Emulation.clearDeviceMetricsOverride');
   await client.evaluate(clearStorage);
@@ -3705,7 +3802,7 @@ async function testFretLabel(client, httpPort) {
   assert.equal(input.apoColor, input.near, 'the apoyando label is drawn in the --near color');
   assert.ok(input.scoreText.indexOf('!') >= 0, 'the score text still carries the ! mark: ' + input.scoreText);
   assert.equal(input.hasTildeButton, false, 'the input panel has no ~ tirando button');
-  assert.equal(input.artButtons, '|없음,!|! 아포얀도,h|<> 하모닉스', 'the articulation buttons are none, apoyando and harmonic: ' + input.artButtons);
+  assert.equal(input.artButtons, '|없음,!|! 아포얀도,h|<> 하모닉스,s|⌒ 슬러', 'the articulation buttons are none, apoyando, harmonic and slur: ' + input.artButtons);
   assert.ok(input.attrsText.indexOf('티란도') < 0, 'the input panel never mentions tirando');
   assert.equal(input.buttonApo, input.near, 'the apoyando button text is drawn in the --near color');
   assert.ok(/\bis-apoyando\b/.test(input.unsureClass) && /\bis-uncertain\b/.test(input.unsureParent), 'a checked note keeps its articulation class');
@@ -3799,6 +3896,77 @@ async function testFretLabel(client, httpPort) {
   assert.equal(hkey.plainSame, true, 'H on a non-harmonic fret leaves the score text alone');
   assert.ok(hkey.tabHint.indexOf('H 하모닉스') >= 0, 'the tab hint mentions H: ' + hkey.tabHint);
   assert.ok(hkey.staffHint.indexOf('H 하모닉스') >= 0, 'the staff hint mentions H: ' + hkey.staffHint);
+  assert.ok(hkey.tabHint.indexOf('S 슬러') >= 0, 'the tab hint mentions S: ' + hkey.tabHint);
+  assert.ok(hkey.staffHint.indexOf('S 슬러') >= 0, 'the staff hint mentions S: ' + hkey.staffHint);
+
+  // 슬러 단추와 S 키 (타브 모드): 앞의 같은 줄 음과 이어질 때만 켜고, 아니면 까닭을 상태 줄에 안내하고 문서는 그대로 둔다
+  const slurTab = await client.evaluate(`(function(){
+    var t = __tiTest;
+    document.getElementById('tiNewBtn').click();
+    var out = {};
+    function put(c, str, fret){ t.pos(0,c,0,str).click(); t.fret(str, fret).click(); }
+    function press(){ var e = new KeyboardEvent('keydown', { key:'s', code:'KeyS', bubbles:true, cancelable:true }); document.body.dispatchEvent(e); return e.defaultPrevented; }
+    function status(){ return document.getElementById('tiStatus').textContent; }
+    function token(c){ return t.text().split('\\n')[0].split(' ')[c + 1]; }
+    var sBtn = t.attr('art','s');
+    put(0, 2, 3); put(1, 2, 5); put(2, 2, 5); put(3, 3, 1);
+    t.pos(0,0,0,2).click();
+    out.firstDisabled = sBtn.disabled;
+    t.pos(0,1,0,2).click();
+    out.hammerDisabled = sBtn.disabled;
+    out.hammerPressedBefore = sBtn.getAttribute('aria-pressed');
+    sBtn.click();
+    out.btnToken = token(1);
+    out.btnPressed = sBtn.getAttribute('aria-pressed');
+    sBtn.click();
+    out.btnAgain = token(1);
+    out.prevented = press();
+    out.keyOff = token(1);
+    out.keyOffPressed = sBtn.getAttribute('aria-pressed');
+    press();
+    out.keyOn = token(1);
+    out.unslurred = [token(0), token(2), token(3)];
+    t.pos(0,2,0,2).click();
+    out.sameDisabled = sBtn.disabled;
+    var before = t.text();
+    out.samePrevented = press();
+    out.sameStatus = status();
+    out.sameUnchanged = t.text() === before;
+    t.pos(0,3,0,3).click();
+    out.noSourceDisabled = sBtn.disabled;
+    before = t.text();
+    press();
+    out.noSourceStatus = status();
+    out.noSourceUnchanged = t.text() === before;
+    t.pos(0,1,0,1).click();
+    out.noNoteDisabled = sBtn.disabled;
+    before = t.text();
+    press();
+    out.noNoteStatus = status();
+    out.noNoteUnchanged = t.text() === before;
+    return out;
+  })()`);
+  assert.equal(slurTab.firstDisabled, true, 'the slur button is disabled on a note with no earlier note on its string');
+  assert.equal(slurTab.hammerDisabled, false, 'the slur button is enabled when the note links to an earlier note on the same string');
+  assert.equal(slurTab.hammerPressedBefore, 'false', 'the slur button is released before it is used');
+  assert.ok(slurTab.btnToken.charAt(0) === 's', 'the slur button writes s on the token: ' + JSON.stringify(slurTab));
+  assert.equal(slurTab.btnPressed, 'true', 'the slur button is pressed on a slur note');
+  assert.equal(slurTab.btnAgain, slurTab.btnToken, 'the button on a slur note leaves it as it is');
+  assert.equal(slurTab.prevented, true, 'the S key is handled');
+  assert.ok(slurTab.keyOff.charAt(0) !== 's' && slurTab.keyOff === slurTab.btnToken.slice(1), 'S on a slur note turns it off: ' + JSON.stringify(slurTab));
+  assert.equal(slurTab.keyOffPressed, 'false', 'the slur button is released after S');
+  assert.equal(slurTab.keyOn, slurTab.btnToken, 'S turns it on again');
+  assert.ok(slurTab.unslurred.every(token => token.charAt(0) !== 's'), 'the other notes stay plain: ' + JSON.stringify(slurTab.unslurred));
+  assert.equal(slurTab.sameDisabled, true, 'the slur button is disabled on a note with the same pitch as the earlier one');
+  assert.equal(slurTab.samePrevented, true, 'S is handled even when it cannot turn the slur on');
+  assert.equal(slurTab.sameStatus, '앞의 같은 줄 음과 높이가 같아 슬러로 이을 수 없습니다.', 'S on the same pitch says why: ' + slurTab.sameStatus);
+  assert.equal(slurTab.sameUnchanged, true, 'S on the same pitch leaves the score text alone');
+  assert.equal(slurTab.noSourceDisabled, true, 'the slur button is disabled when the string has no earlier note');
+  assert.equal(slurTab.noSourceStatus, '앞에 같은 줄 음이 없어 슬러로 이을 수 없습니다.', 'S with no earlier note says why: ' + slurTab.noSourceStatus);
+  assert.equal(slurTab.noSourceUnchanged, true, 'S with no earlier note leaves the score text alone');
+  assert.equal(slurTab.noNoteDisabled, true, 'the slur button is disabled without a cursor note');
+  assert.equal(slurTab.noNoteStatus, '슬러로 바꿀 음이 없습니다.', 'S without a note says so: ' + slurTab.noNoteStatus);
+  assert.equal(slurTab.noNoteUnchanged, true, 'S without a note leaves the score text alone');
 
   // 입력 화면 스크린샷: 로망스 1부
   const romance = builtinSongsJson.find(item => item.id === 'builtin-lv6-romance-full');
@@ -4035,7 +4203,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=slur-2')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=slur-3')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

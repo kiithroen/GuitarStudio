@@ -699,4 +699,233 @@ test('slur notes (art s) can be transposed and moved to another string; the chec
   assert.deepEqual(ti.validateDoc(doc).errors.map(function(e){ return e.code; }), ['INVALID_SLUR'], 'the slur no longer links on another string');
 });
 
+// 슬러 켜기: 줄·프렛은 STRINGS와 MAX_FRET에서 찾고 기대는 테스트 안에서 따로 셈한다.
+const SLUR_STAFF_MESSAGE = '앞 음과 같은 줄에서 이을 수 있는 자리가 없어 슬러로 만들 수 없습니다.';
+function slurSetup(){
+  const parser = require('../src/parser.js');
+  // k.midiOn / fretOn / stringsFor: 줄·프렛·음높이 변환은 STRINGS에서 셈한다.
+  function midiOn(str, fret){ return parser.STRINGS[str - 1].midi + fret; }
+  function fretOn(str, midi){
+    const fret = midi - parser.STRINGS[str - 1].midi;
+    return fret >= 0 && fret <= ti.MAX_FRET ? fret : null;
+  }
+  // 한 음 M을 칠 수 있는 줄들
+  function stringsFor(midi){
+    const list = [];
+    for (let s = 1; s <= 6; s++) if (fretOn(s, midi) !== null) list.push(s);
+    return list;
+  }
+  const lo = midiOn(6, 0);
+  const hi = midiOn(1, ti.MAX_FRET);
+  return { parser: parser, midiOn: midiOn, fretOn: fretOn, stringsFor: stringsFor, lo: lo, hi: hi };
+}
+
+test('slurTarget keeps the current string when it already links to the note just before', function(){
+  const k = slurSetup();
+  let found = null;
+  for (let m = k.lo + 2; m <= k.hi && !found; m++){
+    const strs = k.stringsFor(m).filter(function(s){ return k.fretOn(s, m - 1) !== null; });
+    if (strs.length) found = { midi: m, str: strs[0] };
+  }
+  assert.ok(found);
+  const doc = fresh();
+  ti.setNote(doc, pos(0, 0), found.str, k.fretOn(found.str, found.midi - 1));
+  ti.setNote(doc, pos(0, 1), found.str, k.fretOn(found.str, found.midi));
+  const before = snapshot(doc);
+  assert.deepEqual(si.slurTarget(doc, pos(0, 1), found.str), { ok: true, str: found.str, same: true });
+  assert.deepEqual(snapshot(doc), before, 'slurTarget never edits the document');
+  assert.deepEqual(si.makeSlur(doc, pos(0, 1), found.str), { ok: true, str: found.str });
+  assert.equal(noteAt(doc, pos(0, 1), found.str).art, 's');
+  assert.equal(noteAt(doc, pos(0, 1), found.str).fret, k.fretOn(found.str, found.midi), 'the fret is kept');
+  assert.deepEqual(ti.validateDoc(doc).errors, []);
+  // 이미 슬러이면 그대로 둔다
+  const again = snapshot(doc);
+  assert.deepEqual(si.slurTarget(doc, pos(0, 1), found.str), { ok: true, str: found.str, same: true });
+  assert.deepEqual(si.makeSlur(doc, pos(0, 1), found.str), { ok: true, str: found.str });
+  assert.deepEqual(snapshot(doc), again);
+  // 슬러로 표시된 음은 앞이 이어지지 않아도 그대로 같다고 답한다(끄는 것은 화면 몫)
+  const lone = fresh();
+  ti.setNote(lone, pos(0, 0), 1, 0);
+  ti.setNoteAttrs(lone, pos(0, 0), 1, { art: 's' });
+  assert.deepEqual(si.slurTarget(lone, pos(0, 0), 1), { ok: true, str: 1, same: true });
+});
+
+test('slurTarget moves the note to the string of the note just before it and clears the left hand finger', function(){
+  const k = slurSetup();
+  // 지금 줄 a에는 앞 음이 없고, 다른 줄 b에 한 반음 아래 앞 음을 둘 수 있는 음 M을 찾는다(a에 M, b에 M-1).
+  let found = null;
+  for (let m = k.lo + 2; m <= k.hi && !found; m++){
+    const strs = k.stringsFor(m);
+    for (let i = 0; i < strs.length && !found; i++){
+      for (let j = 0; j < strs.length && !found; j++){
+        if (i !== j && k.fretOn(strs[j], m - 1) !== null) found = { midi: m, a: strs[i], b: strs[j] };
+      }
+    }
+  }
+  assert.ok(found, 'a pitch playable on two strings exists');
+  const doc = fresh();
+  ti.setNote(doc, pos(0, 0), found.b, k.fretOn(found.b, found.midi - 1));
+  ti.setNote(doc, pos(0, 1), found.a, k.fretOn(found.a, found.midi));
+  ti.setNoteAttrs(doc, pos(0, 1), found.a, { lh: 3, rh: 'm', art: '!', uncertain: true });
+  const before = snapshot(doc);
+  assert.deepEqual(si.slurTarget(doc, pos(0, 1), found.a), { ok: true, str: found.b, same: false });
+  assert.deepEqual(snapshot(doc), before, 'slurTarget never edits the document');
+  assert.deepEqual(si.makeSlur(doc, pos(0, 1), found.a), { ok: true, str: found.b });
+  assert.equal(noteAt(doc, pos(0, 1), found.a), null, 'the old string is emptied');
+  const moved = noteAt(doc, pos(0, 1), found.b);
+  assert.equal(moved.fret, k.fretOn(found.b, found.midi), 'the fret is the pitch minus the open string of the new string');
+  assert.equal(moved.art, 's');
+  assert.equal(moved.lh, null, 'the left hand finger is cleared');
+  assert.equal(moved.rh, 'm', 'the right hand finger stays');
+  assert.equal(moved.uncertain, true, 'the check mark stays');
+  assert.equal(ti.slurLinks(doc)[0][1][0][found.b - 1].type, 'hammer');
+  assert.deepEqual(ti.validateDoc(doc).errors, []);
+});
+
+test('slurTarget prefers the string whose source note is latest, even when the current string also links to an earlier note', function(){
+  const k = slurSetup();
+  let found = null;
+  for (let m = k.lo + 2; m <= k.hi && !found; m++){
+    const strs = k.stringsFor(m).filter(function(s){ return k.fretOn(s, m - 1) !== null; });
+    if (strs.length >= 2) found = { midi: m, a: strs[strs.length - 1], b: strs[0] };
+  }
+  assert.ok(found, 'a pitch with two strings that can hold the previous pitch exists');
+  const doc = fresh();
+  ti.setNote(doc, pos(0, 0), found.a, k.fretOn(found.a, found.midi - 1)); // 지금 줄의 먼 출발 음
+  ti.setNote(doc, pos(0, 1), found.b, k.fretOn(found.b, found.midi - 1)); // 더 가까운 출발 음
+  ti.setNote(doc, pos(0, 2), found.a, k.fretOn(found.a, found.midi));
+  // 지금 줄도 판정을 통과한다
+  const own = ti.slurCheck(doc, pos(0, 2), found.a);
+  assert.equal(own.ok, true, 'the current string alone would pass');
+  assert.deepEqual(own.fromPos, { m: 0, c: 0, s: 0, str: found.a });
+  assert.deepEqual(si.slurTarget(doc, pos(0, 2), found.a), { ok: true, str: found.b, same: false });
+  assert.deepEqual(si.makeSlur(doc, pos(0, 2), found.a), { ok: true, str: found.b });
+  assert.equal(noteAt(doc, pos(0, 2), found.a), null);
+  assert.equal(noteAt(doc, pos(0, 2), found.b).art, 's');
+  assert.equal(ti.slurCheck(doc, pos(0, 2), found.b).fromPos.c, 1);
+});
+
+test('slurTarget ties: the current string first, then the smaller pitch gap, then the lower string number', function(){
+  const k = slurSetup();
+  // 같은 앞 조각(화음)에 두 줄의 음이 있어 출발 음 순서가 같다.
+  let tie = null;
+  for (let m = k.lo + 6; m <= k.hi && !tie; m++){
+    const strs = k.stringsFor(m);
+    if (strs.length < 2) continue;
+    for (let i = 0; i < strs.length && !tie; i++){
+      for (let j = 0; j < strs.length && !tie; j++){
+        if (i !== j && k.fretOn(strs[i], m - 1) !== null && k.fretOn(strs[j], m - 1) !== null) tie = { midi: m, cur: strs[i], other: strs[j] };
+      }
+    }
+  }
+  assert.ok(tie, 'a pitch with two strings that can hold the previous pitch exists');
+  const chord = fresh();
+  ti.setNote(chord, pos(0, 0), tie.cur, k.fretOn(tie.cur, tie.midi - 1));
+  ti.setNote(chord, pos(0, 0), tie.other, k.fretOn(tie.other, tie.midi - 1));
+  ti.setNote(chord, pos(0, 1), tie.cur, k.fretOn(tie.cur, tie.midi));
+  assert.deepEqual(si.slurTarget(chord, pos(0, 1), tie.cur), { ok: true, str: tie.cur, same: true }, 'the same source order keeps the current string');
+
+  // 지금 줄에는 앞 음이 없고 다른 두 줄의 음이 같은 앞 조각에 있을 때: 음높이 차가 작은 줄. 번호가 낮은 줄이 차가 크도록 짠다.
+  let gap = null;
+  for (let m = k.lo + 6; m <= k.hi && !gap; m++){
+    const strs = k.stringsFor(m);
+    for (let c = 0; c < strs.length && !gap; c++){
+      for (let x = 0; x < strs.length && !gap; x++){
+        for (let y = 0; y < strs.length && !gap; y++){
+          if (c === x || c === y || x === y) continue;
+          if (strs[y] < strs[x] && k.fretOn(strs[x], m - 1) !== null && k.fretOn(strs[y], m - 5) !== null) gap = { midi: m, cur: strs[c], near: strs[x], far: strs[y] };
+        }
+      }
+    }
+  }
+  assert.ok(gap, 'a pitch with three playable strings exists');
+  const doc = fresh();
+  ti.setNote(doc, pos(0, 0), gap.far, k.fretOn(gap.far, gap.midi - 5));
+  ti.setNote(doc, pos(0, 0), gap.near, k.fretOn(gap.near, gap.midi - 1));
+  ti.setNote(doc, pos(0, 1), gap.cur, k.fretOn(gap.cur, gap.midi));
+  assert.ok(gap.far < gap.near, 'the lower string number has the larger gap');
+  assert.deepEqual(si.slurTarget(doc, pos(0, 1), gap.cur), { ok: true, str: gap.near, same: false }, 'the smaller pitch gap wins over the lower string number');
+
+  // 음높이 차도 같으면 낮은 줄 번호: 두 줄 모두 한 반음 아래 음
+  let low = null;
+  for (let m = k.lo + 6; m <= k.hi && !low; m++){
+    const strs = k.stringsFor(m).filter(function(s){ return k.fretOn(s, m - 1) !== null; });
+    for (let c = 0; c < k.stringsFor(m).length && !low; c++){
+      const cur = k.stringsFor(m)[c];
+      const others = strs.filter(function(s){ return s !== cur; });
+      if (others.length >= 2) low = { midi: m, cur: cur, first: others[0], second: others[1] };
+    }
+  }
+  assert.ok(low, 'a pitch with two other strings that can hold the previous pitch exists');
+  const same = fresh();
+  ti.setNote(same, pos(0, 0), low.first, k.fretOn(low.first, low.midi - 1));
+  ti.setNote(same, pos(0, 0), low.second, k.fretOn(low.second, low.midi - 1));
+  ti.setNote(same, pos(0, 1), low.cur, k.fretOn(low.cur, low.midi));
+  assert.ok(low.first < low.second);
+  assert.deepEqual(si.slurTarget(same, pos(0, 1), low.cur), { ok: true, str: low.first, same: false }, 'equal gaps pick the lower string number');
+});
+
+test('slurTarget fails with the guide text when no string can link, and leaves the document alone', function(){
+  const k = slurSetup();
+  const message = SLUR_STAFF_MESSAGE;
+  // 앞 음이 전혀 없다
+  const first = fresh();
+  ti.setNote(first, pos(0, 0), 3, 2);
+  let before = snapshot(first);
+  assert.deepEqual(si.slurTarget(first, pos(0, 0), 3), { ok: false, error: message });
+  assert.deepEqual(si.makeSlur(first, pos(0, 0), 3), { ok: false, error: message });
+  assert.deepEqual(snapshot(first), before);
+  // 쉼이 출발 음을 끊는다
+  const rested = fresh();
+  ti.setNote(rested, pos(0, 0), 3, 0);
+  ti.setRest(rested, pos(0, 1), true);
+  ti.setNote(rested, pos(0, 2), 3, 2);
+  before = snapshot(rested);
+  assert.equal(si.slurTarget(rested, pos(0, 2), 3).error, message);
+  assert.deepEqual(snapshot(rested), before);
+  // 앞 음과 높이가 같다
+  const equal = fresh();
+  ti.setNote(equal, pos(0, 0), 3, 2);
+  ti.setNote(equal, pos(0, 1), 3, 2);
+  assert.equal(si.makeSlur(equal, pos(0, 1), 3).error, message, 'the same pitch on the same string cannot be a slur; other strings have no source');
+  // 음이 없다
+  const empty = fresh();
+  assert.deepEqual(si.slurTarget(empty, pos(0), 1), { ok: false, error: '슬러로 바꿀 음이 없습니다.' });
+  assert.deepEqual(si.makeSlur(empty, pos(0), 1), { ok: false, error: '슬러로 바꿀 음이 없습니다.' });
+  assert.equal(si.slurTarget(empty, pos(7), 1).ok, false);
+  assert.equal(si.slurTarget(first, pos(0, 0), 9).ok, false);
+});
+
+test('slurTarget never moves a harmonic note: only its own string is judged, and the mark becomes a slur', function(){
+  const k = slurSetup();
+  const notation = require('../src/notation.js');
+  const hf = Number(Object.keys(notation.NATURAL_HARMONICS)[0]);
+  // 손 대는 자리 (a, hf)의 음을 다른 줄 b에서도 칠 수 있고, b에 한 반음 아래 앞 음을 둘 수 있다.
+  let found = null;
+  for (let a = 1; a <= 6 && !found; a++){
+    const m = k.midiOn(a, hf);
+    for (let b = 1; b <= 6 && !found; b++){
+      if (b !== a && k.fretOn(b, m) !== null && k.fretOn(b, m - 1) !== null) found = { a: a, b: b, midi: m };
+    }
+  }
+  assert.ok(found, 'a hand position playable on a second string exists');
+  const noOwnSource = fresh();
+  ti.setNote(noOwnSource, pos(0, 0), found.b, k.fretOn(found.b, found.midi - 1));
+  ti.setNote(noOwnSource, pos(0, 1), found.a, hf);
+  ti.setNoteAttrs(noOwnSource, pos(0, 1), found.a, { art: 'h' });
+  const before = snapshot(noOwnSource);
+  assert.deepEqual(si.slurTarget(noOwnSource, pos(0, 1), found.a), { ok: false, error: '앞에 같은 줄 음이 없어 슬러로 이을 수 없습니다.' });
+  assert.deepEqual(si.makeSlur(noOwnSource, pos(0, 1), found.a), { ok: false, error: '앞에 같은 줄 음이 없어 슬러로 이을 수 없습니다.' });
+  assert.deepEqual(snapshot(noOwnSource), before, 'a harmonic is not moved to another string');
+  const ownSource = fresh();
+  ti.setNote(ownSource, pos(0, 0), found.a, hf === 0 ? 1 : 0);
+  ti.setNote(ownSource, pos(0, 1), found.a, hf);
+  ti.setNoteAttrs(ownSource, pos(0, 1), found.a, { art: 'h' });
+  assert.deepEqual(si.slurTarget(ownSource, pos(0, 1), found.a), { ok: true, str: found.a, same: true });
+  assert.deepEqual(si.makeSlur(ownSource, pos(0, 1), found.a), { ok: true, str: found.a });
+  const note = noteAt(ownSource, pos(0, 1), found.a);
+  assert.equal(note.art, 's', 'the harmonic mark was replaced by the slur');
+  assert.equal(note.fret, hf, 'the fret is kept');
+});
+
 process.stdout.write('1..' + checks + '\n');

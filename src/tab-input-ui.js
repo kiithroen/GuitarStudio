@@ -528,6 +528,10 @@
         if (ui.inputMode === 'staff') btn.disabled = !S.harmonicTarget(doc, cursor, cursor.str).ok;
         else if (cursorNote.art !== 'h' && !T.isHarmonicFret(cursorNote.fret)) btn.disabled = true;
       }
+      if (attr === 'art' && btn.dataset.value === 's' && cursorNote && cursorNote.art !== 's'){
+        if (ui.inputMode === 'staff') btn.disabled = !S.slurTarget(doc, cursor, cursor.str).ok;
+        else btn.disabled = !T.slurCheck(doc, cursor, cursor.str).ok;
+      }
       btn.setAttribute('aria-pressed', String(cursorNote != null && current === btn.dataset.value));
     });
     var uncertain = $('tiUncertainBtn');
@@ -859,6 +863,38 @@
       return;
     }
     apply(function(d){ return T.setNoteAttrs(d, pos, str, { art: 'h' }); }, { measures: [pos.m] });
+  }
+
+  // 커서 음의 슬러(해머링·풀링)를 켜고 끈다. onlyOn 이면 이미 슬러인 음은 그대로 둔다(단추).
+  // 오선 모드는 바로 앞 음과 이어지도록 필요하면 줄을 옮기고, 타브 모드는 줄을 옮기지 않는다(Docs/tab-input.md, Docs/staff-input.md).
+  function toggleSlur(onlyOn){
+    var pos = copyPos(cursor);
+    var str = cursor.str;
+    var slot = T.getSlot(doc, pos);
+    var note = slot ? slot.notes[str - 1] : null;
+    if (!note){
+      setStatus('슬러로 바꿀 음이 없습니다.');
+      return;
+    }
+    if (note.art === 's'){
+      if (onlyOn) return;
+      apply(function(d){ return T.setNoteAttrs(d, pos, str, { art: null }); }, { measures: [pos.m] });
+      return;
+    }
+    if (ui.inputMode === 'staff'){
+      var result = apply(function(d){ return S.makeSlur(d, pos, str); }, {
+        measures: [pos.m],
+        onDone: function(res){ noteSel = { pos: pos, str: res.str }; cursor.str = res.str; }
+      });
+      if (result && result.ok === false) setStatus(result.error);
+      return;
+    }
+    var check = T.slurCheck(doc, pos, str);
+    if (!check.ok){
+      setStatus(check.error);
+      return;
+    }
+    apply(function(d){ return T.setNoteAttrs(d, pos, str, { art: 's' }); }, { measures: [pos.m] });
   }
 
   function toggleUncertain(){
@@ -1876,6 +1912,7 @@
       if (btn.dataset.attr === 'art' && btn.dataset.value === 'h') btn.title = '자연 하모닉스(' + GuitarNotation.naturalHarmonicFretsText() + '프렛 음에서만)';
       btn.addEventListener('click', function(){
         if (btn.dataset.attr === 'art' && btn.dataset.value === 'h') toggleHarmonic(true);
+        else if (btn.dataset.attr === 'art' && btn.dataset.value === 's') toggleSlur(true);
         else setAttr(btn.dataset.attr, btn.dataset.value);
       });
     });
@@ -1972,6 +2009,11 @@
       if (event.repeat) return;
       flushPending(true);
       toggleHarmonic(false);
+    }
+    else if (event.code === 'KeyS'){
+      if (event.repeat) return;
+      flushPending(true);
+      toggleSlur(false);
     }
     else if (key === 'Escape'){ flushPending(true); clearSelection(); }
     else handled = false;
