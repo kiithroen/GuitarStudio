@@ -411,6 +411,13 @@ function curCapo(){
         if (m.autoChord) chord.title = '멜로디 구성음과 곡의 조성을 분석해 자동 추론된 반주 코드입니다';
         head.appendChild(chord);
       }
+      if (m.lyric){
+        var lyr = document.createElement('span');
+        lyr.className = 'm-lyric';
+        lyr.textContent = m.lyric;
+        lyr.title = m.lyric;
+        head.appendChild(lyr);
+      }
       if (scoreEditorHooks) scoreEditorHooks.appendMeasureEditButton(head, mIdx);
       card.appendChild(head);
 
@@ -781,13 +788,6 @@ function curCapo(){
         });
 
         card.appendChild(beatsRow);
-      }
-
-      if (m.lyric){
-        var lyr = document.createElement('div');
-        lyr.className = 'm-lyric';
-        lyr.textContent = m.lyric;
-        card.appendChild(lyr);
       }
 
       card.addEventListener('click', function(e){

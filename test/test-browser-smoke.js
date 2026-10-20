@@ -428,6 +428,31 @@ async function testEditHandoff(client, httpPort) {
       oldMenus:document.querySelectorAll('.score-measure-menu, .score-measure-menu-button, .score-inline-editor').length,
       cards:cards.length,
       oneEditPerCard:cards.every(function(card){ return card.querySelectorAll('.m-head .score-measure-edit').length === 1; }),
+      memo:(function(){
+        var memos = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .m-lyric'));
+        return {
+          count:memos.length,
+          allInHead:memos.every(function(el){ return !!el.closest('.m-head'); }),
+          directChildren:document.querySelectorAll('#measuresGrid .measure-card > .m-lyric').length,
+          titlesMatch:memos.every(function(el){ return el.title === el.textContent; }),
+          ellipsis:memos.every(function(el){ var cs = getComputedStyle(el); return cs.whiteSpace === 'nowrap' && cs.textOverflow === 'ellipsis'; }),
+          headsCompact:memos.every(function(el){ var head = el.closest('.m-head'); var btn = head && head.querySelector('.score-measure-edit'); return !!btn && head.getBoundingClientRect().height <= btn.getBoundingClientRect().height + 12; }),
+          // 메모를 일부러 아주 길게 늘려도 마디 번호·코드 글자는 한 줄로 남고 머리 줄이 늘지 않는다
+          // (줄바꿈되면 글 범위의 줄 상자가 둘 이상). 테스트 곡 메모는 짧아서 늘리지 않으면 이 경우를 못 본다.
+          labelsOneLine:(function(){
+            var el = memos[0];
+            var head = el && el.closest('.m-head');
+            var btn = head && head.querySelector('.score-measure-edit');
+            if (!btn) return false;
+            var original = el.textContent;
+            el.textContent = original + ' ' + new Array(60).join('아주 긴 메모 ');
+            var ok = Array.prototype.every.call(head.querySelectorAll('.m-num, .m-chord'), function(label){ var range = document.createRange(); range.selectNodeContents(label); return range.getClientRects().length === 1; })
+              && head.getBoundingClientRect().height <= btn.getBoundingClientRect().height + 12;
+            el.textContent = original;
+            return ok;
+          })()
+        };
+      })(),
       third:{ text:third.textContent, title:third.title, aria:third.getAttribute('aria-label') },
       tool:{ visible:!tool.hidden && tool.getClientRects().length > 0, text:tool.textContent.trim(), title:tool.title, before:tool.nextElementSibling === document.getElementById('copyCurSongTsvBtn') },
       resetHidden:document.getElementById('resetScoreDraftBtn').hidden,
@@ -438,6 +463,13 @@ async function testEditHandoff(client, httpPort) {
   assert.equal(practice.oldMenus, 0, 'the measure menu and the inline editor are gone');
   assert.ok(practice.cards >= 3, 'the fixture song has at least three measures');
   assert.equal(practice.oneEditPerCard, true, 'every TAB card has exactly one edit button in its head');
+  assert.ok(practice.memo.count >= 1, 'the fixture song shows measure memos');
+  assert.equal(practice.memo.allInHead, true, 'every measure memo sits in the card head');
+  assert.equal(practice.memo.directChildren, 0, 'no measure memo is a direct child of a card');
+  assert.equal(practice.memo.titlesMatch, true, 'every measure memo title carries the full text');
+  assert.equal(practice.memo.ellipsis, true, 'every measure memo truncates to one line with an ellipsis');
+  assert.equal(practice.memo.headsCompact, true, 'a memo does not grow the card head beyond the edit button row');
+  assert.equal(practice.memo.labelsOneLine, true, 'a long memo never wraps the measure number or chord label');
   assert.deepEqual(practice.third, { text: '편집', title: '이 마디부터 악보 입력에서 편집', aria: '3마디부터 편집' }, 'the measure edit button names the measure');
   assert.deepEqual(practice.tool, { visible: true, text: '악보 편집', title: '악보 입력 화면에서 이 곡을 고칩니다', before: true }, 'the toolbar edit button shows for a text score');
   assert.equal(practice.resetHidden, true, 'an untouched original has no revert button');
@@ -3598,7 +3630,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=fold-toolbar-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=measure-memo-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

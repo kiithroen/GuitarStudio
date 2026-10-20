@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=fold-toolbar-1">
+<link rel="stylesheet" href="src/base.css?v=measure-memo-1">
 <style>
 #sheetLoadStatus{margin-top:8px;padding:7px 11px;border-radius:8px;border:1px solid var(--off);background:var(--off-soft);color:var(--off);font-weight:600}
 
@@ -94,10 +94,10 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .measure-card.in-loop{background:var(--surface)}
 .measure-card.active-bar{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .m-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
-.m-num{font-family:var(--font-num);font-size:12px;font-weight:700;color:var(--muted)}
-.m-chord{font-family:var(--font-num);font-size:13.5px;font-weight:700;padding:1px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent)}
+.m-num{font-family:var(--font-num);font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.m-chord{font-family:var(--font-num);font-size:13.5px;font-weight:700;padding:1px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent);white-space:nowrap;flex-shrink:0}
 .m-chord.auto-chord{border:1px dashed var(--accent);font-size:12.5px}
-.m-lyric{font-size:12.5px;color:var(--muted);font-weight:500}
+.m-lyric{flex:1 1 auto;min-width:0;font-size:12.5px;color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .score-measure-edit{margin-left:auto;flex-shrink:0;min-height:24px;padding:0 8px;font-size:11.5px}
 .score-draft-controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)}
 .score-draft-controls[hidden]{display:none}
@@ -876,23 +876,23 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=fold-toolbar-1"></script>
-<script src="src/app-state.js?v=fold-toolbar-1"></script>
-<script src="src/notation.js?v=fold-toolbar-1"></script>
-<script src="src/rhythm.js?v=fold-toolbar-1"></script>
-<script src="src/parser.js?v=fold-toolbar-1"></script>
-<script src="src/staff-layout.js?v=fold-toolbar-1"></script>
-<script src="src/staff-svg.js?v=fold-toolbar-1"></script>
-<script src="src/score-drafts.js?v=fold-toolbar-1"></script>
-<script src="src/score.js?v=fold-toolbar-1"></script>
-<script src="src/audio.js?v=fold-toolbar-1"></script>
-<script src="src/guide.js?v=fold-toolbar-1"></script>
-<script src="src/image-analysis.js?v=fold-toolbar-1"></script>
-<script src="src/fretboard.js?v=fold-toolbar-1"></script>
-<script src="src/score-ui.js?v=fold-toolbar-1"></script>
-<script src="src/sheets.js?v=fold-toolbar-1"></script>
-<script src="src/score-prompt.js?v=fold-toolbar-1"></script>
-<script src="src/score-editor.js?v=fold-toolbar-1"></script>
-<script src="src/app.js?v=fold-toolbar-1"></script>
+<script src="src/storage.js?v=measure-memo-1"></script>
+<script src="src/app-state.js?v=measure-memo-1"></script>
+<script src="src/notation.js?v=measure-memo-1"></script>
+<script src="src/rhythm.js?v=measure-memo-1"></script>
+<script src="src/parser.js?v=measure-memo-1"></script>
+<script src="src/staff-layout.js?v=measure-memo-1"></script>
+<script src="src/staff-svg.js?v=measure-memo-1"></script>
+<script src="src/score-drafts.js?v=measure-memo-1"></script>
+<script src="src/score.js?v=measure-memo-1"></script>
+<script src="src/audio.js?v=measure-memo-1"></script>
+<script src="src/guide.js?v=measure-memo-1"></script>
+<script src="src/image-analysis.js?v=measure-memo-1"></script>
+<script src="src/fretboard.js?v=measure-memo-1"></script>
+<script src="src/score-ui.js?v=measure-memo-1"></script>
+<script src="src/sheets.js?v=measure-memo-1"></script>
+<script src="src/score-prompt.js?v=measure-memo-1"></script>
+<script src="src/score-editor.js?v=measure-memo-1"></script>
+<script src="src/app.js?v=measure-memo-1"></script>
 </body>
 </html>
