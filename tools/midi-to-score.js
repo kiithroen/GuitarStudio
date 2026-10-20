@@ -8,6 +8,7 @@
 // --cells 를 생략하면 MIDI 정보만 출력한다. 결과는 표준 출력 JSON.
 const fs = require('node:fs');
 const parser = require('../src/parser.js');
+const notation = require('../src/notation.js');
 
 function parseArgs(argv) {
   var o = { file: null, cells: 0, pickup: 0, grace: 0.125, transpose: 0, trackTranspose: {}, lowestOnly: [], downbeatOnly: [], edits: null, measureRange: null, fixStrings: false };
@@ -324,7 +325,7 @@ function convertMidi(midi, options) {
 }
 
 // 한 화음에서 기본 줄이 겹치는 음 중 낮은 음에 @줄을 붙인다.
-// 높은 음 줄보다 번호가 큰 줄 중 0~12프렛으로 칠 수 있는 가장 작은 번호이고, 연쇄 충돌도 같은 규칙으로 푼다.
+// 높은 음 줄보다 번호가 큰 줄 중 0~MAX_FRET프렛으로 칠 수 있는 가장 작은 번호이고, 연쇄 충돌도 같은 규칙으로 푼다.
 // lines: 마디 줄 배열("[코드] 칸 칸 … | \"메모\""), beats: 한 마디의 칸 수(맞지 않으면 오류).
 // 반환: { lines, added, stops }. stops 는 풀지 못한 충돌.
 function fixStringCollisions(lines, beats) {
@@ -352,8 +353,7 @@ function fixStringCollisions(lines, beats) {
           var s0 = n.str, chosen = null;
           for (var s = s0 + 1; s <= 6; s++) {
             var fret = n.midi - OPEN[s];
-            // 내장곡 줄 고르기는 12프렛 안을 그대로 쓴다. 앱 음역(GuitarNotation.MAX_FRET)을 넓혀도 songs.json과 맞추려고 바꾸지 않는다.
-            if (fret >= 0 && fret <= 12) { chosen = s; break; }
+            if (fret >= 0 && fret <= notation.MAX_FRET) { chosen = s; break; }
           }
           if (!chosen || used[chosen]) { stops.push({ measure: mi + 1, cell: ci + 1, piece: piece, note: n.tok, reason: chosen ? 'candidate string ' + chosen + ' also occupied' : 'no string' }); return; }
           used[chosen] = true;
