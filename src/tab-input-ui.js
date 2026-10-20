@@ -1581,6 +1581,7 @@
   function buildFretboard(){
     var board = $('tiFretboard');
     board.textContent = '';
+    board.style.setProperty('--fret-cols', String(T.MAX_FRET + 1));
     fretButtons = [];
     board.appendChild(el('div', 'ti-fb-head'));
     for (var f = 0; f <= T.MAX_FRET; f++) board.appendChild(el('div', 'ti-fb-head', String(f)));

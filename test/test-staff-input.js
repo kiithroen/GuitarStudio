@@ -240,7 +240,7 @@ test('transposeNote: same string by fret, another string when the fret runs out,
   assert.match(tooLow.error, /음역/);
   assert.deepEqual(low, beforeLow);
   const top = fresh();
-  ti.setNote(top, pos(0), 1, 12);
+  ti.setNote(top, pos(0), 1, ti.MAX_FRET);
   const beforeTop = snapshot(top);
   assert.equal(si.transposeNote(top, pos(0), 1, 1).ok, false);
   assert.deepEqual(top, beforeTop);
@@ -295,15 +295,17 @@ test('stringCandidates and moveToString keep the right hand and drop the left', 
   const doc = fresh();
   put(doc, pos(0), 12, { midis: [64] });
   ti.setNoteAttrs(doc, pos(0), 1, { lh: 3, rh: 'p', art: '!', uncertain: true });
-  assert.deepEqual(si.stringCandidates(doc, pos(0), 1), [
-    { str: 1, fret: 0, current: true },
-    { str: 2, fret: 5, current: false },
-    { str: 3, fret: 9, current: false }
-  ]);
+  // 후보: 0~MAX_FRET 프렛으로 칠 수 있는 줄(비어 있는 줄만)
+  const parser = require('../src/parser.js');
+  const playable = parser.STRINGS.map(function(st, i){ return { str: i + 1, fret: 64 - st.midi }; })
+    .filter(function(c){ return c.fret >= 0 && c.fret <= ti.MAX_FRET; });
+  assert.deepEqual(si.stringCandidates(doc, pos(0), 1), playable.map(function(c){ return { str: c.str, fret: c.fret, current: c.str === 1 }; }));
+  const unplayable = parser.STRINGS.map(function(st, i){ return i + 1; }).filter(function(str){ return !playable.some(function(c){ return c.str === str; }); });
   ti.setNote(doc, pos(0), 3, 0);
-  assert.deepEqual(si.stringCandidates(doc, pos(0), 1).map(function(c){ return c.str; }), [1, 2]);
+  assert.deepEqual(si.stringCandidates(doc, pos(0), 1).map(function(c){ return c.str; }), playable.map(function(c){ return c.str; }).filter(function(str){ return str !== 3; }));
   assert.deepEqual(si.stringCandidates(doc, pos(0), 5), []);
-  const refused = si.moveToString(doc, pos(0), 1, 4);
+  assert.ok(unplayable.length > 0, 'E4 has a string it cannot be played on');
+  const refused = si.moveToString(doc, pos(0), 1, unplayable[0]);
   assert.equal(refused.ok, false);
   assert.equal(si.moveToString(doc, pos(0), 1, 3).ok, false);
   assert.deepEqual(si.moveToString(doc, pos(0), 1, 2), { ok: true, str: 2 });
@@ -315,14 +317,24 @@ test('stringCandidates and moveToString keep the right hand and drop the left', 
   assert.equal(tokens(plain)[0][0], 'E4@2');
 });
 
-test('writtenToMidi: guitar range E2-E5, written an octave above sounding', function(){
+test('writtenToMidi: guitar range from the lowest open string to the top string at MAX_FRET, written an octave above sounding', function(){
   const doc = fresh();
-  const low = si.writtenToMidi(doc, pos(0), 'D', 3);
+  const parser = require('../src/parser.js');
+  const lowest = parser.STRINGS[parser.STRINGS.length - 1].midi;
+  const highest = parser.STRINGS[0].midi + ti.MAX_FRET;
+  const rangeError = '기타 음역(' + parser.noteNameForMidi(lowest, false) + '~' + parser.noteNameForMidi(highest, false) + ') 밖입니다.';
+  // 기보음 이름: 소리보다 한 옥타브 위. 경계 음은 변화표가 없는 음만 쓰므로 가장 가까운 자연음을 찾는다.
+  function written(midi){ const name = parser.noteNameForMidi(midi + 12, false); return [name.charAt(0), Number(name.slice(1))]; }
+  let below = lowest - 1;
+  while (parser.noteNameForMidi(below, false).indexOf('#') >= 0) below--;
+  let above = highest + 1;
+  while (parser.noteNameForMidi(above, false).indexOf('#') >= 0) above++;
+  const low = si.writtenToMidi(doc, pos(0), written(below)[0], written(below)[1]);
   assert.equal(low.midi, undefined);
-  assert.equal(low.error, '기타 음역(E2~E5) 밖입니다.');
-  assert.deepEqual(si.writtenToMidi(doc, pos(0), 'E', 6), { midi: 76 });
-  assert.deepEqual(si.writtenToMidi(doc, pos(0), 'E', 3), { midi: 40 });
-  assert.equal(si.writtenToMidi(doc, pos(0), 'F', 6).error, '기타 음역(E2~E5) 밖입니다.');
+  assert.equal(low.error, rangeError);
+  assert.deepEqual(si.writtenToMidi(doc, pos(0), written(highest)[0], written(highest)[1]), { midi: highest });
+  assert.deepEqual(si.writtenToMidi(doc, pos(0), written(lowest)[0], written(lowest)[1]), { midi: lowest });
+  assert.equal(si.writtenToMidi(doc, pos(0), written(above)[0], written(above)[1]).error, rangeError);
   assert.equal(si.writtenToMidi(doc, pos(0), 'H', 4).error !== undefined, true);
 });
 

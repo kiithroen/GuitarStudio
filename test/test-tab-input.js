@@ -271,7 +271,7 @@ test('note edits: set replaces and clears rest, toggle, remove, attrs, rest and 
   assert.deepEqual(ti.clearSlot(doc, p), { ok: true });
   assert.equal(ti.hasContent(doc), false);
   assert.throws(function(){ ti.setNote(doc, p, 7, 0); });
-  assert.throws(function(){ ti.setNote(doc, p, 1, 13); });
+  assert.throws(function(){ ti.setNote(doc, p, 1, ti.MAX_FRET + 1); });
   assert.throws(function(){ ti.setNote(doc, pos(5), 1, 0); });
   put(doc, p, [[1, 0]]);
   assert.throws(function(){ ti.setNoteAttrs(doc, p, 1, { rh: 'x' }); });
@@ -337,7 +337,7 @@ test('normalizeDoc accepts a valid document as a copy and rejects broken shapes'
     assert.equal(result.doc, undefined);
   }
   broken(function(d){ d.beats = 5; });
-  broken(function(d){ d.measures[0].cells[0].slots[0].notes[0].fret = 13; });
+  broken(function(d){ d.measures[0].cells[0].slots[0].notes[0].fret = ti.MAX_FRET + 1; });
   broken(function(d){ d.measures[0].cells[0].slots[0].notes.pop(); });
   broken(function(d){ d.measures[0].cells[0].slots[0].rest = true; });
   broken(function(d){ d.version = 2; });

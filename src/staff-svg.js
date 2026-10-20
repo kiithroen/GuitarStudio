@@ -4,7 +4,7 @@
   var LINE_GAP = 8;                 // 줄 간격(px)
   var STEP = LINE_GAP / 2;          // 오선 위치 한 칸(px)
   var BASE_Y = 88;                  // E4(step 0) 아래 줄의 y
-  var STAFF_HEIGHT = 128;           // E3(step -7)~E6(step 14), 기둥·셋잇단 숫자까지 담는 SVG 높이
+  var STAFF_HEIGHT = 128;           // E3(step -7)~B6(step 18), 기둥·셋잇단 숫자까지 담는 SVG 높이
   var HEAD_RX = 5.4;
   var HEAD_RY = 4;
   var STEM_LENGTH = 3.5 * LINE_GAP;

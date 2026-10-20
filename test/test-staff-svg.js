@@ -260,4 +260,37 @@ test('every built-in song draws with the counts the layout predicts', function()
   process.stdout.write('  built-in measures: ' + measures + '\n');
 });
 
+test('the highest guitar note fits inside the SVG with its ledger lines, head and stem', function(){
+  const parser = require('../src/parser.js');
+  const top = parser.noteNameForMidi(parser.STRINGS[0].midi + require('../src/notation.js').MAX_FRET, false);
+  const texts = [
+    top + ' - - -',
+    top + '/' + top + ' - - -',
+    top + '/' + top + '/' + top + ' - - -',
+    top + '/' + top + '/' + top + '/' + top + ' - - -',
+    top + '? - - -'
+  ];
+  texts.forEach(function(text){
+    const result = layout(text);
+    const svg = draw(result);
+    checkCounts(svg, result.measures[0], text);
+    const values = function(className, attr){
+      const out = [];
+      const tagRe = new RegExp('<[a-z]+ class="' + className + '[" ][^>]*>', 'g');
+      (svg.match(tagRe) || []).forEach(function(tag){
+        const m = tag.match(new RegExp(' ' + attr + '="([-0-9.]+)"'));
+        if (m) out.push(Number(m[1]));
+      });
+      return out;
+    };
+    const topLedgers = result.measures[0].items[0].notes.reduce(function(max, note){ return Math.max(max, note.ledger.length); }, 0);
+    assert.ok(topLedgers >= 5, text + ': the highest note has its upper ledger lines');
+    ['y1', 'y2'].forEach(function(attr){
+      values('st-ledger', attr).forEach(function(y){ assert.ok(y >= 0 && y <= svgApi.STAFF_HEIGHT, text + ': ledger ' + attr + ' ' + y + ' is inside the SVG'); });
+      values('st-stem', attr).forEach(function(y){ assert.ok(y >= 0 && y <= svgApi.STAFF_HEIGHT, text + ': stem ' + attr + ' ' + y + ' is inside the SVG'); });
+    });
+    values('st-head', 'cy').forEach(function(y){ assert.ok(y - svgApi.LINE_GAP / 2 >= 0 && y + svgApi.LINE_GAP / 2 <= svgApi.STAFF_HEIGHT, text + ': head cy ' + y + ' is inside the SVG'); });
+  });
+});
+
 process.stdout.write('1..' + checks + '\n');

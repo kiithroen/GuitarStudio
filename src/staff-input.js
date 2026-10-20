@@ -3,15 +3,15 @@
   // 오선 입력 화면의 DOM 없는 계산: 음표 길이, 한 사건 넣기, 줄 정하기, 음높이 읽기, 반음 옮기기.
   // 설계와 결정은 Docs/staff-input.md. 문서 모양과 기본 편집 연산은 src/tab-input.js의 공개 API만 쓴다.
   var isNode = typeof module !== 'undefined' && module.exports;
-  var GuitarNotation = isNode ? require('./notation.js') : global.GuitarNotation; // eslint-disable-line no-unused-vars
+  var GuitarNotation = isNode ? require('./notation.js') : global.GuitarNotation;
   var GuitarRhythm = isNode ? require('./rhythm.js') : global.GuitarRhythm;
   var GuitarParser = isNode ? require('./parser.js') : global.GuitarParser;
   var GuitarTabInput = isNode ? require('./tab-input.js') : global.GuitarTabInput;
 
   var UNITS_PER_CELL = GuitarRhythm.UNITS_PER_SLOT;
   var MIN_MIDI = 40; // E2
-  var MAX_MIDI = 76; // E5
-  var RANGE_ERROR = '기타 음역(E2~E5) 밖입니다.';
+  var MAX_MIDI = GuitarParser.STRINGS[0].midi + GuitarNotation.MAX_FRET; // 1번 줄 개방 + 최고 프렛
+  var RANGE_ERROR = '기타 음역(' + GuitarParser.noteNameForMidi(MIN_MIDI, false) + '~' + GuitarParser.noteNameForMidi(MAX_MIDI, false) + ') 밖입니다.';
   var NO_STRING_ERROR = '이 음을 칠 빈 줄이 없습니다.';
   var LETTER_SEMITONE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   var SHARP_ORDER = 'FCGDAEB';

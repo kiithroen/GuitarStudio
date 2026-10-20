@@ -7,7 +7,7 @@
   var GuitarParser = isNode ? require('./parser.js') : global.GuitarParser;
 
   var STRING_COUNT = 6;
-  var MAX_FRET = 12;
+  var MAX_FRET = GuitarNotation.MAX_FRET;
   var DEFAULT_TITLE = '새 악보';
   var DEFAULT_BPM = 64;
   var MAX_HISTORY = 200;

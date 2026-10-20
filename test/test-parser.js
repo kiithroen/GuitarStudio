@@ -444,4 +444,37 @@ test('noteNameForMidi gives octave names in sharp or flat spelling', function(){
   assert.equal(parser.midiInfo(70).en, 'A#4');
 });
 
+test('guitar range runs to GuitarNotation.MAX_FRET on the first string, and default positions of lower notes do not move', function(){
+  const MAX_FRET = require('../src/notation.js').MAX_FRET;
+  const STRINGS = parser.STRINGS;
+  const top = STRINGS[0].midi + MAX_FRET;
+  const topName = parser.noteNameForMidi(top, false);
+  const overName = parser.noteNameForMidi(top + 1, false);
+  const codes = function(raw){ return parser.validateScore('[C] ' + raw + ' - - -', 4).errors.map(function(e){ return e.code; }); };
+  // (a) 최고음은 오류 없이 읽히고 기본 위치는 1번 줄 MAX_FRET 프렛
+  assert.deepEqual(codes(topName), []);
+  const topInfo = parser.parseNoteToken(topName, 0);
+  assert.equal(topInfo.midi, top);
+  assert.equal(topInfo.pos.str, 1);
+  assert.equal(topInfo.pos.fret, MAX_FRET);
+  // (c) @줄은 그 줄에서 MAX_FRET까지만
+  const secondFret13 = parser.noteNameForMidi(STRINGS[1].midi + 13, false);
+  const secondOver = parser.noteNameForMidi(STRINGS[1].midi + MAX_FRET + 1, false);
+  assert.deepEqual(codes(secondFret13 + '@2'), []);
+  assert.equal(parser.parseNoteToken(secondFret13 + '@2', 0).pos.fret, 13);
+  assert.ok(codes(secondOver + '@2').indexOf('INVALID_STRING_OVERRIDE') >= 0);
+  // (d) 범위를 넓혀도 이미 있던 음(MIDI 40~76)의 기본 위치는 그대로: 사전에 있으면 그것, 없으면 1번 줄부터 보아 0~12프렛인 첫 줄
+  for (let m = 40; m <= 76; m++){
+    let expected = parser.FIRST_POS[m] ? { str: parser.FIRST_POS[m].str, fret: parser.FIRST_POS[m].fret } : null;
+    for (let i = 0; !expected && i < STRINGS.length; i++){
+      const f = m - STRINGS[i].midi;
+      if (f >= 0 && f <= 12) expected = { str: STRINGS[i].str, fret: f };
+    }
+    const pos = parser.midiInfo(m).pos;
+    assert.deepEqual({ str: pos.str, fret: pos.fret }, expected, 'midi ' + m);
+  }
+  // (b) 최고음 + 1반음은 범위 밖
+  assert.ok(codes(overName).indexOf('GUITAR_RANGE') >= 0);
+});
+
 process.stdout.write('1..' + checks + '\n');

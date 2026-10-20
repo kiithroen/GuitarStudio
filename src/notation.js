@@ -8,6 +8,7 @@
 
   // 시트 행·검사 도구·타브 입력 화면이 같이 쓰는 허용 칸 수 목록
   var SHEET_BEAT_COUNTS = [2, 3, 4, 6, 8, 9];
+  var MAX_FRET = 19; // 클래식 기타 표준 19프렛. 음역은 E2(6번 줄 개방)~B5(1번 줄 19프렛)
 
   // 없앤 티란도 표시 ~ 가 붙은 음 토큰에 보이는 오류 문구 (이 문구를 만드는 곳은 여기 하나)
   var TIRANDO_MARK_REMOVED_MESSAGE = '티란도 표시 ~는 더 이상 쓰지 않습니다. ~를 지우세요(따로 적지 않은 음은 티란도로 칩니다).';
@@ -299,6 +300,7 @@
     isRestToken:isRestToken,
     hasUncertainMark:hasUncertainMark,
     validateScore:validateScore,
-    SHEET_BEAT_COUNTS:SHEET_BEAT_COUNTS
+    SHEET_BEAT_COUNTS:SHEET_BEAT_COUNTS,
+    MAX_FRET:MAX_FRET
   };
 });

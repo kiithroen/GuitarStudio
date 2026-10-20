@@ -146,7 +146,7 @@ test('same-string collisions apply only inside a simultaneous chord', function()
   assert.ok(parser.validateScore('[C] E4@1+F4@1 - - -',4).errors.some(e=>e.code==='STRING_COLLISION'));
   assert.ok(parser.validateScore('[C] !E4@1+F4@1 - - -',4).errors.some(e=>e.code==='STRING_COLLISION'));
   assert.ok(!parser.validateScore('[C] E4@1/F4@1 - - -',4).errors.some(e=>e.code==='STRING_COLLISION'));
-  assert.ok(parser.validateScore('[C] C4+F5 - - -',4).errors.some(e=>e.code==='GUITAR_RANGE'));
+  assert.ok(parser.validateScore('[C] C4+' + parser.noteNameForMidi(parser.STRINGS[0].midi + notation.MAX_FRET + 1, false) + ' - - -',4).errors.some(e=>e.code==='GUITAR_RANGE'));
 });
 test('empty score and empty canonical measures are distinct from empty beat subdivisions', function(){
   assert.ok(parser.validateScore('',4).errors.some(e=>e.code==='EMPTY_SCORE'));

@@ -352,6 +352,7 @@ function fixStringCollisions(lines, beats) {
           var s0 = n.str, chosen = null;
           for (var s = s0 + 1; s <= 6; s++) {
             var fret = n.midi - OPEN[s];
+            // 내장곡 줄 고르기는 12프렛 안을 그대로 쓴다. 앱 음역(GuitarNotation.MAX_FRET)을 넓혀도 songs.json과 맞추려고 바꾸지 않는다.
             if (fret >= 0 && fret <= 12) { chosen = s; break; }
           }
           if (!chosen || used[chosen]) { stops.push({ measure: mi + 1, cell: ci + 1, piece: piece, note: n.tok, reason: chosen ? 'candidate string ' + chosen + ' also occupied' : 'no string' }); return; }

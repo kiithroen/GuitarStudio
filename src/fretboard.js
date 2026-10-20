@@ -3,15 +3,17 @@ function initFretboard(){
   // ---------- 지판(Fretboard) 렌더링 및 업데이트
   function buildFretboard(){
     var fb = $('#fretboard');
+    var maxFret = GuitarNotation.MAX_FRET;
     fb.textContent = '';
+    fb.style.setProperty('--fret-count', String(maxFret));
     var header = document.createElement('div');
     header.className = 'fb-frets-header';
     var openHead = document.createElement('span');
     openHead.textContent = '개방(0)';
     header.appendChild(openHead);
-    for (var f = 1; f <= 12; f++){
+    for (var f = 1; f <= maxFret; f++){
       var sp = document.createElement('span');
-      sp.textContent = f + '프렛' + ([3,5,7,9,12].indexOf(f) >= 0 ? ' •' : '');
+      sp.textContent = f + ([3,5,7,9,12,15,17,19].indexOf(f) >= 0 ? ' •' : '');
       header.appendChild(sp);
     }
     fb.appendChild(header);
@@ -33,7 +35,7 @@ function initFretboard(){
       openEl.addEventListener('click', function(){ playGuitarNote(soundingMidi(st.midi, curCapo()), 0.9, null, null, null, st.str); });
       row.appendChild(openEl);
 
-      for (var f = 1; f <= 12; f++){
+      for (var f = 1; f <= maxFret; f++){
         var cell = document.createElement('div');
         cell.className = 'fb-cell';
         var midi = st.midi + f;

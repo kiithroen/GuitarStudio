@@ -265,7 +265,7 @@
       // 가까운 줄에서 계산
       for (var i = 0; i < STRINGS.length; i++){
         var f = m - STRINGS[i].midi;
-        if (f >= 0 && f <= 12){
+        if (f >= 0 && f <= GuitarNotation.MAX_FRET){
           pos = { str: STRINGS[i].str, fret: f };
           break;
         }
@@ -366,7 +366,7 @@
 
     var articPfx = explicitArtic === 'apoyando' ? '!' : '';
 
-    var m = tok.match(/^([0-4])?([A-G])([#b]?)([2-5])(?:@([1-6]))?$/);
+    var m = tok.match(/^([0-4])?([A-G])([#b]?)([2-6])(?:@([1-6]))?$/);
     if (m){
       var lhOverride = m[1] !== undefined && m[1] !== '' ? Number(m[1]) : null;
       var accidental = m[3];
@@ -382,7 +382,7 @@
           var posCopy = Object.assign({}, inf.pos);
           if (strOverride && STRINGS[strOverride - 1]){
             var customFret = midi - STRINGS[strOverride - 1].midi;
-            if (customFret >= 0 && customFret <= 12){
+            if (customFret >= 0 && customFret <= GuitarNotation.MAX_FRET){
               posCopy.str = strOverride;
               posCopy.fret = customFret;
             } else return null;

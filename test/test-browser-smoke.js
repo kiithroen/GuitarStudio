@@ -2289,8 +2289,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=measure-scroll-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=measure-scroll-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=fret19-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=fret19-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -2328,6 +2328,17 @@ async function testScoreInputScreen(client, httpPort) {
   await loadPage(inputUrl, inputReady, () => client.send('Page.navigate', { url: inputUrl }));
   await installHelpers();
   assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'score-input.html opens without console errors');
+  // 입력판 한 줄은 0프렛부터 GuitarNotation.MAX_FRET까지 칸 하나씩이고, 격자 열도 줄 번호 열 하나를 더해 그만큼이다
+  const inputBoard = await client.evaluate(`(function(){
+    var board = document.getElementById('tiFretboard');
+    return {
+      maxFret: GuitarNotation.MAX_FRET,
+      perRow: Array.prototype.map.call(board.querySelectorAll('.ti-fb-row'), function(row){ return row.querySelectorAll('.ti-fret').length; }),
+      columns: getComputedStyle(board).gridTemplateColumns.split(' ').length
+    };
+  })()`);
+  assert.deepEqual(inputBoard.perRow, [1, 2, 3, 4, 5, 6].map(() => inputBoard.maxFret + 1), 'every string row of the input fretboard has one button per fret from 0 to GuitarNotation.MAX_FRET');
+  assert.equal(inputBoard.columns, inputBoard.maxFret + 2, 'the input fretboard grid has the string-number column plus one column per fret');
   const initial = await client.evaluate(`({ measures:__tiTest.count(), slots:document.querySelectorAll('.ti-slot').length, text:__tiTest.text(), title:document.title,
     back:document.getElementById('backToPracticeLink').getAttribute('href'), error:document.getElementById('tiDiagnostics').textContent })`);
   assert.deepEqual(initial, { measures: 1, slots: 4, text: '[-] r r r r | ""', title: '악보 입력 · 기타 스튜디오', back: 'index.html', error: '오류 없음' }, 'a clean start has one empty measure of four slots');
@@ -3649,7 +3660,7 @@ async function main() {
   const appHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=chord-cards-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=fret19-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -3743,6 +3754,35 @@ async function main() {
 
     const fretboardChildren = await cdp.evaluate('document.getElementById("fretboard").children.length');
     assert.equal(fretboardChildren, 7, 'fretboard DOM elements rendered (6 strings + header)');
+    // 지판 칸 수는 GuitarNotation.MAX_FRET 하나가 정하고, 폴드를 펼친 폭(900)과 768에서 한 화면에 다 들어가며 머리 줄 글자가 칸 폭을 넘지 않는다
+    const fretboardMaxFret = await cdp.evaluate('GuitarNotation.MAX_FRET');
+    assert.equal(await cdp.evaluate('document.querySelector("#fretboard .fb-row").querySelectorAll(".fb-cell").length'), fretboardMaxFret, 'a fretboard row has one cell per fret up to GuitarNotation.MAX_FRET');
+    for (const fretboardWidth of [900, 768]) {
+      await cdp.send('Emulation.setDeviceMetricsOverride', { width: fretboardWidth, height: 1000, deviceScaleFactor: 1, mobile: false });
+      const fit = await cdp.evaluate(`(function(){
+        var wrap = document.getElementById('fretboardWrap');
+        var board = document.getElementById('fretboard');
+        var heads = Array.prototype.slice.call(board.querySelectorAll('.fb-frets-header span'));
+        var cell = board.querySelector('.fb-row .fb-cell');
+        return {
+          wrapScroll: wrap.scrollWidth, wrapClient: wrap.clientWidth, boardWidth: board.getBoundingClientRect().width,
+          cellWidth: cell.getBoundingClientRect().width,
+          headCount: heads.length,
+          clipped: heads.filter(function(span){ return span.scrollWidth > span.clientWidth + 1; }).map(function(span){ return span.textContent; }),
+          wrapped: heads.filter(function(span){
+            var range = document.createRange();
+            range.selectNodeContents(span);
+            return range.getClientRects().length !== 1;
+          }).map(function(span){ return span.textContent; })
+        };
+      })()`);
+      assert.ok(fit.wrapScroll <= fit.wrapClient + 1, 'the fretboard fits inside its wrapper without scrolling at width ' + fretboardWidth + ': ' + JSON.stringify(fit));
+      assert.equal(fit.headCount, fretboardMaxFret + 1, 'the header row has the open label plus one label per fret');
+      assert.deepEqual(fit.clipped, [], 'no fret header label is wider than its cell at width ' + fretboardWidth);
+      assert.deepEqual(fit.wrapped, [], 'every fret header label stays on one line at width ' + fretboardWidth);
+      process.stdout.write('Fretboard fit at width ' + fretboardWidth + ': cell ' + fit.cellWidth.toFixed(1) + 'px\n');
+    }
+    await cdp.send('Emulation.clearDeviceMetricsOverride');
 
     const measureCount = await cdp.evaluate('document.getElementById("measuresGrid").children.length');
     assert.ok(measureCount > 0, 'measures grid rendered in browser DOM');
