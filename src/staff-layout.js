@@ -58,7 +58,7 @@
     // 하모닉스는 손 대는 자리의 음(줄 개방현 + 손 대는 프렛)으로 그린다. 이름은 그 음에서 다시 만든다(Docs/staff-notation.md).
     var harmonic = parsed.articulation === 'harmonic' && !!parsed.pos;
     var drawMidi = harmonic ? GuitarParser.STRINGS[parsed.pos.str - 1].midi + parsed.pos.fret : parsed.midi;
-    var core = harmonic ? GuitarParser.noteNameForMidi(drawMidi, false) : text.replace(/\?$/, '').replace(/^!/, '');
+    var core = harmonic ? GuitarParser.noteNameForMidi(drawMidi, false) : text.replace(/\?$/, '').replace(/^[!s]/, '');
     var m = core.match(/^[0-4]?([A-G])([#b]?)([2-5])/);
     if (!m) return fail('음이름을 읽을 수 없습니다: ' + text);
     var letter = m[1];

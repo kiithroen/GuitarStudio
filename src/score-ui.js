@@ -3,11 +3,18 @@
 var RIGHT_HAND_NAMES = { p: '엄지', i: '검지', m: '중지', a: '약지' };
 
 // TAB 프렛 글자 하나. 연습 화면 알약과 악보 입력 화면 칸이 같이 쓰는 유일한 생성 함수다.
-// spec = {fret, lh: null|0~4, rh: null|'p'|'i'|'m'|'a', art: null|'apoyando'|'harmonic'}
+// spec = {fret, lh: null|0~4, rh: null|'p'|'i'|'m'|'a', art: null|'apoyando'|'harmonic'|'slur', slurType: 'hammer'|'pull'|undefined}
 // 하모닉스는 손 대는 프렛을 <7> 로 적는다(Guitar Pro 등 TAB 표기).
+// 슬러는 프렛 숫자 앞에 방향 글자를 붙인다(해머링 h, 풀링 p, 방향을 모르면 ⌒). 흔한 TAB 표기 5 h7, 7 p5를 본뜬 것이다.
 function buildFretLabel(spec){
   var label = document.createElement('span');
-  label.className = 'fret-label' + (spec.art === 'apoyando' ? ' is-apoyando' : '') + (spec.art === 'harmonic' ? ' is-harmonic' : '');
+  label.className = 'fret-label' + (spec.art === 'apoyando' ? ' is-apoyando' : '') + (spec.art === 'harmonic' ? ' is-harmonic' : '') + (spec.art === 'slur' ? ' is-slur' : '');
+  if (spec.art === 'slur'){
+    var slurMark = document.createElement('span');
+    slurMark.className = 'fret-slur';
+    slurMark.textContent = spec.slurType === 'pull' ? 'p' : (spec.slurType === 'hammer' ? 'h' : '⌒');
+    label.appendChild(slurMark);
+  }
   label.appendChild(document.createTextNode(spec.art === 'harmonic' ? '<' + spec.fret + '>' : String(spec.fret)));
   var hasLh = spec.lh != null;
   if (hasLh || spec.rh){

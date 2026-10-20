@@ -22,7 +22,7 @@ hold part의 `durationUnits`는 그 위치부터 이어지는 유지 체인의 �
 
 `getBeatGuideEvents(beat, options)`와 `scheduleBeatGuide(beat, options)`는 `startTime`, `slotDuration`(초/한 칸), `measures`, `resumeHold`, `maxDurationSlots`, `capo`를 사용해. 이벤트 `when`은 `startTime + subIndex / 분할수 * slotDuration`, 각 음 이벤트의 `duration`은 그 part의 공통 `durationUnits / 12 * slotDuration`이야. 화음 구성음은 같은 시각에 시작하고 같은 part 길이를 받아.
 
-note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}`, rest 이벤트는 `{kind:'rest',when,duration}`이야. rest는 해당 시각의 기타 직접음을 정리해. gain은 명시한 아포얀도만 바꾸고(값은 `src/guide.js` 이벤트 생성부) 그 외는 1이야(티란도 표시는 2026-10-19에 문법에서 없앴어, [악보 문법](score-format.md)). 원문에 명시한 주법 설정만 전달하고 부모 분할 그룹의 주법을 자식에 전파하지 않아.
+note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}`, rest 이벤트는 `{kind:'rest',when,duration}`이야. rest는 해당 시각의 기타 직접음을 정리해. gain은 명시한 아포얀도와 슬러(`SLUR_GAIN`, 오른손으로 다시 치지 않는 음이라 작게)만 바꾸고(값은 `src/guide.js`) 그 외는 1이야(티란도 표시는 2026-10-19에 문법에서 없앴어, [악보 문법](score-format.md)). 원문에 명시한 주법 설정만 전달하고 부모 분할 그룹의 주법을 자식에 전파하지 않아.
 
 일반 진행에서 hold는 새 note-on을 만들지 않아. `resumeHold:true`는 `-`가 이어지는 위치에서 원음 또는 화음 전체를 남은 공통 길이로 한 번 복원해. 이 동작은 정지 상태 칸 미리듣기, 중간 시작, 루프 시작과 재생 도중 기타 시뮬레이션을 다시 켠 뒤의 다음 박에서 사용돼. 이전 재생의 자연 여운이나 리버브는 복원 대상이 아니고, 지속음 위치의 전체 반주를 과거부터 다시 합성하지 않아. 복원된 악보상 길이는 곡·loop 끝에서 잘리고, 그 뒤 내부 hold는 다시 치지 않아. 기존 스케줄러를 사용하며 중간 시각에 새 이벤트를 추가 예약하지 않아.
 

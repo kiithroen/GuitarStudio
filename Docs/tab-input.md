@@ -186,10 +186,12 @@ doc = { version: 1, title, beats, bpm, description, accidentals: 'sharp' | 'flat
 measure = { chord, memo, cells: [cell] }          // cells 개수 = beats
 cell = { slots: [slot] }                          // slots 개수 = 나눈 수 1~4
 slot = { rest, restUncertain, notes: [note|null × 6] }   // notes[0]이 1번 줄
-note = { fret: 0~19, lh: null|0~4, rh: null|'p'|'i'|'m'|'a', art: null|'!'|'h'|'~', uncertain }
+note = { fret: 0~19, lh: null|0~4, rh: null|'p'|'i'|'m'|'a', art: null|'!'|'h'|'s'|'~', uncertain }
 ```
 
 `art`가 `'h'`(자연 하모닉스)이면 `fret`은 손 대는 프렛이고 `GuitarNotation.NATURAL_HARMONICS`의 키여야 해. 울리는 음은 `noteMidiOf(줄, 음)`이 개방현 + 표의 반음 수로 셈하고, 텍스트 악보의 음이름도 울리는 음이야. 2026-10-20 2단계에서 입력판 주법 줄에 `<>` 하모닉스 단추를 뒀어. 손 대는 프렛(12·7·5·4)에 음을 넣고 이 단추를 누르면 그 줄의 자연 하모닉스가 돼. 입력판에서 다른 프렛을 누르면 보통 음으로 바뀌어. 오선 입력의 반음 옮기기·줄 옮기기는 하모닉스 음을 거절해([오선 입력](staff-input.md)). 문법은 [악보 문법](score-format.md#하모닉스). 2026-10-20에 `H` 키를 더했어.
+
+`art`가 `'s'`(슬러)이면 그 음은 앞 조각의 같은 줄 음에서 왼손으로 이어지는 뒤 음이야. 1단계는 슬러가 든 악보를 받아 그대로 내보내고 카드 TAB에 보이는 것까지야: 해머링/풀링 판정은 `GuitarTabInput.slurLinks(doc)`가 `GuitarNotation.linkSlurs` 규칙으로 하고, 카드 글자는 `h7`/`p5`, 판정이 틀어진 슬러는 방향 없이 `⌒7`로 그려(결과 영역 검사가 `INVALID_SLUR`를 보여 줘). 앞 음이 다른 마디에 있어도 방향이 바뀌니 편집마다 문서 전체를 다시 판정해. 오선 입력의 반음 옮기기·줄 옮기기는 슬러 음을 막지 않고, 옮긴 뒤 슬러가 틀어지면 검사 오류로 보여. 넣는 단추와 키(`S`)는 아직 없어(3단계, 2026-10-20). 문법은 [악보 문법](score-format.md#슬러).
 
 ## 검증
 

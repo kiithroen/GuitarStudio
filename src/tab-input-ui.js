@@ -98,7 +98,7 @@
 
   // ---------- 소리
 
-  function articulationName(art){ return art === '!' ? 'apoyando' : (art === 'h' ? 'harmonic' : null); }
+  function articulationName(art){ return art === '!' ? 'apoyando' : (art === 'h' ? 'harmonic' : (art === 's' ? 'slur' : null)); }
 
   function playNotes(items){
     if (!ui.sound || !items.length) return;
@@ -240,6 +240,7 @@
     if (note.rh) parts.push('오른손 ' + note.rh);
     if (note.art === '!') parts.push('아포얀도');
     if (note.art === 'h') parts.push('자연 하모닉스');
+    if (note.art === 's') parts.push('슬러');
     if (note.uncertain) parts.push('확인 필요');
     return parts.join(' · ');
   }
@@ -252,10 +253,34 @@
     if (note.uncertain) pos.classList.add('is-uncertain');
     pos.title = noteTitle(str, note);
     // 프렛 글자 모양은 연습 화면과 같은 buildFretLabel 이 만든다. 주법은 기호 대신 글자 색(아포얀도 주황 굵게).
-    var label = buildFretLabel({ fret: note.fret, lh: note.lh, rh: note.rh, art: articulationName(note.art) });
-    label.classList.add('ti-pos-label');
-    pos.appendChild(label);
+    pos.appendChild(buildPosLabel(note, undefined));
     return pos;
+  }
+
+  function buildPosLabel(note, slurType){
+    var label = buildFretLabel({ fret: note.fret, lh: note.lh, rh: note.rh, art: articulationName(note.art), slurType: slurType });
+    label.classList.add('ti-pos-label');
+    return label;
+  }
+
+  // 슬러 음 TAB 글자의 방향(h·p). 앞 음이 다른 마디에 있어도 바뀌니 편집마다 문서 전체를 다시 판정한다(규칙은 GuitarNotation.linkSlurs).
+  // 판정이 실패한 슬러 음은 방향 없이 ⌒로 그린다. 오류는 결과 영역의 검사가 보여 준다.
+  function refreshSlurLabels(){
+    var links = T.slurLinks(doc);
+    Array.prototype.forEach.call($('tiMeasures').querySelectorAll('.ti-slot'), function(slotEl){
+      var m = Number(slotEl.dataset.m);
+      var c = Number(slotEl.dataset.c);
+      var s = Number(slotEl.dataset.s);
+      var slot = T.getSlot(doc, { m: m, c: c, s: s });
+      if (!slot) return;
+      Array.prototype.forEach.call(slotEl.querySelectorAll('.ti-pos.has-note'), function(posEl){
+        var str = Number(posEl.dataset.str);
+        var note = slot.notes[str - 1];
+        if (!note || note.art !== 's') return;
+        var result = links[m][c][s][str - 1];
+        posEl.replaceChild(buildPosLabel(note, result && result.ok ? result.type : undefined), posEl.querySelector('.ti-pos-label'));
+      });
+    });
   }
 
   function buildSlot(m, c, s, slot){
@@ -386,6 +411,7 @@
       list.appendChild(el('li', 'is-warn', '경고 · ' + (warning.measure ? '마디 ' + warning.measure + ' · ' : '') + warning.message));
     });
     $('tiScoreText').value = lines.join('\n');
+    refreshSlurLabels();
     fitCellWidths();
     refreshStaff(lines);
     var blocked = diag.errors.length > 0;

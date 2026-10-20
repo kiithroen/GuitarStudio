@@ -127,7 +127,7 @@ assert.equal(run.status, 0, run.stderr);
 assert.equal(run.stdout, prompt);
 pass('the node -e command in the project prompt prints the full conversion rules');
 
-assert.ok(promptLines.some(line => line.indexOf('| 주법 | `!` 아포얀도, `h` 자연 하모닉스 |') === 0 && line.indexOf('~') < 0), 'the articulation row names only the apoyando mark ! and the harmonic mark h');
+assert.ok(promptLines.some(line => line.indexOf('| 주법 | `!` 아포얀도, `h` 자연 하모닉스, `s` 슬러') === 0 && line.indexOf('~') < 0), 'the articulation row names only the apoyando mark !, the harmonic mark h and the slur mark s');
 assert.ok(promptLines.some(line => line.indexOf('| 티란도 표시') === 0 && line.indexOf('적지 않아') > 0), 'the exceptions table says to leave tirando marks out');
 assert.ok(!/(\s|,)`~`/.test(prompt) && !/\s~[A-G0-4]/.test(prompt), 'the prompt never shows the removed ~ mark as a token');
 pass('the prompt teaches apoyando only and says tirando is the unmarked note');
@@ -138,5 +138,15 @@ const harmonicParsed = parser.parseNoteToken(harmonicExample[1], 0);
 assert.ok(harmonicParsed && harmonicParsed.articulation === 'harmonic' && harmonicParsed.en === 'F#5' && harmonicParsed.pos.str === 2, 'the prompt harmonic example parses as a natural harmonic');
 assert.ok(promptLines.some(line => line.indexOf('| 자연 하모닉스(') === 0 && line.indexOf('인공 하모닉스') > 0), 'the exceptions table has the natural harmonic row');
 pass('the prompt teaches the natural harmonic h mark with a parsable example');
+
+const slurExample = prompt.match(/`(E4\/sF4)`/);
+assert.ok(slurExample, 'the prompt shows the slur example');
+assert.deepEqual(parser.validateScore('[-] ' + slurExample[1] + ' - - -', 4).errors, [], 'the prompt slur example is a valid hammer-on');
+const slurRow = promptLines.find(line => line.indexOf('| 슬러, 해머링, 풀링(') === 0);
+assert.ok(slurRow && slurRow.indexOf('`s`') > 0 && slurRow.indexOf('같은 줄') > 0 && slurRow.indexOf('`-`') > 0, 'the exceptions table has the slur row: s on the later note, same string, tie is a hold');
+assert.ok(promptLines.some(line => line.indexOf('| 슬라이드, 글리산도 |') === 0 && line.indexOf('따로 치는 음') > 0), 'slides stay separate struck notes');
+assert.ok(!promptLines.some(line => line.indexOf('| 슬러, 해머링, 풀링, 슬라이드 |') === 0), 'the old combined slur and slide row is gone');
+assert.ok(promptLines.some(line => line.indexOf('| 주법 |') === 0 && line.indexOf('@줄을 붙여') > 0), 'the articulation row tells to add @string when the default string differs');
+pass('the prompt teaches the slur s mark: later note, same string, slide separate');
 
 process.stdout.write('1..' + checks + '\n');

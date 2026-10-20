@@ -681,11 +681,56 @@ test('natural harmonics: imported into the model as art h with the hand fret, ex
   assert.ok(ti.normalizeDoc(one).doc, 'a valid harmonic document is accepted');
   const wrongArt = ti.cloneDoc(one);
   wrongArt.measures[0].cells[0].slots[0].notes[1].art = '>';
-  assert.match(ti.normalizeDoc(wrongArt).error, /주법은 없음, ! 또는 h여야 합니다\./);
-  assert.throws(function(){ ti.setNoteAttrs(one, pos(0), 2, { art: '>' }); }, /주법은 null, ! 또는 h여야 합니다: /);
+  assert.match(ti.normalizeDoc(wrongArt).error, /주법은 없음, !, h 또는 s여야 합니다\./);
+  assert.throws(function(){ ti.setNoteAttrs(one, pos(0), 2, { art: '>' }); }, /주법은 null, !, h 또는 s여야 합니다: /);
   const plain = fresh();
   ti.setNote(plain, pos(0), 2, missingFret);
   assert.throws(function(){ ti.setNoteAttrs(plain, pos(0), 2, { art: 'h' }); }, /하모닉스 프렛은 /);
+});
+
+test('slur: art s round-trips with the same tokens, and slurLinks judges direction with the shared rule', function(){
+  const text = [
+    '[-] E4@1 sF4@1 - s1E4@1:i? | ""',
+    '[-] E4@1/sF4@1 - - E2@6+E4@1 | ""',
+    '[-] E2@6+E4@1 E2@6+sF4@1 - r | ""'
+  ].join('\n');
+  const result = ti.scoreToDoc({ beats: 4, raw: text });
+  assert.equal(result.error, undefined);
+  const doc = result.doc;
+  assert.equal(doc.measures[0].cells[1].slots[0].notes[0].art, 's');
+  assert.equal(doc.measures[0].cells[3].slots[0].notes[0].art, 's');
+  assert.equal(doc.measures[0].cells[3].slots[0].notes[0].lh, 1);
+  assert.equal(doc.measures[0].cells[3].slots[0].notes[0].uncertain, true);
+  assert.equal(ti.docScoreText(doc), text, 'exported text equals the imported text');
+  assert.deepEqual(ti.scoreToDoc({ beats: 4, raw: ti.docScoreText(doc) }).doc.measures, doc.measures);
+  assert.equal(ti.noteToken(doc, 1, doc.measures[0].cells[1].slots[0].notes[0]), 'sF4@1');
+  // 방향: 같은 줄 위는 해머링, 아래는 풀링, 분할 안, 화음 안, 쉼 뒤는 판정 실패
+  const links = ti.slurLinks(doc);
+  assert.equal(links[0][0][0][0], null, 'a plain note has no link');
+  assert.equal(links[0][1][0][0].type, 'hammer');
+  assert.equal(links[0][3][0][0].type, 'pull', 'the hold in between keeps the source');
+  assert.equal(links[1][0][1][0].type, 'hammer', 'inside a subdivision');
+  assert.equal(links[2][1][0][0].type, 'hammer', 'a slurred chord component');
+  assert.equal(links[2][1][0][5], null, 'the plain chord component has no link');
+  assert.deepEqual(ti.validateDoc(doc).errors, []);
+  // 쉼 뒤 슬러는 판정 실패(방향 없음)이고 검사 오류다. 불러오기도 같은 검사로 막는다.
+  const broken = fresh();
+  ti.setNote(broken, pos(0), 1, 0);
+  ti.setRest(broken, pos(0, 1), true);
+  ti.setNote(broken, pos(0, 2), 1, 1);
+  ti.setNoteAttrs(broken, pos(0, 2), 1, { art: 's' });
+  assert.deepEqual(ti.slurLinks(broken)[0][2][0][0], { ok: false, reason: 'no-source' }, 'a rest before it breaks the slur');
+  const brokenErrors = ti.validateDoc(broken).errors;
+  assert.deepEqual(brokenErrors.map(function(e){ return [e.code, e.measure]; }), [['INVALID_SLUR', 1]]);
+  assert.ok(ti.scoreToDoc({ beats: 4, raw: ti.docScoreText(broken) }).error.indexOf('슬러 앞에 같은 줄에서 친 음이 없습니다') >= 0);
+  // 속성 바꾸기
+  const one = fresh();
+  ti.setNote(one, pos(0), 1, 0);
+  ti.setNote(one, pos(0, 1), 1, 1);
+  assert.deepEqual(ti.setNoteAttrs(one, pos(0, 1), 1, { art: 's' }), { ok: true });
+  assert.equal(ti.docToMeasureObjects(one)[0].notes[1], 'sF4@1');
+  assert.deepEqual(ti.validateDoc(one).errors, []);
+  assert.equal(ti.slurLinks(one)[0][1][0][0].type, 'hammer');
 });
 
 process.stdout.write('1..' + checks + '\n');

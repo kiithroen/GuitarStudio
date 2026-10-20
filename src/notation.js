@@ -138,6 +138,32 @@
     return /^(?:r\??|\?)$/.test(String(tok || '').trim());
   }
 
+  // 슬러(해머링·풀링) 잇기 규칙의 SSOT. 검사·파싱 결과·악보 입력 화면이 같이 쓴다(Docs/score-format.md 슬러).
+  // pieces: 시간 순 조각 [{rest, hold, notes:[{str, midi, slur}]}]. 마디를 넘어 이어 본다.
+  // 돌려주는 값: 조각마다 notes와 같은 순서의 배열. 슬러가 아닌 음은 null,
+  // 슬러 음은 {ok:true, type:'hammer'|'pull', fromMidi} 또는 {ok:false, reason:'no-source'|'same-pitch'}.
+  function linkSlurs(pieces){
+    var last = Object.create(null); // 줄 번호 → 그 줄에서 마지막으로 친 음의 midi
+    return (pieces || []).map(function(piece){
+      var notes = piece && Array.isArray(piece.notes) ? piece.notes : [];
+      var none = notes.map(function(){ return null; });
+      if (piece && piece.rest){
+        last = Object.create(null);
+        return none;
+      }
+      if (!piece || piece.hold || !notes.length) return none;
+      var results = notes.map(function(note){
+        if (!note.slur) return null;
+        var from = last[note.str];
+        if (from == null) return {ok:false, reason:'no-source'};
+        if (from === note.midi) return {ok:false, reason:'same-pitch'};
+        return {ok:true, type:note.midi > from ? 'hammer' : 'pull', fromMidi:from};
+      });
+      notes.forEach(function(note){ last[note.str] = note.midi; });
+      return results;
+    });
+  }
+
   // 구성음 중 하나라도 ? 로 끝나면 확인 표시가 있는 토큰이다(단독 ? 포함).
   function hasUncertainMark(tok){
     return String(tok || '').trim().split('+').some(function(part){ return part.trim().charAt(part.trim().length - 1) === '?'; });
@@ -163,6 +189,8 @@
     var bpb = validBeats ? numericBeats : 4;
     var errors = [];
     var warnings = [];
+    var slurPieces = [];
+    var slurMeta = [];
 
     function add(list, code, measure, beat, message){
       list.push({code:code, measure:measure, beat:beat, message:message});
@@ -220,7 +248,17 @@
             add(errors, 'AMBIGUOUS_REST_TOKEN', measureNo, beatIndex + 1, '점(.)은 쉼인지 유지인지 모호합니다. 쉼은 r, 유지는 -로 입력하세요.');
             return;
           }
-          if (!part || part === '-' || isRestToken(part)) return;
+          if (part === '-'){
+            slurPieces.push({rest:false, hold:true, notes:[]});
+            slurMeta.push([]);
+            return;
+          }
+          if (isRestToken(part)){
+            slurPieces.push({rest:true, hold:false, notes:[]});
+            slurMeta.push([]);
+            return;
+          }
+          if (!part) return;
           if (part.indexOf('/') >= 0){
             add(errors, 'ISOLATED_SLASH', measureNo, beatIndex + 1, '박 안의 단독 슬래시 표기를 확인하세요.');
             return;
@@ -274,7 +312,25 @@
             }
             map[stringNo] = note.pos.fret;
           });
+          var slurNotes = [];
+          var slurNotesMeta = [];
+          components.forEach(function(component){
+            if (!component.note.pos) return;
+            slurNotes.push({str:component.note.pos.str, midi:component.note.midi, slur:component.note.articulation === 'slur'});
+            slurNotesMeta.push({measure:measureNo, beat:beatIndex + 1, token:component.token});
+          });
+          slurPieces.push({rest:false, hold:false, notes:slurNotes});
+          slurMeta.push(slurNotesMeta);
         });
+      });
+    });
+    linkSlurs(slurPieces).forEach(function(results, pieceIndex){
+      results.forEach(function(result, noteIndex){
+        if (!result || result.ok) return;
+        var where = slurMeta[pieceIndex][noteIndex];
+        add(errors, 'INVALID_SLUR', where.measure, where.beat, result.reason === 'same-pitch'
+          ? '슬러는 다른 높이로 이어져야 합니다. 같은 음을 잇는 붙임줄은 -로 적으세요: ' + where.token
+          : '슬러 앞에 같은 줄에서 친 음이 없습니다(쉼 뒤나 곡 처음은 안 됩니다): ' + where.token);
       });
     });
     var rhythmApi = typeof GuitarRhythm !== 'undefined' ? GuitarRhythm : (typeof module !== 'undefined' && module.exports ? require('./rhythm.js') : null);
@@ -309,6 +365,7 @@
     decodeMeasureLine:decodeMeasureLine,
     serializeScoreMeasures:serializeScoreMeasures,
     isRestToken:isRestToken,
+    linkSlurs:linkSlurs,
     hasUncertainMark:hasUncertainMark,
     validateScore:validateScore,
     SHEET_BEAT_COUNTS:SHEET_BEAT_COUNTS,

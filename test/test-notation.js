@@ -193,4 +193,99 @@ test('score parsing returns diagnostics and structured save rejects invalid scor
 test('sheet beat counts list is the single shared allowed list', function(){
   assert.deepEqual(notation.SHEET_BEAT_COUNTS, [2,3,4,6,8,9]);
 });
+// 슬러(해머링·풀링): 잇기 규칙은 GuitarNotation.linkSlurs 하나다.
+const slurPiece = function(){ return { rest:false, hold:false, notes:Array.prototype.map.call(arguments, function(n){ return { str:n[0], midi:n[1], slur:!!n[2] }; }) }; };
+const SLUR_REST = { rest:true, hold:false, notes:[] };
+const SLUR_HOLD = { rest:false, hold:true, notes:[] };
+const E4 = parser.parseNoteToken('E4', 0).midi;
+const slurCodes = function(raw, beats){ return parser.validateScore(raw, beats || 4).errors.filter(function(e){ return e.code === 'INVALID_SLUR'; }); };
+
+test('linkSlurs: higher on the same string is a hammer-on, lower is a pull-off, with the source pitch', function(){
+  assert.deepEqual(notation.linkSlurs([slurPiece([1, E4]), slurPiece([1, E4 + 1, true])]),
+    [[null], [{ ok:true, type:'hammer', fromMidi:E4 }]]);
+  assert.deepEqual(notation.linkSlurs([slurPiece([1, E4 + 2]), slurPiece([1, E4, true])]),
+    [[null], [{ ok:true, type:'pull', fromMidi:E4 + 2 }]]);
+});
+test('linkSlurs: a rest, the start of the song, or only other strings give no-source; the same pitch gives same-pitch', function(){
+  assert.deepEqual(notation.linkSlurs([slurPiece([1, E4]), SLUR_REST, slurPiece([1, E4 + 1, true])]),
+    [[null], [], [{ ok:false, reason:'no-source' }]]);
+  assert.deepEqual(notation.linkSlurs([slurPiece([1, E4 + 1, true])]), [[{ ok:false, reason:'no-source' }]]);
+  assert.deepEqual(notation.linkSlurs([slurPiece([2, E4 - 5]), slurPiece([1, E4 + 1, true])]),
+    [[null], [{ ok:false, reason:'no-source' }]]);
+  assert.deepEqual(notation.linkSlurs([slurPiece([1, E4]), slurPiece([1, E4, true])]),
+    [[null], [{ ok:false, reason:'same-pitch' }]]);
+});
+test('linkSlurs: holds keep the source, three slurs in a row chain, a failed slur still counts as the last note played', function(){
+  assert.deepEqual(notation.linkSlurs([slurPiece([1, E4]), SLUR_HOLD, slurPiece([1, E4 + 1, true])]),
+    [[null], [], [{ ok:true, type:'hammer', fromMidi:E4 }]]);
+  assert.deepEqual(notation.linkSlurs([slurPiece([1, E4]), slurPiece([1, E4 + 1, true]), slurPiece([1, E4 + 3, true]), slurPiece([1, E4, true])]),
+    [[null], [{ ok:true, type:'hammer', fromMidi:E4 }], [{ ok:true, type:'hammer', fromMidi:E4 + 1 }], [{ ok:true, type:'pull', fromMidi:E4 + 3 }]]);
+  assert.deepEqual(notation.linkSlurs([slurPiece([1, E4, true]), slurPiece([1, E4 + 1, true])]),
+    [[{ ok:false, reason:'no-source' }], [{ ok:true, type:'hammer', fromMidi:E4 }]]);
+});
+test('linkSlurs: inside a chord only the slurred component is judged, against the previous piece, per string', function(){
+  assert.deepEqual(notation.linkSlurs([slurPiece([6, 40], [1, E4]), slurPiece([6, 40], [1, E4 + 1, true])]),
+    [[null, null], [null, { ok:true, type:'hammer', fromMidi:E4 }]]);
+  assert.deepEqual(notation.linkSlurs([slurPiece([6, 40], [1, E4]), slurPiece([6, 41, true], [1, E4 - 1, true])]),
+    [[null, null], [{ ok:true, type:'hammer', fromMidi:40 }, { ok:true, type:'pull', fromMidi:E4 }]]);
+});
+test('validateScore: slur needs a previous note on the same string, across measures too, and a different pitch', function(){
+  assert.deepEqual(slurCodes('[-] E4/sF4 - - -'), [], 'hammer-on in a subdivision');
+  assert.deepEqual(parser.validateScore('[-] E4/sF4 - - -', 4).errors, [], 'no error of any kind');
+  assert.deepEqual(slurCodes('[-] F4 sE4 - -'), [], 'pull-off');
+  assert.deepEqual(slurCodes('[-] E4 - - -\n[-] sF4 - - -'), [], 'across the measure line');
+  assert.deepEqual(slurCodes('[-] E4 - - -\n[-] sF4 - - -\n[-] sG4 - - -'), [], 'three in a row');
+  assert.deepEqual(slurCodes('[-] E2@6+E4@1 - E2@6+sF4@1 -'), [], 'a slurred chord component');
+  const afterRest = slurCodes('[-] r sF4 - -');
+  assert.equal(afterRest.length, 1);
+  assert.deepEqual([afterRest[0].measure, afterRest[0].beat], [1, 2]);
+  assert.equal(afterRest[0].message, '슬러 앞에 같은 줄에서 친 음이 없습니다(쉼 뒤나 곡 처음은 안 됩니다): sF4');
+  assert.equal(slurCodes('[-] sF4 - - -').length, 1, 'start of the song');
+  assert.equal(slurCodes('[-] E4 r sF4 -').length, 1, 'a rest between');
+  assert.equal(slurCodes('[-] E4 - - r\n[-] sF4 - - -')[0].measure, 2, 'the rest in the previous measure');
+  const same = slurCodes('[-] E4 sE4 - -');
+  assert.equal(same.length, 1);
+  assert.equal(same[0].message, '슬러는 다른 높이로 이어져야 합니다. 같은 음을 잇는 붙임줄은 -로 적으세요: sE4');
+  assert.equal(slurCodes('[-] B3 sF4@1 - -').length, 1, 'the previous note is on another string');
+  assert.deepEqual(slurCodes('[-] B3@2 sC4@2 - -'), [], '@string makes it the same string');
+});
+test('slur mark combines with nothing else and keeps the token readable', function(){
+  ['!sE4', 's!E4', 'hsE4@1', 'shE4@1', 'ssE4', 'sE4s'].forEach(function(token){
+    assert.equal(parser.parseNoteToken(token, 0), null, token + ' is rejected');
+    assert.ok(parser.validateScore('[-] E4 ' + token + ' - -', 4).errors.length > 0, token + ' is an error');
+  });
+  const parsed = parser.parseNoteToken('s1F4@1:i?', 0);
+  assert.equal(parsed.articulation, 'slur');
+  assert.equal(parsed.explicitArticulation, true);
+  assert.equal(parsed.customTok, 's1F4@1:i');
+  assert.equal(parsed.uncertain, true);
+  assert.equal(parsed.midi, E4 + 1);
+  assert.equal(parser.parseNoteToken('sF4', 0).midi, parser.parseNoteToken('F4', 0).midi, 'the pitch is the same as a plain note');
+  assert.deepEqual(parser.parseNoteToken('sF4', 0).pos, parser.parseNoteToken('F4', 0).pos, 'the default position is the same too');
+});
+test('parseScore: slurType (hammer or pull) lands on the note, the subdivision part, and chord components', function(){
+  const single = parser.parseScore('[-] E4 sF4 - sE4', 4);
+  assert.deepEqual(single.errors, []);
+  const beats = single.measures[0].beats;
+  assert.equal(beats[0].slurType, undefined);
+  assert.deepEqual([beats[1].articulation, beats[1].explicitArticulation, beats[1].slurType], ['slur', true, 'hammer']);
+  assert.equal(beats[3].slurType, 'pull');
+  const split = parser.parseScore('[-] E4/sF4/sE4 - - -', 4).measures[0].beats[0];
+  assert.deepEqual(split.subNotes.map(function(part){ return part.slurType; }), [undefined, 'hammer', 'pull']);
+  const chord = parser.parseScore('[-] E2@6+E4@1 E2@6+sF4@1 sF2@6+F4@1 -', 4);
+  assert.deepEqual(chord.errors, []);
+  const top = chord.measures[0].beats[1];
+  assert.equal(top.slurType, 'hammer', 'the highest component is the beat itself');
+  assert.deepEqual(top.chordNotes.map(function(note){ return note.slurType; }), [undefined, 'hammer']);
+  assert.equal(top.bass.slurType, undefined);
+  const lowSlur = chord.measures[0].beats[2];
+  assert.equal(lowSlur.bass.slurType, 'hammer', 'the lowest component is the bass');
+  assert.deepEqual(lowSlur.chordNotes.map(function(note){ return note.slurType; }), ['hammer', undefined]);
+  assert.equal(lowSlur.slurType, undefined);
+  const broken = parser.parseScore('[-] r sF4 - -', 4);
+  assert.ok(broken.errors.some(function(e){ return e.code === 'INVALID_SLUR'; }));
+  assert.equal(broken.measures[0].beats[1].slurType, undefined, 'a slur that does not link gets no direction');
+  const acrossMeasures = parser.parseScore('[-] E4 - - -\n[-] sF4 - - -', 4);
+  assert.equal(acrossMeasures.measures[1].beats[0].slurType, 'hammer');
+});
 process.stdout.write('1..'+checks+'\n');

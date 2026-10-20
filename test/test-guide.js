@@ -191,4 +191,26 @@ assert.equal(crossBarResume[0].duration, 2, 'parsed resume uses only the remaini
     'scheduling hands the capo-shifted sounding pitch and the string to playGuitarNote');
 }
 
+{
+  // 슬러(해머링·풀링) 음은 오른손으로 다시 치지 않아 gain만 작고, 음높이·줄·길이는 보통 음과 같다
+  assert.ok(context.SLUR_GAIN > 0 && context.SLUR_GAIN < 1, 'the slur gain is a quieter positive value');
+  const slurScore = parser.parseScore('[-] E4 sF4 - E4@1/sF4@1 | ""\n[-] E2@6+E4@1 E2@6+sF4@1 - -', 4);
+  assert.deepEqual(slurScore.errors, []);
+  const slurMeasures = slurScore.measures;
+  const eventsFor = (m, b) => Array.from(context.getBeatGuideEvents(slurMeasures[m].beats[b], { startTime:0, slotDuration:0.5, measures:slurMeasures }).filter(event => event.kind === 'note'));
+  const plainNote = eventsFor(0, 0)[0];
+  const slurNote = eventsFor(0, 1)[0];
+  assert.equal(slurNote.articulation, 'slur');
+  assert.equal(slurNote.gain, context.SLUR_GAIN);
+  assert.ok(slurNote.gain < plainNote.gain, 'a slurred note is quieter than a plain note');
+  assert.equal(slurNote.note.midi, parser.parseNoteToken('F4', 0).midi, 'the pitch is unchanged');
+  assert.equal(slurNote.str, 1);
+  assert.equal(slurNote.duration, 1, 'the written duration includes the hold');
+  const slurSplit = eventsFor(0, 3);
+  assert.deepEqual(slurSplit.map(event => event.gain), [1.0, context.SLUR_GAIN], 'a slur in a subdivision is quieter, its plain neighbor is not');
+  const slurChord = eventsFor(1, 1);
+  assert.deepEqual(slurChord.map(event => [event.note.midi, event.gain]), [[parser.STRINGS[5].midi, 1.0], [parser.parseNoteToken('F4', 0).midi, context.SLUR_GAIN]],
+    'in a chord only the slurred component is quieter');
+}
+
 process.stdout.write('Result: guide events passed (parsed and synthetic subdivision timing, simultaneous chords, articulation gain, rests, cross-bar holds, resume, loop clipping, capo, and legacy wrapper)\n');

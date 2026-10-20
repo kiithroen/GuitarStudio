@@ -1,3 +1,5 @@
+var SLUR_GAIN = 0.6; // 슬러(해머링·풀링) 음은 오른손으로 다시 치지 않아 작게
+
 function guideParts(beat){
   return beat && Array.isArray(beat.subNotes) && beat.subNotes.length ? beat.subNotes : (beat ? [beat] : []);
 }
@@ -56,7 +58,7 @@ function getBeatGuideEvents(beat, options){
       var articulation = hasChordComponents
         ? (note.articulation || null)
         : (note.articulation || noteSource.articulation || part.articulation || null);
-      var gain = articulation === 'apoyando' ? 1.16 : 1.0;
+      var gain = articulation === 'apoyando' ? 1.16 : (articulation === 'slur' ? SLUR_GAIN : 1.0);
       events.push({ kind:'note', note:note, duration:duration, when:when,
         gain:gain, articulation:articulation, str:note.str });
     });

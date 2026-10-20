@@ -685,4 +685,18 @@ test('random operations keep the document valid and failures leave it untouched'
   process.stdout.write('# random ops: ' + succeeded + ' succeeded, ' + failed + ' failed ' + JSON.stringify(tally) + '\n');
 });
 
+test('slur notes (art s) can be transposed and moved to another string; the check reports a slur that no longer links', function(){
+  const doc = fresh();
+  put(doc, pos(0, 0), 12, { midis: [64] });
+  put(doc, pos(0, 1), 12, { midis: [65] });
+  ti.setNoteAttrs(doc, pos(0, 1), 1, { art: 's' });
+  assert.deepEqual(ti.validateDoc(doc).errors, []);
+  assert.deepEqual(si.transposeNote(doc, pos(0, 1), 1, 2), { ok: true, str: 1 });
+  assert.equal(noteAt(doc, pos(0, 1), 1).art, 's', 'transposing keeps the slur');
+  assert.deepEqual(ti.validateDoc(doc).errors, [], 'still a hammer-on from the open string');
+  assert.deepEqual(si.moveToString(doc, pos(0, 1), 1, 2), { ok: true, str: 2 });
+  assert.equal(noteAt(doc, pos(0, 1), 2).art, 's', 'moving to another string keeps the slur');
+  assert.deepEqual(ti.validateDoc(doc).errors.map(function(e){ return e.code; }), ['INVALID_SLUR'], 'the slur no longer links on another string');
+});
+
 process.stdout.write('1..' + checks + '\n');
