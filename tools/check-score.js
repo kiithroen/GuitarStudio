@@ -19,7 +19,7 @@ function isIntegerText(text){
 
 // 행 모양 검사. 걸리는 첫 항목 하나만 돌려주고 통과하면 null.
 function checkRowShape(cols){
-  if (cols.length !== 5) return { code: 'ROW_COLUMNS', message: '열이 5개여야 합니다(제목, 칸 수, BPM, 설명, 악보를 탭으로 구분). 지금 ' + cols.length + '개.' };
+  if (cols.length !== 5 && cols.length !== 6) return { code: 'ROW_COLUMNS', message: '열이 5개 또는 6개여야 합니다(제목, 칸 수, BPM, 설명, 악보, 선택으로 alphaTex 원본을 탭으로 구분). 지금 ' + cols.length + '개.' };
   if (!cols[0].trim()) return { code: 'ROW_TITLE', message: '제목이 비어 있습니다.' };
   const beatsText = cols[1].trim();
   if (!isIntegerText(beatsText) || ALLOWED_BEATS.indexOf(Number(beatsText)) < 0){
@@ -30,6 +30,27 @@ function checkRowShape(cols){
     return { code: 'ROW_BPM', message: 'BPM은 ' + BPM_MIN + '~' + BPM_MAX + ' 사이의 정수여야 합니다: ' + bpmText };
   }
   return null;
+}
+
+// alphaTex 글을 vendor alphaTab 으로 읽어 본다. 읽을 수 있으면 null, 아니면 이유. 시트 6열이 있는 행에서만 불러온다.
+function alphaTexProblem(text){
+  const alphaTab = require('../vendor/alphatab/dist/alphaTab.min.js');
+  const settings = new alphaTab.Settings();
+  settings.core.logLevel = alphaTab.LogLevel.None;
+  const importer = new alphaTab.importer.AlphaTexImporter();
+  let thrown = null;
+  try {
+    importer.initFromString(String(text), settings);
+    importer.readScore();
+  } catch (error) {
+    thrown = error;
+  }
+  const lines = [importer.lexerDiagnostics, importer.parserDiagnostics, importer.semanticDiagnostics]
+    .flatMap(function(bag){ return bag && Array.isArray(bag.items) ? bag.items : []; })
+    .filter(function(item){ return item.severity === 2; })
+    .map(function(item){ return item.start.line + '행 ' + item.start.col + '열: ' + item.message; });
+  if (!thrown && !lines.length) return null;
+  return 'alphaTex 열을 alphaTab이 읽지 못했습니다' + (lines.length ? ': ' + lines.slice(0, 3).join(' / ') : ': ' + (thrown && thrown.message ? thrown.message : thrown));
 }
 
 function formatDiagnostic(kind, item){
@@ -63,8 +84,13 @@ function checkScoreText(text, label){
       const beats = Number(cols[1].trim());
       const raw = cols[4].trim();
       const validation = parser.validateScore(raw, beats);
-      row.errors = validation.errors;
+      row.errors = validation.errors.slice();
       row.warnings = validation.warnings;
+      // 6번째 열(alphaTex 원본)은 alphaTab이 읽을 수 있는지만 본다. 5열 악보와 같은지는 보지 않는다(tools/build-scores.js가 만든 것으로 보장한다).
+      if (cols.length === 6 && cols[5].trim()){
+        const texProblem = alphaTexProblem(cols[5]);
+        if (texProblem) row.errors.push({ code: 'INVALID_ALPHATEX', message: texProblem });
+      }
       row.measures = parser.splitScoreMeasures(raw).length;
       row.uncertain = score.countUncertainBeats(parser.parseScore(raw, beats).measures);
       out.push('[' + row.line + '] ' + first + ' · ' + beats + '칸 · ' + cols[2].trim() + ' BPM · ' + row.measures + '마디 · 오류 ' +

@@ -6,11 +6,12 @@
 <meta name="theme-color" content="#eceee9" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121614" media="(prefers-color-scheme: dark)">
 <title>alphaTab 보기 · 기타 스튜디오</title>
-<link rel="stylesheet" href="src/base.css?v=alphatab-1">
+<link rel="stylesheet" href="src/base.css?v=alphatab-2">
 <style>
 /* alphaTab 보기 창 전용. 색은 base.css 토큰만 쓴다. */
 .at-head{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 0;background:var(--bg);border-bottom:1px solid var(--line)}
 .at-title{margin:0;font-size:17px;font-weight:700;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.at-source{flex:none;padding:1px 8px;border:1px solid var(--line);border-radius:999px;font-size:11.5px;line-height:18px;color:var(--muted);white-space:nowrap}
 .at-controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;min-width:0}
 .at-field{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);white-space:nowrap}
 .at-select{min-height:32px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg);font-size:12.5px}
@@ -28,6 +29,7 @@
 <div class="wrap">
   <header class="at-head">
     <h1 class="at-title" id="atTitle">alphaTab 보기</h1>
+    <span class="at-source" id="atSource" hidden></span>
     <div class="at-controls">
       <button type="button" class="btn sm primary" id="atPlayBtn" disabled title="재생과 일시정지 (단축키: Space)">재생</button>
       <button type="button" class="btn sm" id="atRewindBtn" disabled title="처음 위치로 돌아갑니다">처음으로</button>
@@ -50,12 +52,12 @@
   </header>
   <main class="at-host" id="atHost" aria-label="alphaTab 악보"></main>
 </div>
-<script src="src/notation.js?v=alphatab-1"></script>
-<script src="src/rhythm.js?v=alphatab-1"></script>
-<script src="src/parser.js?v=alphatab-1"></script>
-<script src="src/staff-layout.js?v=alphatab-1"></script>
-<script src="src/score-to-alphatex.js?v=alphatab-1"></script>
-<script src="vendor/alphatab/dist/alphaTab.min.js?v=alphatab-1"></script>
-<script src="src/alphatab-view.js?v=alphatab-1"></script>
+<script src="src/notation.js?v=alphatab-2"></script>
+<script src="src/rhythm.js?v=alphatab-2"></script>
+<script src="src/parser.js?v=alphatab-2"></script>
+<script src="src/staff-layout.js?v=alphatab-2"></script>
+<script src="src/score-to-alphatex.js?v=alphatab-2"></script>
+<script src="vendor/alphatab/dist/alphaTab.min.js?v=alphatab-2"></script>
+<script src="src/alphatab-view.js?v=alphatab-2"></script>
 </body>
 </html>

@@ -410,12 +410,15 @@ function convert(score, opts){
     const offset = pad[index];
     const records = [];
     const memos = [];
+    const texts = [];
     const chords = [];
-    if (!bar) return { records: records, memos: memos, chords: chords };
+    if (!bar) return { records: records, memos: memos, texts: texts, chords: chords };
     function memo(text){ if (memos.indexOf(text) < 0) memos.push(text); }
     bar.voices.forEach(function(voice, voiceIndex){
       voice.beats.forEach(function(beat){
         if (beat.isEmpty) return;
+        // 박의 글(alphaTex 의 txt)은 그대로 그 마디 메모가 된다. 변환기가 만드는 근사 메모는 그 뒤에 붙는다.
+        if (typeof beat.text === 'string' && beat.text) texts.push({ start: beat.playbackStart, text: beat.text });
         if (beat.graceType !== model.GraceType.None){ memo(MEMO.grace); return; }
         const start = beat.playbackStart + offset;
         if (beat.hasChord){
@@ -494,7 +497,8 @@ function convert(score, opts){
         });
       });
     });
-    return { records: records, memos: memos, chords: chords };
+    texts.sort(function(a, b){ return a.start - b.start; });
+    return { records: records, memos: memos, texts: texts.map(function(entry){ return entry.text; }), chords: chords };
   }
 
   function tokenText(record, moved){
@@ -640,7 +644,7 @@ function convert(score, opts){
       });
     }
 
-    lines.push({ chord: chordName, cells: cellTexts, memos: memos, overlap: overlap, hasNotes: collected.records.length > 0 });
+    lines.push({ chord: chordName, cells: cellTexts, texts: collected.texts, memos: memos, overlap: overlap, hasNotes: collected.records.length > 0 });
   });
 
   // 길이가 다른 음의 겹침 메모는 곡 전체면 설명에 한 번만 적는다.
@@ -650,7 +654,7 @@ function convert(score, opts){
   if (overlapForWholeSong) descriptionParts.push(MEMO.overlap);
 
   const measureTexts = lines.map(function(line){
-    const memos = line.memos.slice();
+    const memos = line.texts.concat(line.memos);
     if (line.overlap && !overlapForWholeSong) memos.push(MEMO.overlap);
     return '[' + line.chord + '] ' + line.cells.join(' ') + (memos.length ? ' | ' + JSON.stringify(memos.join(' · ')) : '');
   });
@@ -659,10 +663,16 @@ function convert(score, opts){
   // 탭·줄바꿈은 시트 열을 깨니 공백으로 바꾼다(MusicXML 제목에는 줄 바꿈 없는 공백 U+00A0 이 섞여 나오기도 한다).
   const cleanTitle = title.replace(/\s+/g, ' ').trim();
   const sourceName = opts.sourceName ? String(opts.sourceName).replace(/\s+/g, ' ') : '';
-  const description = ['원본: ' + (sourceName || '(이름 없음)') + ' · alphaTab 변환']
-    .concat(capo > 0 ? ['Capo ' + capo] : [])
-    .concat(descriptionParts)
-    .join(' · ');
+  // 설명: alphaTex 머리의 notices 가 있으면 그대로(탭·줄바꿈만 공백으로) 쓰고 곡 전체 근사 메모만 뒤에 붙인다. 없으면 원본 파일 이름으로 시작한다.
+  const noticeText = typeof score.notices === 'string' ? score.notices.replace(/[\t\r\n]+/g, ' ') : '';
+  let description = noticeText.trim()
+    ? [noticeText].concat(descriptionParts).join(' · ')
+    : ['원본: ' + (sourceName || '(이름 없음)') + ' · alphaTab 변환']
+      .concat(capo > 0 ? ['Capo ' + capo] : [])
+      .concat(descriptionParts)
+      .join(' · ');
+  // 앱은 카포를 제목·설명의 표기(getSongCapo)로만 읽는다. \capo 가 있는데 표기가 없으면(notices 만 있는 경우) 설명 끝에 붙인다.
+  if (capo > 0 && parser.getSongCapo({ title: cleanTitle, badge: description }) !== capo) description += ' · Capo ' + capo;
   const scoreText = measureTexts.join(' // ');
   const validation = parser.validateScore(measureTexts.join('\n'), grid.cells);
   return {

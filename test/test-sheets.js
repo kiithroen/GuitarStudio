@@ -177,6 +177,31 @@ await test('removed apoyando aliases and malformed right-hand suffixes block she
     assert.deepEqual(JSON.parse(JSON.stringify(h.context.sheetSongs)), previous, token + ' leaves existing sheet songs intact');
   }
 });
+await test('the sixth column becomes the song alphaTex, the score is read from the fifth column only', async function(){
+  const tex = '\\title "Tex" \\tempo 80 \\ts (4 4) 0.1.4 0.2.4 0.3.4 0.4.4 |';
+  const pending = h.context.syncGoogleSheetSongs('https://docs.google.com/spreadsheets/d/sheet1234567890123456/edit', false);
+  const cb = callbackName(h.scripts.at(-1));
+  h.context[cb]({ table: { rows: [
+    { c: [{ v: '곡 제목' }, { v: '칸 수' }, { v: 'BPM' }, { v: '설명' }, { v: '악보' }, { v: 'alphaTex' }] },
+    { c: [{ v: 'With tex' }, { v: '4' }, { v: '90' }, { v: 'tex badge' }, { v: '[C] C4 - - -' }, { v: '  ' + tex + '  ' }] },
+    { c: [{ v: 'Empty tex' }, { v: '4' }, { v: '90' }, { v: 'badge' }, { v: '[C] C4 - - -' }, null] },
+    { c: [{ v: 'Five columns' }, { v: '4' }, { v: '90' }, { v: 'badge' }, { v: '[C] C4 - - -' }] }
+  ] } });
+  assert.equal(await pending, true);
+  const songs = h.context.sheetSongs;
+  assert.equal(songs.length, 3);
+  assert.equal(songs[0].title, 'With tex');
+  assert.equal(songs[0].alphaTex, tex, 'trimmed alphaTex text');
+  assert.equal(songs[0].badge, 'tex badge');
+  assert.equal(songs[0].measures.length, 1, 'the alphaTex column is not read as score lines');
+  assert.equal(songs[0].fromSheet, true);
+  assert.equal('alphaTex' in songs[1], false, 'an empty sixth column adds no alphaTex');
+  assert.equal('alphaTex' in songs[2], false, 'a five-column row adds no alphaTex');
+  // 연습 화면으로 가는 길: 초안 저장소가 곡을 복제해도 alphaTex 가 남는다
+  const store = require('../src/score-drafts.js').createScoreDraftStore();
+  const listed = store.list(JSON.parse(JSON.stringify(songs)));
+  assert.equal(listed[0].alphaTex, tex);
+});
 await test('initSheetSync registers handlers once and keeps manual/silent behaviors distinct', function(){
   h.context.initSheetSync(); h.context.initSheetSync();
   assert.equal(h.elements.openSheetSyncBtn.listeners.length, 1);

@@ -541,7 +541,13 @@ test('parseImportText: TSV row fields, plain score, and the error cases', functi
   assert.equal(plain.doc.bpm, 77);
   assert.equal(plain.doc.description, '설명');
   assert.equal(plain.doc.measures.length, 2);
-  assert.match(ti.parseImportText(['t', '4', '64', '[-] r r r r'].join('\t'), current).error, /^열이 5개여야 합니다/);
+  assert.match(ti.parseImportText(['t', '4', '64', '[-] r r r r'].join('\t'), current).error, /^열이 5개 또는 6개여야 합니다/);
+  // 6번째 열(원본 alphaTex)은 받되 버린다
+  const withTex = ti.parseImportText(['t', '4', '64', 'd', '[-] E4 r r r', '\\title "x" \\tempo 64 0.1.4 |'].join('\t'), current);
+  assert.equal(withTex.error, undefined);
+  assert.deepEqual([withTex.doc.title, withTex.doc.beats, withTex.doc.bpm, withTex.doc.description], ['t', 4, 64, 'd']);
+  assert.deepEqual(withTex.doc, ti.parseImportText(['t', '4', '64', 'd', '[-] E4 r r r'].join('\t'), current).doc, 'the sixth column leaves no trace');
+  assert.match(ti.parseImportText(['t', '4', '64', 'd', '[-] r r r r', 'x', 'y'].join('\t'), current).error, /^열이 5개 또는 6개여야 합니다.*지금 7개\./);
   assert.match(ti.parseImportText(['t', '5', '64', 'd', '[-] r r r r r'].join('\t'), current).error, /^칸 수는 2, 3, 4, 6, 8, 9 중 하나여야 합니다: 5$/);
   assert.match(ti.parseImportText(['t', '4', '0', 'd', '[-] r r r r'].join('\t'), current).error, /^BPM은 1 이상의 정수여야 합니다: 0$/);
   assert.match(ti.parseImportText(['t', '4', 'x', 'd', '[-] r r r r'].join('\t'), current).error, /^BPM은/);

@@ -7,6 +7,8 @@ var scoreEditorHooks = (function(){
   var ALPHATAB_VIEW_KEY = 'gs.alphaTab.view';
   var TAB_INPUT_HANDOFF_MAX_AGE_MS = 600000;
   var TAB_INPUT_HANDOFF_MAX_FUTURE_MS = 60000;
+  var EDIT_BUTTON_TITLE = '악보 입력 화면에서 이 곡을 고칩니다';
+  var EDIT_BUTTON_TITLE_ALPHATEX = '악보 입력 화면에서 고치면 우리 악보 사본으로 저장됩니다';
 
   function statusNode(){ return document.getElementById('scoreDraftStatus'); }
 
@@ -53,6 +55,22 @@ var scoreEditorHooks = (function(){
     return '';
   }
 
+  // 원본이 alphaTex 인 곡(시트 6열)은 앱에서 제자리에서 고치지 않는다. 고치면 우리 악보만 담은 사본으로 저장한다(Docs/alphatab.md).
+  function hasAlphaTex(song){
+    return !!(song && typeof song.alphaTex === 'string' && song.alphaTex.trim());
+  }
+
+  // 사본 제목: "<제목> (사본)", 이미 있으면 "(사본 2)", "(사본 3)"…
+  function copyTitleFor(title, sources){
+    var taken = {};
+    (Array.isArray(sources) ? sources : []).concat(typeof allSongs !== 'undefined' && Array.isArray(allSongs) ? allSongs : []).forEach(function(song){
+      if (song && typeof song.title === 'string') taken[song.title] = true;
+    });
+    var candidate = title + ' (사본)';
+    for (var number = 2; taken[candidate]; number++) candidate = title + ' (사본 ' + number + ')';
+    return candidate;
+  }
+
   function refreshStatus(){
     var structured = !!(curSong && curSong.type === 'structured');
     var status = structured ? scoreDrafts.status(curSong.id) : {dirty:false,temporary:false,origin:null};
@@ -70,7 +88,10 @@ var scoreEditorHooks = (function(){
       controls.hidden = !structured || !hasControlsContent;
     }
     var edit = document.getElementById('editInInputBtn');
-    if (edit) edit.hidden = !structured;
+    if (edit){
+      edit.hidden = !structured;
+      edit.title = structured && hasAlphaTex(curSong) ? EDIT_BUTTON_TITLE_ALPHATEX : EDIT_BUTTON_TITLE;
+    }
     var alphaTab = document.getElementById('openAlphaTabBtn');
     if (alphaTab) alphaTab.hidden = !structured;
     var copy = document.getElementById('copyCurSongTsvBtn');
@@ -119,16 +140,21 @@ var scoreEditorHooks = (function(){
   }
 
   // 지금 곡(초안이면 초안 내용)을 alphaTab 보기 창(새 탭)으로 넘긴다. 연습은 멈추지 않는다.
+  // 곡에 원본 alphaTex가 있고 고친 초안이 아니면(scoreDrafts.status의 dirty·temporary가 아니면) 그 alphaTex를 그대로 넘긴다. 설명은 곡 badge(시트 설명 열)다.
   function openInAlphaTab(){
     if (!curSong || curSong.type !== 'structured') return;
-    var ok = ls.set(ALPHATAB_VIEW_KEY, {
+    var draft = scoreDrafts.status(curSong.id);
+    var payload = {
       title:curSong.title,
       beats:curSong.beats,
       bpm:Math.max(30, Math.min(240, Math.round(Number(curSong.bpm) || 64))),
       capo:GuitarParser.getSongCapo(curSong),
+      description:curSong.badge || '',
       lines:serializeScoreMeasures(curSong.measures, '\n').split('\n'),
       savedAt:Date.now()
-    });
+    };
+    if (hasAlphaTex(curSong) && !draft.dirty && !draft.temporary) payload.alphaTex = curSong.alphaTex;
+    var ok = ls.set(ALPHATAB_VIEW_KEY, payload);
     if (ok) window.open('alphatab.html', '_blank');
     else showStorageStatus('alphaTab 보기로 전달하지 못했습니다. 브라우저 저장소를 확인하세요.');
   }
@@ -186,6 +212,20 @@ var scoreEditorHooks = (function(){
       var source = typeof handoff.sourceId === 'string' && Array.isArray(sources)
         ? sources.find(function(song){ return song && song.type === 'structured' && song.id === handoff.sourceId; })
         : null;
+      // 원본이 alphaTex인 곡은 칸 수가 바뀌어 돌아와도 같은 사본 규칙이다(칸 수는 고친 악보의 것).
+      if (source && hasAlphaTex(source)){
+        var copy = scoreDrafts.createFromScore({
+          title:copyTitleFor(source.title, sources),
+          beats:Number(handoff.beats),
+          bpm:Math.max(30, Math.min(240, Math.round(Number(source.bpm) || 64))),
+          badge:source.badge,
+          lines:handoff.lines,
+          key:validKey ? handoff.key : 0,
+          origin:'tab-input'
+        });
+        showStorageStatus('원본이 alphaTex인 곡이라 고친 내용을 사본 「' + copy.title + '」으로 저장했습니다.');
+        return copy.id;
+      }
       if (source && Number(handoff.beats) !== source.beats){
         showStorageStatus('칸 수가 바뀌어서 원래 곡 대신 새 임시 악보로 열었습니다.');
         source = null;

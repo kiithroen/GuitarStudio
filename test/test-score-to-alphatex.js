@@ -379,6 +379,46 @@ test('chord names: shown on the first beat of the bar, absent for [-], case-only
   assert.equal(chordName(3).id, chordName(5).id);
 });
 
+function firstBeats(staff){ return staff.bars.map(function(bar){ return bar.voices[0].beats[0]; }); }
+
+test('memo: the bar memo goes to the first beat of that bar as a text effect, escaped like the title', function(){
+  const quotedMemo = '메모 "따옴표" \\ 역슬래시 · 둘째';
+  const out = convert({ lines: ['[C] E4 r r r | ' + JSON.stringify(quotedMemo), '[G] E4 r r r', 'r r r r | "쉼 마디 메모"'] });
+  const firsts = firstBeats(out.staff);
+  assert.equal(firsts[0].text, quotedMemo);
+  assert.equal(firsts[1].text, null, 'a bar without a memo has no text');
+  assert.equal(firsts[2].text, '쉼 마디 메모', 'a whole-rest bar carries its memo too');
+  // 같은 마디의 다른 박에는 글이 없다
+  assert.equal(out.staff.bars[0].voices[0].beats[1].text, null);
+  // 모든 내장곡의 마디 메모가 그 마디 첫 박의 글로 들어간다
+  songs.forEach(function(song){
+    const staff = convert({ title: song.title, beats: song.beats, bpm: song.bpm, lines: song.lines }).staff;
+    const measures = parser.parseScore(song.lines.join('\n'), song.beats).measures;
+    measures.forEach(function(measure, index){
+      const want = measure.lyric ? measure.lyric : null;
+      assert.equal(firstBeats(staff)[index].text, want, song.id + ' bar ' + (index + 1) + ' memo');
+    });
+  });
+});
+
+test('description: a non-empty description goes to the header notices, an empty one adds nothing', function(){
+  const quoted = convert({ description: '설명 "q" \\ 끝', lines: ['E4 r r r'] });
+  assert.equal(quoted.score.notices, '설명 "q" \\ 끝');
+  assert.match(quoted.tex, /^\\title "T"\n\\notices "/);
+  ['', '   ', undefined, null].forEach(function(description){
+    const none = convert({ description: description, lines: ['E4 r r r'] });
+    assert.doesNotMatch(none.tex, /\\notices/, JSON.stringify(description));
+  });
+});
+
+test('apoyando and confirm marks are not written to alphaTex, and the result is only { tex }', function(){
+  const out = converter.toAlphaTex({ title: 'T', beats: 4, bpm: 60, capo: 0, lines: ['!E4@1 B3@2+!G3@3 r !D4@2?', 'r r r r'] });
+  assert.deepEqual(Object.keys(out), ['tex']);
+  assert.doesNotMatch(out.tex, /apoyando|!|\?/);
+  assert.equal(importTex(out.tex).diagnostics.length, 0);
+  assert.deepEqual(Object.keys(converter.toAlphaTex({ title: 'T', beats: 4, bpm: 60, capo: 0, lines: ['E4 r r'] })), ['error']);
+});
+
 test('errors: layout errors come back as a message, never a thrown exception', function(){
   const bad = converter.toAlphaTex({ title: 'T', beats: 4, bpm: 60, capo: 0, lines: ['E4 r r'] });
   assert.equal(bad.tex, undefined);

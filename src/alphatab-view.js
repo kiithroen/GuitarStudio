@@ -9,7 +9,7 @@
   function byId(id){ return document.getElementById(id); }
   var els = {
     title: byId('atTitle'), play: byId('atPlayBtn'), rewind: byId('atRewindBtn'),
-    speed: byId('atSpeedSelect'), view: byId('atViewSelect'), status: byId('atStatus'), host: byId('atHost')
+    speed: byId('atSpeedSelect'), view: byId('atViewSelect'), status: byId('atStatus'), host: byId('atHost'), source: byId('atSource')
   };
 
   // state: loading(불러오는 중) | ready | empty(넘긴 곡 없음) | error
@@ -17,6 +17,16 @@
     els.status.textContent = text;
     els.status.setAttribute('data-state', state || 'loading');
     document.body.setAttribute('data-at-state', state || 'loading');
+  }
+
+  var SOURCE_LABEL = { original: '원본 alphaTex', converted: '우리 악보에서 만든 미리보기' };
+
+  // 악보 출처 꼬리표: original(시트의 원본 alphaTex를 그대로 읽음) | converted(우리 악보를 변환한 미리보기)
+  function setSource(kind){
+    els.source.textContent = SOURCE_LABEL[kind];
+    els.source.setAttribute('data-source', kind);
+    els.source.hidden = false;
+    els.host.setAttribute('data-source', kind);
   }
 
   function readSong(){
@@ -28,7 +38,11 @@
     if (!song || typeof song !== 'object') return null;
     if (typeof song.title !== 'string' || !Array.isArray(song.lines) || !song.lines.every(function(line){ return typeof line === 'string'; })) return null;
     if (!Number.isInteger(song.beats) || !isFinite(Number(song.bpm))) return null;
-    return { title: song.title, beats: song.beats, bpm: Number(song.bpm), capo: Number.isInteger(song.capo) ? song.capo : 0, lines: song.lines };
+    return {
+      title: song.title, beats: song.beats, bpm: Number(song.bpm), capo: Number.isInteger(song.capo) ? song.capo : 0, lines: song.lines,
+      description: typeof song.description === 'string' ? song.description : '',
+      alphaTex: typeof song.alphaTex === 'string' && song.alphaTex.trim() ? song.alphaTex : ''
+    };
   }
 
   // base.css 색 토큰을 alphaTab 표시 색으로. 다크 모드 토큰은 base.css가 :root 값을 바꿔서 여기서는 읽기만 한다.
@@ -83,17 +97,31 @@
     els.title.textContent = song.title || 'alphaTab 보기';
     document.title = (song.title ? song.title + ' · ' : '') + 'alphaTab 보기 · 기타 스튜디오';
 
-    var converted = GuitarAlphaTex.toAlphaTex(song);
-    if (converted.error){
-      setStatus('악보를 alphaTab으로 바꾸지 못했습니다: ' + converted.error, 'error');
-      return;
+    // 원본 alphaTex가 있으면 변환하지 않고 그대로 읽는다. alphaTab이 못 읽으면 상태 줄에 알리고 우리 악보에서 만든 미리보기로 대신 그린다.
+    var score = null;
+    var readyNote = '';
+    if (song.alphaTex){
+      try {
+        score = importAlphaTex(song.alphaTex);
+        setSource('original');
+      } catch (error){
+        readyNote = '원본 alphaTex를 alphaTab이 읽지 못해 우리 악보에서 만든 미리보기로 대신 그렸습니다: ' + (error && error.message ? error.message : error);
+        setStatus(readyNote, 'loading');
+      }
     }
-    var score;
-    try {
-      score = importAlphaTex(converted.tex);
-    } catch (error){
-      setStatus('alphaTab이 악보를 읽지 못했습니다: ' + (error && error.message ? error.message : error), 'error');
-      return;
+    if (!score){
+      var converted = GuitarAlphaTex.toAlphaTex(song);
+      if (converted.error){
+        setStatus('악보를 alphaTab으로 바꾸지 못했습니다: ' + converted.error, 'error');
+        return;
+      }
+      try {
+        score = importAlphaTex(converted.tex);
+      } catch (error){
+        setStatus('alphaTab이 악보를 읽지 못했습니다: ' + (error && error.message ? error.message : error), 'error');
+        return;
+      }
+      setSource('converted');
     }
 
     var assetBase = new URL(ASSET_ROOT, location.href).href;
@@ -120,7 +148,7 @@
     function refreshReady(){
       if (failed) return;
       if (rendered && playerReady){
-        setStatus('', 'ready');
+        setStatus(readyNote, 'ready');
         [els.play, els.rewind, els.speed, els.view].forEach(function(node){ node.disabled = false; });
       } else if (rendered){
         els.view.disabled = false;

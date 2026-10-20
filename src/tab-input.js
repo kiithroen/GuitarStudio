@@ -779,7 +779,8 @@
 
     if (firstLine !== null && firstLine.indexOf('\t') >= 0){
       var cols = firstLine.split('\t');
-      if (cols.length !== 5) return { error: '열이 5개여야 합니다(제목, 칸 수, BPM, 설명, 악보). 지금 ' + cols.length + '개.' };
+      // 6번째 열(원본 alphaTex)은 버린다. 이 화면에서 고친 것은 우리 악보 사본이라 alphaTex를 이어받지 않는다.
+      if (cols.length !== 5 && cols.length !== 6) return { error: '열이 5개 또는 6개여야 합니다(제목, 칸 수, BPM, 설명, 악보, 선택으로 alphaTex). 지금 ' + cols.length + '개.' };
       var beatsText = cols[1].trim();
       if (!isIntegerText(beatsText) || !isAllowedBeats(Number(beatsText))){
         return { error: '칸 수는 ' + beatsListText() + ' 중 하나여야 합니다: ' + beatsText };

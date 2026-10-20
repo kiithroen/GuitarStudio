@@ -1,6 +1,6 @@
 (function(global){
   'use strict';
-  // 우리 텍스트 악보를 alphaTex로 바꾼다. alphaTab 보기 창(alphatab.html)이 눈으로 비교하는 용도로만 쓴다. 규칙과 결정은 Docs/alphatab.md.
+  // 우리 텍스트 악보를 alphaTex로 바꾼다. alphaTab 보기 창(alphatab.html)의 대체 미리보기와 명령줄 도구가 쓴다. 규칙과 결정은 Docs/alphatab.md.
   // 음 길이·점·붙임줄·셋잇단·슬러/슬라이드·롤 첫 토막은 GuitarStaffLayout.layoutScore 결과 하나만 쓰고 여기서 다시 셈하지 않는다.
   var isNode = typeof module !== 'undefined' && module.exports;
   var GuitarRhythm = isNode ? require('./rhythm.js') : global.GuitarRhythm;
@@ -73,7 +73,10 @@
       return name + new Array(index + 1).join(CHORD_NAME_PAD);
     }
 
-    var head = ['\\title ' + quote(song.title), '\\tempo (' + formatNumber(tempo) + ')', '\\ts (' + grid.numerator + ' ' + grid.denominator + ')'];
+    var head = ['\\title ' + quote(song.title)];
+    var description = song.description == null ? '' : String(song.description);
+    if (description.trim()) head.push('\\notices ' + quote(description));
+    head.push('\\tempo (' + formatNumber(tempo) + ')', '\\ts (' + grid.numerator + ' ' + grid.denominator + ')');
     if (capo > 0) head.push('\\capo ' + capo);
 
     var bars = layout.measures.map(function(measure, measureIndex){
@@ -83,6 +86,7 @@
         origins[link.fromItem + ':' + link.fromHead] = link.kind === 'slide' ? 'slide' : 'slur';
       });
       var chord = parsed.measures[measureIndex] && parsed.measures[measureIndex].chord;
+      var memo = parsed.measures[measureIndex] && parsed.measures[measureIndex].lyric;
       var out = measure.items.map(function(item, itemIndex){
         var duration = DURATION_NUMBER[item.value.base];
         if (!duration) fail('음표 길이를 바꿀 수 없습니다: ' + item.value.base);
@@ -92,6 +96,7 @@
         if (item.value.triplet) effects.push('tu 3');
         if (item.type === 'chord' && item.roll) effects.push('ad');
         if (itemIndex === 0 && chord) effects.push('ch ' + quote(chordLabel(chord)));
+        if (itemIndex === 0 && typeof memo === 'string' && memo) effects.push('txt ' + quote(memo));
         var tail = '.' + duration + (effects.length ? ' {' + effects.join(' ') + '}' : '');
         if (item.type === 'rest') return 'r' + tail;
         var indexed = { index: itemIndex, tieFromPrev: item.tieFromPrev };
@@ -104,7 +109,7 @@
     return { tex: head.join('\n') + '\n' + bars.join('\n') + '\n' };
   }
 
-  // song: { title, beats, bpm, capo, lines }. 성공하면 { tex }, 실패하면 { error }.
+  // song: { title, beats, bpm, capo, lines, description }. 성공하면 { tex }, 실패하면 { error }.
   function toAlphaTex(song){
     try {
       return build(song || {});

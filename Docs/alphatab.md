@@ -11,7 +11,32 @@
 | `vendor/alphatab/` | alphaTab 1.8.4(MPL-2.0). 브라우저 UMD(`dist/alphaTab.min.js`, 전역 `alphaTab`), worker·worklet, Bravura 글꼴, sonivox 사운드폰트 |
 | `test/test-score-to-alphatex.js` | 변환기 테스트. vendor의 alphaTab을 `require`해서 변환 결과를 가져온 모델 필드까지 확인한다 |
 | `tools/score-to-alphatex.js`, `tools/alphatab-to-score.js` | 우리 악보 ↔ alphaTab 양방향 명령줄 도구. [명령줄 도구](#명령줄-도구) |
+| `tools/build-scores.js` | 폴더의 `.tex` 원본을 시트용 6열 TSV로 바꾸는 도구. [원본은 alphaTex](#원본은-alphatex) |
 | `test/test-alphatab-tools.js`, `test/fixtures/alphatab/` | 명령줄 도구 테스트와 예제(손으로 짠 alphaTex, MusicXML, 브랜치 alphaTex 16곡) |
+
+## 원본은 alphaTex
+
+곡의 원본은 alphaTex이고, 시트의 우리 악보(5열)는 그 alphaTex에서 만들어 낸 결과물이다. 길은 둘이다: 사진 → alphaTex → 우리 악보, alphaTex → 우리 악보. 우리 문법이나 플레이어가 좋아지면 변환기만 다시 돌려 원본에서 정보를 다시 꺼낸다.
+
+```text
+드라이브 GuitarScores/곡.tex
+  → node tools/build-scores.js <폴더>
+  → 곡.tsv (6열: 제목, 칸 수, BPM, 설명, 악보, alphaTex 원본)
+  → 시트의 Apps Script (F열에 alphaTex)
+  → 시트 → 앱 · 보기 창
+```
+
+| 정보 | 처리 |
+|---|---|
+| 음높이·길이·붙임줄·셋잇단·코드 이름·운지·주법·카포·템포·박자표 | alphaTex에 들어간다([변환 규칙](#변환-규칙)) |
+| 마디 메모와 곡 설명 | alphaTex에 들어간다. 마디 메모는 그 마디 첫 박의 박 효과 `txt "…"`, 곡 설명은 머리 `\notices "…"` |
+| 버림: 아포얀도 `!` | alphaTex를 거치면 사라진다. 교본에도 음마다 붙은 아포얀도 표시는 없고 "선율을 아포얀도로" 같은 메모로만 쓰여서다 |
+| 버림: 확인 표시 `?` | 사라진다. 필요 없다고 사용자가 정했다 |
+| 버림: 왼손 `0` | 사라진다. 내장곡 510곳 모두 프렛 0(개방현)이라 프렛 0과 같은 정보이고 소리도 위치도 더하지 않아서다 |
+
+- 2026-10-20 결정(사용자): alphaTex를 악보의 원본으로 둔다. 우리 문법이 바뀌거나 플레이어가 좋아져도 변환기만 다시 돌리면 되고, 우리 악보에서 alphaTex로 되돌리면 잃는 정보(성부, 실제 길이, 도돌이)를 원본에 그대로 둘 수 있어서다. 아포얀도만 보충 파일로 살리는 안도 있었지만 교본에 음별 표시가 없어 뺐다. 위 표의 세 가지는 alphaTex를 거치면 버린다.
+- 원본 `.tex`를 고치는 일은 Claude가 PC에서 하고 `tools/build-scores.js`로 다시 변환한다.
+- 2026-10-20 결정(사용자): 원본 alphaTex가 있는 곡(곡 객체에 `alphaTex`가 있는 곡)은 앱에서 제자리에서 고치지 않는다. 사용자가 악보 입력 화면에서 고쳐 돌아오면 원본을 잃은 것으로 보고, 우리 악보만 담은 `(사본)` 곡을 새로 만들어 저장한다(제목 규칙은 [화면과 조작](ui.md)). 원본 곡은 그대로 남는다. 칸 수를 바꿔 돌아와도 같다(제목은 원래 곡의 `(사본)`, 칸 수는 고친 악보의 것). 앱은 드라이브에 쓰지 못하고, 우리 악보에서 alphaTex로 되돌리면 성부·실제 길이·도돌이 같은 원본 정보를 잃기 때문이다.
 
 ## vendor로 둔 이유
 
@@ -19,8 +44,8 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 
 ## 쓰는 법
 
-1. 연습 화면 머리의 `alphaTab` 단추(`#openAlphaTabBtn`, `단축키 안내` 옆, 구조화 곡일 때만 보인다)를 누른다. 지금 곡(수정 초안이면 초안 내용)을 localStorage `gs.alphaTab.view`에 `{ title, beats, bpm, capo, lines, savedAt }`로 넣고 `alphatab.html`을 새 탭으로 연다. 연습은 멈추지 않는다.
-2. 보기 창은 그 값을 읽어 변환하고 그린다. 값을 지우지 않아서 새로고침해도 같은 곡이다. 값이 없거나 모양이 틀리면 상태 줄에 안내만 한다. 변환이나 alphaTab 읽기가 실패하면 이유를 상태 줄에 보인다.
+1. 연습 화면 머리의 `alphaTab` 단추(`#openAlphaTabBtn`, `단축키 안내` 옆, 구조화 곡일 때만 보인다)를 누른다. 지금 곡(수정 초안이면 초안 내용)을 localStorage `gs.alphaTab.view`에 `{ title, beats, bpm, capo, description, lines, savedAt }`로 넣고 `alphatab.html`을 새 탭으로 연다. `description`은 곡의 `badge`(시트 설명 열)다. 곡에 원본 `alphaTex`가 있고 고친 초안이 아니면(`scoreDrafts.status`의 `dirty`·`temporary`가 모두 거짓이면) `alphaTex`도 넣는다. 연습은 멈추지 않는다.
+2. 보기 창은 그 값을 읽어 그린다. `alphaTex`가 있으면 변환하지 않고 그대로 읽어 그리며 머리의 작은 꼬리표(`#atSource`)에 `원본 alphaTex`가 보인다. 없으면 우리 악보를 변환해 그리고 꼬리표는 `우리 악보에서 만든 미리보기`다. 원본 alphaTex를 alphaTab이 읽지 못하면 상태 줄에 알리고 변환 미리보기로 대신 그린다. 값을 지우지 않아서 새로고침해도 같은 곡이다. 값이 없거나 모양이 틀리면 상태 줄에 안내만 한다. 변환이나 alphaTab 읽기가 실패하면 이유를 상태 줄에 보인다.
 3. 조작은 머리 한 줄에 있다: 곡 제목, `재생`/`일시정지`(Space), `처음으로`, 빠르기(50·75·100%), 보기(`오선+타브`·`타브`·`오선`), 상태 줄. 보기를 바꾸면 다시 그린다.
 
 색은 `src/base.css` 토큰(`--fg`, `--muted`)에서 읽어 alphaTab 표시 색(`mainGlyphColor`, `staffLineColor` 등)에 넣고, 시스템 색 구성이 바뀌면 다시 읽는다. 소리는 alphaTab의 사운드폰트라 앱의 합성음과 다르다.
@@ -48,6 +73,8 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 | 오른손 운지 `:p :i :m :a` | 음 효과 `rf 1`~`rf 4` | `note.rightHandFinger` = Thumb~AnnularFinger |
 | 롤 `~` | 박 효과 `ad` | `beat.brushType` = ArpeggioDown |
 | 마디 코드 이름 | 마디 첫 박의 박 효과 `ch "이름"`(`[-]`이면 없다) | `beat.chordId`, `staff.chords`의 `name` |
+| 마디 메모 | 마디 첫 박의 박 효과 `txt "…"`(따옴표·역슬래시 이스케이프는 제목과 같다) | `beat.text` |
+| 곡 설명 | 머리 `\notices "…"`(입력의 `description`이 있을 때) | `score.notices` |
 | 마디 | ` \|` | 마디마다 `masterBar` 하나 |
 
 - 붙임줄 도착 음에는 운지를 달지 않는다. 다시 치지 않는 음이라서다. 하모닉스(`nh`)와 슬러·슬라이드 출발 표시는 도착 음이 마지막 토막일 때 그 토막에 단다.
@@ -56,7 +83,7 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 
 ## 넣지 않는 것
 
-아포얀도 `!`, 확인 표시 `?`, 마디 메모(가사), 조표(`key`), 변칙 조율(조율은 표준만)은 변환하지 않는다. 눈으로 대조하는 데 필요한 음높이·길이·운지·주법만 옮긴다.
+아포얀도 `!`, 확인 표시 `?`, 왼손 `0`, 조표(`key`), 변칙 조율(조율은 표준만)은 변환하지 않는다([원본은 alphaTex](#원본은-alphatex)). 눈으로 대조하는 데 필요한 음높이·길이·운지·주법만 옮긴다.
 
 ## 결정
 
@@ -76,15 +103,18 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 ```powershell
 node tools/score-to-alphatex.js <시트 한 행 TSV 파일 | --builtin <id>> [-o 출력.tex]
 node tools/alphatab-to-score.js <입력 파일> [--track n(1부터)] [-o 출력.tsv]
+node tools/build-scores.js <폴더> [--check]
 ```
 
 | | `score-to-alphatex.js` | `alphatab-to-score.js` |
 |---|---|---|
 | 방향 | 우리 악보 → alphaTex | alphaTex·Guitar Pro·MusicXML → 시트 한 행 |
-| 입력 | 시트 한 행 TSV(`check-score.js`가 읽는 5열), 또는 `songs.json`의 내장곡 id | `.tex` `.alphatex`, `.gp` `.gp3` `.gp4` `.gp5` `.gpx`, `.musicxml` `.xml` |
+| 입력 | 시트 한 행 TSV(`check-score.js`가 읽는 5열 또는 6열. 6번째 열은 쓰지 않는다), 또는 `songs.json`의 내장곡 id | `.tex` `.alphatex`, `.gp` `.gp3` `.gp4` `.gp5` `.gpx`, `.musicxml` `.xml` |
 | 변환 | `GuitarAlphaTex.toAlphaTex` 하나만 쓴다. 카포는 `getSongCapo({ title, badge: 설명 })` | alphaTab이 읽은 모델을 `convertScore`로 시트 행(제목, 칸 수, BPM, 설명, 악보)으로 바꾼다 |
 | 출력 | stdout, `-o`면 파일 | stdout, `-o`면 파일. 성공하면 `check-score.js`와 같은 검사(`GuitarParser.validateScore`)를 돌려 오류가 있으면 출력은 쓰되 오류 목록을 stderr에 낸다 |
 | 종료 코드 | 0 성공, 1 변환 실패(TSV 검사에 걸림 포함), 2 사용법이 틀림(인자, 읽을 수 없는 파일, 없는 id, 한 행이 아닌 TSV) | 0 성공, 1 변환하지 않음·읽지 못함·검사 오류, 2 사용법이 틀림(인자, 읽을 수 없는 파일, 모르는 확장자) |
+
+`build-scores.js`는 [원본은 alphaTex](#원본은-alphatex)의 흐름을 맡는다. 폴더 안(하위 폴더 제외) `*.tex`마다 `alphatab-to-score.js`와 같은 변환·검사(`GuitarParser.validateScore`)를 돌려 같은 이름의 `.tsv`를 쓴다. 한 행 6열은 제목, 칸 수, BPM, 설명, 악보, alphaTex 원본이고, 원본은 파일 내용의 줄바꿈·탭·연속 공백을 공백 하나로 편 것이다(따옴표 안은 그대로 두고, 따옴표 안에 줄바꿈이나 탭이 있으면 그 파일은 변환하지 않는다). 한 줄로 펴서 변환 결과가 달라지는 파일(줄 끝 주석 등)도 변환하지 않는다. UTF-8에 앞에 BOM, 끝에 줄바꿈 하나다. 변환·검사 오류가 있는 파일은 TSV를 쓰지 않고(기존 TSV는 그대로) 오류를 목록으로 보이며 종료 코드 1이다. `.tex`가 없는 TSV(손으로 만든 것)는 건드리지 않는다. `--check`는 쓰지 않고 보고만 한다. 마지막 줄은 `변환 n · 오류 n · 건너뜀 n`이다. 시트 셀 한 칸이 50,000자라 그보다 긴 alphaTex는 Apps Script가 F열만 비운다([시트 자동 가져오기](development.md#시트-자동-가져오기)).
 
 메시지는 한국어 `~습니다`체다. 읽는 쪽은 alphaTex가 `AlphaTexImporter`, 나머지가 `ScoreLoader.loadScoreFromBytes`(바이트에서 형식을 알아서 고른다)다. `--track`은 1부터 센 트랙 번호다(Guitar Pro 같은 프로그램과 같다). 생략하면 6줄 표준 조율 트랙이 먼저이고, 없으면 음높이가 있는 첫 트랙(줄·프렛 없이 음높이만 있는 트랙)이다. 6줄인데 표준 조율이 아닌 트랙뿐이면 줄 정보 없는 트랙으로 넘어가지 않고 이유와 함께 멈춘다. 트랙 목록은 오류 메시지에 1부터 나온다.
 
@@ -102,7 +132,8 @@ node tools/alphatab-to-score.js <입력 파일> [--track n(1부터)] [-o 출력.
 | 주법 | 해머링·풀링 도착 음에 `s`, 슬라이드(legato·shift) 도착 음에 `g`(출발 음과 같은 줄이 아니면 주법 없이 `슬라이드 생략`). 자연 하모닉스는 `h` + 울리는 음(`GuitarNotation.NATURAL_HARMONICS`)과 `@줄`이고, 표에 없는 프렛이면 보통 음 + `하모닉스 프렛 아님`, 인공 하모닉스는 보통 음 + `인공 하모닉스 → 보통 음`. 화음의 arpeggio down(낮은 줄 → 높은 줄)은 `~`, arpeggio up은 `~` + `위에서 아래 롤 → 아래에서 위`, brush·strum은 동시에 + `스트로크 → 동시에`. 꾸밈음은 빼고 `꾸밈음 생략`, 데드 노트는 빼고 `데드 노트 생략`. 벤딩·비브라토·트레몰로·위미바·트릴은 음만 적고 마디마다 한 번 종류를 메모. 왼손 운지는 alphaTab 검지~소지를 1~4로(엄지·모름은 없음), 오른손은 엄지·검지·중지·약지를 `:p :i :m :a`로. [변환 규칙](#변환-규칙)의 표를 거꾸로 읽은 것이다 |
 | 코드 이름 | 마디 안 첫 코드 이름을 `[이름]`, 없으면 `[-]`. 폭 없는 글자(`GuitarAlphaTex.CHORD_NAME_PAD`)는 뗀다. 우리 문법이 받지 않는 이름(`INVALID_CHORD`)은 `[-]` + `코드 이름 변환 불가: 이름`. 마디 안에서 코드가 더 바뀌면 메모에 `n박부터 이름` |
 | 도돌이 | 도돌이표와 1·2번 괄호는 alphaTab의 연주 순서(`MidiFileGenerator`가 만드는 `tickLookup.masterBars`)대로 펼치고, 펼친 도돌이 구간의 첫 마디에 메모 `도돌이 펼침`. D.S.·D.C.·Coda·Fine 같은 이동 표시는 펼치지 않고 그 마디 메모에 `표시 이름 표시(펼치지 않음)`. 못갖춘마디(`isAnacrusis`)는 앞을 `r`로 채우고 메모 `못갖춘마디` |
-| 제목·설명 | 제목은 `score.title`(없으면 파일 이름), 탭·줄바꿈·줄 바꿈 없는 공백은 한 칸 공백으로. 설명은 `원본: 파일 이름 · alphaTab 변환` 뒤에 `Capo n`, `BPM 자름`, 곡 전체 성부 메모 |
+| 제목·설명 | 제목은 `score.title`(없으면 파일 이름), 탭·줄바꿈·줄 바꿈 없는 공백은 한 칸 공백으로. 설명은 `원본: 파일 이름 · alphaTab 변환` 뒤에 `Capo n`, `BPM 자름`, 곡 전체 성부 메모. 머리 `notices`가 있으면 설명은 notices 그대로(탭·줄바꿈만 공백으로)이고 그 뒤에 곡 전체 근사 메모(`BPM 자름`, `줄 정보 없음(기본 위치)`, 곡 전체 `긴 음은 시작만 적음`)만 ` · `로 붙는다. 이때 `Capo n`은 notices가 이미 카포 표기(`getSongCapo`가 읽는 꼴)를 갖거나 제목에 있으면 붙이지 않고, `capo n`이 있는데 표기가 없으면 설명 끝에 ` · Capo n`을 붙인다(앱은 카포를 제목·설명 표기로만 읽는다) |
+| 마디 메모 | 박의 글(`txt`)이 그 마디 메모가 된다. 한 마디에 여럿이면 시간 순서로 ` · `로 잇고, 변환기가 만드는 근사 메모는 그 뒤에 ` · `로 붙는다 |
 
 ### 하지 못하는 것
 
@@ -117,7 +148,7 @@ node tools/alphatab-to-score.js <입력 파일> [--track n(1부터)] [-o 출력.
 
 `node test/test-alphatab-tools.js`가 보장하는 것은 이렇다.
 
-- 왕복: `songs.json`의 모든 구조화 내장곡을 `GuitarAlphaTex.toAlphaTex` → `AlphaTexImporter` → `convertScore`로 돌려 원래 악보와 견준다. 아포얀도 `!`, 확인 표시 `?`, 왼손 `0`, 마디 메모는 alphaTex에 없으니 양쪽에서 지우고, 구성음 순서를 줄 번호 내림차순으로 맞춘다. 그 밖의 토큰은 같아야 한다. 칸 구성이 달라도(4/4를 8분음표 8칸으로 쓴 곡 ↔ 4칸, `E4/-` ↔ `E4`) 같은 소리면 같게 보도록, 마디를 "마디 안 위치와 내용"의 사건 목록으로 바꿔 견주고 4분음표 템포로 BPM을 견준다. 코드 이름과 카포도 견준다.
+- 왕복: `songs.json`의 모든 구조화 내장곡을 `GuitarAlphaTex.toAlphaTex` → `AlphaTexImporter` → `convertScore`로 돌려 원래 악보와 견준다. 아포얀도 `!`, 확인 표시 `?`, 왼손 `0`은 alphaTex를 거치면 버려지니 양쪽에서 지우고, 구성음 순서를 줄 번호 내림차순으로 맞춘다. 마디 메모와 설명(곡 `badge`)은 `txt`·`\notices`로 가므로 그대로 같아야 한다. 그 밖의 토큰은 같아야 한다. 칸 구성이 달라도(4/4를 8분음표 8칸으로 쓴 곡 ↔ 4칸, `E4/-` ↔ `E4`) 같은 소리면 같게 보도록, 마디를 "마디 안 위치와 내용"의 사건 목록으로 바꿔 견주고 4분음표 템포로 BPM을 견준다. 코드 이름과 카포도 견준다.
 - 브랜치 alphaTex: `codex/alphatab-player` 브랜치 `songs.json`의 alphaTex 16곡(`test/fixtures/alphatab/branch-builtins.json`, id와 alphaTex만 담은 배열)이 오류 없이 변환되고 마디 수가 alphaTab 마디 수와 같은지. 지원 박자표가 아닌 곡(4/8)은 이유와 함께 거절돼야 한다. 파일을 다시 만드는 명령:
 
   ```powershell
@@ -125,12 +156,14 @@ node tools/alphatab-to-score.js <입력 파일> [--track n(1부터)] [-o 출력.
   ```
 
 - 손으로 짠 예제(`test/fixtures/alphatab/*.tex`): 두 성부, 셋잇단, 도돌이와 1·2번 괄호, 해머링·슬라이드·하모닉스·arpeggio·brush·꾸밈음·데드 노트, 6/8, 12/8, 못갖춘마디, 카포를 기대하는 악보 줄(음 이름은 `GuitarParser.STRINGS`에서 셈한다)과 견주고, 모두 alphaTab 진단 0으로 읽히는지 확인한다. 5/4와 비표준 조율은 거절 이유를 확인한다. 같은 예제를 `Gp7Exporter`가 쓴 `.gp`로 한 번 돌려 Guitar Pro 경로도 같은 결과인지 본다(Guitar Pro 3~5와 `.gpx` 파일은 저장소에 없어 안 돌려 봤다). MusicXML은 `guitar.musicxml`(조율 있음)의 줄이 유지되는지, 브랜치에서 가져온 `simple.musicxml`(조율 없음, 기대 줄은 파일의 음에서 셈)과 `no-strings.musicxml`(오선만 있는 파트: 음역 밖 음 C2·C6, 슬러, 화음)이 `@줄` 없이 변환되고 `?`·메모가 맞는지 본다. 쉼 시작 자리는 음 뒤 쉼(`E4/r`)이 분할을 만드는지, 오래 울리는 저음이 있으면 만들지 않는지 본다. `--track`은 1부터 센다.
+- `build-scores`: 임시 폴더에서 돌려 6열 TSV·BOM·끝 줄바꿈·요약 줄, 오류 파일은 TSV를 쓰지 않고 기존 TSV를 두는 것, `.tex` 없는 TSV를 건드리지 않는 것, `--check`가 쓰지 않는 것을 확인한다.
 - 명령줄: 두 도구를 `child_process`로 돌려 종료 코드(0·1·2)와 출력(TSV 5열, `.tex`가 다시 읽힘, `check-score` 통과)을 확인한다.
-- 일부러 어긋난 사본: (가) 슬러 도착 표시를 출발 음에 다는 사본, (나) 붙임줄 도착을 새 시작으로 보는 사본, (다) 8분음표 칸 BPM을 환산하지 않는 사본, (라) 쉼 시작 자리를 무시하는 사본이 실제로 검사에 걸리는지. 도구 소스의 한 줄을 바꿔 메모리에서 불러 쓴다.
+- 일부러 어긋난 사본: (가) 슬러 도착 표시를 출발 음에 다는 사본, (나) 붙임줄 도착을 새 시작으로 보는 사본, (다) 8분음표 칸 BPM을 환산하지 않는 사본, (라) 쉼 시작 자리를 무시하는 사본, (마) 마디 메모를 `txt`로 쓰지 않는 사본(변환기 쪽 소스), (바) 설명을 `notices`에서 읽지 않는 사본, (사) 박의 글을 메모로 읽지 않는 사본이 실제로 검사에 걸리는지. 도구 소스의 한 줄을 바꿔 메모리에서 불러 쓴다.
 
 왕복은 우리 문법으로 쓴 악보를 alphaTab을 거쳐 되돌릴 수 있다는 것까지만 보장한다. 남이 만든 Guitar Pro·MusicXML의 변환 품질(박자 격자에 맞는 정도, 성부가 많은 곡의 겹침)은 보장하지 않고, 메모로 표시한 손실을 사람이 확인해야 한다.
 
 ### 알려진 것
+
 
 - 안 돌려 본 것: Guitar Pro 3~5·`.gpx` 실제 파일, 큰 곡(성부 여럿, 마디 수백 개)의 변환 품질, 이조(`<transpose>`)가 든 실제 기타 MusicXML(`note.realValue`가 소리 나는 높이를 주는 것은 임시 파일로만 확인했다).
 
@@ -152,4 +185,4 @@ node test/test-alphatab-tools.js
 node test/test-browser-smoke.js
 ```
 
-`test-score-to-alphatex`는 `songs.json`의 모든 곡을 변환해 alphaTab 가져오기 진단이 0인지, 마디 수와 마디마다 박 길이 합(tick)이 박자표와 같은지, 줄·프렛·실음이 배치와 같은지 확인하고, 합성 악보로 위 표의 효과를 하나씩 모델 필드로 확인한다. 기대값은 우리 파서·상수에서 셈한다. 브라우저 스모크는 연습 화면 단추의 넘기기, 보기 창의 그리기·보기 전환·재생·다크와 375px 폭을 확인하고 `test-artifacts/alphatab-view.png`를 남긴다.
+`test-score-to-alphatex`는 `songs.json`의 모든 곡을 변환해 alphaTab 가져오기 진단이 0인지, 마디 수와 마디마다 박 길이 합(tick)이 박자표와 같은지, 줄·프렛·실음이 배치와 같은지 확인하고, 합성 악보로 위 표의 효과를 하나씩 모델 필드로 확인한다. 기대값은 우리 파서·상수에서 셈한다. 브라우저 스모크는 연습 화면 단추의 넘기기, 보기 창의 그리기·보기 전환·재생·다크와 375px 폭을 확인한다. 원본 alphaTex 곡은 테스트 안에서 시트 곡처럼 만들어, 보기 창이 alphaTex를 그대로 그리는지(우리 악보와 마디 수가 다른 alphaTex로 구별), 고친 초안이면 alphaTex를 넘기지 않는지, 입력 화면에서 고쳐 돌아오면(칸 수를 바꿔 돌아오는 경우 포함) `(사본)`·`(사본 2)` 곡이 생기고 원본이 그대로인지, alphaTex가 없는 곡은 제자리 초안으로 남는지, 원본이 alphaTab 오류일 때 변환 미리보기로 대신 그리는지 본다. 스크린샷 `test-artifacts/alphatab-view.png`를 남긴다.

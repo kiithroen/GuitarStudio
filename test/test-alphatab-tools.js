@@ -74,7 +74,7 @@ function fraction(numerator, denominator){
   return (numerator / divisor) + '/' + (denominator / divisor);
 }
 
-// alphaTex로 옮기지 않는 것(아포얀도 !, 확인 표시 ?, 왼손 0, 마디 메모)을 지우고 구성음 순서를 줄 번호 내림차순으로 맞춘 음 토큰.
+// alphaTex를 거치면 버려지는 것(아포얀도 !는 articulation 에 안 넣어 지워지고, 확인 표시 ?와 왼손 0도 지운다)을 뺀 채 구성음 순서를 줄 번호 내림차순으로 맞춘 음 토큰.
 function normalizedPiece(piece){
   let text = piece.trim();
   let rolled = false;
@@ -115,7 +115,7 @@ function canonicalBar(line){
       events.push(at + ' ' + normalizedPiece(piece));
     });
   });
-  return { chord: chord, events: events };
+  return { chord: chord, events: events, memo: decoded.lyric };
 }
 
 function quarterTempo(beats, bpm){
@@ -125,11 +125,12 @@ function quarterTempo(beats, bpm){
 const songs = JSON.parse(fs.readFileSync(path.join(__dirname, '../songs.json'), 'utf8'));
 
 // 모든 구조화 내장곡을 우리 악보 → alphaTex → alphaTab → 우리 악보로 돌려 원래 악보와 견준다. 다른 곳의 목록을 돌려준다.
-function roundTripFailures(toolModule){
+function roundTripFailures(toolModule, forwardModule){
+  const forwardConverter = forwardModule || converter;
   const failures = [];
   songs.forEach(function(song){
     const capo = parser.getSongCapo({ title: song.title, badge: song.badge });
-    const forward = converter.toAlphaTex({ title: song.title, beats: song.beats, bpm: song.bpm, capo: capo, lines: song.lines });
+    const forward = forwardConverter.toAlphaTex({ title: song.title, beats: song.beats, bpm: song.bpm, capo: capo, description: song.badge, lines: song.lines });
     if (forward.error){ failures.push(song.id + ': alphaTex 변환 실패 ' + forward.error); return; }
     const imported = importTex(forward.tex);
     if (imported.diagnostics.length || imported.thrown){ failures.push(song.id + ': alphaTex 읽기 실패 ' + imported.diagnostics.join(' / ')); return; }
@@ -143,10 +144,12 @@ function roundTripFailures(toolModule){
     if (quarterTempo(song.beats, song.bpm) !== quarterTempo(back.beats, back.bpm)) failures.push(song.id + ': 4분음표 템포 ' + quarterTempo(song.beats, song.bpm) + ' → ' + quarterTempo(back.beats, back.bpm));
     if (back.capo !== capo || parser.getSongCapo({ title: back.title, badge: back.description }) !== capo) failures.push(song.id + ': 카포 ' + capo + ' → ' + back.capo);
     if (back.errors.length) failures.push(song.id + ': 변환 결과 검사 오류 ' + back.errors[0].code);
+    if (back.description !== song.badge) failures.push(song.id + ': 설명 ' + JSON.stringify(song.badge) + ' → ' + JSON.stringify(back.description));
+    if (back.title !== song.title) failures.push(song.id + ': 제목 ' + song.title + ' → ' + back.title);
     original.forEach(function(line, index){
       const want = canonicalBar(line);
       const got = canonicalBar(back.measures[index]);
-      if (want.chord !== got.chord || JSON.stringify(want.events) !== JSON.stringify(got.events)){
+      if (want.chord !== got.chord || want.memo !== got.memo || JSON.stringify(want.events) !== JSON.stringify(got.events)){
         failures.push(song.id + ' ' + (index + 1) + '마디\n      원본 ' + line + '\n      결과 ' + back.measures[index]);
       }
     });
@@ -306,10 +309,11 @@ function allExampleFailures(toolModule){
 // ---------- 일부러 어긋난 사본
 
 // 도구 소스의 한 줄을 바꾼 사본을 불러온다. 바꿀 자리가 없으면 테스트 자체가 틀린 것이다.
-function loadMutant(from, to){
-  const source = fs.readFileSync(TOOL_PATH, 'utf8');
+function loadMutant(from, to, targetPath){
+  const target = targetPath || TOOL_PATH;
+  const source = fs.readFileSync(target, 'utf8');
   assert.equal(source.split(from).length - 1, 1, '사본을 만들 자리가 하나여야 합니다: ' + from);
-  const filename = path.join(path.dirname(TOOL_PATH), 'alphatab-to-score.mutant.js');
+  const filename = path.join(path.dirname(target), path.basename(target, '.js') + '.mutant.js');
   const mutant = new Module(filename, module);
   mutant.filename = filename;
   mutant.paths = Module._nodeModulePaths(path.dirname(filename));
@@ -519,7 +523,8 @@ test('command lines: score-to-alphatex and alphatab-to-score run as processes', 
     // 우리 악보 -> alphaTex
     const toTex = run(FORWARD_PATH, [tsvPath]);
     assert.equal(toTex.code, 0, toTex.err);
-    const expectedTex = converter.toAlphaTex({ title: song.title, beats: song.beats, bpm: song.bpm, capo: 0, lines: song.lines }).tex;
+    const expectedTex = converter.toAlphaTex({ title: song.title, beats: song.beats, bpm: song.bpm, capo: 0, description: song.badge, lines: song.lines }).tex;
+    assert.match(expectedTex, /\\notices /, 'the sheet description goes into \\notices');
     assert.equal(toTex.out, expectedTex);
     importCleanTex(toTex.out, 'score-to-alphatex stdout');
     const texPath = path.join(dir, 'one.tex');
@@ -622,6 +627,135 @@ test('command lines: score-to-alphatex and alphatab-to-score run as processes', 
   }
 });
 
+// ---------- 메모·설명·build-scores
+
+const FORWARD_SOURCE_PATH = path.join(__dirname, '../src/score-to-alphatex.js');
+const ROMANCE = songs.find(function(song){ return song.id === 'builtin-lv5-romance'; });
+const BUILD_PATH = path.join(__dirname, '../tools/build-scores.js');
+const CHECK_PATH = path.join(__dirname, '../tools/check-score.js');
+const buildTool = require(BUILD_PATH);
+
+function runNode(script, args){
+  const result = childProcess.spawnSync(process.execPath, [script].concat(args), { encoding: 'utf8' });
+  return { code: result.status, out: result.stdout, err: result.stderr };
+}
+
+
+test('capo: a \\capo without a capo notation in the title or notices gets " · Capo n" at the end of the description, an existing notation is not doubled', function(){
+  const noticesOnly = convertTex('\\title "K" \\notices "시트 설명" \\capo 2 \\tempo 80 \\ts (4 4)\n0.1.4 1.1.4 3.1.4 0.2.4 |\n');
+  assert.equal(noticesOnly.ok, true, noticesOnly.error);
+  assert.equal(noticesOnly.description, '시트 설명 · Capo 2');
+  assert.equal(parser.getSongCapo({ title: noticesOnly.title, badge: noticesOnly.description }), 2, 'the app reads capo 2');
+  assert.equal(noticesOnly.capo, 2);
+  const inNotices = convertTex('\\title "K" \\notices "카포 2 연습" \\capo 2 \\tempo 80 \\ts (4 4)\n0.1.4 1.1.4 3.1.4 0.2.4 |\n');
+  assert.equal(inNotices.description, '카포 2 연습', 'the notation already in notices is not repeated');
+  const inTitle = convertTex('\\title "K (Capo 2)" \\notices "시트 설명" \\capo 2 \\tempo 80 \\ts (4 4)\n0.1.4 1.1.4 3.1.4 0.2.4 |\n');
+  assert.equal(inTitle.description, '시트 설명', 'the notation in the title is enough');
+  const noNotices = convertTex('\\title "K" \\capo 2 \\tempo 80 \\ts (4 4)\n0.1.4 1.1.4 3.1.4 0.2.4 |\n');
+  assert.equal((noNotices.description.match(/Capo 2/g) || []).length, 1, 'without notices the usual "Capo n" is not doubled');
+  const noCapo = convertTex('\\title "K" \\notices "시트 설명" \\tempo 80 \\ts (4 4)\n0.1.4 1.1.4 3.1.4 0.2.4 |\n');
+  assert.equal(noCapo.description, '시트 설명');
+});
+
+test('memo and description: txt becomes the bar memo (before the approximation notes), notices becomes the description column', function(){
+  const withText = '\\title "M" \\notices "설명 · 문구" \\tempo 80 \\ts (4 4)\n0.1.4 {txt "첫째 메모"} 1.1.4 3.1.4 {txt "둘째"} 0.2.4 |\n0.1.4 1.1.4 3.1.4 0.2.4 |\n';
+  const out = convertTex(withText);
+  assert.equal(out.ok, true, out.error);
+  assert.equal(out.description, '설명 · 문구', 'notices is the description as it is');
+  assert.equal(out.measures[0], '[-] ' + [n(1, 0), n(1, 1), n(1, 3), n(2, 0)].join(' ') + ' | "첫째 메모 · 둘째"');
+  assert.equal(out.measures[1], '[-] ' + [n(1, 0), n(1, 1), n(1, 3), n(2, 0)].join(' '));
+  // 변환기가 만드는 근사 메모는 박의 글 뒤에 붙고, 곡 전체 근사 메모는 설명 notices 뒤에 붙는다
+  const approx = convertTex('\\title "M" \\notices "설명" \\tempo 300 \\ts (4 4)\n0.1.4 {txt "글"} 1.1.4 3.1.4 x.2.4 |\n');
+  assert.equal(approx.ok, true, approx.error);
+  assert.match(approx.measures[0], / \| "글 · 데드 노트 생략"$/);
+  assert.equal(approx.description, '설명 · BPM 자름(원래 값 300)');
+  assert.doesNotMatch(approx.description, /원본:/);
+  const without = convertTex('\\title "M" \\tempo 80 \\ts (4 4)\n0.1.4 1.1.4 3.1.4 0.2.4 |\n');
+  assert.match(without.description, /^원본: inline\.tex · alphaTab 변환/, 'no notices keeps the source-file description');
+});
+
+test('build-scores: flattening keeps strings and refuses a line break inside one', function(){
+  assert.equal(buildTool.flattenAlphaTex('\\title "a  b"\n\t\\tempo   80 \r\n 0.1.4   |\n').text, '\\title "a  b" \\tempo 80 0.1.4 |');
+  assert.equal(buildTool.flattenAlphaTex("\\title 'x  y'\n0.1.4 |").text, "\\title 'x  y' 0.1.4 |");
+  assert.equal(buildTool.flattenAlphaTex('\\title "q \\" r"\n0.1.4 |').text, '\\title "q \\" r" 0.1.4 |');
+  assert.match(buildTool.flattenAlphaTex('\\title "a\nb"\n0.1.4 |').error, /문자열 안에 줄바꿈/);
+  assert.match(buildTool.flattenAlphaTex('\\title "a\tb"\n0.1.4 |').error, /문자열 안에 줄바꿈이나 탭/);
+  assert.match(buildTool.flattenAlphaTex('\\title "open\n').error, /문자열 안에 줄바꿈|닫히지 않은/);
+});
+
+test('build-scores: writes 6-column TSV with BOM, keeps TSV files without .tex, does not write files with errors, --check only reports', function(){
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-build-scores-'));
+  const checkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-build-scores-check-'));
+  try {
+    const romanceForward = converter.toAlphaTex({ title: ROMANCE.title, beats: ROMANCE.beats, bpm: ROMANCE.bpm, capo: 0, description: ROMANCE.badge, lines: ROMANCE.lines });
+    // 줄바꿈·탭·연속 공백을 섞은 원본을 일부러 쓴다
+    const messy = romanceForward.tex.replace(/ \\tempo/, '\n\n\t\\tempo').replace(/\n/g, '\r\n') + '\n\n';
+    fs.writeFileSync(path.join(dir, 'romance.tex'), messy, 'utf8');
+    fs.writeFileSync(path.join(dir, 'romance.tsv'), 'OLD\n', 'utf8');
+    fs.copyFileSync(path.join(FIXTURES, 'techniques.tex'), path.join(dir, 'techniques.tex'));
+    fs.writeFileSync(path.join(dir, 'broken.tex'), '\\title "x"\n!!! nonsense\n', 'utf8');
+    fs.writeFileSync(path.join(dir, 'broken.tsv'), 'KEEP-BROKEN\n', 'utf8');
+    fs.writeFileSync(path.join(dir, 'newline.tex'), '\\title "a\nb" \\tempo 80 \\ts (4 4)\n0.1.4 1.1.4 3.1.4 0.2.4 |\n', 'utf8');
+    fs.writeFileSync(path.join(dir, 'hand.tsv'), 'HAND-MADE\n', 'utf8');
+    fs.mkdirSync(path.join(dir, 'sub'));
+    fs.copyFileSync(path.join(FIXTURES, 'triplet.tex'), path.join(dir, 'sub', 'triplet.tex'));
+
+    // --check: 아무것도 쓰지 않고 보고만
+    const checkRun = runNode(BUILD_PATH, [dir, '--check']);
+    assert.equal(checkRun.code, 1);
+    assert.equal(fs.readFileSync(path.join(dir, 'romance.tsv'), 'utf8'), 'OLD\n', '--check does not write');
+    assert.equal(fs.existsSync(path.join(dir, 'techniques.tsv')), false, '--check does not create TSV files');
+    assert.match(checkRun.out.trimEnd().split('\n').pop(), /^변환 2 · 오류 2 · 건너뜀 1$/);
+
+    const run = runNode(BUILD_PATH, [dir]);
+    assert.equal(run.code, 1, run.out + run.err);
+    assert.equal(run.out.trimEnd().split('\n').pop(), '변환 2 · 오류 2 · 건너뜀 1', run.out);
+    assert.match(run.err, /오류: broken\.tex/);
+    assert.match(run.err, /오류: newline\.tex[\s\S]*문자열 안에 줄바꿈/);
+    assert.doesNotMatch(run.err + run.out, /triplet/, 'subfolders are not read');
+    assert.equal(fs.readFileSync(path.join(dir, 'broken.tsv'), 'utf8'), 'KEEP-BROKEN\n', 'a file with errors keeps its old TSV');
+    assert.equal(fs.existsSync(path.join(dir, 'newline.tsv')), false, 'a file with errors writes no TSV');
+    assert.equal(fs.readFileSync(path.join(dir, 'hand.tsv'), 'utf8'), 'HAND-MADE\n', 'a TSV without .tex is left alone');
+
+    const bytes = fs.readFileSync(path.join(dir, 'romance.tsv'));
+    assert.deepEqual([...bytes.subarray(0, 3)], [0xEF, 0xBB, 0xBF], 'UTF-8 BOM');
+    const text = bytes.toString('utf8');
+    assert.equal(text.charCodeAt(0), 0xFEFF);
+    assert.equal(text.endsWith('\n') && !text.endsWith('\n\n'), true, 'one trailing newline');
+    assert.equal(text.slice(1, -1).indexOf('\n'), -1, 'one row');
+    const cols = text.slice(1, -1).split('\t');
+    assert.equal(cols.length, 6);
+    assert.equal(cols[0], ROMANCE.title);
+    assert.equal(cols[1], String(ROMANCE.beats));
+    assert.equal(cols[2], String(ROMANCE.bpm));
+    assert.equal(cols[3], ROMANCE.badge);
+    assert.doesNotMatch(cols[4], /(^|[ +/~])!/, 'apoyando marks do not survive alphaTex');
+    assert.doesNotMatch(cols[5], /[\r\n\t]|  /, 'alphaTex is one line without tabs or repeated spaces');
+    assert.equal(cols[5], romanceForward.tex.trimEnd().replace(/\n/g, ' '), 'alphaTex is the file content folded to one line');
+    const score = importCleanTex(cols[5], 'tsv alphaTex');
+    assert.equal(score.masterBars.length, ROMANCE.lines.length);
+    assert.equal(score.notices, ROMANCE.badge);
+    const techniquesCols = fs.readFileSync(path.join(dir, 'techniques.tsv'), 'utf8').slice(1).split('\t');
+    assert.equal(techniquesCols.length, 6);
+    assert.match(techniquesCols[3], /^원본: techniques\.tex · alphaTab 변환/, 'no notices keeps the source-file description');
+    const checked = runNode(CHECK_PATH, [path.join(dir, 'romance.tsv')]);
+    assert.equal(checked.code, 0, checked.out);
+
+    // 사용법 오류는 2, 오류 없는 폴더는 0 (--check 도 쓰지 않는다)
+    assert.equal(runNode(BUILD_PATH, []).code, 2);
+    assert.equal(runNode(BUILD_PATH, [path.join(dir, 'missing')]).code, 2);
+    assert.equal(runNode(BUILD_PATH, [dir, '--nope']).code, 2);
+    fs.writeFileSync(path.join(checkDir, 'one.tex'), romanceForward.tex, 'utf8');
+    const clean = runNode(BUILD_PATH, [checkDir, '--check']);
+    assert.equal(clean.code, 0, clean.err);
+    assert.equal(clean.out.trimEnd().split('\n').pop(), '변환 1 · 오류 0 · 건너뜀 0');
+    assert.deepEqual(fs.readdirSync(checkDir), ['one.tex'], '--check leaves the folder as it was');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(checkDir, { recursive: true, force: true });
+  }
+});
+
 // 새 검사가 실제로 잡는지: 일부러 어긋난 사본을 같은 검사에 넣어 사본에서만 새로 생기는 실패가 있어야 한다.
 function mutantCaught(label, from, to){
   const baseline = new Set(roundTripFailures(tool).concat(allExampleFailures(tool)));
@@ -645,6 +779,23 @@ test('mutant (d): ignoring rest-start positions in the cell division is caught',
 
 test('mutant (c): eighth-note cells without the BPM conversion are caught', function(){
   mutantCaught('no BPM conversion', 'const rawBpm = quarterTempo / grid.slotQuarter;', 'const rawBpm = quarterTempo;');
+});
+
+// 우리 악보 -> alphaTex 쪽 사본: src/score-to-alphatex.js 의 한 줄을 바꾼 사본으로 왕복을 돌린다.
+test('mutant (e): not writing the bar memo as a txt effect is caught', function(){
+  const baseline = new Set(roundTripFailures(tool));
+  const mutant = loadMutant("effects.push('txt ' + quote(memo));", "void 0;", FORWARD_SOURCE_PATH);
+  const caught = roundTripFailures(tool, mutant).filter(function(failure){ return !baseline.has(failure); });
+  assert.ok(caught.length > 0, '메모를 txt로 안 쓰는 사본이 왕복에 걸리지 않았습니다');
+  process.stdout.write('  no txt memo: caught by ' + caught.length + ' failure(s), e.g. ' + caught[0].split('\n')[0] + '\n');
+});
+
+test('mutant (f): not using notices as the description is caught', function(){
+  mutantCaught('no notices', "const noticeText = typeof score.notices === 'string' ? score.notices.replace(/[\\t\\r\\n]+/g, ' ') : '';", "const noticeText = '';");
+});
+
+test('mutant (g): dropping the beat text memo is caught', function(){
+  mutantCaught('no beat text', "if (typeof beat.text === 'string' && beat.text) texts.push(", "if (false) texts.push(");
 });
 
 process.stdout.write('1..' + checks + '\n');

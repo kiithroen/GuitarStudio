@@ -28,7 +28,7 @@ function makeSheet(rows){
   const data = rows.map(function(r){ return r.slice(); });
   const formats = Object.create(null);
   const sheet = {
-    data, formats, writes: [], formatCalls: [],
+    data, formats, writes: [], formatCalls: [], singleWrites: [],
     getLastRow(){
       let last = 0;
       data.forEach(function(r, i){ if (r.some(function(v){ return v !== ''; })) last = i + 1; });
@@ -51,6 +51,12 @@ function makeSheet(rows){
           }
           return out;
         },
+        setValue(value){
+          while (data.length < row) data.push(['', '', '', '', '', '']);
+          while (data[row - 1].length < col) data[row - 1].push('');
+          data[row - 1][col - 1] = value;
+          sheet.singleWrites.push({ row, col, value });
+        },
         setNumberFormat(fmt){
           for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) formats[(row + i) + ',' + (col + j)] = fmt;
           sheet.formatCalls.push({ row, col, nr, nc, fmt });
@@ -60,7 +66,7 @@ function makeSheet(rows){
           const snapshot = [];
           for (let i = 0; i < nr; i++){
             assert.equal(values[i].length, nc);
-            while (data.length < row + i) data.push(['', '', '', '', '']);
+            while (data.length < row + i) data.push(['', '', '', '', '', '']);
             const line = [];
             for (let j = 0; j < nc; j++){
               line.push(formats[(row + i) + ',' + (col + j)]);
@@ -179,8 +185,11 @@ test('parseScoreTsv reads BOM, CRLF and blank lines with original line numbers a
 
 test('parseScoreTsv reports wrong column count, empty title and empty score without keeping the row', function(){
   const w = makeWorld();
-  const count = w.ctx.COLUMN_COUNT;
-  const fourCols = colsFor('A').slice(0, count - 1).join('\t');
+  const min = w.ctx.MIN_COLUMN_COUNT;
+  const max = w.ctx.COLUMN_COUNT;
+  assert.equal(min, 5);
+  assert.equal(max, 6);
+  const fourCols = colsFor('A').slice(0, min - 1).join('\t');
   const noTitle = colsFor('').join('\t');
   const noScore = colsFor('C').slice(0, 4).concat(['']).join('\t');
   const bothEmpty = colsFor('').slice(0, 4).concat(['']).join('\t');
@@ -192,8 +201,14 @@ test('parseScoreTsv reports wrong column count, empty title and empty score with
   assert.equal(out.errors.length, 4);
   assert.equal(out.errors[0].file, 'bad.tsv');
   assert.equal(out.errors[0].line, 1);
-  assert.match(out.errors[0].message, new RegExp(String(count - 1)));
-  assert.match(out.errors[0].message, new RegExp(String(count)));
+  assert.match(out.errors[0].message, new RegExp(String(min - 1)));
+  assert.match(out.errors[0].message, new RegExp(String(min)));
+  assert.match(out.errors[0].message, new RegExp(String(max)));
+  // 7열 이상도 열 수 오류다
+  const seven = plain(w.ctx.parseScoreTsv(colsFor('S').concat(['tex', 'more']).join('\t'), 's.tsv'));
+  assert.equal(seven.rows.length, 0);
+  assert.equal(seven.errors.length, 1);
+  assert.match(seven.errors[0].message, /7개/);
   assert.equal(out.errors[1].line, 2);
   assert.match(out.errors[1].message, /제목/);
   assert.equal(out.errors[2].line, 3);
@@ -205,8 +220,9 @@ test('parseScoreTsv reports wrong column count, empty title and empty score with
 
 test('toCellRow writes beats and BPM as numbers and keeps everything else text', function(){
   const w = makeWorld();
-  assert.deepEqual(plain(w.ctx.toCellRow(['제목', '4', '80', '3/4', 'C4 - - -'])), ['제목', 4, 80, '3/4', 'C4 - - -']);
-  assert.deepEqual(plain(w.ctx.toCellRow(['123', 'abc', '8x', '12', '34'])), ['123', 'abc', '8x', '12', '34']);
+  assert.deepEqual(plain(w.ctx.toCellRow(['제목', '4', '80', '3/4', 'C4 - - -'])), ['제목', 4, 80, '3/4', 'C4 - - -', '']);
+  assert.deepEqual(plain(w.ctx.toCellRow(['123', 'abc', '8x', '12', '34'])), ['123', 'abc', '8x', '12', '34', '']);
+  assert.deepEqual(plain(w.ctx.toCellRow(['제목', '4', '80', '3/4', 'C4 - - -', '\\title "x"'])), ['제목', 4, 80, '3/4', 'C4 - - -', '\\title "x"']);
   const out = w.ctx.toCellRow(colsFor('T'));
   assert.equal(typeof out[0], 'string');
   assert.equal(typeof out[1], 'number');
@@ -277,8 +293,8 @@ const seq = worldWithFiles([
   makeFile('idA', 'A.tsv', rowFor('A', 'from file A') + '\n'),
   makeFile('idB', 'B.tsv', rowFor('B', 'from file B') + '\n')
 ], [HEADER, ['A', '4', '80', 'old desc', 'old score']]);
-const expectedA = [colsFor('A')[0], Number(exampleCols[1]), Number(exampleCols[2]), 'from file A', exampleCols[4]];
-const expectedB = ['B', Number(exampleCols[1]), Number(exampleCols[2]), 'from file B', exampleCols[4]];
+const expectedA = [colsFor('A')[0], Number(exampleCols[1]), Number(exampleCols[2]), 'from file A', exampleCols[4], ''];
+const expectedB = ['B', Number(exampleCols[1]), Number(exampleCols[2]), 'from file B', exampleCols[4], ''];
 
 test('first run overwrites the matching title, appends new ones, formats text columns before values and records stamps', function(){
   seq.ctx.importScoresFromMenu();
@@ -421,6 +437,67 @@ test('a lock that cannot be taken returns busy without touching the sheet', func
   w.ctx.importScoresFromMenu();
   assert.match(w.alerts[0], /진행 중/);
   assert.equal(w.sheet.data.length, 1);
+});
+
+const TEX_A = '\\title "A" \\tempo 80 \\ts (4 4) 0.1.4 0.2.4 0.3.4 0.4.4 |';
+const TEX_B = '\\title "B" \\tempo 90 \\ts (4 4) 0.1.4 0.2.4 0.3.4 0.4.4 |';
+function rowWithTex(title, description, tex){ return colsFor(title, description).concat([tex]).join('\t'); }
+
+test('a 6-column row writes the alphaTex to column F as text, a 5-column row clears a leftover F, and F1 gets the header when it is empty', function(){
+  const w = worldWithFiles([
+    makeFile('idA', 'A.tsv', '﻿' + rowWithTex('A', 'with tex', TEX_A) + '\n'),
+    makeFile('idB', 'B.tsv', rowFor('B', 'no tex') + '\n')
+  ], [HEADER, ['B', '4', '80', 'old', 'old score', 'STALE TEX']]);
+  w.ctx.importScoresFromMenu();
+  assert.equal(w.sheet.data[0][5], w.ctx.TEX_HEADER, 'F1 header');
+  assert.equal(w.ctx.TEX_HEADER, 'alphaTex');
+  assert.deepEqual(plain(w.sheet.singleWrites), [{ row: 1, col: 6, value: 'alphaTex' }]);
+  assert.deepEqual(plain(w.sheet.data[2]).slice(0, 6), ['A', Number(exampleCols[1]), Number(exampleCols[2]), 'with tex', exampleCols[4], TEX_A]);
+  assert.equal(w.sheet.data[1][5], '', 'a 5-column file clears the old alphaTex of its row');
+  assert.equal(w.sheet.data[1][3], 'no tex');
+  w.sheet.writes.forEach(function(write){
+    write.formatsAtWrite.forEach(function(line){ assert.equal(line[5], '@', 'F has the text format when the value is written'); });
+    assert.equal(write.nc, w.ctx.COLUMN_COUNT);
+  });
+  // 이미 있는 F1 머리글은 건드리지 않는다
+  const kept = worldWithFiles([makeFile('idA', 'A.tsv', rowWithTex('A', 'd', TEX_A) + '\n')], [HEADER.concat(['내 머리글'])]);
+  kept.ctx.importScoresFromMenu();
+  assert.equal(kept.sheet.data[0][5], '내 머리글');
+  assert.equal(kept.sheet.singleWrites.length, 0);
+  // alphaTex 를 쓰는 행이 없으면 머리글도 쓰지 않는다
+  const plainOnly = worldWithFiles([makeFile('idB', 'B.tsv', rowFor('B') + '\n')], [HEADER]);
+  plainOnly.ctx.importScoresFromMenu();
+  assert.equal(plainOnly.sheet.singleWrites.length, 0);
+});
+
+test('a file whose only change is the alphaTex column is written again, an unchanged file is not', function(){
+  const w = worldWithFiles([makeFile('idA', 'A.tsv', rowWithTex('A', 'same', TEX_A) + '\n')], [HEADER]);
+  w.ctx.importScoresFromMenu();
+  assert.equal(w.sheet.data[1][5], TEX_A);
+  const writes = w.sheet.writes.length;
+  w.ctx.importScoresFromMenu();
+  assert.equal(w.sheet.writes.length, writes, 'nothing changed, nothing written');
+  w.folders[0].files[0].text = rowWithTex('A', 'same', TEX_B) + '\n';
+  w.folders[0].files[0].updated = new Date(2026, 9, 3, 12, 0, 0);
+  w.ctx.importScoresFromMenu();
+  assert.equal(w.sheet.writes.length, writes + 1);
+  assert.equal(w.sheet.data[1][5], TEX_B);
+  assert.equal(w.sheet.data[1][3], 'same');
+});
+
+test('an alphaTex over the cell limit empties only column F and is logged, the other columns are imported', function(){
+  const limit = 50000;
+  const w = worldWithFiles([
+    makeFile('idBig', 'big.tsv', rowWithTex('Big', 'big desc', 'x'.repeat(limit + 1)) + '\n'),
+    makeFile('idEdge', 'edge.tsv', rowWithTex('Edge', 'edge desc', 'y'.repeat(limit)) + '\n')
+  ], [HEADER]);
+  assert.equal(w.ctx.TEX_CELL_LIMIT, limit);
+  w.ctx.importScoresFromMenu();
+  assert.deepEqual(plain(w.sheet.data[1]), ['Big', Number(exampleCols[1]), Number(exampleCols[2]), 'big desc', exampleCols[4], '']);
+  assert.equal(w.sheet.data[2][5], 'y'.repeat(limit), 'exactly the limit is kept');
+  assert.equal(w.logs.filter(function(line){ return /Big/.test(line) && /50000/.test(line) && /big\.tsv/.test(line); }).length, 1, w.logs.join('\n'));
+  assert.equal(w.logs.filter(function(line){ return /Edge/.test(line); }).length, 0);
+  assert.match(w.alerts[0], /추가 2곡/);
 });
 
 process.stdout.write('1..' + checks + '\n');

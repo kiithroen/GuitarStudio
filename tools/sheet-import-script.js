@@ -6,9 +6,12 @@
 var FOLDER_NAME = 'GuitarScores';
 var SHEET_NAME = '';            // 비우면 첫 탭
 var TRIGGER_MINUTES = 5;        // everyMinutes 는 1, 5, 10, 15, 30 만 받는다
-var COLUMN_COUNT = 5;
+var MIN_COLUMN_COUNT = 5;       // 제목, 칸 수, BPM, 설명, 악보
+var COLUMN_COUNT = 6;           // 선택으로 F열에 alphaTex 원본이 더해진다
+var TEX_HEADER = 'alphaTex';
+var TEX_CELL_LIMIT = 50000;     // 셀 한 칸에 들어가는 글자 수의 한도. 넘으면 F열을 비운다
 var PROP_PREFIX = 'tsv:';
-var TEXT_COLUMNS = [0, 3, 4];   // 0부터 센 A, D, E 열. 일반 텍스트 서식으로 쓴다
+var TEXT_COLUMNS = [0, 3, 4, 5]; // 0부터 센 A, D, E, F 열. 일반 텍스트 서식으로 쓴다
 
 // TSV 한 파일의 텍스트를 줄 단위로 읽는다. 문법 검사는 하지 않고 열 모양만 본다.
 function parseScoreTsv(text, fileName) {
@@ -22,11 +25,11 @@ function parseScoreTsv(text, fileName) {
     if (raw.trim() === '') continue;
     var lineNo = i + 1;
     var cols = raw.split('\t');
-    if (cols.length !== COLUMN_COUNT) {
+    if (cols.length !== MIN_COLUMN_COUNT && cols.length !== COLUMN_COUNT) {
       errors.push({
         file: fileName,
         line: lineNo,
-        message: '탭으로 나뉜 열이 ' + cols.length + '개입니다. ' + COLUMN_COUNT + '개여야 합니다.'
+        message: '탭으로 나뉜 열이 ' + cols.length + '개입니다. ' + MIN_COLUMN_COUNT + '개 또는 ' + COLUMN_COUNT + '개여야 합니다.'
       });
       continue;
     }
@@ -49,8 +52,16 @@ function numOrText(value) {
 }
 
 // 칸 수와 BPM 만 숫자로 쓴다. 값 범위는 앱이 검사한다.
+// F열(alphaTex)은 5열 행이면 빈 칸으로 쓰고(전에 있던 값을 지운다), 셀 한도를 넘으면 그 열만 비운다.
 function toCellRow(cols) {
-  return [cols[0], numOrText(cols[1]), numOrText(cols[2]), cols[3], cols[4]];
+  var tex = cols.length > MIN_COLUMN_COUNT ? cols[5] : '';
+  if (tex.length > TEX_CELL_LIMIT) tex = '';
+  return [cols[0], numOrText(cols[1]), numOrText(cols[2]), cols[3], cols[4], tex];
+}
+
+// 시트에 쓸 행의 alphaTex 가 셀 한도를 넘는지
+function texOverLimit(cols) {
+  return cols.length > MIN_COLUMN_COUNT && cols[5].length > TEX_CELL_LIMIT;
 }
 
 // 시트 상태와 읽은 행들로 어느 행을 덮어쓰고 무엇을 추가할지 정한다.
@@ -58,6 +69,7 @@ function planImport(sheetTitles, headerTitle, entries) {
   var updates = [];
   var appends = [];
   var duplicates = [];
+  var oversized = [];
   var unchanged = 0;
 
   var rest = entries.filter(function (e) { return e.cols[0] !== headerTitle; });
@@ -88,12 +100,13 @@ function planImport(sheetTitles, headerTitle, entries) {
       unchanged++;
       return;
     }
+    if (texOverLimit(e.cols)) oversized.push({ file: e.file, line: e.line, title: title, length: e.cols[5].length });
     var index = sheetTitles.indexOf(title);
     if (index >= 0) updates.push({ row: index + 2, values: toCellRow(e.cols) });
     else appends.push(toCellRow(e.cols));
   });
 
-  return { updates: updates, appends: appends, duplicates: duplicates, unchanged: unchanged };
+  return { updates: updates, appends: appends, duplicates: duplicates, oversized: oversized, unchanged: unchanged };
 }
 
 function summarize(result) {
@@ -226,6 +239,17 @@ function runImport_() {
     }
 
     var plan = planImport(sheetTitles, headerTitle, entries);
+
+    plan.oversized.forEach(function (o) {
+      console.log(o.file + ' ' + o.line + '행 "' + o.title + '": alphaTex가 ' + o.length + '자로 셀 한도(' + TEX_CELL_LIMIT + '자)를 넘어 F열을 비웠습니다.');
+    });
+    // 쓰는 행에 alphaTex 가 있고 머리 행 F1 이 비었으면 머리글을 적는다.
+    var writesTex = plan.updates.concat(plan.appends.map(function (values) { return { values: values }; })).some(function (u) {
+      return u.values[5] !== '';
+    });
+    if (writesTex && String(sheet.getRange(1, 6).getValue()).trim() === '') {
+      sheet.getRange(1, 6).setValue(TEX_HEADER);
+    }
 
     plan.updates.forEach(function (u) {
       writeRows_(sheet, u.row, [u.values]);

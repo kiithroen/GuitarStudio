@@ -2305,8 +2305,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=alphatab-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=alphatab-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=alphatab-2')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=alphatab-2">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -5111,11 +5111,198 @@ async function testAlphaTabView(client, httpPort) {
   process.stdout.write('Browser checkpoint: alphaTab view (practice button hand-off, alphatab.html render, view switch, play/pause, dark and 375px layout) passed\n');
 }
 
+// 원본 alphaTex가 있는 곡(시트 6열): 보기 창이 그 alphaTex를 그대로 그리고, 앱에서 고치면 제자리 초안이 아니라 우리 악보 사본이 된다.
+async function testAlphaTexSongs(client, httpPort) {
+  const VIEW_KEY = 'gs.alphaTab.view';
+  const HANDOFF_KEY = 'gs.tabInput.handoff';
+  const practiceUrl = `http://127.0.0.1:${httpPort}/index.html`;
+  const viewUrl = `http://127.0.0.1:${httpPort}/alphatab.html`;
+  const practiceReady = 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= ' + builtinSongCount + ' && window.curSong != null';
+  const viewSettled = 'document.readyState === "complete" && ["ready","empty","error"].indexOf(document.body.getAttribute("data-at-state")) >= 0';
+  const errorsBefore = client.consoleErrors.length;
+  async function navigate(url, ready, timeoutMs) {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await client.send('Page.navigate', { url });
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, ready, timeoutMs || 8000);
+  }
+  const setKey = value => client.evaluate(`localStorage.setItem(${JSON.stringify(VIEW_KEY)}, ${JSON.stringify(JSON.stringify(value))}); true`);
+  const viewState = () => client.evaluate(`({ state: document.body.getAttribute('data-at-state'), status: document.getElementById('atStatus').textContent,
+    label: document.getElementById('atSource').textContent, labelHidden: document.getElementById('atSource').hidden, source: document.getElementById('atSource').getAttribute('data-source'),
+    bars: document.getElementById('atHost').getAttribute('data-bars') })`);
+
+  // 우리 악보와 눈에 띄게 다른 원본: 마디 3개(우리 악보는 2개)와 우리 악보에 없는 제목
+  const plainLines = lines => lines.map(line => line.replace(/ \| ""$/, '')); // serializeScoreMeasures는 빈 메모를 | ""로 쓴다
+  const FIXTURE_ID = 'sheet-song-alphatex-fixture';
+  const FIXTURE_LINES = ['[C] C4 - - -', '[G] G3 - - -'];
+  const FIXTURE_BADGE = 'Capo 2 시트 설명';
+  const TEX = '\\title "Only In Tex" \\tempo 70 \\ts (4 4)\n0.1.4 0.2.4 0.3.4 0.4.4 |\n0.1.4 0.2.4 0.3.4 0.4.4 |\n0.1.1 |\n';
+  const BROKEN_TEX = '\\title "Broken" \\tempo 70 \\ts (4 4)\n!!! nonsense\n';
+
+  await navigate(practiceUrl, practiceReady);
+  await client.evaluate(`localStorage.removeItem(${JSON.stringify(VIEW_KEY)}); localStorage.removeItem(${JSON.stringify(HANDOFF_KEY)}); window.__opens = []; window.open = function(url){ window.__opens.push(String(url)); return {}; }; true`);
+  const fixture = await client.evaluate(`(function(){
+    var spec = buildStructuredSong({ id:${JSON.stringify(FIXTURE_ID)}, title:'Sheet fixture', badge:${JSON.stringify(FIXTURE_BADGE)}, builtin:false, bpm:70, beats:4, lines:${JSON.stringify(FIXTURE_LINES)} });
+    spec.fromSheet = true;
+    spec.alphaTex = ${JSON.stringify(TEX)};
+    sheetSongs = [spec];
+    rebuildSongSelect(spec.id);
+    return { id:curSong.id, alphaTex:curSong.alphaTex, status:scoreDrafts.status(curSong.id), editTitle:document.getElementById('editInInputBtn').title };
+  })()`);
+  assert.equal(fixture.id, FIXTURE_ID, 'the sheet fixture song is the current song');
+  assert.equal(fixture.alphaTex, TEX, 'the alphaTex survives the draft store and reaches the current song');
+  assert.equal(fixture.editTitle, '악보 입력 화면에서 고치면 우리 악보 사본으로 저장됩니다', 'the edit button explains that an alphaTex song is saved as a copy');
+
+  // 1. 단추: 원본이면 alphaTex와 설명을 넘긴다
+  await client.evaluate(`document.getElementById('openAlphaTabBtn').click(); true`, { userGesture: true });
+  const original = await client.evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(VIEW_KEY)}))`);
+  assert.equal(original.alphaTex, TEX, 'an unmodified alphaTex song hands the alphaTex over');
+  assert.equal(original.description, FIXTURE_BADGE, 'the description is the song badge (the sheet description column)');
+  assert.deepEqual(plainLines(original.lines), FIXTURE_LINES);
+
+  // 2. 고친 초안은 alphaTex를 넘기지 않는다(앱은 alphaTex 곡에 초안을 만들지 않지만, 만들어졌다면 원본과 다르니 넘기지 않는다)
+  const forcedDraft = await client.evaluate(`(function(){
+    scoreDrafts.replaceScore(sheetSongs[0], ['[C] D4 - - -', '[G] G3 - - -'], {});
+    rebuildSongSelect(${JSON.stringify(FIXTURE_ID)});
+    var draft = scoreDrafts.status(curSong.id);
+    document.getElementById('openAlphaTabBtn').click();
+    var stored = JSON.parse(localStorage.getItem(${JSON.stringify(VIEW_KEY)}));
+    scoreDrafts.reset(${JSON.stringify(FIXTURE_ID)});
+    rebuildSongSelect(${JSON.stringify(FIXTURE_ID)});
+    return { dirty:draft.dirty, hasAlphaTex:'alphaTex' in stored, lines:stored.lines, description:stored.description, restored:curSong.alphaTex, restoredDirty:scoreDrafts.status(curSong.id).dirty };
+  })()`);
+  assert.equal(forcedDraft.dirty, true, 'the forced edit is a draft');
+  assert.equal(forcedDraft.hasAlphaTex, false, 'a modified draft does not hand the alphaTex over');
+  assert.deepEqual(plainLines(forcedDraft.lines), ['[C] D4 - - -', '[G] G3 - - -'], 'the draft hands its current score lines');
+  assert.equal(forcedDraft.description, FIXTURE_BADGE);
+  assert.deepEqual([forcedDraft.restored, forcedDraft.restoredDirty], [TEX, false], 'reverting the draft brings the alphaTex song back');
+
+  // 3. 입력 화면에서 고쳐 돌아오면 사본이 새로 생기고 선택된다. 원래 곡은 그대로다.
+  const editedLines = ['[C] E4 - - -', '[G] G3 - - -'];
+  function consumeHandoff(sourceId, lines, beats) {
+    return client.evaluate(`(function(){
+      localStorage.setItem(${JSON.stringify(HANDOFF_KEY)}, JSON.stringify({ sourceId:${JSON.stringify(sourceId)}, title:'not used', beats:${beats || 4}, bpm:70, badge:'', lines:${JSON.stringify(lines)}, key:0, savedAt:Date.now() }));
+      var id = scoreEditorHooks.consumeTabInputHandoff(BUILTIN_SONGS.concat(sheetSongs));
+      rebuildSongSelect(id);
+      var status = document.getElementById('storageStatus');
+      var option = document.getElementById('songSelect').selectedOptions[0];
+      var source = sheetSongs.find(function(song){ return song.id === ${JSON.stringify(FIXTURE_ID)}; });
+      var draft = scoreDrafts.status(curSong.id);
+      return { id:id, selected:document.getElementById('songSelect').value, curId:curSong.id, title:curSong.title, badge:curSong.badge, bpm:curSong.bpm, beats:curSong.beats, capo:GuitarParser.getSongCapo(curSong),
+        hasAlphaTex:'alphaTex' in curSong, lines:serializeScoreMeasures(curSong.measures, '\\n').split('\\n'), group:option && option.parentElement ? option.parentElement.label : null,
+        draft:{ dirty:draft.dirty, temporary:draft.temporary, origin:draft.origin }, statusText:status.textContent, statusShown:!status.hidden, handoffLeft:localStorage.getItem(${JSON.stringify(HANDOFF_KEY)}),
+        sourceTitle:source && source.title, sourceAlphaTex:source && source.alphaTex, sourceLines:source ? serializeScoreMeasures(source.measures, '\\n').split('\\n') : null,
+        sourceDraft:scoreDrafts.status(${JSON.stringify(FIXTURE_ID)}), sourceCapo:source ? GuitarParser.getSongCapo(source) : null };
+    })()`);
+  }
+  const first = await consumeHandoff(FIXTURE_ID, editedLines);
+  assert.notEqual(first.id, FIXTURE_ID, 'the edit does not open as the original song id');
+  assert.equal(first.selected, first.id, 'the copy is selected in the song list');
+  assert.equal(first.title, 'Sheet fixture (사본)', 'the copy title is "<original title> (사본)"');
+  assert.equal(first.hasAlphaTex, false, 'the copy carries no alphaTex');
+  assert.deepEqual(plainLines(first.lines), editedLines, 'the copy holds the edited score');
+  assert.deepEqual([first.badge, first.bpm, first.beats, first.capo], [FIXTURE_BADGE, 70, 4, first.sourceCapo], 'description, BPM, cell count and capo come from the original song');
+  assert.equal(first.capo, 2);
+  assert.equal(first.group, '임시 악보', 'the copy is saved the same way as a new score from the input screen');
+  assert.deepEqual(first.draft, { dirty: false, temporary: true, origin: 'tab-input' });
+  assert.equal(first.statusText, '원본이 alphaTex인 곡이라 고친 내용을 사본 「Sheet fixture (사본)」으로 저장했습니다.');
+  assert.equal(first.statusShown, true);
+  assert.equal(first.handoffLeft, null, 'the hand-off key is consumed');
+  assert.equal(first.sourceTitle, 'Sheet fixture', 'the original keeps its title');
+  assert.equal(first.sourceAlphaTex, TEX, 'the original keeps its alphaTex');
+  assert.deepEqual(plainLines(first.sourceLines), FIXTURE_LINES, 'the original keeps its score lines');
+  assert.deepEqual([first.sourceDraft.dirty, first.sourceDraft.temporary], [false, false], 'the original has no draft');
+
+  // 4. 사본에서 alphaTab 단추 -> 우리 악보에서 만든 미리보기용 값(alphaTex 없음)
+  await client.evaluate(`document.getElementById('storageStatus').hidden = true; document.getElementById('openAlphaTabBtn').click(); true`, { userGesture: true });
+  const copyPayload = await client.evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(VIEW_KEY)}))`);
+  assert.equal('alphaTex' in copyPayload, false, 'a copy hands no alphaTex over');
+  assert.equal(copyPayload.title, 'Sheet fixture (사본)');
+  assert.deepEqual(plainLines(copyPayload.lines), editedLines);
+
+  // 5. 같은 제목이 이미 있으면 번호를 붙인다
+  const second = await consumeHandoff(FIXTURE_ID, ['[C] F4 - - -', '[G] G3 - - -']);
+  assert.equal(second.title, 'Sheet fixture (사본 2)');
+  assert.equal(second.statusText, '원본이 alphaTex인 곡이라 고친 내용을 사본 「Sheet fixture (사본 2)」으로 저장했습니다.');
+  const third = await consumeHandoff(FIXTURE_ID, ['[C] G4 - - -', '[G] G3 - - -']);
+  assert.equal(third.title, 'Sheet fixture (사본 3)');
+  assert.notEqual(new Set([first.id, second.id, third.id]).size, 2, 'every copy is its own song');
+  assert.equal(new Set([first.id, second.id, third.id]).size, 3);
+  assert.deepEqual([third.sourceAlphaTex, plainLines(third.sourceLines)], [TEX, FIXTURE_LINES], 'the original is still untouched after several copies');
+
+  // 5-2. 칸 수를 바꿔 돌아와도 같은 사본 규칙이다(기존의 "새 임시 악보" 경로로 가지 않는다)
+  const resized = await consumeHandoff(FIXTURE_ID, ['[C] C4 - -', '[G] G3 - -'], 3);
+  assert.equal(resized.title, 'Sheet fixture (사본 4)', 'a cell-count change still makes a numbered copy of the original, not a copy of the hand-off title');
+  assert.equal(resized.statusText, '원본이 alphaTex인 곡이라 고친 내용을 사본 「Sheet fixture (사본 4)」으로 저장했습니다.');
+  assert.equal(resized.beats, 3, 'the copy has the edited cell count');
+  assert.deepEqual(plainLines(resized.lines), ['[C] C4 - -', '[G] G3 - -']);
+  assert.equal(resized.hasAlphaTex, false);
+  assert.deepEqual([resized.badge, resized.capo, resized.group], [FIXTURE_BADGE, 2, '임시 악보']);
+  assert.notEqual(resized.id, FIXTURE_ID);
+  assert.equal(resized.selected, resized.id);
+  assert.deepEqual([resized.sourceAlphaTex, plainLines(resized.sourceLines)], [TEX, FIXTURE_LINES], 'the original is untouched');
+
+  // 6. alphaTex가 없는 곡은 지금처럼 제자리 수정 초안이다
+  const butterfly = builtinSongsJson.find(item => item.id === 'builtin-lv1-butterfly');
+  const butterflyLines = butterfly.lines.slice();
+  butterflyLines[0] = butterflyLines[0] === '[C] C4 - - -' ? '[C] D4 - - -' : '[C] C4 - - -';
+  const inPlace = await client.evaluate(`(function(){
+    localStorage.setItem(${JSON.stringify(HANDOFF_KEY)}, JSON.stringify({ sourceId:'builtin-lv1-butterfly', title:'not used', beats:${butterfly.beats}, bpm:${butterfly.bpm}, badge:'', lines:${JSON.stringify(butterflyLines)}, key:0, savedAt:Date.now() }));
+    document.getElementById('storageStatus').hidden = true;
+    var id = scoreEditorHooks.consumeTabInputHandoff(BUILTIN_SONGS.concat(sheetSongs));
+    rebuildSongSelect(id);
+    var draft = scoreDrafts.status(curSong.id);
+    return { id:id, title:curSong.title, draft:{ dirty:draft.dirty, temporary:draft.temporary, origin:draft.origin }, editTitle:document.getElementById('editInInputBtn').title,
+      storageHidden:document.getElementById('storageStatus').hidden, copies:allSongs.filter(function(song){ return /\\(사본/.test(song.title) && song.title.indexOf(${JSON.stringify(butterfly.title)}) === 0; }).length };
+  })()`);
+  assert.equal(inPlace.id, 'builtin-lv1-butterfly', 'a song without alphaTex is still edited in place');
+  assert.equal(inPlace.title, butterfly.title);
+  assert.deepEqual(inPlace.draft, { dirty: true, temporary: false, origin: 'tab-input' });
+  assert.equal(inPlace.copies, 0, 'no copy is made');
+  assert.equal(inPlace.storageHidden, true, 'no copy message for an in-place draft');
+  assert.equal(inPlace.editTitle, '악보 입력 화면에서 이 곡을 고칩니다', 'the edit button keeps its normal title');
+  await client.evaluate(`scoreDrafts.reset('builtin-lv1-butterfly'); true`);
+
+  // 7. 보기 창: 원본 alphaTex는 변환 없이 그대로 읽는다(마디 3개, 우리 악보는 2개)
+  await setKey(original);
+  await navigate(viewUrl, viewSettled, 45000);
+  let view = await viewState();
+  assert.equal(view.state, 'ready', 'the original alphaTex rendered: ' + JSON.stringify(view));
+  assert.equal(view.label, '원본 alphaTex');
+  assert.equal(view.source, 'original');
+  assert.equal(view.labelHidden, false);
+  assert.equal(view.bars, '3', 'the view drew the alphaTex itself (3 bars), not the 2-bar score of the song');
+  assert.equal(view.status, '', 'no status line text when everything went well');
+
+  // 8. 사본(alphaTex 없음)은 우리 악보에서 만든 미리보기
+  await setKey(copyPayload);
+  await navigate(viewUrl, viewSettled, 45000);
+  view = await viewState();
+  assert.equal(view.state, 'ready');
+  assert.equal(view.label, '우리 악보에서 만든 미리보기');
+  assert.equal(view.source, 'converted');
+  assert.equal(view.bars, String(editedLines.length));
+
+  // 9. 원본이 alphaTab 오류면 상태 줄에 알리고 변환 미리보기로 대신 그린다
+  await setKey(Object.assign({}, original, { alphaTex: BROKEN_TEX }));
+  await navigate(viewUrl, viewSettled, 45000);
+  view = await viewState();
+  assert.equal(view.state, 'ready', 'the fallback preview rendered');
+  assert.equal(view.label, '우리 악보에서 만든 미리보기');
+  assert.equal(view.bars, String(FIXTURE_LINES.length));
+  assert.match(view.status, /^원본 alphaTex를 alphaTab이 읽지 못해 우리 악보에서 만든 미리보기로 대신 그렸습니다/, 'the status line says why the preview was drawn instead');
+
+  await client.evaluate(`localStorage.removeItem(${JSON.stringify(VIEW_KEY)}); true`);
+  await navigate(practiceUrl, practiceReady);
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'no console errors for alphaTex songs');
+  process.stdout.write('Browser checkpoint: alphaTex songs (original alphaTex drawn as is, copy instead of draft, numbered copies, in-place draft without alphaTex, fallback preview) passed\n');
+}
+
 async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=alphatab-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=alphatab-2')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -5636,6 +5823,7 @@ async function main() {
     await testRollMarks(cdp, httpPort);
     await testRollInput(cdp, httpPort);
     await testAlphaTabView(cdp, httpPort);
+    await testAlphaTexSongs(cdp, httpPort);
 
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');

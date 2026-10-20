@@ -34,10 +34,11 @@ alphaTab 보기 창은 `app.js` 없이 따로 스크립트를 부른다. 구성�
 | 파일 | 역할 |
 |---|---|
 | `src/score-to-alphatex.js` | 텍스트 악보 → alphaTex 변환기(`GuitarAlphaTex`). `GuitarStaffLayout.layoutScore` 결과만 쓴다 |
-| `alphatab.html`, `src/alphatab-view.js` | 새 탭 alphaTab 보기 창. `gs.alphaTab.view`를 읽어 변환하고 플레이어를 띄운다. 불러오는 스크립트는 notation·rhythm·parser·staff-layout·score-to-alphatex·vendor alphaTab 순이다 |
+| `alphatab.html`, `src/alphatab-view.js` | 새 탭 alphaTab 보기 창. `gs.alphaTab.view`를 읽어(곡에 원본 `alphaTex`가 있으면 그대로, 없으면 변환해) 플레이어를 띄운다. 불러오는 스크립트는 notation·rhythm·parser·staff-layout·score-to-alphatex·vendor alphaTab 순이다 |
 | `vendor/alphatab/` | alphaTab 1.8.4(MPL-2.0) 배포본. 고치지 않는다. 앱 기본 화면은 불러오지 않고 보기 창에서만 쓴다 |
 | `tools/score-to-alphatex.js` | 시트 한 행 TSV·내장곡 → alphaTex 명령줄 도구(`GuitarAlphaTex.toAlphaTex`만 쓴다). 사용법은 [alphaTab 보기](alphatab.md#명령줄-도구) |
 | `tools/alphatab-to-score.js` | alphaTex·Guitar Pro·MusicXML → 시트 한 행 TSV 명령줄 도구(vendor alphaTab을 Node에서 `require`). 가져오기 규칙과 한계는 [alphaTab 보기](alphatab.md#명령줄-도구) |
+| `tools/build-scores.js` | 폴더의 `.tex` 원본 → 시트용 6열 TSV(`곡.tsv`) 도구. 흐름은 [alphaTab 보기](alphatab.md#원본은-alphatex) |
 
 악보 입력 화면 `score-input.html`은 `app.js` 없이 따로 스크립트를 부른다. 구성과 결정은 [악보 입력](tab-input.md)에 있다. 2026-10-19 결정: 두 화면이 같이 쓰는 색 토큰과 기본 컨트롤 스타일(`:root`, `.btn`, `.panel`, `.badge` 등)을 `index.html` 인라인 스타일에서 `src/base.css`로 옮겼다. `index.html`은 `<style>` 앞에서 불러 캐스케이드 순서를 지킨다. 같은 날 `app.js` 맨 위의 설정 상태와 오디오 런타임 전역도 `src/app-state.js`로 옮겼다. 입력 화면이 `audio.js`로 음을 들려주려면 이 전역이 있어야 하는데, 복사하면 마스터 음량 같은 값이 두 군데가 되기 때문이다.
 
@@ -96,13 +97,14 @@ alphaTab 보기 창은 `app.js` 없이 따로 스크립트를 부른다. 구성�
 `tools/sheet-import-script.js`는 앱이 아니라 Google Sheets의 Apps Script 편집기에 붙여 넣어 도는 스크립트다. 드라이브의 `FOLDER_NAME` 폴더에서 `.tsv`를 모두 읽어 시트 첫 탭(또는 `SHEET_NAME`)에 넣는다. 쓰는 법은 [사용 안내](usage.md#드라이브-폴더에서-자동으로-가져오기)에 있다.
 
 - Apps Script 런타임에서 그대로 돌아야 해서 `require`·`module`·`import`를 쓰지 않고 최상위 함수 선언만 둔다. `test/test-sheet-import-script.js`가 `vm`으로 파일을 읽고 `SpreadsheetApp`·`DriveApp`·`PropertiesService`·`LockService`·`ScriptApp`을 가짜로 넣어 돌린다.
-- 악보 문법은 검사하지 않는다. 문법은 `src/notation.js`가 SSOT라 스크립트에 옮기지 않고, 앱이 시트를 읽을 때와 `tools/check-score.js`가 검사한다. 스크립트는 한 줄이 탭으로 나뉜 5열인지, 제목과 악보가 비지 않았는지만 본다.
+- 악보 문법은 검사하지 않는다. 문법은 `src/notation.js`가 SSOT라 스크립트에 옮기지 않고, 앱이 시트를 읽을 때와 `tools/check-score.js`가 검사한다. 스크립트는 한 줄이 탭으로 나뉜 5열 또는 6열인지, 제목과 악보가 비지 않았는지만 본다.
 
 2026-10-20 결정:
 
 - 화면에서 드래그해 복사한 TSV는 클립보드에 탭이 빠진 HTML이 같이 실려서, 시트가 HTML을 골라 한 칸에 몰아넣었다. `Ctrl+Shift+V`로 피할 수는 있지만 곡마다 붙여 넣는 일이 번거로웠다. 앱은 GitHub Pages에서 돌아 로컬 파일을 못 읽고, 드라이브 파일을 브라우저에서 바로 읽으려면 Drive API 키가 필요하다. 그래서 앱은 지금처럼 시트만 읽고, 시트 쪽 Apps Script가 드라이브 폴더를 가져오게 했다.
 - 틀린 길: 앱이 로컬 TSV 폴더를 `python -m http.server`의 폴더 목록으로 읽는 안은 서버를 띄워 둬야 해서 버렸다.
-- 행은 제목으로 맞춘다. 앱은 E열부터 끝까지를 악보로 이어 읽어서(`src/sheets.js`의 `cols.slice(4)`) 출처 파일 같은 열을 더 둘 수 없다.
+- 행은 제목으로 맞춘다. 처음에는 앱이 E열부터 끝까지를 악보로 이어 읽어서(`src/sheets.js`의 `cols.slice(4)`) 출처 파일 같은 열을 더 둘 수 없었다.
+- 2026-10-20 결정(사용자): 시트 6번째 열(F열)에 원본 alphaTex를 둔다([alphaTab 보기](alphatab.md#원본은-alphatex)). 앱은 악보를 E열에서만 읽도록 `cols.slice(4, 5)`로 바꾸고 F열은 곡 객체의 `alphaTex`(`song.alphaTex`)로 싣는다. 이 값은 `scoreDrafts`가 곡을 복제해도 남아 연습 화면의 `curSong`까지 간다. 스크립트는 5열과 6열을 모두 받고, 행을 쓸 때 언제나 6열을 쓴다(5열 행은 F열을 비워 전에 있던 alphaTex를 지운다). F열도 일반 텍스트 서식으로 쓴다. 바뀐 행은 파일 단위 수정 시각(`PROP_PREFIX`)으로 가르므로 6번째 열만 바뀐 파일도 다시 쓴다. 셀 한 칸 한도(`TEX_CELL_LIMIT`)를 넘는 alphaTex는 그 열만 비우고 `console.log`로 남기며, 머리 행의 F1이 비어 있고 alphaTex를 쓰는 행이 있으면 `alphaTex`를 적는다. 스크립트를 시트에 다시 붙여 넣어야 반영된다.
 - 파일마다 마지막 수정 시각을 Script Properties(`PROP_PREFIX` + 파일 id)에 남기고 바뀐 파일의 행만 쓴다. 시트에서 직접 고친 행을 자동 실행이 매번 덮어쓰지 않게 하려는 것이다. 오류나 제목 중복이 있던 파일은 기록하지 않아 다음 실행에서 다시 본다.
 - 파일을 지워도 행은 지우지 않는다. 위 열 제약 때문에 시트에서 손으로 넣은 곡과 파일에서 온 곡을 구분할 수 없어서다.
 - 같은 제목이 여러 줄에 있으면 그 제목은 모두 건너뛴다. 어느 쪽이 맞는지 스크립트가 정하지 않는다.

@@ -145,6 +145,37 @@ try {
     pass('the last output line starts with the result summary');
   }
 
+  // 8. 6번째 열(alphaTex 원본)
+  {
+    const goodTex = '\\title "x" \\tempo 60 \\ts (4 4) 0.1.4 0.2.4 0.3.4 0.4.4 |';
+    const six = exampleRow + '\t' + goodTex;
+    const cli = runCli([writeFixture(six + '\n')]);
+    assert.equal(cli.status, 0, cli.all);
+    const direct = checkScore.checkScoreText(six, 'x');
+    assert.equal(direct.totals.errors, 0);
+    assert.equal(direct.rows.length, 1);
+
+    const badTex = exampleRow + '\t\\title "x" !!! nonsense';
+    const badCli = runCli([writeFixture(badTex + '\n')]);
+    assert.equal(badCli.status, 1, badCli.all);
+    assert.ok(badCli.stdout.includes('INVALID_ALPHATEX'), badCli.stdout);
+    const badDirect = checkScore.checkScoreText(badTex, 'x');
+    assert.deepEqual(errorCodes(badDirect), ['INVALID_ALPHATEX']);
+    assert.match(badDirect.output, /오류 1 · 경고/, 'the row header counts the alphaTex error');
+
+    // 악보 열이 틀린 것과 alphaTex 열이 틀린 것은 따로 센다
+    const bothBad = rowWith(2, '300') + '\t\\title "x" !!! nonsense';
+    assert.deepEqual(errorCodes(checkScore.checkScoreText(bothBad, 'x')), ['ROW_BPM']);
+    const badScore = rowWith(4, '[C] C4 H4 - -') + '\t' + goodTex;
+    assert.ok(errorCodes(checkScore.checkScoreText(badScore, 'x')).length > 0);
+
+    // 6번째 열이 비어 있어도 6열 행이다. 7열 이상은 열 수 오류다.
+    assert.equal(checkScore.checkScoreText(exampleRow + '\t', 'x').totals.errors, 0);
+    assert.deepEqual(errorCodes(checkScore.checkScoreText(six + '\textra', 'x')), ['ROW_COLUMNS']);
+    assert.match(checkScore.checkScoreText(six + '\textra', 'x').output, /5개 또는 6개/);
+    pass('six columns: a readable alphaTex passes, an unreadable one is INVALID_ALPHATEX, empty sixth column is fine, seven columns are ROW_COLUMNS');
+  }
+
   process.stdout.write('1..' + checks + '\n');
 } finally {
   fs.rmSync(tmpDir, { recursive: true, force: true });

@@ -30,6 +30,7 @@ function songFromTsv(text, label){
       beats: Number(cols[1].trim()),
       bpm: Number(cols[2].trim()),
       capo: parser.getSongCapo({ title: title, badge: badge }),
+      description: badge,
       lines: parser.splitScoreMeasures(cols[4].trim())
     }
   };
@@ -45,6 +46,7 @@ function songFromBuiltin(id){
       beats: found.beats,
       bpm: found.bpm,
       capo: parser.getSongCapo({ title: found.title, badge: found.badge }),
+      description: found.badge,
       lines: found.lines
     }
   };

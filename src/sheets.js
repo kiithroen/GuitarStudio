@@ -111,6 +111,7 @@
         var bpm = 64;
         var badge = '내 구글 시트 악보';
         var rawScoreParts = [];
+        var alphaTex = ''; // 6번째 열: 원본 alphaTex(선택). 곡 객체의 alphaTex 로 연습 화면까지 가서 alphaTab 보기 창이 그대로 읽는다.
 
         var c1 = (cols[1] || '').trim();
         if (c1.indexOf('[') === 0 || c1.indexOf('|') >= 0){
@@ -129,7 +130,8 @@
           beats = beatValue;
           bpm = bpmValue;
           badge = (cols[3] || '').trim() || ('구글 시트 연동곡 · ' + beats + '/4박자');
-          rawScoreParts = cols.slice(4);
+          rawScoreParts = cols.slice(4, 5);
+          alphaTex = (cols[5] || '').trim();
         }
 
         var rawJoined = rawScoreParts.map(function(x){ return (x || '').trim(); }).filter(Boolean).join('\n');
@@ -153,6 +155,7 @@
           lines: lines
         });
         song.fromSheet = true;
+        if (alphaTex) song.alphaTex = alphaTex;
         parsedSongs.push(song);
       });
 
