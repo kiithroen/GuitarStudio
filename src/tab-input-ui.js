@@ -104,10 +104,18 @@
   function articulationName(art){ return art === '!' ? 'apoyando' : (art === 'h' ? 'harmonic' : (art === 's' ? 'slur' : (art === 'g' ? 'slide' : null))); }
 
   // rolled 이면 연습 화면과 같은 rollDelays(src/guide.js) 순서와 간격으로 굴려 친다.
-  function playNotes(items, rolled){
+  // pos({m, c, s}, 그 음들이 든 조각)를 주면 슬라이드('g') 음이 연습 화면처럼 출발 음 높이에서 미끄러진다. 판정(T.slurLinks)이 실패한 음은 미끄럼 없이 친다.
+  function playNotes(items, rolled, pos){
     if (!ui.sound || !items.length) return;
     try {
       var capo = T.docCapo(doc);
+      var links = pos && items.some(function(item){ return item.note.art === 'g'; }) ? T.slurLinks(doc) : null;
+      var glideOptions = function(item){
+        if (!links || item.note.art !== 'g') return undefined;
+        var link = links[pos.m] && links[pos.m][pos.c] && links[pos.m][pos.c][pos.s] ? links[pos.m][pos.c][pos.s][item.str - 1] : null;
+        if (!link || !link.ok) return undefined;
+        return { glide: { fromMidi: soundingMidi(link.fromMidi, capo), sec: Math.min(SLIDE_GLIDE_SEC, ROLL_PLAY_SEC * SLIDE_MAX_SHARE) } };
+      };
       if (rolled && items.length >= 2){
         var now = ensureAudioCtx().currentTime;
         var timed = rollDelays(items.map(function(item){
@@ -115,12 +123,12 @@
         }), ROLL_PLAY_SEC);
         timed.forEach(function(entry){
           var item = entry.note.item;
-          playGuitarNote(soundingMidi(entry.note.midi, capo), ROLL_PLAY_SEC - entry.delay, now + entry.delay, null, articulationName(item.note.art), item.str);
+          playGuitarNote(soundingMidi(entry.note.midi, capo), ROLL_PLAY_SEC - entry.delay, now + entry.delay, null, articulationName(item.note.art), item.str, glideOptions(item));
         });
         return;
       }
       items.forEach(function(item){
-        playGuitarNote(soundingMidi(T.noteMidiOf(item.str, item.note), capo), ROLL_PLAY_SEC, null, null, articulationName(item.note.art), item.str);
+        playGuitarNote(soundingMidi(T.noteMidiOf(item.str, item.note), capo), ROLL_PLAY_SEC, null, null, articulationName(item.note.art), item.str, glideOptions(item));
       });
     } catch (error) {
       // 오디오가 없거나 실패해도 입력은 계속한다
@@ -560,9 +568,10 @@
         if (ui.inputMode === 'staff') btn.disabled = !S.harmonicTarget(doc, cursor, cursor.str).ok;
         else if (cursorNote.art !== 'h' && !T.isHarmonicFret(cursorNote.fret)) btn.disabled = true;
       }
-      if (attr === 'art' && btn.dataset.value === 's' && cursorNote && cursorNote.art !== 's'){
-        if (ui.inputMode === 'staff') btn.disabled = !S.slurTarget(doc, cursor, cursor.str).ok;
-        else btn.disabled = !T.slurCheck(doc, cursor, cursor.str).ok;
+      var linkArt = attr === 'art' && (btn.dataset.value === 's' || btn.dataset.value === 'g') ? btn.dataset.value : null;
+      if (linkArt && cursorNote && cursorNote.art !== linkArt){
+        if (ui.inputMode === 'staff') btn.disabled = !S.linkTarget(doc, cursor, cursor.str, linkArt).ok;
+        else btn.disabled = !T.linkCheck(doc, cursor, cursor.str, linkArt).ok;
       }
       btn.setAttribute('aria-pressed', String(cursorNote != null && current === btn.dataset.value));
     });
@@ -902,36 +911,36 @@
     apply(function(d){ return T.setNoteAttrs(d, pos, str, { art: 'h' }); }, { measures: [pos.m] });
   }
 
-  // 커서 음의 슬러(해머링·풀링)를 켜고 끈다. onlyOn 이면 이미 슬러인 음은 그대로 둔다(단추).
+  // 커서 음의 슬러(해머링·풀링, art 's')나 슬라이드(art 'g')를 켜고 끈다. onlyOn 이면 이미 그 주법인 음은 그대로 둔다(단추).
   // 오선 모드는 바로 앞 음과 이어지도록 필요하면 줄을 옮기고, 타브 모드는 줄을 옮기지 않는다(Docs/tab-input.md, Docs/staff-input.md).
-  function toggleSlur(onlyOn){
+  function toggleLink(art, onlyOn){
     var pos = copyPos(cursor);
     var str = cursor.str;
     var slot = T.getSlot(doc, pos);
     var note = slot ? slot.notes[str - 1] : null;
     if (!note){
-      setStatus('슬러로 바꿀 음이 없습니다.');
+      setStatus(T.LINK_ERRORS[art]['no-note']);
       return;
     }
-    if (note.art === 's'){
+    if (note.art === art){
       if (onlyOn) return;
       apply(function(d){ return T.setNoteAttrs(d, pos, str, { art: null }); }, { measures: [pos.m] });
       return;
     }
     if (ui.inputMode === 'staff'){
-      var result = apply(function(d){ return S.makeSlur(d, pos, str); }, {
+      var result = apply(function(d){ return S.makeLink(d, pos, str, art); }, {
         measures: [pos.m],
         onDone: function(res){ noteSel = { pos: pos, str: res.str }; cursor.str = res.str; }
       });
       if (result && result.ok === false) setStatus(result.error);
       return;
     }
-    var check = T.slurCheck(doc, pos, str);
+    var check = T.linkCheck(doc, pos, str, art);
     if (!check.ok){
       setStatus(check.error);
       return;
     }
-    apply(function(d){ return T.setNoteAttrs(d, pos, str, { art: 's' }); }, { measures: [pos.m] });
+    apply(function(d){ return T.setNoteAttrs(d, pos, str, { art: art }); }, { measures: [pos.m] });
   }
 
   function toggleUncertain(){
@@ -958,7 +967,7 @@
     if (result && result.ok === false) setStatus(T.ROLL_ERROR);
   }
 
-  function playSlot(){ playNotes(slotNotes(cursor), T.slotRollShown(T.getSlot(doc, cursor))); }
+  function playSlot(){ playNotes(slotNotes(cursor), T.slotRollShown(T.getSlot(doc, cursor)), copyPos(cursor)); }
 
   // ---------- 오선 입력 (계산은 src/staff-input.js, 규칙은 Docs/staff-input.md)
 
@@ -1959,7 +1968,7 @@
       if (btn.dataset.attr === 'art' && btn.dataset.value === 'h') btn.title = '자연 하모닉스(' + GuitarNotation.naturalHarmonicFretsText() + '프렛 음에서만)';
       btn.addEventListener('click', function(){
         if (btn.dataset.attr === 'art' && btn.dataset.value === 'h') toggleHarmonic(true);
-        else if (btn.dataset.attr === 'art' && btn.dataset.value === 's') toggleSlur(true);
+        else if (btn.dataset.attr === 'art' && (btn.dataset.value === 's' || btn.dataset.value === 'g')) toggleLink(btn.dataset.value, true);
         else setAttr(btn.dataset.attr, btn.dataset.value);
       });
     });
@@ -2061,7 +2070,12 @@
     else if (event.code === 'KeyS'){
       if (event.repeat) return;
       flushPending(true);
-      toggleSlur(false);
+      toggleLink('s', false);
+    }
+    else if (event.code === 'Slash' && !event.shiftKey){
+      if (event.repeat) return;
+      flushPending(true);
+      toggleLink('g', false);
     }
     else if (event.code === 'Backquote'){
       if (event.repeat) return;

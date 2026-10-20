@@ -14,7 +14,10 @@
   var RANGE_ERROR = '기타 음역(' + GuitarParser.noteNameForMidi(MIN_MIDI, false) + '~' + GuitarParser.noteNameForMidi(MAX_MIDI, false) + ') 밖입니다.';
   var NO_STRING_ERROR = '이 음을 칠 빈 줄이 없습니다.';
   var HARMONIC_ERROR = '하모닉스 음은 오선 입력으로 옮길 수 없습니다. 타브 입력에서 다시 넣으세요.';
-  var SLUR_STAFF_ERROR = '앞 음과 같은 줄에서 이을 수 있는 자리가 없어 슬러로 만들 수 없습니다.';
+  var LINK_STAFF_ERRORS = {
+    s: '앞 음과 같은 줄에서 이을 수 있는 자리가 없어 슬러로 만들 수 없습니다.',
+    g: '앞 음과 같은 줄에서 이을 수 있는 자리가 없어 슬라이드로 만들 수 없습니다.'
+  };
   var LETTER_SEMITONE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   var SHARP_ORDER = 'FCGDAEB';
   var FLAT_ORDER = 'BEADGCF';
@@ -249,19 +252,19 @@
     return { ok: true, str: target.str };
   }
 
-  // ---------- 슬러
+  // ---------- 슬러·슬라이드
 
-  // 커서 음을 슬러로 만들 줄. 지금 줄과 같은 조각의 빈 줄 중 그 음을 칠 수 있는 줄마다 슬러 판정을 해 보고,
+  // 커서 음을 슬러(art 's')나 슬라이드(art 'g')로 만들 줄. 지금 줄과 같은 조각의 빈 줄 중 그 음을 칠 수 있는 줄마다 판정을 해 보고,
   // 출발 음이 가장 늦은(바로 앞에 가까운) 줄을 고른다. 같으면 지금 줄, 그다음 음높이 차가 작은 줄, 그다음 낮은 줄 번호(Docs/staff-input.md).
-  function slurTarget(doc, pos, str){
+  function linkTarget(doc, pos, str, art){
     var slot = GuitarTabInput.getSlot(doc, pos);
     if (!slot || !isInt(str) || str < 1 || str > GuitarTabInput.STRING_COUNT || !slot.notes[str - 1]){
-      return fail('슬러로 바꿀 음이 없습니다.');
+      return fail(GuitarTabInput.LINK_ERRORS[art]['no-note']);
     }
     var note = slot.notes[str - 1];
-    if (note.art === 's') return { ok: true, str: str, same: true };
+    if (note.art === art) return { ok: true, str: str, same: true };
     if (note.art === 'h'){
-      var own = GuitarTabInput.slurCheck(doc, pos, str);
+      var own = GuitarTabInput.linkCheck(doc, pos, str, art);
       return own.ok ? { ok: true, str: str, same: true } : fail(own.error);
     }
     var midi = GuitarTabInput.noteMidiOf(str, note);
@@ -270,34 +273,39 @@
       var copy = GuitarTabInput.cloneDoc(doc);
       var cslot = GuitarTabInput.getSlot(copy, pos);
       if (item.str !== str) relocateNote(cslot, str, item.str, midi);
-      var check = GuitarTabInput.slurCheck(copy, pos, item.str);
+      var check = GuitarTabInput.linkCheck(copy, pos, item.str, art);
       if (!check.ok) return;
       var cand = { str: item.str, piece: check.from.piece, current: item.str === str, gap: Math.abs(midi - check.fromMidi) };
-      if (!best || slurBetter(cand, best)) best = cand;
+      if (!best || linkBetter(cand, best)) best = cand;
     });
-    if (!best) return fail(SLUR_STAFF_ERROR);
+    if (!best) return fail(LINK_STAFF_ERRORS[art]);
     return { ok: true, str: best.str, same: best.str === str };
   }
 
-  function slurBetter(a, b){
+  function linkBetter(a, b){
     if (a.piece !== b.piece) return a.piece > b.piece;
     if (a.current !== b.current) return a.current;
     if (a.gap !== b.gap) return a.gap < b.gap;
     return a.str < b.str;
   }
 
-  function makeSlur(doc, pos, str){
-    var target = slurTarget(doc, pos, str);
+  function makeLink(doc, pos, str, art){
+    var target = linkTarget(doc, pos, str, art);
     if (!target.ok) return target;
     var slot = GuitarTabInput.getSlot(doc, pos);
     var note = slot.notes[str - 1];
-    if (note.art === 's') return { ok: true, str: str };
+    if (note.art === art) return { ok: true, str: str };
     if (!target.same){
       relocateNote(slot, str, target.str, GuitarTabInput.noteMidiOf(str, note));
     }
-    slot.notes[target.str - 1].art = 's';
+    slot.notes[target.str - 1].art = art;
     return { ok: true, str: target.str };
   }
+
+  function slurTarget(doc, pos, str){ return linkTarget(doc, pos, str, 's'); }
+  function makeSlur(doc, pos, str){ return makeLink(doc, pos, str, 's'); }
+  function slideTarget(doc, pos, str){ return linkTarget(doc, pos, str, 'g'); }
+  function makeSlide(doc, pos, str){ return makeLink(doc, pos, str, 'g'); }
 
   // ---------- 음높이
 
@@ -523,7 +531,8 @@
     toggleChordNote: toggleChordNote, nextEventPos: nextEventPos, prevEventPos: prevEventPos,
     stringCandidates: stringCandidates, moveToString: moveToString,
     harmonicTarget: harmonicTarget, makeHarmonic: makeHarmonic,
-    slurTarget: slurTarget, makeSlur: makeSlur,
+    linkTarget: linkTarget, makeLink: makeLink,
+    slurTarget: slurTarget, makeSlur: makeSlur, slideTarget: slideTarget, makeSlide: makeSlide,
     alterFor: alterFor, writtenToMidi: writtenToMidi, nearestMidi: nearestMidi, referenceMidi: referenceMidi,
     transposeNote: transposeNote, noteToRest: noteToRest
   };

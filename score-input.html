@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=slide-2">
+<link rel="stylesheet" href="src/base.css?v=slide-3">
 <style>
 /* 악보 입력 화면 전용. 색은 base.css 토큰만 쓴다. */
 body{padding-bottom:var(--ti-dock-h,0px)}
@@ -321,13 +321,14 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
             <button class="btn" type="button" data-attr="art" data-value="h">&lt;&gt; 하모닉스</button>
             <button class="btn" type="button" data-attr="art" data-value="s" title="슬러(해머링·풀링): 앞의 같은 줄 음에서 왼손으로 잇기">⌒ 슬러</button>
           </span>
+          <button class="btn" type="button" data-attr="art" data-value="g" title="슬라이드: 앞의 같은 줄 음에서 손가락을 미끄러뜨려 잇기">/ 슬라이드</button>
           <button id="tiUncertainBtn" class="btn" type="button" aria-pressed="false">? 확인</button>
           <button id="tiRollBtn" class="btn" type="button" aria-pressed="false" title="롤: 낮은 줄부터 빠르게 굴려 치기(두 음 이상 화음)">⌇ 롤</button>
         </span>
       </div>
     </div>
-    <p id="tiTabHint" class="hint ti-dock-hint">숫자키 프렛 · 방향키 이동 · R 쉼표 · H 하모닉스 · S 슬러 · ~ 롤 · Del·오른쪽 클릭 지우기 · Space 들어보기</p>
-    <p id="tiStaffHint" class="hint ti-dock-hint" hidden>C~B 음(같은 자리는 화음) · ←→ 이동 · 7~2 길이 · . 점 · T 셋잇단 · 0/R 쉼 · H 하모닉스 · S 슬러 · ~ 롤 · ↑↓ 반음</p>
+    <p id="tiTabHint" class="hint ti-dock-hint">숫자키 프렛 · 방향키 이동 · R 쉼표 · H 하모닉스 · S 슬러 · / 슬라이드 · ~ 롤 · Del·오른쪽 클릭 지우기 · Space 들어보기</p>
+    <p id="tiStaffHint" class="hint ti-dock-hint" hidden>C~B 음(같은 자리는 화음) · 7~2 길이 · . 점 · T 셋잇단 · 0/R 쉼 · H 하모닉스 · S 슬러 · / 슬라이드 · ~ 롤 · ↑↓ 반음</p>
   </div>
 </div>
 
@@ -343,19 +344,19 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
   </div>
 </dialog>
 
-<script src="src/storage.js?v=slide-2"></script>
-<script src="src/app-state.js?v=slide-2"></script>
-<script src="src/notation.js?v=slide-2"></script>
-<script src="src/rhythm.js?v=slide-2"></script>
-<script src="src/parser.js?v=slide-2"></script>
-<script src="src/score-ui.js?v=slide-2"></script>
-<script src="src/score-prompt.js?v=slide-2"></script>
-<script src="src/audio.js?v=slide-2"></script>
-<script src="src/guide.js?v=slide-2"></script>
-<script src="src/staff-layout.js?v=slide-2"></script>
-<script src="src/staff-svg.js?v=slide-2"></script>
-<script src="src/tab-input.js?v=slide-2"></script>
-<script src="src/staff-input.js?v=slide-2"></script>
-<script src="src/tab-input-ui.js?v=slide-2"></script>
+<script src="src/storage.js?v=slide-3"></script>
+<script src="src/app-state.js?v=slide-3"></script>
+<script src="src/notation.js?v=slide-3"></script>
+<script src="src/rhythm.js?v=slide-3"></script>
+<script src="src/parser.js?v=slide-3"></script>
+<script src="src/score-ui.js?v=slide-3"></script>
+<script src="src/score-prompt.js?v=slide-3"></script>
+<script src="src/audio.js?v=slide-3"></script>
+<script src="src/guide.js?v=slide-3"></script>
+<script src="src/staff-layout.js?v=slide-3"></script>
+<script src="src/staff-svg.js?v=slide-3"></script>
+<script src="src/tab-input.js?v=slide-3"></script>
+<script src="src/staff-input.js?v=slide-3"></script>
+<script src="src/tab-input-ui.js?v=slide-3"></script>
 </body>
 </html>

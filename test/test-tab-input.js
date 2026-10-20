@@ -1004,4 +1004,43 @@ test('slurCheck: judges a slur on a copy and never changes the document', functi
   assert.equal(ti.slurCheck(slurred, pos(0, 1), 2).type, 'hammer');
 });
 
+test('slideCheck: same judgment as slurCheck with slide texts, and the document is never changed', function(){
+  const doc = fresh();
+  ti.setNote(doc, pos(0, 0), 2, 3);   // 2번 줄 기준 음
+  ti.setNote(doc, pos(0, 1), 2, 5);   // 위로
+  ti.setNote(doc, pos(0, 2), 2, 1);   // 아래로
+  ti.setNote(doc, pos(0, 3), 2, 1);   // 앞과 같은 높이
+  ti.setNote(doc, pos(0, 3), 3, 0);   // 이 줄은 앞에 친 음이 없다
+  const before = JSON.stringify(doc);
+  const midiOf = (str, fret) => parser.STRINGS[str - 1].midi + fret;
+
+  const hammer = ti.slideCheck(doc, pos(0, 1), 2);
+  assert.equal(hammer.ok, true);
+  assert.equal(hammer.type, 'hammer', 'an upward slide reads as the upward link');
+  assert.equal(hammer.fromMidi, midiOf(2, 3));
+  assert.deepEqual(hammer.fromPos, { m: 0, c: 0, s: 0, str: 2 });
+  assert.equal(ti.slideCheck(doc, pos(0, 2), 2).type, 'pull', 'a downward slide reads as the downward link');
+  assert.deepEqual(ti.slideCheck(doc, pos(0, 1), 2), ti.linkCheck(doc, pos(0, 1), 2, 'g'));
+  assert.deepEqual(ti.slideCheck(doc, pos(0, 1), 2), ti.slurCheck(doc, pos(0, 1), 2), 'a passing check is the same result for both marks');
+
+  assert.deepEqual(ti.slideCheck(doc, pos(0, 3), 2), { ok: false, reason: 'same-pitch', error: '앞의 같은 줄 음과 높이가 같아 슬라이드로 이을 수 없습니다.' });
+  assert.deepEqual(ti.slideCheck(doc, pos(0, 3), 3), { ok: false, reason: 'no-source', error: '앞에 같은 줄 음이 없어 슬라이드로 이을 수 없습니다.' });
+  assert.deepEqual(ti.slideCheck(doc, pos(0, 1), 5), { ok: false, reason: 'no-note', error: '슬라이드로 바꿀 음이 없습니다.' });
+  assert.equal(ti.slideCheck(doc, pos(9, 0), 2).reason, 'no-note', 'a position outside the document');
+  assert.equal(JSON.stringify(doc), before, 'checking changes nothing in the document');
+
+  // 슬러 문구는 그대로다.
+  assert.deepEqual(ti.slurCheck(doc, pos(0, 3), 2), { ok: false, reason: 'same-pitch', error: '앞의 같은 줄 음과 높이가 같아 슬러로 이을 수 없습니다.' });
+  assert.deepEqual(ti.slurCheck(doc, pos(0, 3), 3), { ok: false, reason: 'no-source', error: '앞에 같은 줄 음이 없어 슬러로 이을 수 없습니다.' });
+  assert.deepEqual(ti.slurCheck(doc, pos(0, 1), 5), { ok: false, reason: 'no-note', error: '슬러로 바꿀 음이 없습니다.' });
+  assert.deepEqual(ti.linkCheck(doc, pos(0, 3), 2, 's'), ti.slurCheck(doc, pos(0, 3), 2));
+  assert.deepEqual(Object.keys(ti.LINK_ERRORS).sort(), ['g', 's']);
+
+  // 이미 슬러인 음도 사본에서 슬라이드로 바꿔 판정하고, 문서의 슬러 표시는 그대로 둔다.
+  const slurred = ti.cloneDoc(doc);
+  ti.setNoteAttrs(slurred, pos(0, 1), 2, { art: 's' });
+  assert.equal(ti.slideCheck(slurred, pos(0, 1), 2).type, 'hammer');
+  assert.equal(slurred.measures[0].cells[1].slots[0].notes[1].art, 's');
+});
+
 process.stdout.write('1..' + checks + '\n');

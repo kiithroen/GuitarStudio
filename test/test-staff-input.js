@@ -928,4 +928,106 @@ test('slurTarget never moves a harmonic note: only its own string is judged, and
   assert.equal(note.fret, hf, 'the fret is kept');
 });
 
+// 슬라이드 켜기: 슬러와 같은 줄 고르기(linkTarget·makeLink)를 art 'g'로 부른다. 문구만 다르다.
+const SLIDE_STAFF_MESSAGE = '앞 음과 같은 줄에서 이을 수 있는 자리가 없어 슬라이드로 만들 수 없습니다.';
+
+test('slideTarget keeps the current string when it already links, and makeSlide writes the g mark without touching the fret', function(){
+  const k = slurSetup();
+  let found = null;
+  for (let m = k.lo + 2; m <= k.hi && !found; m++){
+    const strs = k.stringsFor(m).filter(function(s){ return k.fretOn(s, m - 1) !== null; });
+    if (strs.length) found = { midi: m, str: strs[0] };
+  }
+  assert.ok(found);
+  const doc = fresh();
+  ti.setNote(doc, pos(0, 0), found.str, k.fretOn(found.str, found.midi - 1));
+  ti.setNote(doc, pos(0, 1), found.str, k.fretOn(found.str, found.midi));
+  const before = snapshot(doc);
+  assert.deepEqual(si.slideTarget(doc, pos(0, 1), found.str), { ok: true, str: found.str, same: true });
+  assert.deepEqual(si.linkTarget(doc, pos(0, 1), found.str, 'g'), { ok: true, str: found.str, same: true });
+  assert.deepEqual(snapshot(doc), before, 'slideTarget never edits the document');
+  assert.deepEqual(si.makeSlide(doc, pos(0, 1), found.str), { ok: true, str: found.str });
+  assert.equal(noteAt(doc, pos(0, 1), found.str).art, 'g', 'the note carries the slide mark, not the slur mark');
+  assert.equal(noteAt(doc, pos(0, 1), found.str).fret, k.fretOn(found.str, found.midi), 'the fret is kept');
+  assert.deepEqual(ti.validateDoc(doc).errors, []);
+  assert.equal(ti.slurLinks(doc)[0][1][0][found.str - 1].type, 'hammer', 'a higher slide note reads as the upward link');
+  // 이미 슬라이드이면 그대로 둔다
+  const again = snapshot(doc);
+  assert.deepEqual(si.makeSlide(doc, pos(0, 1), found.str), { ok: true, str: found.str });
+  assert.deepEqual(snapshot(doc), again);
+  // 슬러를 슬라이드로 바꾸고, 슬라이드를 슬러로 바꿀 수 있다
+  assert.deepEqual(si.makeSlur(doc, pos(0, 1), found.str), { ok: true, str: found.str });
+  assert.equal(noteAt(doc, pos(0, 1), found.str).art, 's');
+  assert.deepEqual(si.makeLink(doc, pos(0, 1), found.str, 'g'), { ok: true, str: found.str });
+  assert.equal(noteAt(doc, pos(0, 1), found.str).art, 'g');
+});
+
+test('slideTarget moves the note to the string of the note just before it, like the slur does', function(){
+  const k = slurSetup();
+  let found = null;
+  for (let m = k.lo + 2; m <= k.hi && !found; m++){
+    const strs = k.stringsFor(m);
+    for (let i = 0; i < strs.length && !found; i++){
+      for (let j = 0; j < strs.length && !found; j++){
+        if (i !== j && k.fretOn(strs[j], m - 1) !== null) found = { midi: m, a: strs[i], b: strs[j] };
+      }
+    }
+  }
+  assert.ok(found, 'a pitch playable on two strings exists');
+  const doc = fresh();
+  ti.setNote(doc, pos(0, 0), found.b, k.fretOn(found.b, found.midi - 1));
+  ti.setNote(doc, pos(0, 1), found.a, k.fretOn(found.a, found.midi));
+  ti.setNoteAttrs(doc, pos(0, 1), found.a, { lh: 3, rh: 'm', art: '!', uncertain: true });
+  const before = snapshot(doc);
+  assert.deepEqual(si.slideTarget(doc, pos(0, 1), found.a), { ok: true, str: found.b, same: false });
+  assert.deepEqual(si.slurTarget(doc, pos(0, 1), found.a), { ok: true, str: found.b, same: false }, 'the slur picks the same string');
+  assert.deepEqual(snapshot(doc), before, 'slideTarget never edits the document');
+  assert.deepEqual(si.makeSlide(doc, pos(0, 1), found.a), { ok: true, str: found.b });
+  assert.equal(noteAt(doc, pos(0, 1), found.a), null, 'the old string is emptied');
+  const moved = noteAt(doc, pos(0, 1), found.b);
+  assert.equal(moved.fret, k.fretOn(found.b, found.midi), 'the fret is the pitch minus the open string of the new string');
+  assert.equal(moved.art, 'g');
+  assert.equal(moved.lh, null, 'the left hand finger is cleared');
+  assert.equal(moved.rh, 'm', 'the right hand finger stays');
+  assert.equal(moved.uncertain, true, 'the check mark stays');
+  assert.deepEqual(ti.validateDoc(doc).errors, []);
+});
+
+test('slideTarget fails with the slide guide text when no string can link, and leaves the document alone', function(){
+  const first = fresh();
+  ti.setNote(first, pos(0, 0), 3, 2);
+  let before = snapshot(first);
+  assert.deepEqual(si.slideTarget(first, pos(0, 0), 3), { ok: false, error: SLIDE_STAFF_MESSAGE });
+  assert.deepEqual(si.makeSlide(first, pos(0, 0), 3), { ok: false, error: SLIDE_STAFF_MESSAGE });
+  assert.deepEqual(snapshot(first), before);
+  assert.deepEqual(si.slurTarget(first, pos(0, 0), 3), { ok: false, error: SLUR_STAFF_MESSAGE }, 'the slur text is unchanged');
+  const equal = fresh();
+  ti.setNote(equal, pos(0, 0), 3, 2);
+  ti.setNote(equal, pos(0, 1), 3, 2);
+  before = snapshot(equal);
+  assert.equal(si.makeSlide(equal, pos(0, 1), 3).error, SLIDE_STAFF_MESSAGE);
+  assert.deepEqual(snapshot(equal), before);
+  const empty = fresh();
+  assert.deepEqual(si.slideTarget(empty, pos(0), 1), { ok: false, error: '슬라이드로 바꿀 음이 없습니다.' });
+  assert.deepEqual(si.makeSlide(empty, pos(0), 1), { ok: false, error: '슬라이드로 바꿀 음이 없습니다.' });
+  assert.deepEqual(si.linkTarget(empty, pos(0), 1, 's'), { ok: false, error: '슬러로 바꿀 음이 없습니다.' });
+  assert.equal(si.slideTarget(empty, pos(7), 1).ok, false);
+});
+
+test('slideTarget on a harmonic note judges only its own string and the mark becomes a slide', function(){
+  const notation = require('../src/notation.js');
+  const hf = Number(Object.keys(notation.NATURAL_HARMONICS)[0]);
+  const own = fresh();
+  ti.setNote(own, pos(0, 0), 3, hf === 0 ? 1 : 0);
+  ti.setNote(own, pos(0, 1), 3, hf);
+  ti.setNoteAttrs(own, pos(0, 1), 3, { art: 'h' });
+  assert.deepEqual(si.slideTarget(own, pos(0, 1), 3), { ok: true, str: 3, same: true });
+  assert.deepEqual(si.makeSlide(own, pos(0, 1), 3), { ok: true, str: 3 });
+  assert.equal(noteAt(own, pos(0, 1), 3).art, 'g', 'the harmonic mark was replaced by the slide');
+  const lone = fresh();
+  ti.setNote(lone, pos(0, 0), 3, hf);
+  ti.setNoteAttrs(lone, pos(0, 0), 3, { art: 'h' });
+  assert.deepEqual(si.slideTarget(lone, pos(0, 0), 3), { ok: false, error: '앞에 같은 줄 음이 없어 슬라이드로 이을 수 없습니다.' });
+});
+
 process.stdout.write('1..' + checks + '\n');

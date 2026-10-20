@@ -2302,8 +2302,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=slide-2')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=slide-2">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=slide-3')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=slide-3">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -3270,6 +3270,55 @@ async function testStaffInputMode(client, httpPort) {
   assert.equal(staffSlur.buttonOn, staffSlur.expectedToken, 'the button turns it on again');
   assert.deepEqual(client.consoleErrors.slice(slurErrorsBefore), [], 'the staff slur steps run without console errors');
 
+  // 15. / 키와 슬라이드 단추(오선 모드): 슬러와 같이 바로 앞 음과 같은 줄에서 이어지도록 줄을 옮겨 켠다.
+  const staffSlideErrorsBefore = client.consoleErrors.length;
+  await client.evaluate(`document.getElementById('tiNewBtn').click(); __tiTest.key('5', 'Digit5'); __tiTest.letter('D', false); __tiTest.key('ArrowRight', 'ArrowRight'); __tiTest.letter('E', false); true`);
+  const staffSlide = await client.evaluate(`(function(){
+    var t = __tiTest;
+    var gBtn = document.querySelector('[data-attr="art"][data-value="g"]');
+    function press(){ var e = new KeyboardEvent('keydown', { key:'/', code:'Slash', bubbles:true, cancelable:true }); document.body.dispatchEvent(e); return e.defaultPrevented; }
+    function tokens(){ return t.text().split('\\n')[0].split(' '); }
+    function strOf(token){ return Number(token.match(/@(\\d)$/)[1]); }
+    function fretAt(c, str){ return Number(t.pos(0,c,0,str).querySelector('.ti-pos-label').textContent); }
+    var out = {};
+    var prevStr = strOf(tokens()[1]);
+    var curStr = strOf(tokens()[2]);
+    var prevMidi = GuitarParser.STRINGS[prevStr - 1].midi + fretAt(0, prevStr);
+    var midi = GuitarParser.STRINGS[curStr - 1].midi + fretAt(1, curStr);
+    var fretOnPrev = midi - GuitarParser.STRINGS[prevStr - 1].midi;
+    out.premise = { moved: prevStr !== curStr, differs: prevMidi !== midi, inRange: fretOnPrev >= 0 && fretOnPrev <= GuitarTabInput.MAX_FRET };
+    out.expectedStr = prevStr;
+    out.expectedToken = 'g' + GuitarParser.noteNameForMidi(midi, false) + '@' + prevStr;
+    out.expectedOff = GuitarParser.noteNameForMidi(midi, false) + '@' + prevStr;
+    out.btnEnabled = !gBtn.disabled;
+    out.prevented = press();
+    out.token = tokens()[2];
+    out.cursor = t.cursor();
+    out.pressed = gBtn.getAttribute('aria-pressed');
+    out.btnAfter = !gBtn.disabled;
+    var beforeButton = t.text();
+    gBtn.click();
+    out.buttonKeepsOn = t.text() === beforeButton;
+    press();
+    out.offToken = tokens()[2];
+    out.offPressed = gBtn.getAttribute('aria-pressed');
+    gBtn.click();
+    out.buttonOn = tokens()[2];
+    return out;
+  })()`);
+  assert.deepEqual(staffSlide.premise, { moved: true, differs: true, inRange: true }, 'the staff slide test note sits on another string than the earlier note: ' + JSON.stringify(staffSlide.premise));
+  assert.equal(staffSlide.btnEnabled, true, 'the slide button is enabled when another string can link');
+  assert.equal(staffSlide.prevented, true, 'the / key is handled in staff mode');
+  assert.equal(staffSlide.token, staffSlide.expectedToken, '/ writes the slide on the string of the earlier note: ' + JSON.stringify(staffSlide));
+  assert.ok(staffSlide.cursor.indexOf(staffSlide.expectedStr + '번 줄') >= 0, 'the cursor string follows the moved note: ' + staffSlide.cursor);
+  assert.equal(staffSlide.pressed, 'true', 'the slide button is pressed after /');
+  assert.equal(staffSlide.btnAfter, true, 'a slide note keeps the button enabled');
+  assert.equal(staffSlide.buttonKeepsOn, true, 'the button on a slide note leaves it as it is');
+  assert.equal(staffSlide.offToken, staffSlide.expectedOff, '/ again turns it off, the plain note stays on the moved string: ' + staffSlide.offToken);
+  assert.equal(staffSlide.offPressed, 'false', 'the slide button is released after / again');
+  assert.equal(staffSlide.buttonOn, staffSlide.expectedToken, 'the button turns it on again');
+  assert.deepEqual(client.consoleErrors.slice(staffSlideErrorsBefore), [], 'the staff slide steps run without console errors');
+
   await client.send('Emulation.clearDeviceMetricsOverride');
   await client.evaluate(clearStorage);
   client.dialogHandler = null;
@@ -3802,7 +3851,7 @@ async function testFretLabel(client, httpPort) {
   assert.equal(input.apoColor, input.near, 'the apoyando label is drawn in the --near color');
   assert.ok(input.scoreText.indexOf('!') >= 0, 'the score text still carries the ! mark: ' + input.scoreText);
   assert.equal(input.hasTildeButton, false, 'the input panel has no ~ tirando button');
-  assert.equal(input.artButtons, '|없음,!|! 아포얀도,h|<> 하모닉스,s|⌒ 슬러', 'the articulation buttons are none, apoyando, harmonic and slur: ' + input.artButtons);
+  assert.equal(input.artButtons, '|없음,!|! 아포얀도,h|<> 하모닉스,s|⌒ 슬러,g|/ 슬라이드', 'the articulation buttons are none, apoyando, harmonic, slur and slide: ' + input.artButtons);
   assert.ok(input.attrsText.indexOf('티란도') < 0, 'the input panel never mentions tirando');
   assert.equal(input.buttonApo, input.near, 'the apoyando button text is drawn in the --near color');
   assert.ok(/\bis-apoyando\b/.test(input.unsureClass) && /\bis-uncertain\b/.test(input.unsureParent), 'a checked note keeps its articulation class');
@@ -3898,6 +3947,8 @@ async function testFretLabel(client, httpPort) {
   assert.ok(hkey.staffHint.indexOf('H 하모닉스') >= 0, 'the staff hint mentions H: ' + hkey.staffHint);
   assert.ok(hkey.tabHint.indexOf('S 슬러') >= 0, 'the tab hint mentions S: ' + hkey.tabHint);
   assert.ok(hkey.staffHint.indexOf('S 슬러') >= 0, 'the staff hint mentions S: ' + hkey.staffHint);
+  assert.ok(hkey.tabHint.indexOf('/ 슬라이드') >= 0, 'the tab hint mentions /: ' + hkey.tabHint);
+  assert.ok(hkey.staffHint.indexOf('/ 슬라이드') >= 0, 'the staff hint mentions /: ' + hkey.staffHint);
 
   // 슬러 단추와 S 키 (타브 모드): 앞의 같은 줄 음과 이어질 때만 켜고, 아니면 까닭을 상태 줄에 안내하고 문서는 그대로 둔다
   const slurTab = await client.evaluate(`(function(){
@@ -3967,6 +4018,129 @@ async function testFretLabel(client, httpPort) {
   assert.equal(slurTab.noNoteDisabled, true, 'the slur button is disabled without a cursor note');
   assert.equal(slurTab.noNoteStatus, '슬러로 바꿀 음이 없습니다.', 'S without a note says so: ' + slurTab.noNoteStatus);
   assert.equal(slurTab.noNoteUnchanged, true, 'S without a note leaves the score text alone');
+
+  // 슬라이드 단추와 / 키 (타브 모드): 슬러와 같은 판정. 켜는 토큰은 g 로 시작하고, 이을 수 없으면 까닭을 상태 줄에 안내하고 문서는 그대로 둔다
+  const slideErrorsBefore = client.consoleErrors.length;
+  const slideTab = await client.evaluate(`(function(){
+    var t = __tiTest;
+    document.getElementById('tiNewBtn').click();
+    var out = {};
+    function put(c, str, fret){ t.pos(0,c,0,str).click(); t.fret(str, fret).click(); }
+    function press(){ var e = new KeyboardEvent('keydown', { key:'/', code:'Slash', bubbles:true, cancelable:true }); document.body.dispatchEvent(e); return e.defaultPrevented; }
+    function status(){ return document.getElementById('tiStatus').textContent; }
+    function token(c){ return t.text().split('\\n')[0].split(' ')[c + 1]; }
+    var gBtn = t.attr('art','g');
+    out.hasButton = !!gBtn;
+    put(0, 2, 3); put(1, 2, 5); put(2, 2, 5); put(3, 3, 1);
+    t.pos(0,0,0,2).click();
+    out.firstDisabled = gBtn.disabled;
+    t.pos(0,1,0,2).click();
+    out.hammerDisabled = gBtn.disabled;
+    out.hammerPressedBefore = gBtn.getAttribute('aria-pressed');
+    gBtn.click();
+    out.btnToken = token(1);
+    out.btnPressed = gBtn.getAttribute('aria-pressed');
+    out.slurPressed = t.attr('art','s').getAttribute('aria-pressed');
+    gBtn.click();
+    out.btnAgain = token(1);
+    out.prevented = press();
+    out.keyOff = token(1);
+    out.keyOffPressed = gBtn.getAttribute('aria-pressed');
+    press();
+    out.keyOn = token(1);
+    out.unslid = [token(0), token(2), token(3)];
+    t.pos(0,2,0,2).click();
+    out.sameDisabled = gBtn.disabled;
+    var before = t.text();
+    out.samePrevented = press();
+    out.sameStatus = status();
+    out.sameUnchanged = t.text() === before;
+    t.pos(0,3,0,3).click();
+    out.noSourceDisabled = gBtn.disabled;
+    before = t.text();
+    press();
+    out.noSourceStatus = status();
+    out.noSourceUnchanged = t.text() === before;
+    t.pos(0,1,0,1).click();
+    out.noNoteDisabled = gBtn.disabled;
+    before = t.text();
+    press();
+    out.noNoteStatus = status();
+    out.noNoteUnchanged = t.text() === before;
+    t.pos(0,1,0,2).click();
+    before = t.text();
+    var shiftEvent = new KeyboardEvent('keydown', { key:'?', code:'Slash', shiftKey:true, bubbles:true, cancelable:true });
+    document.body.dispatchEvent(shiftEvent);
+    out.shiftIgnored = t.text() === before && !shiftEvent.defaultPrevented;
+    return out;
+  })()`);
+  assert.equal(slideTab.hasButton, true, 'the input panel has the slide button');
+  assert.equal(slideTab.firstDisabled, true, 'the slide button is disabled on a note with no earlier note on its string');
+  assert.equal(slideTab.hammerDisabled, false, 'the slide button is enabled when the note links to an earlier note on the same string');
+  assert.equal(slideTab.hammerPressedBefore, 'false', 'the slide button is released before it is used');
+  assert.ok(slideTab.btnToken.charAt(0) === 'g', 'the slide button writes g on the token: ' + JSON.stringify(slideTab));
+  assert.equal(slideTab.btnPressed, 'true', 'the slide button is pressed on a slide note');
+  assert.equal(slideTab.slurPressed, 'false', 'the slur button is released on a slide note');
+  assert.equal(slideTab.btnAgain, slideTab.btnToken, 'the button on a slide note leaves it as it is');
+  assert.equal(slideTab.prevented, true, 'the / key is handled');
+  assert.ok(slideTab.keyOff.charAt(0) !== 'g' && slideTab.keyOff === slideTab.btnToken.slice(1), '/ on a slide note turns it off: ' + JSON.stringify(slideTab));
+  assert.equal(slideTab.keyOffPressed, 'false', 'the slide button is released after /');
+  assert.equal(slideTab.keyOn, slideTab.btnToken, '/ turns it on again');
+  assert.ok(slideTab.unslid.every(token => token.charAt(0) !== 'g'), 'the other notes stay plain: ' + JSON.stringify(slideTab.unslid));
+  assert.equal(slideTab.sameDisabled, true, 'the slide button is disabled on a note with the same pitch as the earlier one');
+  assert.equal(slideTab.samePrevented, true, '/ is handled even when it cannot turn the slide on');
+  assert.equal(slideTab.sameStatus, '앞의 같은 줄 음과 높이가 같아 슬라이드로 이을 수 없습니다.', '/ on the same pitch says why: ' + slideTab.sameStatus);
+  assert.equal(slideTab.sameUnchanged, true, '/ on the same pitch leaves the score text alone');
+  assert.equal(slideTab.noSourceDisabled, true, 'the slide button is disabled when the string has no earlier note');
+  assert.equal(slideTab.noSourceStatus, '앞에 같은 줄 음이 없어 슬라이드로 이을 수 없습니다.', '/ with no earlier note says why: ' + slideTab.noSourceStatus);
+  assert.equal(slideTab.noSourceUnchanged, true, '/ with no earlier note leaves the score text alone');
+  assert.equal(slideTab.noNoteDisabled, true, 'the slide button is disabled without a cursor note');
+  assert.equal(slideTab.noNoteStatus, '슬라이드로 바꿀 음이 없습니다.', '/ without a note says so: ' + slideTab.noNoteStatus);
+  assert.equal(slideTab.noNoteUnchanged, true, '/ without a note leaves the score text alone');
+  assert.equal(slideTab.shiftIgnored, true, 'Shift+/ (?) does not toggle the slide');
+
+  // 슬라이드 들어보기: 슬라이드 음은 출발 음(카포 반영) 높이에서 미끄러지고, 평범한 음은 미끄럼 옵션이 없다
+  const slidePlay = await client.evaluate(`(function(){
+    var t = __tiTest;
+    document.getElementById('tiNewBtn').click();
+    function put(c, str, fret){ t.pos(0,c,0,str).click(); t.fret(str, fret).click(); }
+    function press(key, code){ var e = new KeyboardEvent('keydown', { key:key, code:code, bubbles:true, cancelable:true }); document.body.dispatchEvent(e); return e.defaultPrevented; }
+    put(0, 2, 3); put(1, 2, 5);
+    var select = document.getElementById('tiCapoSelect'); select.value = '2'; select.dispatchEvent(new Event('change', { bubbles:true }));
+    t.pos(0,1,0,2).click();
+    t.attr('art','g').click();
+    var original = window.playGuitarNote;
+    var calls = [];
+    window.playGuitarNote = function(midi, dur, when, gain, art, str, options){ calls.push({ midi: midi, dur: dur, art: art, str: str, options: options }); };
+    var out = { capo: curCapo() };
+    try {
+      press(' ', 'Space');
+      out.slide = calls.slice(); calls.length = 0;
+      t.pos(0,0,0,2).click(); calls.length = 0;
+      press(' ', 'Space');
+      out.plain = calls.slice(); calls.length = 0;
+      t.pos(0,1,0,2).click(); calls.length = 0;
+      document.getElementById('tiPlaySlotBtn').click();
+      out.byButton = calls.slice(); calls.length = 0;
+    } finally { window.playGuitarNote = original; }
+    out.expectedFrom = GuitarParser.STRINGS[1].midi + 3 + out.capo;
+    out.expectedTo = GuitarParser.STRINGS[1].midi + 5 + out.capo;
+    out.expectedSec = Math.min(SLIDE_GLIDE_SEC, 1.6 * SLIDE_MAX_SHARE);
+    select.value = '0'; select.dispatchEvent(new Event('change', { bubbles:true }));
+    return out;
+  })()`);
+  assert.equal(slidePlay.capo, 2, 'the slide play test runs with a capo');
+  assert.equal(slidePlay.slide.length, 1, 'the slide note plays once: ' + JSON.stringify(slidePlay.slide));
+  assert.equal(slidePlay.slide[0].midi, slidePlay.expectedTo, 'the slide note sounds at its own pitch with the capo');
+  assert.equal(slidePlay.slide[0].art, 'slide', 'the slide note is played with the slide articulation');
+  assert.ok(slidePlay.slide[0].options && slidePlay.slide[0].options.glide, 'the slide note passes a glide option: ' + JSON.stringify(slidePlay.slide[0]));
+  assert.equal(slidePlay.slide[0].options.glide.fromMidi, slidePlay.expectedFrom, 'the glide starts at the earlier note pitch with the capo');
+  assert.ok(Math.abs(slidePlay.slide[0].options.glide.sec - slidePlay.expectedSec) < 1e-9, 'the glide lasts the shared slide time: ' + slidePlay.slide[0].options.glide.sec);
+  assert.equal(slidePlay.plain.length, 1, 'a plain note plays once');
+  assert.ok(!slidePlay.plain[0].options || !slidePlay.plain[0].options.glide, 'a plain note has no glide: ' + JSON.stringify(slidePlay.plain[0]));
+  assert.equal(slidePlay.byButton.length, 1, 'the play button plays the slide note');
+  assert.equal(slidePlay.byButton[0].options && slidePlay.byButton[0].options.glide && slidePlay.byButton[0].options.glide.fromMidi, slidePlay.expectedFrom, 'the play button glides too');
+  assert.deepEqual(client.consoleErrors.slice(slideErrorsBefore), [], 'the slide input steps run without console errors');
 
   // 입력 화면 스크린샷: 로망스 1부
   const romance = builtinSongsJson.find(item => item.id === 'builtin-lv6-romance-full');
@@ -4676,7 +4850,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=slide-2')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=slide-3')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
