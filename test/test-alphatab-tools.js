@@ -1625,6 +1625,17 @@ test('convert-chord-memos: transforms chord memos into measure-head multi-chords
   const convertedMulti = convertScoreText(multiLine);
   assert.equal(convertedMulti, '[Am, 2:G/B, 3:C, 4:D7] E4 B3 C4 D4\n[Am, 2:G/B] E4 B3 C4 D4 | "연습용"');
 
+  const doubleSlashLine = '[-] _ _ _ | "못갖춘마디" // [Am] E4 B3 C4 D4 | "2박부터 G/B"';
+  const expectedDoubleSlash = '[-] _ _ _ | "못갖춘마디" // [Am, 2:G/B] E4 B3 C4 D4';
+  assert.equal(convertMeasureChordMemos(doubleSlashLine), expectedDoubleSlash);
+  assert.equal(convertScoreText(doubleSlashLine), expectedDoubleSlash);
+
+  const tsvRow5 = '곡명\t4\t120\t설명문\t' + doubleSlashLine;
+  assert.equal(convertScoreText(tsvRow5), '곡명\t4\t120\t설명문\t' + expectedDoubleSlash);
+
+  const tsvRow6WithBom = '\uFEFF곡명\t4\t120\t설명문\t' + doubleSlashLine + '\t\\title "곡명"';
+  assert.equal(convertScoreText(tsvRow6WithBom), '\uFEFF곡명\t4\t120\t설명문\t' + expectedDoubleSlash + '\t\\title "곡명"');
+
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-chord-'));
   const tmpFile = path.join(tmpDir, 'score.txt');
   fs.writeFileSync(tmpFile, line1, 'utf8');
@@ -1634,6 +1645,11 @@ test('convert-chord-memos: transforms chord memos into measure-head multi-chords
 
   childProcess.execFileSync(process.execPath, [path.join(__dirname, '../tools/convert-chord-memos.js'), '-i', tmpFile]);
   assert.equal(fs.readFileSync(tmpFile, 'utf8').trim(), '[Am, 2:G/B, 3:C, 4:D7] E4 B3 C4 D4');
+
+  const tmpTsv = path.join(tmpDir, 'score.tsv');
+  fs.writeFileSync(tmpTsv, tsvRow6WithBom, 'utf8');
+  childProcess.execFileSync(process.execPath, [path.join(__dirname, '../tools/convert-chord-memos.js'), '-i', path.join(tmpDir, '*.tsv')]);
+  assert.equal(fs.readFileSync(tmpTsv, 'utf8'), '\uFEFF곡명\t4\t120\t설명문\t' + expectedDoubleSlash + '\t\\title "곡명"');
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });

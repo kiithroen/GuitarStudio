@@ -3,7 +3,7 @@
 세션마다 통째로 읽히는 파일이라 규칙과 함정만 둔다. 내용과 결정은 문서에 있다: [사용](Docs/usage.md) · [악보 문법](Docs/score-format.md) · [모듈·저장·검증](Docs/development.md) · [리듬·오디오](Docs/beginner-rhythm.md) · [화면·조작](Docs/ui.md) · [악보 입력](Docs/tab-input.md) · [오선 미리보기](Docs/staff-notation.md) · [오선 입력](Docs/staff-input.md) · [내장곡 출처](Docs/builtin-sources.md) · [alphaTab 보기·변환](Docs/alphatab.md). 일하기 전에 해당 문서만 읽는다.
 
 ## 문서
-- 결정은 그 시스템 문서에 날짜(`YYYY-MM-DD`)와 이유를 달아 적는다. 화면·조작은 `ui.md`, 리듬·재생은 `beginner-rhythm.md`, 모듈·저장·검증은 `development.md`.
+- 문서는 지금 상태(스펙)만 최신으로 간결하게 갱신한다. 날짜(`YYYY-MM-DD`)가 달린 결정 기록·히스토리는 나에게 묻지 않고 임의로 추가하지 않는다.
 - 같은 내용을 여러 문서에 복사하지 않고 링크한다. 이 파일에는 결정 내용을 적지 않는다.
 - 튜닝 값(gain·cutoff·threshold 같은 상수)은 문서에 옮겨 적지 않고 상수·함수 이름만 적는다.
 
