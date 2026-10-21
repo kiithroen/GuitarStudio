@@ -81,11 +81,19 @@ function convertSingleMeasureChordMemos(line){
   }
 
   // 메모에서 추출한 chord 매칭 병합 (중복 박자 방지)
+  matches.sort(function(a, b){ return a.beat - b.beat; });
   matches.forEach(function(entry){
     if (!chordByBeat.has(entry.beat)){
       let chordName = entry.chord;
       if (chordName.startsWith('/')){
-        const base = (chordByBeat.get(1) || '').split('/')[0].trim();
+        let prevChord = null;
+        for (let b = entry.beat - 1; b >= 1; b--){
+          if (chordByBeat.has(b) && chordByBeat.get(b) !== '-'){
+            prevChord = chordByBeat.get(b);
+            break;
+          }
+        }
+        const base = (prevChord || chordByBeat.get(1) || '').split('/')[0].trim();
         chordName = (base && base !== '-') ? (base + chordName) : chordName.slice(1);
       }
       chordByBeat.set(entry.beat, chordName);

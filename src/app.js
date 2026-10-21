@@ -447,19 +447,19 @@ function curCapo(){
 
   function effectiveChordAtBeat(measure, beatIndex){
     if (!measure) return '';
-    if (measure.beats && measure.beats[beatIndex] && measure.beats[beatIndex].chord){
-      return measure.beats[beatIndex].chord;
+    var targetBeat = beatIndex + 1;
+    if (measure.beats && measure.beats[beatIndex] && measure.beats[beatIndex].chord !== undefined){
+      return measure.beats[beatIndex].chord || '';
     }
     if (measure.chords && measure.chords.length){
-      var targetBeat = beatIndex + 1;
-      var lastChord = '';
+      var found = null;
       for (var i = 0; i < measure.chords.length; i++){
         var c = measure.chords[i];
-        if (c && c.beat <= targetBeat && c.chord){
-          lastChord = c.chord;
+        if (c && c.beat <= targetBeat){
+          found = c.chord || '';
         }
       }
-      if (lastChord) return lastChord;
+      if (found !== null) return found;
     }
     return measure.chord || '';
   }

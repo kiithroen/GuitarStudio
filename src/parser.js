@@ -254,6 +254,8 @@
 
       m.chord = bestChord;
       m.autoChord = true;
+      if (Array.isArray(m.chords) && m.chords.length){ m.chords[0].chord = bestChord; m.chords[0].autoChord = true; }
+      if (Array.isArray(m.beats) && m.beats[0]){ m.beats[0].chord = bestChord; m.beats[0].autoChord = true; }
     });
   }
 
@@ -495,9 +497,8 @@
   function parseBracketChordSpec(raw, bpb){
     if (raw == null) return { chord: '', autoChord: false, needsInfer: false, chords: [] };
     var s = String(raw).trim();
-    if (!s || s === '-'){
-      return { chord: '', autoChord: false, needsInfer: false, chords: [] };
-    }
+    if (s === '-') return { chord: '', autoChord: false, needsInfer: false, chords: [] };
+    if (!s) return { chord: '', autoChord: true, needsInfer: true, chords: [{ beat: 1, chord: '', autoChord: true }] };
     var parts = s.split(',');
     var chords = [];
     var anyInfer = false;

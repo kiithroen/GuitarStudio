@@ -90,8 +90,19 @@
         if (link.fromItem == null) return;
         origins[link.fromItem + ':' + link.fromHead] = link.kind === 'slide' ? 'slide' : 'slur';
       });
-      var chord = parsed.measures[measureIndex] && parsed.measures[measureIndex].chord;
-      var memo = parsed.measures[measureIndex] && parsed.measures[measureIndex].lyric;
+      var parsedMeasure = parsed.measures[measureIndex];
+      var chord = parsedMeasure && parsedMeasure.chord;
+      var chordsList = parsedMeasure && parsedMeasure.chords;
+      var memo = parsedMeasure && parsedMeasure.lyric;
+      var chordsByBeat = Object.create(null);
+      if (chordsList && chordsList.length){
+        chordsList.forEach(function(c){
+          if (c && c.chord && c.beat) chordsByBeat[c.beat] = c.chord;
+        });
+      } else if (chord){
+        chordsByBeat[1] = chord;
+      }
+      var emittedChordBeats = Object.create(null);
       var cellList = parsed.measures[measureIndex] && parsed.measures[measureIndex].beats || [];
       var skipCount = 0, leadingSkips = 0;
       cellList.forEach(function(beat, index){
@@ -115,7 +126,14 @@
         else if (item.value.dots === 2) effects.push('dd');
         if (item.value.triplet) effects.push('tu 3');
         if (item.type === 'chord' && item.roll) effects.push('ad');
-        if (itemIndex === 0 && chord) effects.push('ch ' + quote(chordLabel(chord)));
+        var itemBeat = item.cell != null ? (item.cell + 1) : (itemIndex === 0 ? 1 : null);
+        if (itemBeat && chordsByBeat[itemBeat] && !emittedChordBeats[itemBeat]){
+          effects.push('ch ' + quote(chordLabel(chordsByBeat[itemBeat])));
+          emittedChordBeats[itemBeat] = true;
+        } else if (itemIndex === 0 && chordsByBeat[1] && !emittedChordBeats[1]){
+          effects.push('ch ' + quote(chordLabel(chordsByBeat[1])));
+          emittedChordBeats[1] = true;
+        }
         if (itemIndex === 0 && typeof memo === 'string' && memo) effects.push('txt ' + quote(memo));
         var tail = '.' + duration + (effects.length ? ' {' + effects.join(' ') + '}' : '');
         if (item.type === 'rest') return 'r' + tail;

@@ -634,7 +634,7 @@ test('mid-measure chord changes parse multiple chords and attach chords to match
   assert.deepEqual(specEmpty, { chord: '', autoChord: false, needsInfer: false, chords: [] });
 
   const specNull = parser.parseBracketChordSpec('', 4);
-  assert.deepEqual(specNull, { chord: '', autoChord: false, needsInfer: false, chords: [] });
+  assert.deepEqual(specNull, { chord: '', autoChord: true, needsInfer: true, chords: [{ beat: 1, chord: '', autoChord: true }] });
 
   // parseScore integration
   const scoreData = parse('[Am, 2:G/B, 3:C, 4:D7] C4 D4 E4 F4', 4);
@@ -734,4 +734,38 @@ test('validateScore reports INVALID_CHORD_BEAT and DUPLICATE_CHORD_BEAT for mid-
   assert.ok(unsupported.warnings.some(w => w.code === 'UNSUPPORTED_CHORD'));
 });
 
+test('empty bracket [] triggers chord inference while explicit dash [-] marks absent chord', function(){
+  const emptySpec = parser.parseBracketChordSpec('', 4);
+  assert.equal(emptySpec.autoChord, true);
+  assert.equal(emptySpec.needsInfer, true);
+
+  const dashSpec = parser.parseBracketChordSpec('-', 4);
+  assert.equal(dashSpec.autoChord, false);
+  assert.equal(dashSpec.needsInfer, false);
+
+  const parsedEmpty = parser.parseScore('[] C4 E4 G4 C5', 4);
+  assert.equal(parsedEmpty.measures[0].chord, 'C');
+  assert.equal(parsedEmpty.measures[0].autoChord, true);
+  assert.equal(parsedEmpty.measures[0].chords[0].chord, 'C');
+  assert.equal(parsedEmpty.measures[0].beats[0].chord, 'C');
+});
+
+test('inferred chord in [?] synchronizes to measure.chord and measure.chords[0].chord and serializes with question mark', function(){
+  const parsed = parser.parseScore('[?] C4 E4 G4 C5', 4);
+  assert.equal(parsed.measures[0].chord, 'C');
+  assert.equal(parsed.measures[0].autoChord, true);
+  assert.equal(parsed.measures[0].chords[0].chord, 'C');
+  assert.equal(parsed.measures[0].chords[0].autoChord, true);
+  assert.equal(parsed.measures[0].beats[0].chord, 'C');
+  assert.equal(parser.serializeScoreMeasures(parsed.measures), '[C?] C4 E4 G4 C5 | ""');
+});
+
+test('multi-chord starting with dash [-, 3:C] parses and round-trips via serializeScoreMeasures', function(){
+  const parsed = parser.parseScore('[-, 3:C] C4 D4 E4 F4', 4);
+  assert.equal(parsed.measures[0].chords[0].chord, '');
+  assert.equal(parsed.measures[0].chords[0].beat, 1);
+  assert.equal(parsed.measures[0].chords[1].chord, 'C');
+  assert.equal(parsed.measures[0].chords[1].beat, 3);
+  assert.equal(parser.serializeScoreMeasures(parsed.measures), '[-, 3:C] C4 D4 E4 F4 | ""');
+});
 process.stdout.write('1..' + checks + '\n');

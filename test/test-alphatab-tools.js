@@ -1618,6 +1618,9 @@ test('convert-chord-memos: transforms chord memos into measure-head multi-chords
   const line1 = '[Am] E4 B3 C4 D4 | "2박부터 G/B · 3박부터 C · 4박부터 D7"';
   assert.equal(convertMeasureChordMemos(line1), '[Am, 2:G/B, 3:C, 4:D7] E4 B3 C4 D4');
 
+  const lineSlash = '[Am] E4 B3 C4 D4 | "2박부터 C · 3박부터 /G"';
+  assert.equal(convertMeasureChordMemos(lineSlash), '[Am, 2:C, 3:C/G] E4 B3 C4 D4');
+
   const line2 = '[Am] E4 B3 C4 D4 | "연습용 · 2박부터 G/B"';
   assert.equal(convertMeasureChordMemos(line2), '[Am, 2:G/B] E4 B3 C4 D4 | "연습용"');
 
@@ -1654,6 +1657,21 @@ test('convert-chord-memos: transforms chord memos into measure-head multi-chords
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
+test('chord names: last valid chord in the same cell carries over to next measure', function(){
+  const tex = '\\title "SameCell" \\tempo 80 \\ts (4 4)\n0.1.4 {ch "Am"} 0.2.4 0.3.8 {ch "C"} 0.3.8 {ch "D7"} 0.4.4 |\n0.1.4 0.2.4 0.3.4 0.4.4 |\n';
+  const out = tool.convertScore(importCleanTex(tex, 'sameCell'), {});
+  assert.equal(out.ok, true);
+  const heads = out.measures.map(function(line){ const m = line.match(/^\[([^\]]*)\]/); return m ? m[1] : ''; });
+  assert.deepEqual(heads, ['Am, 3:C', 'D7']);
+});
+
+test('score-to-alphatex: multi-chord [Am, 3:G7] emits ch "G7" at 3rd beat item', function(){
+  const song = { title: 'MultiChord', beats: 4, bpm: 80, capo: 0, lines: ['[Am, 3:G7] E4 B3 C4 D4'] };
+  const res = converter.toAlphaTex(song);
+  assert.equal(res.error, undefined);
+  assert.match(res.tex, /0\.1\.4 \{ch "Am"\}/);
+  assert.match(res.tex, /1\.2\.4 \{ch "G7"\}/);
+});
 process.stdout.write('1..' + checks + '\n');
 if (failed){
   process.stdout.write('실패 ' + failed + '개\n');

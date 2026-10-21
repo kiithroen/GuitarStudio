@@ -178,14 +178,14 @@
       var chordStr;
       if (measure.chords && measure.chords.length >= 2){
         chordStr = measure.chords.map(function(c, idx){
-          var name = c.chord || '';
-          if (c.autoChord && !/\?$/.test(name)) name += '?';
+          var name = c.chord || '-';
+          if (c.autoChord && name !== '-' && !/\?$/.test(name)) name += '?';
           var prefix = (idx === 0 && c.beat === 1) ? '' : (c.beat + ':');
           return prefix + name;
         }).join(', ');
       } else if (measure.chords && measure.chords.length === 1){
         var single = measure.chords[0];
-        var name = single.chord || '-';
+        var name = single.chord || measure.chord || '-';
         if (single.autoChord && name !== '-' && !/\?$/.test(name)) name += '?';
         var prefix = (single.beat && single.beat > 1) ? (single.beat + ':') : '';
         chordStr = name === '-' ? '-' : (prefix + name);

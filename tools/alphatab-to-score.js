@@ -930,13 +930,16 @@ function convert(score, opts, forcedGrid){
       const seenCells = new Set([1]);
       collected.chords.slice(1).forEach(function(entry){
         const cellNumber = Math.min(grid.cells, Math.max(0, Math.floor((entry.start + TOLERANCE_TICKS) / grid.slotTicks))) + 1;
+        const isValid = isValidChordName(entry.name);
+        const normalized = isValid ? dictionaryChordName(entry.name) : null;
+        if (isValid){
+          lastValid = normalized;
+        }
         if (seenCells.has(cellNumber)) return;
         seenCells.add(cellNumber);
-        if (isValidChordName(entry.name)){
-          const normalized = dictionaryChordName(entry.name);
+        if (isValid){
           chordItems.push(cellNumber + ':' + normalized);
           if (normalized !== entry.name) memos.push('원본 ' + entry.name);
-          lastValid = normalized;
         } else {
           memos.push('코드 이름 변환 불가: ' + entry.name);
         }
