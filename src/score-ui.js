@@ -133,7 +133,13 @@ function formatSongToSheetTsv(title, beats, bpm, badge, linesArr){
   if (validation.errors.length) throw new Error('악보 오류: ' + validation.errors[0].message);
   var parsed = parseScore(raw, Number(beats) || 4);
   var canonical = parsed.measures.map(function(m){
-    return { chord: m.chord || '-', autoChord: !!m.autoChord, notes: m.beats.map(function(b){ return b.tok || '-'; }), lyric: m.lyric || '' };
+    return {
+      chord: m.chord || '-',
+      autoChord: !!m.autoChord,
+      chords: m.chords || [],
+      notes: m.beats.map(function(b){ return b.tok || '-'; }),
+      lyric: m.lyric || ''
+    };
   });
   var joinedMeasures = serializeScoreMeasures(canonical, ' // ');
   return [cleanTitle, String(beats || 4), String(bpm || 64), cleanBadge, joinedMeasures].join('\t');
