@@ -768,4 +768,45 @@ test('multi-chord starting with dash [-, 3:C] parses and round-trips via seriali
   assert.equal(parsed.measures[0].chords[1].beat, 3);
   assert.equal(parser.serializeScoreMeasures(parsed.measures), '[-, 3:C] C4 D4 E4 F4 | ""');
 });
+test('mid-measure partial inference [Am, 3:?] preserves beat 1 and infers beat 3 only', function(){
+  const parsed = parser.parseScore('[Am, 3:?] C4 D4 E4 G4', 4);
+  assert.equal(parsed.errors.length, 0);
+  const m = parsed.measures[0];
+  assert.equal(m.chord, 'Am');
+  assert.equal(m.chords[0].chord, 'Am');
+  assert.equal(m.chords[0].autoChord, false);
+  assert.equal(m.chords[1].beat, 3);
+  assert.equal(m.chords[1].chord, 'C');
+  assert.equal(m.chords[1].autoChord, true);
+  assert.equal(m.beats[0].chord, 'Am');
+  assert.equal(m.beats[2].chord, 'C');
+  assert.equal(m.beats[2].autoChord, true);
+  assert.equal(parser.serializeScoreMeasures(parsed.measures), '[Am, 3:C?] C4 D4 E4 G4 | ""');
+});
+
+test('silent measure [] synchronizes chords[0] and beats[0] with previous chord', function(){
+  const parsed = parser.parseScore('[G] E4 B3 C4 D4 // [] r r r r', 4);
+  assert.equal(parsed.errors.length, 0);
+  const m2 = parsed.measures[1];
+  assert.equal(m2.chord, 'G');
+  assert.equal(m2.autoChord, true);
+  assert.ok(Array.isArray(m2.chords) && m2.chords.length > 0);
+  assert.equal(m2.chords[0].chord, 'G');
+  assert.equal(m2.chords[0].autoChord, true);
+  assert.ok(Array.isArray(m2.beats) && m2.beats.length > 0);
+  assert.equal(m2.beats[0].chord, 'G');
+  assert.equal(m2.beats[0].autoChord, true);
+});
+
+test('unresolved multi-chord [Am, 3:?] serializes back to [Am, 3:?]', function(){
+  const measure = {
+    chord: 'Am',
+    chords: [{ beat: 1, chord: 'Am' }, { beat: 3, chord: '', autoChord: true }],
+    notes: ['C4', 'D4', 'E4', 'F4'],
+    lyric: ''
+  };
+  const serialized = parser.serializeScoreMeasures([measure]);
+  assert.equal(serialized, '[Am, 3:?] C4 D4 E4 F4 | ""');
+});
+
 process.stdout.write('1..' + checks + '\n');

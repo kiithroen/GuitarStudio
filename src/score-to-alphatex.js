@@ -103,6 +103,24 @@
         chordsByBeat[1] = chord;
       }
       var emittedChordBeats = Object.create(null);
+      measure.items.forEach(function(item, itemIndex){
+        var itemBeat = item.cell != null ? (item.cell + 1) : (itemIndex === 0 ? 1 : null);
+        if (itemBeat && chordsByBeat[itemBeat] && !emittedChordBeats[itemBeat]){
+          emittedChordBeats[itemBeat] = true;
+        } else if (itemIndex === 0 && chordsByBeat[1] && !emittedChordBeats[1]){
+          emittedChordBeats[1] = true;
+        }
+      });
+      var unassignedBeats = Object.keys(chordsByBeat).map(Number).sort(function(a, b){ return a - b; }).filter(function(b){
+        return !emittedChordBeats[b];
+      });
+      if (unassignedBeats.length){
+        var extraMemos = unassignedBeats.map(function(b){
+          return b + '박부터 ' + chordsByBeat[b];
+        });
+        memo = memo ? (memo + ' · ' + extraMemos.join(' · ')) : extraMemos.join(' · ');
+      }
+      emittedChordBeats = Object.create(null);
       var cellList = parsed.measures[measureIndex] && parsed.measures[measureIndex].beats || [];
       var skipCount = 0, leadingSkips = 0;
       cellList.forEach(function(beat, index){

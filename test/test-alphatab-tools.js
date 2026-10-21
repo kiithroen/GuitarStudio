@@ -1672,6 +1672,24 @@ test('score-to-alphatex: multi-chord [Am, 3:G7] emits ch "G7" at 3rd beat item',
   assert.match(res.tex, /0\.1\.4 \{ch "Am"\}/);
   assert.match(res.tex, /1\.2\.4 \{ch "G7"\}/);
 });
+test('alphatab-to-score: chord on 3rd beat only parsed as [-, 3:C]', function(){
+  const tex = '\\title "ThirdBeat"\n\\tempo 80\n\\ts (4 4)\n0.1.2 0.3.4 {ch "C"} 0.4.4 |\n';
+  const out = tool.convertScore(importCleanTex(tex, 'thirdBeat'), {});
+  assert.equal(out.ok, true);
+  const head = out.measures[0].match(/^\[([^\]]*)\]/)[1];
+  assert.equal(head, '-, 3:C');
+});
+
+test('score-to-alphatex: chord without note at that beat is preserved in bar memo', function(){
+  const song = { title: 'PreserveChordMemo', beats: 4, bpm: 80, capo: 0, lines: ['[Am, 3:G7] E4 - - D4'] };
+  const res = converter.toAlphaTex(song);
+  assert.equal(res.error, undefined);
+  assert.match(res.tex, /txt "3박부터 G7"/);
+  const roundTrip = tool.convertScore(importCleanTex(res.tex, 'preserveMemo'), {});
+  assert.equal(roundTrip.ok, true);
+  assert.ok(roundTrip.measures[0].includes('3박부터 G7'));
+});
+
 process.stdout.write('1..' + checks + '\n');
 if (failed){
   process.stdout.write('실패 ' + failed + '개\n');

@@ -926,8 +926,17 @@ function convert(score, opts, forcedGrid){
       } else {
         memos.push('코드 이름 변환 불가: ' + first.name);
       }
-      const chordItems = [firstNormalized];
-      const seenCells = new Set([1]);
+      const firstCell = Math.min(grid.cells, Math.max(0, Math.floor((first.start + TOLERANCE_TICKS) / grid.slotTicks))) + 1;
+      let chordItems;
+      let seenCells;
+      if (firstCell === 1){
+        chordItems = [firstNormalized];
+        seenCells = new Set([1]);
+      } else {
+        const baseChord = isValidChordName(endChord) ? endChord : '-';
+        chordItems = [baseChord, firstCell + ':' + firstNormalized];
+        seenCells = new Set([1, firstCell]);
+      }
       collected.chords.slice(1).forEach(function(entry){
         const cellNumber = Math.min(grid.cells, Math.max(0, Math.floor((entry.start + TOLERANCE_TICKS) / grid.slotTicks))) + 1;
         const isValid = isValidChordName(entry.name);

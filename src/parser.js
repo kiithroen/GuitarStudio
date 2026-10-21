@@ -182,6 +182,39 @@
 
     var palette = KEY_PALETTES[detectedKey] || KEY_PALETTES['C'];
 
+    function applyInferredChord(measure, chordName){
+      var inferTargetFound = false;
+      if (Array.isArray(measure.chords) && measure.chords.length){
+        measure.chords.forEach(function(c){
+          if (c && c.autoChord && !c.chord){
+            c.chord = chordName;
+            c.autoChord = true;
+            inferTargetFound = true;
+            if (Array.isArray(measure.beats) && measure.beats[c.beat - 1]){
+              measure.beats[c.beat - 1].chord = chordName;
+              measure.beats[c.beat - 1].autoChord = true;
+            }
+            if (c.beat === 1 || !measure.chord){
+              measure.chord = chordName;
+              measure.autoChord = true;
+            }
+          }
+        });
+      }
+      if (!inferTargetFound){
+        measure.chord = chordName;
+        measure.autoChord = true;
+        if (Array.isArray(measure.chords) && measure.chords.length){
+          measure.chords[0].chord = chordName;
+          measure.chords[0].autoChord = true;
+        }
+        if (Array.isArray(measure.beats) && measure.beats[0]){
+          measure.beats[0].chord = chordName;
+          measure.beats[0].autoChord = true;
+        }
+      }
+    }
+
     // 2단계: 각 마디별 멜로디 가중치 집계 및 최적 코드 매칭
     measures.forEach(function(m, mIdx){
       if (!m.needsInfer) return;
@@ -208,8 +241,7 @@
       if (totalWeight === 0){
         // 무음 마디면 직전 마디 코드 또는 으뜸화음
         var prev = mIdx > 0 && measures[mIdx - 1].chord ? measures[mIdx - 1].chord : palette.tonic;
-        m.chord = prev;
-        m.autoChord = true;
+        applyInferredChord(m, prev);
         return;
       }
 
@@ -252,10 +284,7 @@
         }
       });
 
-      m.chord = bestChord;
-      m.autoChord = true;
-      if (Array.isArray(m.chords) && m.chords.length){ m.chords[0].chord = bestChord; m.chords[0].autoChord = true; }
-      if (Array.isArray(m.beats) && m.beats[0]){ m.beats[0].chord = bestChord; m.beats[0].autoChord = true; }
+      applyInferredChord(m, bestChord);
     });
   }
 

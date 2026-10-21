@@ -178,8 +178,9 @@
       var chordStr;
       if (measure.chords && measure.chords.length >= 2){
         chordStr = measure.chords.map(function(c, idx){
-          var name = c.chord || '-';
-          if (c.autoChord && name !== '-' && !/\?$/.test(name)) name += '?';
+          var name = c.chord || '';
+          if (c.autoChord && !/\?$/.test(name)) name += '?';
+          if (!name) name = '-';
           var prefix = (idx === 0 && c.beat === 1) ? '' : (c.beat + ':');
           return prefix + name;
         }).join(', ');
