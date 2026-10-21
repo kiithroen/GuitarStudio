@@ -2395,8 +2395,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=at-controls-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=at-controls-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=at-pages-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=at-pages-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -5503,7 +5503,7 @@ async function testAlphaTabView(client, httpPort) {
   assert.equal(drawn.playEnabled && drawn.rewindEnabled, true, 'play and rewind are enabled once ready');
   assert.equal(drawn.playText, '재생');
   assert.equal(drawn.noSpeedSelect, true, 'the speed select is replaced by the BPM slider');
-  assert.equal(drawn.order, 'atPlayBtn,atRewindBtn,atBpmRange,atViewSelect,atClickToggle,atClickVolRange,atGuitarVolRange', 'controls are in the order play, rewind, BPM, view, click, click volume, guitar volume');
+  assert.equal(drawn.order, 'atPlayBtn,atRewindBtn,atBpmRange,atViewSelect,atPagesBtn,atClickToggle,atClickVolRange,atGuitarVolRange', 'controls are in the order play, rewind, BPM, view, two pages, click, click volume, guitar volume');
   const butterflyExpected = expectedBpmSlider(handoff.stored.bpm, handoff.stored.practiceBpm);
   assert.deepEqual(drawn.bpm, { min: butterflyExpected.min, max: butterflyExpected.max, value: butterflyExpected.value, text: bpmText(butterflyExpected.value, handoff.stored.bpm), disabled: false, speed: butterflyExpected.value / handoff.stored.bpm }, 'the BPM slider starts at the practice BPM with the song-BPM ratio range');
   assert.equal(drawn.views, '오선+타브,타브,오선');
@@ -5834,7 +5834,7 @@ async function testAlphaTabControls(client, httpPort) {
   await fire('atClickToggle', { checked: false }, 'change');
   facts = await soundFacts();
   assert.deepEqual([facts.metronome, facts.countIn], [0, 0], 'turning the click off silences the click and the count-in');
-  assert.deepEqual(JSON.parse(facts.stored), { click: false, clickVol: 1, guitarVol: 1 }, 'prefs are saved');
+  assert.deepEqual(JSON.parse(facts.stored), { click: false, clickVol: 1, guitarVol: 1, twoPage: false }, 'prefs are saved');
   await fire('atClickVolRange', { value: '150' }, 'input');
   facts = await soundFacts();
   assert.deepEqual([facts.metronome, facts.countIn], [0, 0], 'the click stays silent while it is off');
@@ -5846,7 +5846,7 @@ async function testAlphaTabControls(client, httpPort) {
   facts = await soundFacts();
   assert.equal(facts.guitar, '0.5', 'the guitar volume is applied as a track volume');
   assert.ok(near(facts.master, masterVolume) && near(facts.metronome, metronomeBase * 1.5), 'the guitar volume leaves the master volume and the click alone');
-  assert.deepEqual(JSON.parse(facts.stored), { click: true, clickVol: 1.5, guitarVol: 0.5 });
+  assert.deepEqual(JSON.parse(facts.stored), { click: true, clickVol: 1.5, guitarVol: 0.5, twoPage: false });
   await fire('atClickToggle', { checked: false }, 'change');
   // 새로 열면 저장한 값으로 시작한다
   await navigate(viewUrl, viewSettled, 45000);
@@ -5881,7 +5881,7 @@ async function testAlphaTabControls(client, httpPort) {
   assert.ok(near((await sliderFacts()).speed, BPM_RATIO_MIN), 'the lower end plays at the lower ratio');
   assert.equal(slider.stored, null, 'the BPM is not saved');
   await fire('atClickToggle', { checked: false }, 'change');
-  assert.deepEqual(Object.keys(JSON.parse((await sliderFacts()).stored)).sort(), ['click', 'clickVol', 'guitarVol'], 'the prefs hold no BPM');
+  assert.deepEqual(Object.keys(JSON.parse((await sliderFacts()).stored)).sort(), ['click', 'clickVol', 'guitarVol', 'twoPage'], 'the prefs hold no BPM');
   for (const practiceBpm of [range.max + 1, range.min - 1, 0, 'x', null, undefined]) {
     await openView(handoffOf(butterfly, practiceBpm === undefined ? {} : { practiceBpm }));
     slider = await sliderFacts();
@@ -5910,6 +5910,260 @@ async function testAlphaTabControls(client, httpPort) {
   await navigate(practiceUrl, practiceReady);
   assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'no console errors on the alphaTab controls (storage.js and app-state.js load cleanly)');
   process.stdout.write('Browser checkpoint: alphaTab controls (click, click volume, guitar volume, saved prefs, BPM slider, no localStorage writes on load) passed\n');
+}
+
+// 두 쪽 보기(가로 화면): 켜기·끄기, 잘림 없음, 쪽 넘김, 커서 거울, 오른쪽 클릭, 세로 전환, 작은 가로 화면의 배율.
+async function testAlphaTabTwoPage(client, httpPort) {
+  const SONG_ID = 'builtin-sor-op35-22';
+  const VIEW_KEY = 'gs.alphaTab.view';
+  const PREFS_KEY = 'gs.alphaTab.prefs';
+  const viewUrl = `http://127.0.0.1:${httpPort}/alphatab.html`;
+  const practiceUrl = `http://127.0.0.1:${httpPort}/index.html`;
+  const practiceReady = 'document.readyState === "complete" && window.allSongs && window.curSong != null';
+  const viewSettled = 'document.readyState === "complete" && ["ready","empty","error"].indexOf(document.body.getAttribute("data-at-state")) >= 0';
+  const errorsBefore = client.consoleErrors.length;
+  const twoPagePadding = JSON.parse(alphaTabViewSource.match(/var TWO_PAGE_PADDING = (\[[^\]]*\]);/)[1]);
+  const minScale = Number(alphaTabViewSource.match(/var TWO_PAGE_MIN_SCALE = ([0-9.]+);/)[1]);
+  const song = builtinSongsJson.find(item => item.id === SONG_ID);
+  assert.ok(song, SONG_ID + ' exists in songs.json');
+  async function navigate(url, ready, timeoutMs) {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await client.send('Page.navigate', { url });
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, ready, timeoutMs || 8000);
+  }
+  const setSize = async (width, height) => client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const twoSettled = `document.body.getAttribute('data-at-layout') === 'two' && document.body.getAttribute('data-at-pages-match') === 'true' && Number(document.body.getAttribute('data-at-page-count')) >= 1 && !!window.__alphaTabPages && document.querySelectorAll('#atHostR svg *[fill]').length > 0`;
+  const state = () => client.evaluate(`(function(){
+    var b = document.body, btn = document.getElementById('atPagesBtn');
+    return { layout: b.getAttribute('data-at-layout'), spread: b.getAttribute('data-at-spread'), match: b.getAttribute('data-at-pages-match'), count: b.getAttribute('data-at-page-count'),
+      btnHidden: btn.hidden, btnText: btn.textContent, pressed: btn.getAttribute('aria-pressed'), active: btn.classList.contains('active'), rightApi: typeof window.__alphaTabApiR,
+      nums: Array.prototype.map.call(document.querySelectorAll('.at-page-num'), function(n){ return n.textContent; }), stored: localStorage.getItem(${JSON.stringify(PREFS_KEY)}) };
+  })()`);
+  // 두 쪽 창 안에 다 들어 있는지: 문서가 스크롤되지 않고, 쪽 창이 화면 안이고, 보이는 범위와 겹치는 조각이 범위 밖으로 삐져나가지 않는다.
+  const fit = () => client.evaluate(`(function(){
+    var de = document.documentElement;
+    var out = { scrollOk: de.scrollHeight <= de.clientHeight, clientHeight: de.clientHeight, pageBottoms: Array.prototype.map.call(document.querySelectorAll('.at-page'), function(p){ return p.getBoundingClientRect().bottom; }), hosts: [] };
+    [[document.getElementById('atHost'), window.__alphaTabApi], [document.getElementById('atHostR'), window.__alphaTabApiR]].forEach(function(pair){
+      var host = pair[0], surface = pair[1].canvasElement.element;
+      var top = host.scrollTop, bottom = top + host.clientHeight, overlapping = 0, bad = [];
+      Array.prototype.forEach.call(surface.children, function(child){
+        var t = (parseFloat(child.style.top) || 0) + surface.offsetTop, h = parseFloat(child.style.height) || 0;
+        if (h > 0 && t + h > top + 1 && t < bottom - 1){ overlapping++; if (t < top - 1 || t + h > bottom + 1) bad.push([t, h, top, bottom]); }
+      });
+      out.hosts.push({ overlapping: overlapping, bad: bad });
+    });
+    return out;
+  })()`);
+  const svgTexts = () => client.evaluate(`(function(){
+    var read = function(id){ return Array.prototype.map.call(document.querySelectorAll('#' + id + ' svg text'), function(t){ return t.textContent.trim(); }); };
+    return { left: read('atHost'), right: document.getElementById('atHostR') ? read('atHostR') : [] };
+  })()`);
+  // 쪽 번호(0부터)의 첫 줄 번호와 그 줄 첫 마디 번호(0부터)
+  const firstBarOfPage = pageIndex => client.evaluate(`(function(){
+    var api = window.__alphaTabApi, pages = window.__alphaTabPages;
+    var systems = api.renderer.boundsLookup.staffSystems, bar = 0;
+    for (var i = 0; i < systems.length; i++){
+      var mid = systems[i].realBounds.y + systems[i].realBounds.h / 2;
+      if (mid >= pages[${pageIndex}].top) return { system: i, bar: bar };
+      bar += systems[i].bars.length;
+    }
+    return null;
+  })()`);
+  const jumpToPage = async pageIndex => {
+    const where = await firstBarOfPage(pageIndex);
+    assert.ok(where, 'page ' + (pageIndex + 1) + ' has a first system');
+    await client.evaluate(`(function(){
+      var api = window.__alphaTabApi;
+      var beat = api.score.tracks[0].staves[0].bars[${where.bar}].voices[0].beats[0];
+      var bb = api.renderer.boundsLookup.findBeat(beat);
+      if (!bb) throw new Error('no beat bounds for bar ${where.bar}');
+      api.customScrollHandler.onBeatCursorUpdating(bb);
+      return true;
+    })()`);
+    return where;
+  };
+  const press = async key => {
+    const code = { ArrowLeft: 37, ArrowRight: 39 }[key];
+    await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key, code: key, windowsVirtualKeyCode: code });
+    await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key, windowsVirtualKeyCode: code });
+    await sleep(150);
+  };
+  const clickPagesButton = () => client.evaluate(`document.getElementById('atPagesBtn').click(); true`, { userGesture: true });
+
+  try {
+    // 1. 가로 1920x960: 처음에는 한 쪽 보기, 단추는 보이고 꺼져 있다
+    await navigate(practiceUrl, practiceReady);
+    await client.evaluate(`localStorage.removeItem(${JSON.stringify(PREFS_KEY)}); localStorage.setItem(${JSON.stringify(VIEW_KEY)}, ${JSON.stringify(JSON.stringify({ title: song.title, beats: song.beats, bpm: Number(song.bpm), capo: 0, lines: song.lines, savedAt: Date.now() }))}); true`);
+    await setSize(1920, 960);
+    await navigate(viewUrl, viewSettled, 45000);
+    await waitForCondition(client, `document.querySelectorAll('#atHost svg *[fill]').length > 0`, 15000);
+    let facts = await state();
+    assert.deepEqual([facts.btnHidden, facts.btnText, facts.pressed, facts.active, facts.layout, facts.rightApi], [false, '두 쪽', 'false', false, 'one', 'undefined'], 'landscape shows the two-page button off by default: ' + JSON.stringify(facts));
+    const onePagePadding = await client.evaluate('window.__alphaTabApi.settings.display.padding');
+    assert.equal(await client.evaluate(`window.__alphaTabApi.settings.core.enableLazyLoading`), true, 'the one-page view keeps lazy loading');
+    const oneTexts = await svgTexts();
+    assert.ok(oneTexts.left.includes('Guitar Standard Tuning'), 'the one-page view draws the tuning line (so the hidden-header check below is not vacuous)');
+    assert.ok(oneTexts.left.some(text => text.includes(song.title)), 'the one-page view draws the song title in the score header');
+
+    // 2. 단추를 누르면 두 쪽 보기
+    await clickPagesButton();
+    await waitForCondition(client, twoSettled + ' && Number(document.body.getAttribute("data-at-page-count")) >= 3', 20000);
+    facts = await state();
+    assert.deepEqual([facts.layout, facts.match, facts.pressed, facts.active, facts.spread], ['two', 'true', 'true', true, '0,1'], 'the button switches to two pages: ' + JSON.stringify(facts));
+    assert.deepEqual(JSON.parse(facts.stored), { click: true, clickVol: 1, guitarVol: 1, twoPage: true }, 'the choice is saved with the other prefs unchanged');
+    const structure = await client.evaluate(`(function(){
+      var pages = document.querySelectorAll('.at-page');
+      var L = window.__alphaTabApi, R = window.__alphaTabApiR;
+      return { count: pages.length, leftParent: document.getElementById('atHost').parentNode === pages[0], rightParent: document.getElementById('atHostR').parentNode === pages[1],
+        paddingL: L.settings.display.padding, paddingR: R.settings.display.padding, scaleL: L.settings.display.scale, scaleR: R.settings.display.scale, lazyL: L.settings.core.enableLazyLoading, lazyR: R.settings.core.enableLazyLoading,
+        rightPlayer: !!R.player, nums: Array.prototype.map.call(document.querySelectorAll('.at-page-num'), function(n){ return n.textContent; }) };
+    })()`);
+    assert.deepEqual([structure.count, structure.leftParent, structure.rightParent], [2, true, true], 'the two hosts sit in the two page frames');
+    assert.deepEqual(structure.paddingL, twoPagePadding, 'the left instance uses TWO_PAGE_PADDING');
+    assert.deepEqual(structure.paddingR, twoPagePadding, 'the right instance uses TWO_PAGE_PADDING');
+    assert.equal(structure.scaleL, structure.scaleR, 'both instances draw at the same scale');
+    assert.deepEqual([structure.lazyL, structure.lazyR, structure.rightPlayer], [false, false, false], 'lazy loading is off and the right instance has no player');
+    const pageCount = Number(facts.count);
+    assert.deepEqual(structure.nums, ['1 / ' + pageCount, '2 / ' + pageCount], 'the page numbers are shown');
+
+    // 3. 잘림 없음과 스크롤 없음
+    const checkFit = async label => {
+      const f = await fit();
+      assert.equal(f.scrollOk, true, label + ': the document does not scroll');
+      assert.ok(f.pageBottoms.every(bottom => bottom <= f.clientHeight + 0.5), label + ': the page frames end inside the window: ' + JSON.stringify(f.pageBottoms) + ' / ' + f.clientHeight);
+      f.hosts.forEach((host, index) => {
+        assert.ok(host.overlapping > 0, label + ': the ' + (index ? 'right' : 'left') + ' window shows at least one piece');
+        assert.deepEqual(host.bad, [], label + ': no piece is cut at the edge of the ' + (index ? 'right' : 'left') + ' window');
+      });
+    };
+    await checkFit('start');
+
+    // 4. 악보 머리 글이 숨는다
+    const twoTexts = await svgTexts();
+    for (const side of ['left', 'right']) {
+      assert.ok(!twoTexts[side].includes('Guitar Standard Tuning'), side + ' page hides the tuning line');
+      assert.ok(!twoTexts[side].some(text => text.includes(song.title)), side + ' page hides the score title');
+    }
+
+    // 5. 넘김은 반쪽씩: 2쪽(번호 1) → 3·2쪽, 3쪽(번호 2) → 3·4쪽
+    await jumpToPage(1);
+    facts = await state();
+    assert.equal(facts.spread, '2,1', 'following into page 2 puts page 3 on the left and page 2 on the right');
+    assert.deepEqual(facts.nums, ['3 / ' + pageCount, '2 / ' + pageCount], 'the page numbers follow the spread');
+    await checkFit('page 2');
+    await jumpToPage(2);
+    assert.equal((await state()).spread, '2,3', 'following into page 3 puts pages 3 and 4 side by side');
+    await checkFit('page 3');
+
+    // 6. 키: 포커스를 본문에 두고 ←, →, 처음으로
+    await client.evaluate(`document.activeElement && document.activeElement.blur && document.activeElement.blur(); true`);
+    await press('ArrowLeft');
+    assert.equal((await state()).spread, '2,1', 'ArrowLeft goes back one page');
+    await press('ArrowRight');
+    assert.equal((await state()).spread, '2,3', 'ArrowRight goes forward one page');
+    await client.evaluate(`document.getElementById('atRewindBtn').click(); true`, { userGesture: true });
+    await sleep(300);
+    assert.equal((await state()).spread, '0,1', 'the rewind button returns to page 1');
+
+    // 7. 커서 거울: 2쪽 첫 박으로 옮기면 오른쪽 커서가 왼쪽과 같은 자리에 선다
+    const secondPage = await firstBarOfPage(1);
+    await client.evaluate(`(function(){
+      var api = window.__alphaTabApi;
+      api.tickPosition = api.tickCache.getBeatStart(api.score.tracks[0].staves[0].bars[${secondPage.bar}].voices[0].beats[0]);
+      return true;
+    })()`);
+    const cursors = `(function(){
+      var read = function(host, sel){ var node = document.querySelector(host + ' ' + sel); return node ? node.style.transform : null; };
+      var bar = function(host){ var node = document.querySelector(host + ' .at-cursor-bar'); return node ? node.style.cssText : null; };
+      return { beatL: read('#atHost', '.at-cursor-beat'), beatR: read('#atHostR .at-cursors', '.at-cursor-beat'), barL: bar('#atHost'), barR: bar('#atHostR .at-cursors') };
+    })()`;
+    await waitForCondition(client, `(function(){ var c = ${cursors}; return !!c.beatR && c.beatR === c.beatL && !!c.barR && c.barR === c.barL; })()`, 3000);
+    const mirrored = await client.evaluate(cursors);
+    assert.ok(mirrored.beatR && mirrored.beatR === mirrored.beatL, 'the right beat cursor copies the left one: ' + JSON.stringify(mirrored));
+    assert.ok(mirrored.barR && mirrored.barR === mirrored.barL, 'the right bar cursor copies the left one');
+
+    // 8. 오른쪽 클릭: 오른쪽 쪽 첫 줄 가운데 마디의 한가운데
+    await client.evaluate(`document.getElementById('atRewindBtn').click(); true`, { userGesture: true });
+    await sleep(300);
+    assert.equal((await state()).spread, '0,1');
+    const target = await client.evaluate(`(function(){
+      var api = window.__alphaTabApi, R = window.__alphaTabApiR;
+      var rightPage = Number(document.body.getAttribute('data-at-spread').split(',')[1]);
+      var systems = api.renderer.boundsLookup.staffSystems, bar = 0, firstSystem = -1;
+      for (var i = 0; i < systems.length; i++){
+        if (systems[i].realBounds.y + systems[i].realBounds.h / 2 >= window.__alphaTabPages[rightPage].top){ firstSystem = i; break; }
+        bar += systems[i].bars.length;
+      }
+      var rs = R.renderer.boundsLookup.staffSystems[firstSystem];
+      var mid = Math.floor(rs.bars.length / 2), vb = rs.bars[mid].visualBounds;
+      var masterBar = api.score.masterBars[bar + mid];
+      var rect = R.canvasElement.element.getBoundingClientRect();
+      var start = api.tickCache.getMasterBarStart(masterBar);
+      return { x: rect.left + vb.x + vb.w / 2, y: rect.top + vb.y + vb.h / 2, start: start, end: start + masterBar.calculateDuration() };
+    })()`);
+    assert.ok(target.x > 0 && target.y > 0, 'the click target is on screen: ' + JSON.stringify(target));
+    await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: target.x, y: target.y });
+    await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: target.x, y: target.y, button: 'left', clickCount: 1 });
+    await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: target.x, y: target.y, button: 'left', clickCount: 1 });
+    await sleep(500);
+    const tick = await client.evaluate('window.__alphaTabApi.tickPosition');
+    assert.ok(tick >= target.start && tick < target.end, 'clicking a bar on the right page moves the position into that bar: ' + tick + ' not in [' + target.start + ', ' + target.end + ')');
+
+    // 9. 다시 열면 단추를 안 눌러도 두 쪽
+    await navigate(viewUrl, viewSettled, 45000);
+    await waitForCondition(client, twoSettled, 20000);
+    assert.equal((await state()).layout, 'two', 'the saved choice opens the two-page view');
+
+    // 10. 세로로 돌리면 한 쪽 보기로 돌아간다(새로 고치지 않는다)
+    await setSize(800, 1200);
+    await waitForCondition(client, `document.body.getAttribute('data-at-layout') === 'one' && Array.prototype.some.call(document.querySelectorAll('#atHost svg text'), function(t){ return t.textContent.trim() === 'Guitar Standard Tuning'; })`, 20000);
+    facts = await state();
+    assert.deepEqual([facts.btnHidden, facts.spread, facts.match, facts.count], [true, null, null, null], 'portrait hides the button and clears the two-page attributes: ' + JSON.stringify(facts));
+    const back = await client.evaluate(`(function(){
+      var api = window.__alphaTabApi, host = document.getElementById('atHost');
+      return { right: !!document.getElementById('atHostR'), pages: !!document.querySelector('.at-pages'), api: window.__alphaTabApiR, parentIsWrap: host.parentNode === document.querySelector('.wrap'), height: host.style.height,
+        lazy: api.settings.core.enableLazyLoading, padding: api.settings.display.padding, tuning: Array.prototype.some.call(host.querySelectorAll('svg text'), function(t){ return t.textContent.trim() === 'Guitar Standard Tuning'; }) };
+    })()`);
+    assert.deepEqual([back.right, back.pages, back.api, back.parentIsWrap, back.height, back.lazy], [false, false, null, true, '', true], 'leaving two pages removes the right instance and restores the host');
+    assert.deepEqual(back.padding, onePagePadding, 'the one-page padding comes back');
+    assert.equal(back.tuning, true, 'the score header comes back in the one-page view');
+
+    // 11. 다시 가로 1280x720
+    await setSize(1280, 720);
+    await waitForCondition(client, twoSettled, 20000);
+    assert.equal((await state()).match, 'true', 'landscape again switches back to two pages');
+
+    // 12. 작은 가로 화면: 줄이 쪽 창보다 높으면 배율을 줄여 다시 그린다
+    await setSize(760, 340);
+    const fitsSmall = `(function(){
+      var pageL = document.querySelector('.at-page'); if (!pageL || !window.__alphaTabApiR || !window.__alphaTabApiR.canvasElement) return false;
+      var cs = getComputedStyle(pageL), hc = pageL.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+      var tallest = 0;
+      [window.__alphaTabApi, window.__alphaTabApiR].forEach(function(inst){ Array.prototype.forEach.call(inst.canvasElement.element.children, function(c){ tallest = Math.max(tallest, parseFloat(c.style.height) || 0); }); });
+      return document.body.getAttribute('data-at-layout') === 'two' && document.body.getAttribute('data-at-pages-match') === 'true' && tallest > 0 && tallest <= hc + 1;
+    })()`;
+    await waitForCondition(client, fitsSmall, 25000);
+    await sleep(500);
+    assert.equal(await client.evaluate(fitsSmall), true, 'the small landscape window settles with every piece inside the page window');
+    const small = await client.evaluate(`({ scaleL: window.__alphaTabApi.settings.display.scale, scaleR: window.__alphaTabApiR.settings.display.scale })`);
+    assert.equal(small.scaleL, small.scaleR, 'both instances use the same scale in the small window');
+    assert.ok(small.scaleL >= minScale - 1e-9, 'the scale stays at or above TWO_PAGE_MIN_SCALE: ' + small.scaleL);
+    await checkFit('small window');
+    process.stdout.write(`Two-page fit 760x340: scale ${small.scaleL}\n`);
+
+    // 13. 단추를 다시 누르면 꺼진다
+    await clickPagesButton();
+    await waitForCondition(client, `document.body.getAttribute('data-at-layout') === 'one'`, 20000);
+    facts = await state();
+    assert.deepEqual([facts.pressed, JSON.parse(facts.stored).twoPage], ['false', false], 'the button turns two pages off and saves it');
+  } finally {
+    await client.evaluate(`localStorage.removeItem(${JSON.stringify(PREFS_KEY)}); localStorage.removeItem(${JSON.stringify(VIEW_KEY)}); true`).catch(() => {});
+    await client.send('Emulation.clearDeviceMetricsOverride').catch(() => {});
+  }
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'no console errors in the two-page view');
+  process.stdout.write('Browser checkpoint: alphaTab two-page view (toggle, no clipping, page turns, cursor mirror, right click, portrait, small landscape fit) passed\n');
 }
 
 // 원본 alphaTex가 있는 곡(시트 6열): 보기 창이 그 alphaTex를 그대로 그리고, 앱에서 고치면 제자리 초안이 아니라 우리 악보 사본이 된다.
@@ -6466,7 +6720,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=at-controls-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=at-pages-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -6994,6 +7248,7 @@ async function main() {
     await testAlphaTabView(cdp, httpPort);
     await testAlphaTabScroll(cdp, httpPort);
     await testAlphaTabControls(cdp, httpPort);
+    await testAlphaTabTwoPage(cdp, httpPort);
     await testPlaybackLoudness(cdp, httpPort);
     await testAlphaTexSongs(cdp, httpPort);
 

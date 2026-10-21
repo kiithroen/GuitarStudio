@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#eceee9" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121614" media="(prefers-color-scheme: dark)">
 <title>alphaTab 보기 · 기타 스튜디오</title>
-<link rel="stylesheet" href="src/base.css?v=at-controls-1">
+<link rel="stylesheet" href="src/base.css?v=at-pages-1">
 <style>
 /* alphaTab 보기 창 전용. 색은 base.css 토큰만 쓴다. */
 .at-head{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 0;background:var(--bg);border-bottom:1px solid var(--line)}
@@ -25,6 +25,14 @@
 .at-cursor-beat{background:var(--accent);width:3px}
 .at-selection div{background:var(--accent-soft)}
 .at-highlight *{fill:var(--accent);stroke:var(--accent)}
+body[data-at-layout="two"]{overflow:hidden}
+body[data-at-layout="two"] .wrap{max-width:none;padding:calc(4px + env(safe-area-inset-top,0px)) 8px calc(8px + env(safe-area-inset-bottom,0px));gap:6px}
+body[data-at-layout="two"] .at-head{padding:4px 0}
+.at-pages{display:flex;gap:8px;height:var(--at-page-h,600px)}
+.at-page{position:relative;flex:1 1 0;min-width:0;box-sizing:border-box;height:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px 4px 16px;overflow:hidden}
+.at-page .at-host{border:0;border-radius:0;padding:0;background:transparent;min-height:0;overflow:hidden}
+.at-page-num{position:absolute;right:8px;bottom:1px;font-size:11px;line-height:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.at-page[data-empty="true"] .at-host{visibility:hidden}
 </style>
 </head>
 <body>
@@ -46,6 +54,7 @@
           <option value="score">오선</option>
         </select>
       </label>
+      <button type="button" class="btn sm" id="atPagesBtn" aria-pressed="false" hidden title="악보를 전자책처럼 두 쪽으로 나란히 봅니다(가로 화면에서만)">두 쪽</button>
       <label class="at-field" for="atClickToggle" title="메트로놈 클릭과 시작 전 한 마디 카운트인을 켜고 끕니다">
         <input type="checkbox" id="atClickToggle" checked> 클릭
       </label>
@@ -60,14 +69,14 @@
   </header>
   <main class="at-host" id="atHost" aria-label="alphaTab 악보"></main>
 </div>
-<script src="src/storage.js?v=at-controls-1"></script>
-<script src="src/app-state.js?v=at-controls-1"></script>
-<script src="src/notation.js?v=at-controls-1"></script>
-<script src="src/rhythm.js?v=at-controls-1"></script>
-<script src="src/parser.js?v=at-controls-1"></script>
-<script src="src/staff-layout.js?v=at-controls-1"></script>
-<script src="src/score-to-alphatex.js?v=at-controls-1"></script>
-<script src="vendor/alphatab/dist/alphaTab.min.js?v=at-controls-1"></script>
-<script src="src/alphatab-view.js?v=at-controls-1"></script>
+<script src="src/storage.js?v=at-pages-1"></script>
+<script src="src/app-state.js?v=at-pages-1"></script>
+<script src="src/notation.js?v=at-pages-1"></script>
+<script src="src/rhythm.js?v=at-pages-1"></script>
+<script src="src/parser.js?v=at-pages-1"></script>
+<script src="src/staff-layout.js?v=at-pages-1"></script>
+<script src="src/score-to-alphatex.js?v=at-pages-1"></script>
+<script src="vendor/alphatab/dist/alphaTab.min.js?v=at-pages-1"></script>
+<script src="src/alphatab-view.js?v=at-pages-1"></script>
 </body>
 </html>
