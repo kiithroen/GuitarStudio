@@ -2395,8 +2395,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=at-pages-2')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=at-pages-2">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=at-pages-3')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=at-pages-3">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -6081,7 +6081,7 @@ async function testAlphaTabTwoPage(client, httpPort) {
     assert.equal((await readZoom()).count, baseCount, 'back at the default scale the page count is the same');
     assert.equal((await state()).spread, '0,1', 'zooming keeps the spread');
 
-    // 5. 넘김은 반쪽씩: 2쪽(번호 1) → 3·2쪽, 3쪽(번호 2) → 3·4쪽
+    // 5. 재생 따라가기는 반쪽씩: 2쪽(번호 1) → 3·2쪽, 3쪽(번호 2) → 3·4쪽
     await jumpToPage(1);
     facts = await state();
     assert.equal(facts.spread, '2,1', 'following into page 2 puts page 3 on the left and page 2 on the right');
@@ -6091,12 +6091,28 @@ async function testAlphaTabTwoPage(client, httpPort) {
     assert.equal((await state()).spread, '2,3', 'following into page 3 puts pages 3 and 4 side by side');
     await checkFit('page 3');
 
-    // 6. 키: 포커스를 본문에 두고 ←, →, 처음으로
+    // 6. 키: 손으로 넘기기는 펼침째. 포커스를 본문에 두고 ←, →, 처음으로
     await client.evaluate(`document.activeElement && document.activeElement.blur && document.activeElement.blur(); true`);
+    const lastLeft = 2 * Math.floor((pageCount - 1) / 2);
+    await client.evaluate(`document.getElementById('atRewindBtn').click(); true`, { userGesture: true });
+    await sleep(300);
+    assert.equal((await state()).spread, '0,1', 'rewind before the key checks');
     await press('ArrowLeft');
-    assert.equal((await state()).spread, '2,1', 'ArrowLeft goes back one page');
+    assert.equal((await state()).spread, '0,1', 'ArrowLeft on the first spread stays');
     await press('ArrowRight');
-    assert.equal((await state()).spread, '2,3', 'ArrowRight goes forward one page');
+    assert.equal((await state()).spread, '2,3', 'ArrowRight turns to the next spread');
+    await press('ArrowLeft');
+    assert.equal((await state()).spread, '0,1', 'ArrowLeft turns back to the previous spread');
+    await jumpToPage(1);
+    assert.equal((await state()).spread, '2,1', 'following into page 2 makes the half-turned state');
+    await press('ArrowRight');
+    assert.equal((await state()).spread, '2,3', 'ArrowRight from the half-turned state goes to the next spread');
+    await jumpToPage(1);
+    assert.equal((await state()).spread, '2,1', 'following into page 2 again');
+    await press('ArrowLeft');
+    assert.equal((await state()).spread, '0,1', 'ArrowLeft from the half-turned state goes to the spread holding the current page');
+    for (let i = 0; i < pageCount + 1; i++) await press('ArrowRight');
+    assert.equal(Number((await state()).spread.split(',')[0]), lastLeft, 'repeated ArrowRight stops at the last spread');
     await client.evaluate(`document.getElementById('atRewindBtn').click(); true`, { userGesture: true });
     await sleep(300);
     assert.equal((await state()).spread, '0,1', 'the rewind button returns to page 1');
@@ -6159,8 +6175,9 @@ async function testAlphaTabTwoPage(client, httpPort) {
         return (await state()).spread;
       };
       assert.equal((await state()).spread, '0,1');
-      assert.equal(await swipeAt(-200, 0), '2,1', 'swiping left turns to the next page');
-      assert.equal(await swipeAt(200, 0), '0,1', 'swiping right turns back');
+      assert.equal(await swipeAt(-200, 0), '2,3', 'swiping left turns to the next spread');
+      assert.equal(await swipeAt(200, 0), '0,1', 'swiping right turns back to the previous spread');
+      assert.equal(await swipeAt(200, 0), '0,1', 'swiping right on the first spread stays');
       assert.equal(await swipeAt(-Math.floor(swipeMin / 2), 0), '0,1', 'a short swipe does not turn the page');
       assert.equal(await swipeAt(-20, 200), '0,1', 'a mostly vertical swipe does not turn the page');
     } finally {
@@ -6795,7 +6812,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=at-pages-2')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=at-pages-3')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

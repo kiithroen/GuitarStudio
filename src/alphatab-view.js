@@ -18,7 +18,7 @@
   var PLAYBACK_MASTER_VOLUME = 5.61; // 연습 화면 합성음과 비슷한 크기로 맞추되 가장 빽빽한 내장곡이 1.0을 넘지 않게 낮춘 alphaTab 마스터 음량(배율). 근거는 Docs/alphatab.md
   var TWO_PAGE_PADDING = [12, 8]; // 두 쪽 보기의 alphaTab 안쪽 여백(display.padding, [좌우, 위아래]). 한 쪽 보기는 alphaTab 기본값
   var TWO_PAGE_MIN_SCALE = 0.5; // 두 쪽 보기 배율의 아래 끝(축소 단추와, 줄 하나가 쪽 창보다 높을 때 줄여 그리는 배율 모두)
-  var TWO_PAGE_DEFAULT_SCALE = 0.9; // 두 쪽 보기의 처음 배율. 근거는 Docs/alphatab.md
+  var TWO_PAGE_DEFAULT_SCALE = 1; // 두 쪽 보기의 처음 배율(한 쪽 보기와 같다). 크기는 −·+ 로 맞춘다
   var TWO_PAGE_SCALE_STEP = 0.1; // 확대·축소 단추 한 번에 바뀌는 배율
   var TWO_PAGE_MAX_SCALE = 1.5; // 확대 단추의 위 끝. 아래 끝은 TWO_PAGE_MIN_SCALE
   var SWIPE_MIN_DISTANCE = 48; // 터치로 쪽을 넘기는 가로 밀기의 최소 거리(px)
@@ -683,9 +683,14 @@
     }
     els.zoomOut.addEventListener('click', function(){ setTwoPageScale(-TWO_PAGE_SCALE_STEP); });
     els.zoomIn.addEventListener('click', function(){ setTwoPageScale(TWO_PAGE_SCALE_STEP); });
+    // 손으로 넘기기(키·밀기)는 펼침째(1·2 → 3·4)다. 재생이 만든 반쪽 상태(지금 쪽이 홀수, 예: 3·2)에서 앞으로 가면 지금 쪽이 든 펼침으로 맞춘다.
     function turnPage(delta){
       if (!two || !two.pages.length) return;
-      two.current = Math.max(0, Math.min(two.pages.length - 1, two.current + delta));
+      var s = Math.floor(two.current / 2);
+      if (delta > 0) s += 1;
+      else if (two.current % 2 === 0) s -= 1;
+      s = Math.max(0, Math.min(Math.floor((two.pages.length - 1) / 2), s));
+      two.current = 2 * s;
       apply(spreadFor(two.current));
     }
     els.pages.addEventListener('click', function(){
