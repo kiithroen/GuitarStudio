@@ -2395,8 +2395,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=at-pages-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=at-pages-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=at-pages-2')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=at-pages-2">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -5503,7 +5503,7 @@ async function testAlphaTabView(client, httpPort) {
   assert.equal(drawn.playEnabled && drawn.rewindEnabled, true, 'play and rewind are enabled once ready');
   assert.equal(drawn.playText, '재생');
   assert.equal(drawn.noSpeedSelect, true, 'the speed select is replaced by the BPM slider');
-  assert.equal(drawn.order, 'atPlayBtn,atRewindBtn,atBpmRange,atViewSelect,atPagesBtn,atClickToggle,atClickVolRange,atGuitarVolRange', 'controls are in the order play, rewind, BPM, view, two pages, click, click volume, guitar volume');
+  assert.equal(drawn.order, 'atPlayBtn,atRewindBtn,atBpmRange,atViewSelect,atPagesBtn,atZoomOutBtn,atZoomInBtn,atClickToggle,atClickVolRange,atGuitarVolRange', 'controls are in the order play, rewind, BPM, view, two pages, zoom out, zoom in, click, click volume, guitar volume');
   const butterflyExpected = expectedBpmSlider(handoff.stored.bpm, handoff.stored.practiceBpm);
   assert.deepEqual(drawn.bpm, { min: butterflyExpected.min, max: butterflyExpected.max, value: butterflyExpected.value, text: bpmText(butterflyExpected.value, handoff.stored.bpm), disabled: false, speed: butterflyExpected.value / handoff.stored.bpm }, 'the BPM slider starts at the practice BPM with the song-BPM ratio range');
   assert.equal(drawn.views, '오선+타브,타브,오선');
@@ -5777,6 +5777,7 @@ async function testAlphaTabControls(client, httpPort) {
   const errorsBefore = client.consoleErrors.length;
   const metronomeBase = Number(alphaTabViewSource.match(/var METRONOME_BASE_VOLUME = ([0-9.]+);/)[1]);
   const masterVolume = Number(alphaTabViewSource.match(/var PLAYBACK_MASTER_VOLUME = ([0-9.]+);/)[1]);
+  const twoPageDefaultScale = Number(alphaTabViewSource.match(/var TWO_PAGE_DEFAULT_SCALE = ([0-9.]+);/)[1]);
   async function navigate(url, ready, timeoutMs) {
     const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
     await client.send('Page.navigate', { url });
@@ -5834,7 +5835,7 @@ async function testAlphaTabControls(client, httpPort) {
   await fire('atClickToggle', { checked: false }, 'change');
   facts = await soundFacts();
   assert.deepEqual([facts.metronome, facts.countIn], [0, 0], 'turning the click off silences the click and the count-in');
-  assert.deepEqual(JSON.parse(facts.stored), { click: false, clickVol: 1, guitarVol: 1, twoPage: false }, 'prefs are saved');
+  assert.deepEqual(JSON.parse(facts.stored), { click: false, clickVol: 1, guitarVol: 1, twoPage: false, twoPageScale: twoPageDefaultScale }, 'prefs are saved');
   await fire('atClickVolRange', { value: '150' }, 'input');
   facts = await soundFacts();
   assert.deepEqual([facts.metronome, facts.countIn], [0, 0], 'the click stays silent while it is off');
@@ -5846,7 +5847,7 @@ async function testAlphaTabControls(client, httpPort) {
   facts = await soundFacts();
   assert.equal(facts.guitar, '0.5', 'the guitar volume is applied as a track volume');
   assert.ok(near(facts.master, masterVolume) && near(facts.metronome, metronomeBase * 1.5), 'the guitar volume leaves the master volume and the click alone');
-  assert.deepEqual(JSON.parse(facts.stored), { click: true, clickVol: 1.5, guitarVol: 0.5, twoPage: false });
+  assert.deepEqual(JSON.parse(facts.stored), { click: true, clickVol: 1.5, guitarVol: 0.5, twoPage: false, twoPageScale: twoPageDefaultScale });
   await fire('atClickToggle', { checked: false }, 'change');
   // 새로 열면 저장한 값으로 시작한다
   await navigate(viewUrl, viewSettled, 45000);
@@ -5881,7 +5882,7 @@ async function testAlphaTabControls(client, httpPort) {
   assert.ok(near((await sliderFacts()).speed, BPM_RATIO_MIN), 'the lower end plays at the lower ratio');
   assert.equal(slider.stored, null, 'the BPM is not saved');
   await fire('atClickToggle', { checked: false }, 'change');
-  assert.deepEqual(Object.keys(JSON.parse((await sliderFacts()).stored)).sort(), ['click', 'clickVol', 'guitarVol', 'twoPage'], 'the prefs hold no BPM');
+  assert.deepEqual(Object.keys(JSON.parse((await sliderFacts()).stored)).sort(), ['click', 'clickVol', 'guitarVol', 'twoPage', 'twoPageScale'], 'the prefs hold no BPM');
   for (const practiceBpm of [range.max + 1, range.min - 1, 0, 'x', null, undefined]) {
     await openView(handoffOf(butterfly, practiceBpm === undefined ? {} : { practiceBpm }));
     slider = await sliderFacts();
@@ -5924,6 +5925,11 @@ async function testAlphaTabTwoPage(client, httpPort) {
   const errorsBefore = client.consoleErrors.length;
   const twoPagePadding = JSON.parse(alphaTabViewSource.match(/var TWO_PAGE_PADDING = (\[[^\]]*\]);/)[1]);
   const minScale = Number(alphaTabViewSource.match(/var TWO_PAGE_MIN_SCALE = ([0-9.]+);/)[1]);
+  const defaultScale = Number(alphaTabViewSource.match(/var TWO_PAGE_DEFAULT_SCALE = ([0-9.]+);/)[1]);
+  const scaleStep = Number(alphaTabViewSource.match(/var TWO_PAGE_SCALE_STEP = ([0-9.]+);/)[1]);
+  const maxScale = Number(alphaTabViewSource.match(/var TWO_PAGE_MAX_SCALE = ([0-9.]+);/)[1]);
+  const swipeMin = Number(alphaTabViewSource.match(/var SWIPE_MIN_DISTANCE = ([0-9.]+);/)[1]);
+  const round2 = value => Math.round(value * 100) / 100;
   const song = builtinSongsJson.find(item => item.id === SONG_ID);
   assert.ok(song, SONG_ID + ' exists in songs.json');
   async function navigate(url, ready, timeoutMs) {
@@ -6007,12 +6013,14 @@ async function testAlphaTabTwoPage(client, httpPort) {
     assert.ok(oneTexts.left.includes('Guitar Standard Tuning'), 'the one-page view draws the tuning line (so the hidden-header check below is not vacuous)');
     assert.ok(oneTexts.left.some(text => text.includes(song.title)), 'the one-page view draws the song title in the score header');
 
+    assert.equal(await client.evaluate(`document.getElementById('atZoom').hidden`), true, 'the zoom buttons are hidden in the one-page view');
+
     // 2. 단추를 누르면 두 쪽 보기
     await clickPagesButton();
     await waitForCondition(client, twoSettled + ' && Number(document.body.getAttribute("data-at-page-count")) >= 3', 20000);
     facts = await state();
     assert.deepEqual([facts.layout, facts.match, facts.pressed, facts.active, facts.spread], ['two', 'true', 'true', true, '0,1'], 'the button switches to two pages: ' + JSON.stringify(facts));
-    assert.deepEqual(JSON.parse(facts.stored), { click: true, clickVol: 1, guitarVol: 1, twoPage: true }, 'the choice is saved with the other prefs unchanged');
+    assert.deepEqual(JSON.parse(facts.stored), { click: true, clickVol: 1, guitarVol: 1, twoPage: true, twoPageScale: defaultScale }, 'the choice is saved with the other prefs unchanged');
     const structure = await client.evaluate(`(function(){
       var pages = document.querySelectorAll('.at-page');
       var L = window.__alphaTabApi, R = window.__alphaTabApiR;
@@ -6024,6 +6032,9 @@ async function testAlphaTabTwoPage(client, httpPort) {
     assert.deepEqual(structure.paddingL, twoPagePadding, 'the left instance uses TWO_PAGE_PADDING');
     assert.deepEqual(structure.paddingR, twoPagePadding, 'the right instance uses TWO_PAGE_PADDING');
     assert.equal(structure.scaleL, structure.scaleR, 'both instances draw at the same scale');
+    assert.equal(structure.scaleL, defaultScale, 'the two-page view starts at the default scale');
+    const zoomFacts = await client.evaluate(`({ hidden: document.getElementById('atZoom').hidden, text: document.getElementById('atZoomValue').textContent })`);
+    assert.deepEqual(zoomFacts, { hidden: false, text: Math.round(defaultScale * 100) + '%' }, 'the zoom buttons show the default scale in the two-page view');
     assert.deepEqual([structure.lazyL, structure.lazyR, structure.rightPlayer], [false, false, false], 'lazy loading is off and the right instance has no player');
     const pageCount = Number(facts.count);
     assert.deepEqual(structure.nums, ['1 / ' + pageCount, '2 / ' + pageCount], 'the page numbers are shown');
@@ -6046,6 +6057,29 @@ async function testAlphaTabTwoPage(client, httpPort) {
       assert.ok(!twoTexts[side].includes('Guitar Standard Tuning'), side + ' page hides the tuning line');
       assert.ok(!twoTexts[side].some(text => text.includes(song.title)), side + ' page hides the score title');
     }
+
+    // 4b. 확대·축소
+    const readZoom = () => client.evaluate(`({ l: window.__alphaTabApi.settings.display.scale, r: window.__alphaTabApiR.settings.display.scale, text: document.getElementById('atZoomValue').textContent,
+      stored: JSON.parse(localStorage.getItem(${JSON.stringify(PREFS_KEY)})).twoPageScale, count: Number(document.body.getAttribute('data-at-page-count')), match: document.body.getAttribute('data-at-pages-match') })`);
+    const zoomClick = async (id, expected) => {
+      const before = await client.evaluate('JSON.stringify(window.__alphaTabPages)');
+      await client.evaluate(`document.getElementById('${id}').click(); true`);
+      await waitForCondition(client, `JSON.stringify(window.__alphaTabPages) !== ${JSON.stringify(before)} && document.body.getAttribute('data-at-pages-match') === 'true'`, 20000);
+      await sleep(700);
+      const f = await readZoom();
+      assert.deepEqual([f.l, f.r, f.stored, f.text, f.match], [expected, expected, expected, Math.round(expected * 100) + '%', 'true'], id + ' sets both instances, the saved value and the text to ' + expected + ': ' + JSON.stringify(f));
+      return f;
+    };
+    const baseCount = (await readZoom()).count;
+    const zoomedIn = await zoomClick('atZoomInBtn', round2(defaultScale + scaleStep));
+    assert.ok(zoomedIn.count >= baseCount, 'zooming in does not reduce the page count: ' + zoomedIn.count + ' vs ' + baseCount);
+    await zoomClick('atZoomOutBtn', defaultScale);
+    await zoomClick('atZoomOutBtn', round2(defaultScale - scaleStep));
+    const zoomedOut = await readZoom();
+    assert.ok(zoomedOut.count <= baseCount, 'zooming out does not increase the page count: ' + zoomedOut.count + ' vs ' + baseCount);
+    await zoomClick('atZoomInBtn', defaultScale);
+    assert.equal((await readZoom()).count, baseCount, 'back at the default scale the page count is the same');
+    assert.equal((await state()).spread, '0,1', 'zooming keeps the spread');
 
     // 5. 넘김은 반쪽씩: 2쪽(번호 1) → 3·2쪽, 3쪽(번호 2) → 3·4쪽
     await jumpToPage(1);
@@ -6111,6 +6145,28 @@ async function testAlphaTabTwoPage(client, httpPort) {
     const tick = await client.evaluate('window.__alphaTabApi.tickPosition');
     assert.ok(tick >= target.start && tick < target.end, 'clicking a bar on the right page moves the position into that bar: ' + tick + ' not in [' + target.start + ', ' + target.end + ')');
 
+    // 8b. 터치 밀기
+    await client.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    try {
+      const swipeAt = async (dx, dy) => {
+        const box = await client.evaluate(`(function(){ var r = document.querySelector('.at-page').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+        const touch = (x, y) => [{ x, y, id: 1 }];
+        await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touch(box.x, box.y) });
+        await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touch(box.x + dx / 2, box.y + dy / 2) });
+        await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touch(box.x + dx, box.y + dy) });
+        await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await sleep(250);
+        return (await state()).spread;
+      };
+      assert.equal((await state()).spread, '0,1');
+      assert.equal(await swipeAt(-200, 0), '2,1', 'swiping left turns to the next page');
+      assert.equal(await swipeAt(200, 0), '0,1', 'swiping right turns back');
+      assert.equal(await swipeAt(-Math.floor(swipeMin / 2), 0), '0,1', 'a short swipe does not turn the page');
+      assert.equal(await swipeAt(-20, 200), '0,1', 'a mostly vertical swipe does not turn the page');
+    } finally {
+      await client.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    }
+
     // 9. 다시 열면 단추를 안 눌러도 두 쪽
     await navigate(viewUrl, viewSettled, 45000);
     await waitForCondition(client, twoSettled, 20000);
@@ -6150,6 +6206,7 @@ async function testAlphaTabTwoPage(client, httpPort) {
     const small = await client.evaluate(`({ scaleL: window.__alphaTabApi.settings.display.scale, scaleR: window.__alphaTabApiR.settings.display.scale })`);
     assert.equal(small.scaleL, small.scaleR, 'both instances use the same scale in the small window');
     assert.ok(small.scaleL >= minScale - 1e-9, 'the scale stays at or above TWO_PAGE_MIN_SCALE: ' + small.scaleL);
+    assert.ok(small.scaleL <= defaultScale + 1e-9, 'the small window never draws larger than the saved two-page scale: ' + small.scaleL);
     await checkFit('small window');
     process.stdout.write(`Two-page fit 760x340: scale ${small.scaleL}\n`);
 
@@ -6158,6 +6215,24 @@ async function testAlphaTabTwoPage(client, httpPort) {
     await waitForCondition(client, `document.body.getAttribute('data-at-layout') === 'one'`, 20000);
     facts = await state();
     assert.deepEqual([facts.pressed, JSON.parse(facts.stored).twoPage], ['false', false], 'the button turns two pages off and saves it');
+    assert.equal(await client.evaluate(`document.getElementById('atZoom').hidden`), true, 'turning two pages off hides the zoom buttons');
+
+    // 14. 끝값과 틀린 저장값
+    const openWithScale = async value => {
+      await setSize(1920, 960);
+      await client.evaluate(`localStorage.setItem(${JSON.stringify(PREFS_KEY)}, ${JSON.stringify(JSON.stringify({ click: true, clickVol: 1, guitarVol: 1, twoPage: true, twoPageScale: value }))}); true`);
+      await navigate(viewUrl, viewSettled, 45000);
+      await waitForCondition(client, twoSettled, 20000);
+      return client.evaluate(`({ text: document.getElementById('atZoomValue').textContent, outDisabled: document.getElementById('atZoomOutBtn').disabled, inDisabled: document.getElementById('atZoomInBtn').disabled, scale: window.__alphaTabApi.settings.display.scale })`);
+    };
+    let ends = await openWithScale(maxScale);
+    assert.deepEqual([ends.inDisabled, ends.outDisabled, ends.text], [true, false, Math.round(maxScale * 100) + '%'], 'at the upper end only + is disabled: ' + JSON.stringify(ends));
+    ends = await openWithScale(minScale);
+    assert.deepEqual([ends.inDisabled, ends.outDisabled, ends.text], [false, true, Math.round(minScale * 100) + '%'], 'at the lower end only - is disabled: ' + JSON.stringify(ends));
+    ends = await openWithScale(maxScale + 1);
+    assert.deepEqual([ends.inDisabled, ends.text], [true, Math.round(maxScale * 100) + '%'], 'a saved scale above the range is cut to the upper end: ' + JSON.stringify(ends));
+    ends = await openWithScale('x');
+    assert.deepEqual([ends.inDisabled, ends.outDisabled, ends.text], [false, false, Math.round(defaultScale * 100) + '%'], 'a saved scale that is not a number reads as the default: ' + JSON.stringify(ends));
   } finally {
     await client.evaluate(`localStorage.removeItem(${JSON.stringify(PREFS_KEY)}); localStorage.removeItem(${JSON.stringify(VIEW_KEY)}); true`).catch(() => {});
     await client.send('Emulation.clearDeviceMetricsOverride').catch(() => {});
@@ -6720,7 +6795,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=at-pages-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=at-pages-2')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

@@ -51,12 +51,13 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 
 1. 연습 화면 머리의 `alphaTab` 단추(`#openAlphaTabBtn`, `단축키 안내` 옆, 구조화 곡일 때만 보인다)를 누른다. 지금 곡(수정 초안이면 초안 내용)을 localStorage `gs.alphaTab.view`에 `{ title, beats, bpm, capo, description, lines, savedAt }`로 넣고 `alphatab.html`을 새 탭으로 연다. `description`은 곡의 `badge`(시트 설명 열)다. 곡에 원본 `alphaTex`가 있고 고친 초안이 아니면(`scoreDrafts.status`의 `dirty`·`temporary`가 모두 거짓이면) `alphaTex`도 넣는다. 연습은 멈추지 않는다.
 2. 보기 창은 그 값을 읽어 그린다. `alphaTex`가 있으면 변환하지 않고 그대로 읽어 그리며 머리의 작은 꼬리표(`#atSource`)에 `원본 alphaTex`가 보인다. 없으면 우리 악보를 변환해 그리고 꼬리표는 `우리 악보에서 만든 미리보기`다. 원본 alphaTex를 alphaTab이 읽지 못하면 상태 줄에 알리고 변환 미리보기로 대신 그린다. 값을 지우지 않아서 새로고침해도 같은 곡이다. 값이 없거나 모양이 틀리면 상태 줄에 안내만 한다. 변환이나 alphaTab 읽기가 실패하면 이유를 상태 줄에 보인다.
-3. 조작은 머리 한 줄에 있다: 곡 제목, `재생`/`일시정지`(Space), `처음으로`, `BPM` 슬라이더, 보기(`오선+타브`·`타브`·`오선`), `두 쪽`(가로 화면에서만 보인다), `클릭` 체크, `클릭음`·`연주음` 슬라이더, 상태 줄. 보기를 바꾸면 다시 그린다. 컨트롤은 이 순서로 놓고 슬라이더는 연습 화면처럼 좁다.
+3. 조작은 머리 한 줄에 있다: 곡 제목, `재생`/`일시정지`(Space), `처음으로`, `BPM` 슬라이더, 보기(`오선+타브`·`타브`·`오선`), `두 쪽`(가로 화면에서만 보인다), `−`·`+`(두 쪽 보기에서만 보인다), `클릭` 체크, `클릭음`·`연주음` 슬라이더, 상태 줄. 보기를 바꾸면 다시 그린다. 컨트롤은 이 순서로 놓고 슬라이더는 연습 화면처럼 좁다.
 
 | 컨트롤 | 범위 | 처음 값 | 저장 | alphaTab에 주는 값 |
 |---|---|---|---|---|
 | `BPM` | 곡 BPM의 `BPM_RATIO_MIN`~`BPM_RATIO_MAX`배, 1 단위 | 연습 화면이 열 때 쓰던 BPM(`practiceBpm`). 범위 밖이거나 없으면 곡 BPM | 안 한다. 열 때마다 처음 값 | `api.playbackSpeed` = 값 / 곡 BPM |
 | `두 쪽` | 켬/끔 | 끔 | `gs.alphaTab.prefs` | 없음. [두 쪽 보기](#두-쪽-보기) |
+| `−`·`+` | 두 쪽 보기 배율 `TWO_PAGE_MIN_SCALE`~`TWO_PAGE_MAX_SCALE`, `TWO_PAGE_SCALE_STEP` 단위 | `TWO_PAGE_DEFAULT_SCALE` | `gs.alphaTab.prefs` | 두 인스턴스의 `display.scale` |
 | `클릭` | 켬/끔 | 켬 | `gs.alphaTab.prefs` | `api.metronomeVolume`·`api.countInVolume` |
 | `클릭음` | 0~200%, 5 단위 | 100% | `gs.alphaTab.prefs` | `METRONOME_BASE_VOLUME` × 클릭음 |
 | `연주음` | 0~100%, 5 단위 | 100% | `gs.alphaTab.prefs` | 트랙 음량(`api.changeTrackVolume`) |
@@ -77,7 +78,7 @@ BPM 값 글은 `BPM 값 · 비율%`(예: `48 · 75%`)이고 클릭음·연주음
 - 클릭(메트로놈)은 체크박스 `클릭`이 켜고 끈다. 켜면 `api.metronomeVolume`과 `api.countInVolume`(alphaTab이 첫 마디 앞에 한 마디 세는 카운트인)을 `METRONOME_BASE_VOLUME` × 클릭음으로, 끄면 둘 다 0으로 준다. alphaTab 클릭은 박자표의 박마다 울리고 강박 구분이 없다(`MetronomeKey`). 그래서 칸마다 울리는 연습 화면과 다를 수 있다. 8칸 곡은 alphaTex 박자표가 4/4로 바뀌므로 마디에 네 번 울린다.
 - 연주음은 `api.masterVolume`이 아니라 트랙 음량으로 준다. 마스터 음량은 클릭에도 곱해져서 연주음을 줄이면 클릭까지 작아지기 때문이다. 값은 연주음 × 트랙의 기본 채널 음량(`playbackInfo.volume / 16`, alphaTab이 플레이어가 준비될 때 주는 값)이다. 연주음 100%가 그 기본값이라야 위 마스터 음량 보정이 그대로 맞는다.
 - 소리 값(마스터 음량, 트랙 음량, 클릭, 카운트인)은 `applySound` 한 곳이 준다. 트랙 음량은 작업자가 준비되기 전에는 버려지고 alphaTab이 준비될 때 기본값으로 되돌리기도 해서, api를 만든 직후, 작업자 준비(`player.ready`), `scoreLoaded`, `soundFontLoaded`, `playerReady`, 재생 시작, 컨트롤 변경 때마다 다시 준다. 연주음은 `body`의 `data-at-guitar-volume`에 적는다.
-- 클릭·클릭음·연주음은 보기 창만의 localStorage 키 `gs.alphaTab.prefs`(`{ click, clickVol, guitarVol, twoPage }`)에 `ls`로 저장한다. 읽을 때 형식이나 범위가 틀리면 기본값이고, 범위 맞추기는 `normalizeVolume`(`src/app-state.js`)이다. 연습 화면의 `gs.state` 값은 쓰지 않는다(소리 엔진이 달라 같은 %라도 크기가 다르다). `app-state.js`는 불러올 때 `gs.state`를 읽기만 하고 아무것도 쓰지 않는다. 브라우저 스모크(`testAlphaTabControls`)가 창을 여는 동안 localStorage 쓰기가 없는 것을 본다.
+- 클릭·클릭음·연주음은 보기 창만의 localStorage 키 `gs.alphaTab.prefs`(`{ click, clickVol, guitarVol, twoPage, twoPageScale }`)에 `ls`로 저장한다. 읽을 때 형식이나 범위가 틀리면 기본값이고, 범위 맞추기는 `normalizeVolume`(`src/app-state.js`)이다. 두 쪽 배율(`twoPageScale`)만은 숫자이면 단계에 맞추고 범위 끝으로 자른다(`normalizeTwoPageScale`). 연습 화면의 `gs.state` 값은 쓰지 않는다(소리 엔진이 달라 같은 %라도 크기가 다르다). `app-state.js`는 불러올 때 `gs.state`를 읽기만 하고 아무것도 쓰지 않는다. 브라우저 스모크(`testAlphaTabControls`)가 창을 여는 동안 localStorage 쓰기가 없는 것을 본다.
 - BPM 슬라이더는 연습 화면과 같은 단위(분당 칸 수)다. 곡 BPM(넘기기 값 `bpm`)이 기준이고 범위는 `ceil(곡 BPM × BPM_RATIO_MIN)`~`floor(곡 BPM × BPM_RATIO_MAX)`(최소 1)다. 곡 BPM이 숫자가 아니거나 0 이하이면 악보의 템포를 반올림한 값을 기준으로 한다. 연습 화면 BPM 슬라이더의 범위는 `index.html` 마크업과 `app.js`의 숫자뿐이라 보기 창이 읽을 수 없어 쓰지 않는다. 시험은 `testAlphaTabControls`가 처음 값, 범위 양 끝과 가운데 값의 `playbackSpeed`, 값 글, 8칸 곡에서 100%가 곡 BPM인 것을 본다.
 - `METRONOME_BASE_VOLUME`은 클릭음 100%의 alphaTab 클릭이 연습 화면 클릭(`clickMode` 전부, 클릭음 100%)과 같은 크기가 되게 잰 값이다. `testPlaybackLoudness`가 같은 곡(`builtin-lv1-butterfly`. 한 칸이 4분음표인 4/4라 클릭 수가 같다)을 기타 소리 없이(연습 화면 연주음 0%, 보기 창 연주음 0%) 8초 재서 게이트 RMS 차이가 ±3 dB 안인지 보고 `Loudness click …` 줄을 낸다. 같은 테스트가 클릭음 200%·연주음 100%에서 가장 빽빽한 곡(`builtin-romanza-accomp`)의 표본 최대값이 1 미만인지도 본다. 위 기타 소리 비교에서는 보기 창의 클릭을 꺼 둔다. 다시 잴 명령은 `node test/test-browser-smoke.js`다.
 
@@ -88,14 +89,14 @@ BPM 값 글은 `BPM 값 · 비율%`(예: `48 · 75%`)이고 클릭음·연주음
 - 켜는 조건: `두 쪽`이 켜져 있고(`gs.alphaTab.prefs`의 `twoPage`) 화면이 가로(`(orientation: landscape)`)일 때다. 폭 문턱은 없다. 세로 화면에서는 단추가 숨고 한 쪽 보기로 돌아간다. 단추를 누르거나 화면을 돌리면 새로 고치지 않고 그 자리에서 바꾼다. 지금 상태는 `body`의 `data-at-layout`(`one` · `two`)에 적는다.
 - 구성: 왼쪽 자리는 플레이어 인스턴스(`#atHost`), 오른쪽 자리는 플레이어가 없는 두 번째 alphaTab 인스턴스(`#atHostR`, `PlayerMode.Disabled`)다. 둘 다 같은 Score 객체를 열고 같은 폭·같은 설정으로 곡 전체를 그려서 줄 배치와 좌표가 같다(`data-at-pages-match`). 표시 설정은 `applyModeSettings` 한 곳이 두 인스턴스에 같이 준다.
 - 쪽 나누기: 왼쪽 그리기 면의 조각(줄 하나가 조각 하나)을 위에서부터 쌓다가 쪽 창 높이를 넘으면 그 줄에서 새 쪽을 시작한다. 쪽은 줄 사이에서만 끊기므로 줄이 아래에서 잘리지 않는다. 쪽 창 높이는 화면 높이에서 머리 막대와 여백을 뺀 값이다. 각 자리는 호스트 높이를 그 쪽 높이로 줄이고 `scrollTop`을 그 쪽 위에 맞춰 보인다. 쪽 수는 `data-at-page-count`, 보이는 두 쪽은 `data-at-spread`(`왼쪽,오른쪽`, 0부터, 빈 자리는 -1)다. 쪽은 `postRenderFinished` 때 다시 나눈다.
-- 줄 하나가 쪽 창보다 높으면 두 인스턴스의 배율(`display.scale`)을 줄여 다시 그린다(`TWO_PAGE_MIN_SCALE`까지). 창 폭이 바뀌거나 보기를 바꾸면 원래 배율에서 다시 맞춘다.
+- 배율은 머리 줄의 `−`·`+`로 정한다(`twoPageScale`, 값 글은 `90%` 꼴). localStorage 는 기기(브라우저)마다 따로라 기기마다 따로 기억된다. 줄 하나가 쪽 창보다 높으면 정한 배율보다 더 줄여 다시 그린다(`TWO_PAGE_MIN_SCALE`까지). 창 폭이 바뀌거나 보기를 바꾸면 정한 배율에서 다시 맞춘다.
 - 넘김은 반쪽씩이다. k쪽을 치면 짝수 쪽은 늘 왼쪽, 홀수 쪽은 늘 오른쪽 자리에 두고 다른 자리에 k+1쪽을 미리 놓는다(1·2쪽 → 2쪽을 치면 3·2쪽 → 3쪽을 치면 3·4쪽). 지금 쪽과 다음 쪽이 늘 같이 보이고, 바뀌는 것은 읽지 않는 자리다. 재생 중 `customScrollHandler`가 지금 줄의 가운데가 든 쪽으로 정한다. 멈춘 채로 위치를 옮기면(클릭) 쪽을 바꾸지 않는다.
-- 손으로 넘기기: `→`·`PageDown`은 다음 쪽, `←`·`PageUp`은 앞 쪽이다(같은 넘김 규칙). `처음으로`는 1쪽으로 돌아간다.
+- 손으로 넘기기: `→`·`PageDown`은 다음 쪽, `←`·`PageUp`은 앞 쪽이다(같은 넘김 규칙). `처음으로`는 1쪽으로 돌아간다. 터치 화면에서는 쪽을 좌우로 밀어 넘긴다(왼쪽으로 밀면 다음 쪽). 가로로 `SWIPE_MIN_DISTANCE` 이상, 세로 움직임의 1.5배보다 크게 움직였을 때만 넘김으로 보고, 두 손가락이 닿으면 넘기지 않는다. 짧은 탭은 alphaTab 의 클릭(위치 옮기기)으로 간다. `.at-pages`는 `touch-action: pan-y pinch-zoom`이라 브라우저가 가로 밀기를 가로채지 않는다.
 - 커서: 오른쪽 인스턴스는 플레이어가 없어 커서를 만들지 않는다. `customCursorHandler`가 왼쪽 커서를 놓은 뒤 왼쪽 커서 요소의 인라인 스타일을 오른쪽 호스트의 같은 구조(`.at-cursors` 안 `.at-cursor-bar`·`.at-cursor-beat`)에 그대로 베낀다. 좌표가 같아서 된다. 재생 중 강조는 `activeBeatsChanged`의 박마다 오른쪽의 `b<박 id>` 클래스 요소에 `at-highlight`를 붙인다(alphaTab 이 박 묶음 클래스를 이렇게 짓는다).
 - 오른쪽 클릭: 오른쪽 `boundsLookup.getBeatAtPos`로 박을 찾고 왼쪽 `tickCache.getBeatStart`로 위치를 옮긴다.
-- 여백: 두 쪽 보기에서는 `.wrap`·머리 막대·쪽 테두리의 여백을 줄이고, alphaTab 안쪽 여백(`display.padding`)을 `TWO_PAGE_PADDING`으로, 악보 머리의 제목·부제·작곡가 글(`TWO_PAGE_HIDDEN_ELEMENTS`)과 조율 글을 숨긴다. 조율 글은 `notation.elements`가 아니라 점수의 `stylesheet.globalDisplayTuning`을 꺼서 숨긴다(아래 함정). 곡 제목은 머리 막대에 있다. 한 쪽 보기로 돌아가면 원래 값으로 되돌린다.
+- 여백: 두 쪽 보기에서는 `.wrap`·머리 막대·쪽 테두리의 여백을 줄이고, alphaTab 안쪽 여백(`display.padding`)을 `TWO_PAGE_PADDING`으로, 악보 머리의 제목·부제·작곡가 글(`TWO_PAGE_HIDDEN_ELEMENTS`)과 조율 글을 숨긴다. 조율 글은 `notation.elements`가 아니라 점수의 `stylesheet.globalDisplayTuning`을 꺼서 숨긴다(아래 함정). 출처 꼬리표(`#atSource`)도 숨긴다. 곡 제목은 머리 막대에 있다. 한 쪽 보기로 돌아가면 원래 값으로 되돌린다.
 - 두 쪽 보기에서는 지연 그리기(`core.enableLazyLoading`)를 끈다. 넘기는 순간 그 쪽이 이미 그려져 있어야 해서다.
-- 시험은 `testAlphaTabTwoPage`(켜기·끄기, 잘림 없음, 넘김, 커서 거울, 오른쪽 클릭, 세로 전환, 작은 가로 화면의 배율)다.
+- 시험은 `testAlphaTabTwoPage`(켜기·끄기, 잘림 없음, 넘김, 커서 거울, 오른쪽 클릭, 세로 전환, 작은 가로 화면의 배율, 확대·축소, 터치 밀기)다.
 
 ## 변환 규칙
 
@@ -157,6 +158,9 @@ BPM 값 글은 `BPM 값 · 비율%`(예: `48 · 75%`)이고 클릭음·연주음
 - 2026-10-21 결정: 두 쪽 보기는 같은 폭·같은 설정의 alphaTab 인스턴스 두 개가 곡 전체를 그리고 쪽 창으로 잘라 보인다. 렌더 비용은 두 배다. 다른 길과 버린 까닭: 쪽마다 `startBar`·`barCount`로 다른 마디만 그리면 한 쪽에 들어갈 마디 수를 그려 보기 전에는 모르고, 넘길 때마다 다시 그려 깜박인다. 인스턴스 하나를 두 단으로 나누는 길은 alphaTab 이 줄마다 `position:absolute` 조각을 높이가 정해진 그리기 면에 놓아 CSS columns 로 흘릴 수 없고, JS 로 조각을 옮기면 `BoundsLookup.getBeatAtPos`(줄을 y로 이분 탐색)가 깨져 클릭 위치를 못 찾는다. 폭 제한만 없애는 길은 한 화면에 보이는 마디가 가장 많았지만(임시 시제품으로 잰 값: 1280×720 에서 12마디 대 두 쪽 8마디, 1920×960 에서 29 대 24. 재는 스크립트는 저장소에 없다) 1920 폭에서 한 줄이 1871px라 눈이 많이 움직이고 스크롤해야 한다.
 - 2026-10-21 결정: 두 쪽 보기의 넘김은 펼침째(1·2쪽 → 3·4쪽)가 아니라 반쪽씩이다. 펼침째 넘기면 오른쪽 쪽 끝을 치는 동안 다음 마디가 보이지 않다가 두 쪽이 한꺼번에 바뀐다.
 - 2026-10-21 결정: 두 쪽 보기에서는 악보 머리의 제목·조율 글을 숨긴다. 1쪽 위 약 100px를 차지했고 곡 제목은 머리 막대에 있다.
+- 2026-10-21 결정: 두 쪽 보기의 처음 배율은 1이 아니라 `TWO_PAGE_DEFAULT_SCALE`이고 `−`·`+`로 바꾼다. 폴드7 펼친 가로 화면에서 브라우저 확대를 약 90%로 줄여 본 밀도(쪽마다 줄 3개)를 처음 값으로 삼았다(그 화면 캡처의 단추 높이와 TAB 줄 간격으로 잰 값이다). 기기마다 알맞은 크기가 달라 값은 기기마다 기억한다.
+- 2026-10-21 결정: 터치 화면의 쪽 넘김은 좌우 밀기다. 키보드가 없는 기기에서는 쪽을 넘길 방법이 없었다. 쪽 가장자리 탭으로 넘기는 길은 탭이 alphaTab 의 클릭(위치 옮기기)과 겹쳐서 넣지 않았다. alphaTab 은 마우스 이벤트(`mousedown`·`mousemove`·`mouseup`)만 들어서 터치로 밀 때는 구간 선택이 생기지 않는다.
+- 2026-10-21 결정: 두 쪽 보기에서는 출처 꼬리표를 숨긴다. 머리 줄이 두 줄로 접히면 그만큼 쪽 창이 낮아진다.
 - 함정: alphaTab 1.8.4 의 `customCursorHandler` 설정자는 커서가 이미 있으면 새 처리기에 `onAttach`가 아니라 `onDetach`를 부른다. 두 쪽 커서 처리기는 `onAttach`에 기대지 않고 첫 `place*` 호출에서 오른쪽 커서를 만든다.
 - 함정: 두 인스턴스의 폭이나 표시 설정이 하나라도 다르면 줄 배치가 달라져 오른쪽 커서·강조·클릭이 어긋난다. 표시 설정은 `applyModeSettings`에서만 바꾼다.
 - 함정: alphaTab 1.8.4 의 `ScoreLayout._createScoreInfoGlyphs`는 `GuitarTuning`을 숨김으로 바꿔도 전에 만든 조율 글(`tuningGlyph`)을 지우지 않는다. 레이아웃 객체는 `layoutMode`가 바뀔 때만 새로 만들어져서, 한 쪽 보기에서 두 쪽으로 바꾸면 왼쪽에만 조율 글이 남아 두 인스턴스의 줄이 13px 어긋났다. `stylesheet.globalDisplayTuning`이 거짓이면 같은 함수가 조율 글을 지우므로 그 값으로 숨기고, 한 쪽 보기로 돌아갈 때 원래 값으로 되돌린다(`applyTuningDisplay`).

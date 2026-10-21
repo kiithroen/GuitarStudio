@@ -17,14 +17,19 @@
   var METRONOME_BASE_VOLUME = 0.47; // 클릭음 100% 일 때 alphaTab 클릭 음량(배율). 연습 화면 클릭과 같은 크기로 잰 값. 근거는 Docs/alphatab.md
   var PLAYBACK_MASTER_VOLUME = 5.61; // 연습 화면 합성음과 비슷한 크기로 맞추되 가장 빽빽한 내장곡이 1.0을 넘지 않게 낮춘 alphaTab 마스터 음량(배율). 근거는 Docs/alphatab.md
   var TWO_PAGE_PADDING = [12, 8]; // 두 쪽 보기의 alphaTab 안쪽 여백(display.padding, [좌우, 위아래]). 한 쪽 보기는 alphaTab 기본값
-  var TWO_PAGE_MIN_SCALE = 0.5; // 줄 하나가 쪽 창보다 높을 때 줄여 그리는 배율의 아래 끝
+  var TWO_PAGE_MIN_SCALE = 0.5; // 두 쪽 보기 배율의 아래 끝(축소 단추와, 줄 하나가 쪽 창보다 높을 때 줄여 그리는 배율 모두)
+  var TWO_PAGE_DEFAULT_SCALE = 0.9; // 두 쪽 보기의 처음 배율. 근거는 Docs/alphatab.md
+  var TWO_PAGE_SCALE_STEP = 0.1; // 확대·축소 단추 한 번에 바뀌는 배율
+  var TWO_PAGE_MAX_SCALE = 1.5; // 확대 단추의 위 끝. 아래 끝은 TWO_PAGE_MIN_SCALE
+  var SWIPE_MIN_DISTANCE = 48; // 터치로 쪽을 넘기는 가로 밀기의 최소 거리(px)
   var TWO_PAGE_HIDDEN_ELEMENTS = ['ScoreTitle', 'ScoreSubTitle', 'ScoreArtist', 'ScoreAlbum', 'ScoreWords', 'ScoreMusic', 'ScoreWordsAndMusic', 'ScoreCopyright']; // 두 쪽 보기에서 숨기는 악보 머리 글(alphaTab.NotationElement 이름). 곡 제목은 머리 막대에 있다. 조율 글은 applyTuningDisplay 가 숨긴다
 
   function byId(id){ return document.getElementById(id); }
   var els = {
     title: byId('atTitle'), play: byId('atPlayBtn'), rewind: byId('atRewindBtn'),
     bpm: byId('atBpmRange'), bpmValue: byId('atBpmValue'), view: byId('atViewSelect'), status: byId('atStatus'), host: byId('atHost'), source: byId('atSource'),
-    click: byId('atClickToggle'), clickVol: byId('atClickVolRange'), guitarVol: byId('atGuitarVolRange'), pages: byId('atPagesBtn')
+    click: byId('atClickToggle'), clickVol: byId('atClickVolRange'), guitarVol: byId('atGuitarVolRange'), pages: byId('atPagesBtn'),
+    zoom: byId('atZoom'), zoomOut: byId('atZoomOutBtn'), zoomIn: byId('atZoomInBtn'), zoomValue: byId('atZoomValue')
   };
 
   // state: loading(불러오는 중) | ready | empty(넘긴 곡 없음) | error
@@ -61,6 +66,14 @@
     };
   }
 
+  // 두 쪽 보기 배율: 숫자가 아니면 기본값, 아니면 단계에 맞추고 범위로 자른다
+  function normalizeTwoPageScale(v){
+    if (typeof v !== 'number' || !isFinite(v)) return TWO_PAGE_DEFAULT_SCALE;
+    var x = Math.round(v / TWO_PAGE_SCALE_STEP) * TWO_PAGE_SCALE_STEP;
+    x = Math.max(TWO_PAGE_MIN_SCALE, Math.min(TWO_PAGE_MAX_SCALE, x));
+    return Math.round(x * 100) / 100;
+  }
+
   // 보기 창만의 소리 설정. 범위·형식이 틀린 값은 기본값(normalizeVolume 은 src/app-state.js)
   function readPrefs(){
     var raw = ls.get(PREFS_KEY, null);
@@ -69,7 +82,8 @@
       click: typeof raw.click === 'boolean' ? raw.click : true,
       clickVol: normalizeVolume(raw.clickVol, 1, CLICK_VOLUME_MAX),
       guitarVol: normalizeVolume(raw.guitarVol, 1, GUITAR_VOLUME_MAX),
-      twoPage: typeof raw.twoPage === 'boolean' ? raw.twoPage : false
+      twoPage: typeof raw.twoPage === 'boolean' ? raw.twoPage : false,
+      twoPageScale: normalizeTwoPageScale(raw.twoPageScale)
     };
   }
 
@@ -436,7 +450,7 @@
     els.view.addEventListener('change', function(){
       api.settings.display.staveProfile = profileFor(els.view.value);
       if (two){
-        pageScale = baseScale;
+        pageScale = prefs.twoPageScale;
         two.apiR.settings.display.staveProfile = profileFor(els.view.value);
         applyModeSettings(api, true);
         applyModeSettings(two.apiR, true);
@@ -570,8 +584,23 @@
       var numL = document.createElement('span'); numL.className = 'at-page-num'; pageL.appendChild(numL);
       var numR = document.createElement('span'); numR.className = 'at-page-num'; pageR.appendChild(numR);
       two = { pagesEl: pagesEl, pageL: pageL, pageR: pageR, numL: numL, numR: numR, hostR: hostR, apiR: null, pages: [], current: 0 };
+      // 터치 화면의 쪽 넘김. alphaTab 은 마우스 이벤트만 들어 터치로 밀 때 구간 선택이 생기지 않고, 짧은 탭은 그대로 alphaTab 클릭(위치 옮기기)으로 간다.
+      var swipe = null;
+      pagesEl.addEventListener('touchstart', function(event){
+        var t = event.touches[0];
+        swipe = event.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+      }, { passive: true });
+      pagesEl.addEventListener('touchmove', function(event){ if (event.touches.length > 1) swipe = null; }, { passive: true });
+      pagesEl.addEventListener('touchend', function(event){
+        if (swipe && event.changedTouches.length){
+          var dx = event.changedTouches[0].clientX - swipe.x, dy = event.changedTouches[0].clientY - swipe.y;
+          if (Math.abs(dx) >= SWIPE_MIN_DISTANCE && Math.abs(dx) > Math.abs(dy) * 1.5) turnPage(dx < 0 ? 1 : -1);
+        }
+        swipe = null;
+      }, { passive: true });
+      pagesEl.addEventListener('touchcancel', function(){ swipe = null; }, { passive: true });
       document.body.setAttribute('data-at-layout', 'two'); // 크기를 재기 전에 CSS 가 먹게
-      pageScale = baseScale;
+      pageScale = prefs.twoPageScale;
       applyTuningDisplay(true);
       applyModeSettings(api, true);
       var apiR;
@@ -633,6 +662,31 @@
       if (want && !two) enterTwoPage(initial);
       else if (!want && two) leaveTwoPage();
       document.body.setAttribute('data-at-layout', two ? 'two' : 'one');
+      updateZoom();
+    }
+    function updateZoom(){
+      els.zoom.hidden = !two;
+      els.zoomValue.textContent = Math.round(prefs.twoPageScale * 100) + '%';
+      els.zoomOut.disabled = prefs.twoPageScale <= TWO_PAGE_MIN_SCALE + 1e-9;
+      els.zoomIn.disabled = prefs.twoPageScale >= TWO_PAGE_MAX_SCALE - 1e-9;
+    }
+    function setTwoPageScale(delta){
+      if (!two) return;
+      prefs.twoPageScale = normalizeTwoPageScale(prefs.twoPageScale + delta);
+      savePrefs();
+      pageScale = prefs.twoPageScale;
+      applyModeSettings(api, true);
+      applyModeSettings(two.apiR, true);
+      api.render();
+      two.apiR.render();
+      updateZoom();
+    }
+    els.zoomOut.addEventListener('click', function(){ setTwoPageScale(-TWO_PAGE_SCALE_STEP); });
+    els.zoomIn.addEventListener('click', function(){ setTwoPageScale(TWO_PAGE_SCALE_STEP); });
+    function turnPage(delta){
+      if (!two || !two.pages.length) return;
+      two.current = Math.max(0, Math.min(two.pages.length - 1, two.current + delta));
+      apply(spreadFor(two.current));
     }
     els.pages.addEventListener('click', function(){
       prefs.twoPage = !prefs.twoPage;
@@ -649,8 +703,8 @@
       var widthChanged = window.innerWidth !== lastWidth;
       if (widthChanged) lastWidth = window.innerWidth;
       if (!two) return;
-      if (widthChanged && pageScale !== baseScale){
-        pageScale = baseScale;
+      if (widthChanged && pageScale !== prefs.twoPageScale){
+        pageScale = prefs.twoPageScale;
         applyModeSettings(api, true);
         applyModeSettings(two.apiR, true);
         api.render();
@@ -682,8 +736,7 @@
       var tag = event.target && event.target.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
       event.preventDefault();
-      two.current = Math.max(0, Math.min(two.pages.length - 1, two.current + (forward ? 1 : -1)));
-      apply(spreadFor(two.current));
+      turnPage(forward ? 1 : -1);
     });
 
     window.addEventListener('pagehide', function(){
