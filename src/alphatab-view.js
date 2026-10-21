@@ -289,6 +289,7 @@
     var two = null;
     var pageScale = baseScale;
     var lastWidth = window.innerWidth;
+    var lastHeight = window.innerHeight;
     // 두 인스턴스에 표시 설정을 주는 유일한 곳. render 는 부르지 않는다.
     function applyModeSettings(inst, isTwo){
       inst.settings.core.enableLazyLoading = isTwo ? false : onePageLazy;
@@ -550,8 +551,8 @@
       var hc = two.pageL.clientHeight - (parseFloat(pageStyle.paddingTop) || 0) - (parseFloat(pageStyle.paddingBottom) || 0);
       var boxesL = readBoxes(api), boxesR = readBoxes(two.apiR);
       var tallest = boxesL.reduce(function(max, box){ return Math.max(max, box.height); }, 0);
-      // 줄 하나가 쪽 창보다 높으면 두 인스턴스의 배율을 줄여 다시 그린다. 판단은 왼쪽 그리기가 끝났을 때만 한다(그때 조각이 다 들어와 있다).
-      if (source === 'L' && tallest > hc + 0.5 && pageScale > TWO_PAGE_MIN_SCALE){
+      // 줄 하나가 쪽 창보다 높으면 두 인스턴스의 배율을 줄여 다시 그린다. 판단은 조각이 다 들어와 있을 때만 한다(왼쪽 그리기가 끝났을 때, 또는 다시 그리지 않는 높이 변경 때)
+      if ((source === 'L' || source === 'fit') && tallest > hc + 0.5 && pageScale > TWO_PAGE_MIN_SCALE){
         var next = Math.max(TWO_PAGE_MIN_SCALE, Math.floor(pageScale * hc / tallest * 100) / 100);
         if (next < pageScale){
           pageScale = next;
@@ -706,16 +707,21 @@
     }
     window.addEventListener('resize', function(){
       var widthChanged = window.innerWidth !== lastWidth;
-      if (widthChanged) lastWidth = window.innerWidth;
+      var heightChanged = window.innerHeight !== lastHeight;
+      lastWidth = window.innerWidth;
+      lastHeight = window.innerHeight;
       if (!two) return;
-      if (widthChanged && pageScale !== prefs.twoPageScale){
+      // 줄여 둔 배율은 창 크기가 바뀌면 정한 배율에서 다시 맞춘다(다시 그린 뒤 postRenderFinished 에서 줄이기 판단)
+      var rerender = (widthChanged || heightChanged) && pageScale !== prefs.twoPageScale;
+      if (rerender){
         pageScale = prefs.twoPageScale;
         applyModeSettings(api, true);
         applyModeSettings(two.apiR, true);
         api.render();
         two.apiR.render();
       }
-      relayout('resize');
+      // 높이만 바뀌면 alphaTab 이 다시 그리지 않으므로 이미 그려진 조각으로 줄이기 판단까지 한다. 폭이 바뀌면 alphaTab 이 다시 그린 뒤 판단한다
+      relayout(!rerender && heightChanged && !widthChanged ? 'fit' : 'resize');
     });
     // 강조 거울: 오른쪽 인스턴스는 플레이어가 없어 강조를 만들지 않으므로 박 묶음 클래스(b<박 id>)에 at-highlight 를 붙인다
     function clearMirrorHighlight(){

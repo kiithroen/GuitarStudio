@@ -2395,8 +2395,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=at-pages-3')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=at-pages-3">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=at-pages-4')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=at-pages-4">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -6208,8 +6208,7 @@ async function testAlphaTabTwoPage(client, httpPort) {
     await waitForCondition(client, twoSettled, 20000);
     assert.equal((await state()).match, 'true', 'landscape again switches back to two pages');
 
-    // 12. 작은 가로 화면: 줄이 쪽 창보다 높으면 배율을 줄여 다시 그린다
-    await setSize(760, 340);
+    // 11b. 창 높이만 바뀌는 경우: 폭이 그대로면 alphaTab 이 다시 그리지 않으므로, 줄이기 판단이 resize 에서 돌아야 한다
     const fitsSmall = `(function(){
       var pageL = document.querySelector('.at-page'); if (!pageL || !window.__alphaTabApiR || !window.__alphaTabApiR.canvasElement) return false;
       var cs = getComputedStyle(pageL), hc = pageL.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
@@ -6217,6 +6216,37 @@ async function testAlphaTabTwoPage(client, httpPort) {
       [window.__alphaTabApi, window.__alphaTabApiR].forEach(function(inst){ Array.prototype.forEach.call(inst.canvasElement.element.children, function(c){ tallest = Math.max(tallest, parseFloat(c.style.height) || 0); }); });
       return document.body.getAttribute('data-at-layout') === 'two' && document.body.getAttribute('data-at-pages-match') === 'true' && tallest > 0 && tallest <= hc + 1;
     })()`;
+    const readScales = () => client.evaluate(`({ l: window.__alphaTabApi.settings.display.scale, r: window.__alphaTabApiR.settings.display.scale, saved: JSON.parse(localStorage.getItem(${JSON.stringify(PREFS_KEY)})).twoPageScale })`);
+    const widthNow = await client.evaluate('window.innerWidth');
+    const heightBefore = await client.evaluate('window.innerHeight');
+    // 지금 쪽 창 안쪽 높이(hc)와 가장 높은 줄을 재서, 줄이 쪽 창의 85% 보다 높아지는 창 높이를 고른다(쪽 창 높이는 창 높이와 같이 줄어든다)
+    const lineFacts = await client.evaluate(`(function(){
+      var pageL = document.querySelector('.at-page'), cs = getComputedStyle(pageL), tallest = 0;
+      var hc = pageL.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+      [window.__alphaTabApi, window.__alphaTabApiR].forEach(function(inst){ Array.prototype.forEach.call(inst.canvasElement.element.children, function(c){ tallest = Math.max(tallest, parseFloat(c.style.height) || 0); }); });
+      return { hc: hc, tallest: tallest };
+    })()`);
+    assert.ok(lineFacts.tallest > 0 && lineFacts.tallest <= lineFacts.hc + 1, 'the roomy landscape window holds every piece before the height-only change: ' + JSON.stringify(lineFacts));
+    const shortHeight = heightBefore - Math.ceil(lineFacts.hc - lineFacts.tallest * 0.85);
+    assert.ok(widthNow > shortHeight, 'the height-only check keeps a landscape window');
+    await setSize(widthNow, shortHeight);
+    await waitForCondition(client, `${fitsSmall} && window.__alphaTabApi.settings.display.scale === window.__alphaTabApiR.settings.display.scale && window.__alphaTabApi.settings.display.scale < JSON.parse(localStorage.getItem(${JSON.stringify(PREFS_KEY)})).twoPageScale`, 25000);
+    await sleep(500);
+    assert.equal(await client.evaluate(fitsSmall), true, 'lowering only the window height still fits every piece inside the page window');
+    const heightOnly = await readScales();
+    assert.equal(heightOnly.l, heightOnly.r, 'both instances use the same scale after a height-only change');
+    assert.ok(heightOnly.l < heightOnly.saved, 'a height-only change shrinks the scale below the saved two-page scale: ' + JSON.stringify(heightOnly));
+    await checkFit('height-only window');
+    process.stdout.write(`Two-page height-only fit ${widthNow}x${shortHeight}: scale ${heightOnly.l}\n`);
+    await setSize(widthNow, heightBefore);
+    await waitForCondition(client, `${fitsSmall} && window.__alphaTabApi.settings.display.scale === window.__alphaTabApiR.settings.display.scale && window.__alphaTabApi.settings.display.scale === JSON.parse(localStorage.getItem(${JSON.stringify(PREFS_KEY)})).twoPageScale`, 25000);
+    await sleep(500);
+    const restored = await readScales();
+    assert.deepEqual([restored.l, restored.r], [restored.saved, restored.saved], 'raising only the window height brings both instances back to the saved two-page scale: ' + JSON.stringify(restored));
+    assert.equal(await client.evaluate(fitsSmall), true, 'the restored height settles with every piece inside the page window');
+
+    // 12. 작은 가로 화면: 줄이 쪽 창보다 높으면 배율을 줄여 다시 그린다
+    await setSize(760, 340);
     await waitForCondition(client, fitsSmall, 25000);
     await sleep(500);
     assert.equal(await client.evaluate(fitsSmall), true, 'the small landscape window settles with every piece inside the page window');
@@ -6812,7 +6842,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=at-pages-3')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=at-pages-4')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
