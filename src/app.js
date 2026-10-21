@@ -1704,7 +1704,7 @@ function curCapo(){
     $('#speedTrainerChk').checked = appState.speedTrainer;
     $('#guideSoundBtn').setAttribute('aria-pressed', String(appState.guideSound));
     $('#guideSoundBtn').setAttribute('data-active', String(appState.guideSound));
-    $('#guideSoundBtn').textContent = appState.guideSound ? '기타 시뮬레이션' : '기타 시뮬레이션 끔';
+    $('#guideSoundBtn').textContent = appState.guideSound ? '가이드음' : '가이드음 끔';
     var isKs = appState.synthEngine !== 'classic';
     $('#engineBtn').setAttribute('data-active', String(isKs));
     $('#engineBtn').textContent = isKs ? '물리음원' : '기존음원';
