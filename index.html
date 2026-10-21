@@ -97,6 +97,13 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .m-num{font-family:var(--font-num);font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;flex-shrink:0}
 .m-chord{font-family:var(--font-num);font-size:13.5px;font-weight:700;padding:1px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent);white-space:nowrap;flex-shrink:0}
 .m-chord.auto-chord{border:1px dashed var(--accent);font-size:12.5px}
+.measure-chords-bar{display:flex;align-items:center;min-height:22px;margin-bottom:2px}
+.chords-side-spacer{width:36px;flex-shrink:0}
+.measure-card:not(.tab-mode) .chords-side-spacer{display:none}
+.measure-chords-row{flex:1;min-width:0;display:grid;grid-template-columns:repeat(var(--bpb,4),minmax(0,1fr));gap:0}
+.chord-slot{display:flex;align-items:center;justify-content:flex-start;padding:0 2px;min-width:0;overflow:hidden}
+.chord-slot .m-chord{cursor:pointer;transition:transform .08s,box-shadow .08s}
+.chord-slot .m-chord:hover{transform:translateY(-1px);box-shadow:0 2px 4px rgba(0,0,0,.15)}
 .m-lyric{flex:1 1 auto;min-width:0;font-size:12.5px;color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .score-measure-edit{margin-left:auto;flex-shrink:0;min-height:24px;padding:0 8px;font-size:11.5px}
 .score-draft-controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)}

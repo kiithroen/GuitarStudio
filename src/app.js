@@ -444,6 +444,86 @@ function curCapo(){
     return (notes || []).map(function(cn){ return cn && cn.str; });
   }
 
+  function effectiveChordAtBeat(measure, beatIndex){
+    if (!measure) return '';
+    if (measure.beats && measure.beats[beatIndex] && measure.beats[beatIndex].chord){
+      return measure.beats[beatIndex].chord;
+    }
+    if (measure.chords && measure.chords.length){
+      var targetBeat = beatIndex + 1;
+      var lastChord = '';
+      for (var i = 0; i < measure.chords.length; i++){
+        var c = measure.chords[i];
+        if (c && c.beat <= targetBeat && c.chord){
+          lastChord = c.chord;
+        }
+      }
+      if (lastChord) return lastChord;
+    }
+    return measure.chord || '';
+  }
+
+  function buildMeasureChordsBar(m, bpb, isTab, sideWidth){
+    if (!m.chord && (!m.chords || !m.chords.length)) return null;
+
+    var bar = document.createElement('div');
+    bar.className = 'measure-chords-bar';
+
+    if (isTab){
+      var spacer = document.createElement('div');
+      spacer.className = 'chords-side-spacer';
+      if (sideWidth) spacer.style.width = sideWidth;
+      bar.appendChild(spacer);
+    }
+
+    var row = document.createElement('div');
+    row.className = 'measure-chords-row';
+    row.style.setProperty('--bpb', bpb);
+
+    for (var b = 0; b < bpb; b++){
+      var slot = document.createElement('div');
+      slot.className = 'chord-slot';
+      slot.dataset.b = b;
+
+      var chordEntry = null;
+      if (m.chords && m.chords.length){
+        for (var ci = 0; ci < m.chords.length; ci++){
+          if (m.chords[ci] && m.chords[ci].beat === b + 1){
+            chordEntry = m.chords[ci];
+            break;
+          }
+        }
+      }
+      if (!chordEntry && b === 0 && m.chord){
+        chordEntry = { chord: m.chord, autoChord: !!m.autoChord };
+      }
+
+      if (chordEntry && chordEntry.chord){
+        (function(entry){
+          var chordName = entry.chord;
+          var isAuto = !!entry.autoChord;
+          var chordEl = document.createElement('span');
+          chordEl.className = 'm-chord' + (isAuto ? ' auto-chord' : '');
+          chordEl.textContent = chordName + (isAuto ? ' (자동)' : '');
+          chordEl.title = isAuto
+            ? '멜로디 구성음과 곡의 조성을 분석해 자동 추론된 반주 코드입니다'
+            : (chordName + ' (클릭: 화음 미리듣기)');
+          chordEl.addEventListener('click', function(e){
+            e.stopPropagation();
+            highlightFretboard(chordName, null, true);
+            if (typeof playChordPreview === 'function') playChordPreview(chordName);
+          });
+          slot.appendChild(chordEl);
+        })(chordEntry);
+      }
+
+      row.appendChild(slot);
+    }
+
+    bar.appendChild(row);
+    return bar;
+  }
+
   function renderStructuredMeasures(){
     var grid = $('#measuresGrid');
     grid.textContent = '';
@@ -455,7 +535,13 @@ function curCapo(){
     var chordsSet = [];
 
     curSong.measures.forEach(function(m, mIdx){
-      if (m.chord && chordsSet.indexOf(m.chord) < 0) chordsSet.push(m.chord);
+      if (m.chords && m.chords.length){
+        m.chords.forEach(function(c){
+          if (c && c.chord && chordsSet.indexOf(c.chord) < 0) chordsSet.push(c.chord);
+        });
+      } else if (m.chord && chordsSet.indexOf(m.chord) < 0){
+        chordsSet.push(m.chord);
+      }
 
       var card = document.createElement('div');
       card.className = 'measure-card' + (isTab ? ' tab-mode' : '');
@@ -474,13 +560,6 @@ function curCapo(){
       num.className = 'm-num';
       num.textContent = m.no + '마디';
       head.appendChild(num);
-      if (m.chord){
-        var chord = document.createElement('span');
-        chord.className = 'm-chord' + (m.autoChord ? ' auto-chord' : '');
-        chord.textContent = m.chord + (m.autoChord ? ' (자동)' : '');
-        if (m.autoChord) chord.title = '멜로디 구성음과 곡의 조성을 분석해 자동 추론된 반주 코드입니다';
-        head.appendChild(chord);
-      }
       if (m.lyric){
         var lyr = document.createElement('span');
         lyr.className = 'm-lyric';
@@ -557,7 +636,7 @@ function curCapo(){
           cell.dataset.b = bIdx;
           var beatToken = b.tok || b.customTok || b.en;
           var effBass = getExplicitBass(b);
-          var pitchLabel = formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(m.chord || '')});
+          var pitchLabel = formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(effectiveChordAtBeat(m, bIdx))});
           var articDesc = uniformArticulation === 'apoyando' ? ' [악보 지정 아포얀도]' : '';
           var tabDurationInfo = getBeatDurationInfo(m.beats, bIdx, curSong.beats);
           cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + (pitchLabel ? ': ' + pitchLabel : '') +
@@ -573,7 +652,7 @@ function curCapo(){
             var enEl = document.createElement('span');
             enEl.className = 'tab-cell-en';
 
-            enEl.textContent = formatBeatPitchLabel(b, {compact:true, chord:cleanChordToken(m.chord || '')});
+            enEl.textContent = formatBeatPitchLabel(b, {compact:true, chord:cleanChordToken(effectiveChordAtBeat(m, bIdx))});
             if (enEl.textContent){
               solfegeWrap.appendChild(enEl);
               topRow.appendChild(solfegeWrap);
@@ -741,6 +820,8 @@ function curCapo(){
 
         body.appendChild(beatsRow);
         staveWrap.appendChild(body);
+        var chordsBar = buildMeasureChordsBar(m, curSong.beats, true, side.style.width);
+        if (chordsBar) card.appendChild(chordsBar);
         card.appendChild(staveWrap);
       } else {
         var beatsRow = document.createElement('div');
@@ -756,7 +837,7 @@ function curCapo(){
             extraCls += ' arp-group-start';
           }
           var mainKind = b.kind || (b.midi ? 'note' : 'rest');
-          var pitchLabel = formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(m.chord || '')});
+          var pitchLabel = formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(effectiveChordAtBeat(m, bIdx))});
           if (mainKind === 'rest'){
             extraCls += ' is-rest';
           }
@@ -824,7 +905,7 @@ function curCapo(){
             // 3. 옥타브 위치 및 영문 음높이 서브 표기 (가온 C4, 중간 E4 등)
             var subEl = document.createElement('span');
             subEl.className = 'b-note-sub';
-            subEl.textContent = (!b.isSubdivided && (!b.chordNotes || b.chordNotes.length < 2) ? getOctaveLabel(b.midi) + ' ' : '') + formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(m.chord || '')});
+            subEl.textContent = (!b.isSubdivided && (!b.chordNotes || b.chordNotes.length < 2) ? getOctaveLabel(b.midi) + ' ' : '') + formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(effectiveChordAtBeat(m, bIdx))});
             cell.appendChild(subEl);
             var rightHandLabel = getBeatRightHandLabel(b);
             if (rightHandLabel){
@@ -868,6 +949,8 @@ function curCapo(){
           beatsRow.appendChild(cell);
         });
 
+        var chordsBar = buildMeasureChordsBar(m, curSong.beats, false);
+        if (chordsBar) card.appendChild(chordsBar);
         card.appendChild(beatsRow);
       }
 
@@ -1324,8 +1407,9 @@ function curCapo(){
       }
       var cell = $('#measuresGrid .beat-cell[data-m="' + mIdx + '"][data-b="' + bIdx + '"]');
       if (cell) cell.classList.add('active-beat');
+      var effChord = effectiveChordAtBeat(m, bIdx);
       if ($('#compactStatusBadge')){
-        $('#compactStatusBadge').textContent = appState.bpm + ' BPM · ' + (mIdx + 1) + '마디 ' + (bIdx + 1) + '박' + (m.chord ? ' [' + m.chord + ']' : '');
+        $('#compactStatusBadge').textContent = appState.bpm + ' BPM · ' + (mIdx + 1) + '마디 ' + (bIdx + 1) + '박' + (effChord ? ' [' + effChord + ']' : '');
       }
 
       var beatObj = m.beats[bIdx];
@@ -1338,7 +1422,7 @@ function curCapo(){
       } else if (targetForFb && (targetForFb.kind === 'rest' || targetForFb.kind === 'skip')){
         targetForFb = null;
       }
-      highlightFretboard(m.chord, targetForFb, false, m.autoChord, bIdx);
+      highlightFretboard(effChord, targetForFb, false, m.autoChord, bIdx);
       if (playPreviewSound){
         ensureAudioCtx();
         var nowT = actx.currentTime;
@@ -1610,7 +1694,8 @@ function curCapo(){
                       var subTarget = sn;
                       if (sn.kind === 'rest') subTarget = null;
                       else if (sn.kind === 'hold' && typeof GuitarRhythm !== 'undefined') subTarget = GuitarRhythm.resolveHold(curSong.measures, sn);
-                      highlightFretboard(curM ? curM.chord : null, subTarget, false, curM ? curM.autoChord : false, bI);
+                      var effSubChord = effectiveChordAtBeat(curM, bI);
+                      highlightFretboard(effSubChord, subTarget, false, curM ? curM.autoChord : false, bI);
                     }
                   }, subDelay);
                 }

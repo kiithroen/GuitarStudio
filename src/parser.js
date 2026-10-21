@@ -492,17 +492,51 @@
     return beat && beat.bass && beat.bass.midi ? beat.bass : null;
   }
 
-  function parseBracketChordSpec(rawChord){
-    var s = (rawChord || '').trim();
-    if (s === '-'){
-      return { chord: '', autoChord: false, needsInfer: false };
+  function parseBracketChordSpec(raw, bpb){
+    if (raw == null) return { chord: '', autoChord: false, needsInfer: false, chords: [] };
+    var s = String(raw).trim();
+    if (!s || s === '-'){
+      return { chord: '', autoChord: false, needsInfer: false, chords: [] };
     }
-    if (!s || s === '?'){
-      return { chord: '', autoChord: true, needsInfer: true };
+    var parts = s.split(',');
+    var chords = [];
+    var anyInfer = false;
+    for (var i = 0; i < parts.length; i++){
+      var part = parts[i].trim();
+      if (!part) continue;
+      var colonIdx = part.indexOf(':');
+      var beat = null;
+      var chordPart = part;
+      if (colonIdx >= 0){
+        var beatStr = part.slice(0, colonIdx).trim();
+        chordPart = part.slice(colonIdx + 1).trim();
+        var num = Number(beatStr);
+        if (beatStr !== '' && Number.isInteger(num)) beat = num;
+      } else {
+        if (i === 0) beat = 1;
+      }
+      var isAuto = /\?+$/.test(chordPart);
+      var cleaned = cleanChordToken(chordPart);
+      var isInfer = (chordPart === '?' || (cleaned === '' && isAuto));
+      if (isInfer) anyInfer = true;
+      var chordName = cleaned === '-' ? '' : cleaned;
+      chords.push({
+        beat: beat,
+        chord: chordName,
+        autoChord: isAuto
+      });
     }
-    var isMarkedAuto = /\?+$/.test(s);
-    var cleaned = cleanChordToken(s);
-    return { chord: cleaned, autoChord: isMarkedAuto, needsInfer: false };
+    if (!chords.length){
+      return { chord: '', autoChord: false, needsInfer: false, chords: [] };
+    }
+    var firstChord = chords[0].chord;
+    var firstAuto = chords[0].autoChord;
+    return {
+      chord: firstChord,
+      autoChord: firstAuto,
+      needsInfer: anyInfer,
+      chords: chords
+    };
   }
 
   // 카포 표기: 1번 그룹은 숫자 앞 글자(카포: , capo fret 등), 2번 그룹은 숫자
@@ -559,19 +593,55 @@
 
   function splitScoreMeasures(raw){ return GuitarNotation.splitScoreMeasures(raw); }
   function validateScore(raw, beats){
+    var missingBeats = beats == null || (typeof beats === 'string' && beats.trim() === '');
+    var numericBeats = missingBeats ? 4 : Number(beats);
+    var validBeats = Number.isFinite(numericBeats) && Number.isInteger(numericBeats) && numericBeats >= 1 && numericBeats <= 12;
+    var bpb = validBeats ? numericBeats : 4;
     var result = GuitarNotation.validateScore(raw, beats, parseNoteToken);
     splitScoreMeasures(raw).forEach(function(line, index){
+      var measureNo = index + 1;
       var decoded = GuitarNotation.decodeMeasureLine(line);
       if (decoded.chordRaw == null) return;
-      var chord = parseBracketChordSpec(decoded.chordRaw);
-      if (chord.chord && !/^[A-G][#b]?[A-Za-z0-9#+()\/-]*$/.test(chord.chord)){
-        result.errors.push({
-          code:'INVALID_CHORD', measure:index + 1, beat:null,
-          message:'코드 이름은 영문 코드 표기로 적으세요(예: [Am], [G7], [C/G]). 코드가 없으면 [-]: [' + decoded.chordRaw + ']'
-        });
-      } else if (chord.chord && !CHORD_DB[chord.chord]) result.warnings.push({
-        code:'UNSUPPORTED_CHORD', measure:index + 1, beat:null,
-        message:'코드 사전에 없는 코드 표기입니다: '+chord.chord+'.'
+      var chordSpec = parseBracketChordSpec(decoded.chordRaw, bpb);
+      var seenBeats = Object.create(null);
+      chordSpec.chords.forEach(function(chordEntry){
+        var b = chordEntry.beat;
+        if (!Number.isInteger(b) || b < 1 || b > bpb){
+          result.errors.push({
+            code: 'INVALID_CHORD_BEAT',
+            measure: measureNo,
+            beat: Number.isInteger(b) ? b : null,
+            message: '코드의 박자 번호는 1에서 ' + bpb + ' 사이의 정수여야 합니다.'
+          });
+        } else if (seenBeats[b]){
+          result.errors.push({
+            code: 'DUPLICATE_CHORD_BEAT',
+            measure: measureNo,
+            beat: b,
+            message: '마디 내 같은 박(' + b + '박)에 둘 이상의 코드가 지정되었습니다.'
+          });
+        } else {
+          seenBeats[b] = true;
+        }
+
+        var cName = chordEntry.chord;
+        if (cName && cName !== '?'){
+          if (!/^[A-G][#b]?[A-Za-z0-9#+()\/-]*$/.test(cName)){
+            result.errors.push({
+              code: 'INVALID_CHORD',
+              measure: measureNo,
+              beat: Number.isInteger(b) ? b : null,
+              message: '코드 이름은 영문 코드 표기로 적으세요(예: [Am], [G7], [C/G]). 코드가 없으면 [-]: [' + cName + ']'
+            });
+          } else if (!CHORD_DB[cName]){
+            result.warnings.push({
+              code: 'UNSUPPORTED_CHORD',
+              measure: measureNo,
+              beat: Number.isInteger(b) ? b : null,
+              message: '코드 사전에 없는 코드 표기입니다: ' + cName + '.'
+            });
+          }
+        }
       });
     });
     return result;
@@ -634,8 +704,8 @@
       var decoded = GuitarNotation.decodeMeasureLine(line);
       var left = decoded.notation;
       var lyric = decoded.lyric;
-      var chordSpec = { chord: '', autoChord: true, needsInfer: true };
-      if (decoded.chordRaw != null){ chordSpec = parseBracketChordSpec(decoded.chordRaw); left = left.replace(/^\[[^\]]*\]\s*/, '').trim(); }
+      var chordSpec = { chord: '', autoChord: true, needsInfer: true, chords: [] };
+      if (decoded.chordRaw != null){ chordSpec = parseBracketChordSpec(decoded.chordRaw, bpb); left = left.replace(/^\[[^\]]*\]\s*/, '').trim(); }
       if (chordSpec.needsInfer) anyNeedInfer = true;
       var tokens = tokenizeMeasureBeats(left);
       var parsedBeats = [];
@@ -694,8 +764,21 @@
           });
         }
       }
+      if (chordSpec.chords && chordSpec.chords.length){
+        var chordByBeat = Object.create(null);
+        chordSpec.chords.forEach(function(c){
+          if (c.beat != null && !chordByBeat[c.beat]) chordByBeat[c.beat] = c;
+        });
+        for (var b = 0; b < parsedBeats.length; b++){
+          var cEntry = chordByBeat[b + 1];
+          if (cEntry){
+            parsedBeats[b].chord = cEntry.chord;
+            parsedBeats[b].autoChord = cEntry.autoChord;
+          }
+        }
+      }
       annotateMeasureArticulation(parsedBeats, bpb);
-      return { no: mIdx + 1, chord: chordSpec.chord, autoChord: chordSpec.autoChord,
+      return { no: mIdx + 1, chord: chordSpec.chord, chords: chordSpec.chords || [], autoChord: chordSpec.autoChord,
         needsInfer: chordSpec.needsInfer, lyric: lyric, beats: parsedBeats };
     });
     attachSlurTypes(measures);

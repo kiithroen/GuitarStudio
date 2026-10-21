@@ -609,4 +609,129 @@ test('skip cells parse into note-less cell objects that are not rests', function
   assert.equal(parser.serializeScoreMeasures(pickup.measures, '\n').split(' | ')[0], '[-] _ _ _ E3@4/G3@3', 'a skip cell serializes as _');
   assert.equal(require('../src/notation.js').isRestToken('_'), false);
 });
+test('mid-measure chord changes parse multiple chords and attach chords to matching beats', function(){
+  // parseBracketChordSpec direct verification
+  const spec1 = parser.parseBracketChordSpec('Am, 2:G/B, 3:C, 4:D7', 4);
+  assert.equal(spec1.chord, 'Am');
+  assert.equal(spec1.autoChord, false);
+  assert.equal(spec1.needsInfer, false);
+  assert.deepEqual(spec1.chords, [
+    { beat: 1, chord: 'Am', autoChord: false },
+    { beat: 2, chord: 'G/B', autoChord: false },
+    { beat: 3, chord: 'C', autoChord: false },
+    { beat: 4, chord: 'D7', autoChord: false }
+  ]);
+
+  const spec2 = parser.parseBracketChordSpec('1:Am, 2:G/B', 4);
+  assert.equal(spec2.chord, 'Am');
+  assert.equal(spec2.autoChord, false);
+  assert.deepEqual(spec2.chords, [
+    { beat: 1, chord: 'Am', autoChord: false },
+    { beat: 2, chord: 'G/B', autoChord: false }
+  ]);
+
+  const specEmpty = parser.parseBracketChordSpec('-', 4);
+  assert.deepEqual(specEmpty, { chord: '', autoChord: false, needsInfer: false, chords: [] });
+
+  const specNull = parser.parseBracketChordSpec('', 4);
+  assert.deepEqual(specNull, { chord: '', autoChord: false, needsInfer: false, chords: [] });
+
+  // parseScore integration
+  const scoreData = parse('[Am, 2:G/B, 3:C, 4:D7] C4 D4 E4 F4', 4);
+  assert.equal(scoreData.errors.length, 0);
+  const m = scoreData.measures[0];
+  assert.equal(m.chord, 'Am');
+  assert.deepEqual(m.chords, [
+    { beat: 1, chord: 'Am', autoChord: false },
+    { beat: 2, chord: 'G/B', autoChord: false },
+    { beat: 3, chord: 'C', autoChord: false },
+    { beat: 4, chord: 'D7', autoChord: false }
+  ]);
+  assert.equal(m.beats[0].chord, 'Am');
+  assert.equal(m.beats[0].autoChord, false);
+  assert.equal(m.beats[1].chord, 'G/B');
+  assert.equal(m.beats[1].autoChord, false);
+  assert.equal(m.beats[2].chord, 'C');
+  assert.equal(m.beats[2].autoChord, false);
+  assert.equal(m.beats[3].chord, 'D7');
+  assert.equal(m.beats[3].autoChord, false);
+
+  // Sparse chord beats
+  const sparse = parse('[C, 3:G7] C4 D4 E4 F4', 4);
+  assert.equal(sparse.errors.length, 0);
+  assert.equal(sparse.measures[0].chord, 'C');
+  assert.equal(sparse.measures[0].beats[0].chord, 'C');
+  assert.equal(sparse.measures[0].beats[0].autoChord, false);
+  assert.equal(sparse.measures[0].beats[1].chord, undefined);
+  assert.equal(sparse.measures[0].beats[2].chord, 'G7');
+  assert.equal(sparse.measures[0].beats[2].autoChord, false);
+  assert.equal(sparse.measures[0].beats[3].chord, undefined);
+
+  // Auto-chord ? flag
+  const withAuto = parse('[Am?, 2:G/B?] C4 D4 E4 F4', 4);
+  assert.equal(withAuto.errors.length, 0);
+  assert.equal(withAuto.measures[0].autoChord, true);
+  assert.equal(withAuto.measures[0].chords[0].autoChord, true);
+  assert.equal(withAuto.measures[0].chords[1].autoChord, true);
+  assert.equal(withAuto.measures[0].beats[0].autoChord, true);
+  assert.equal(withAuto.measures[0].beats[1].autoChord, true);
+});
+
+test('serializeScoreMeasures formats mid-measure chord changes and supports lossless round-trip', function(){
+  const raw = '[Am, 2:G/B, 3:C, 4:D7] C4 D4 E4 F4 | "memo"';
+  const scoreData = parse(raw, 4);
+  assert.equal(scoreData.errors.length, 0);
+  const serialized = parser.serializeScoreMeasures(scoreData.measures);
+  assert.equal(serialized, '[Am, 2:G/B, 3:C, 4:D7] C4 D4 E4 F4 | "memo"');
+
+  const roundTrip = parse(serialized, 4);
+  assert.equal(roundTrip.errors.length, 0);
+  assert.deepEqual(roundTrip.measures[0].chords, scoreData.measures[0].chords);
+  assert.equal(roundTrip.measures[0].lyric, 'memo');
+  assert.equal(roundTrip.measures[0].beats[0].chord, 'Am');
+  assert.equal(roundTrip.measures[0].beats[1].chord, 'G/B');
+
+  // Single chord serialized as [Am]
+  const single = parse('[Am] C4 D4 E4 F4', 4);
+  assert.match(parser.serializeScoreMeasures(single.measures), /^\[Am\] /);
+
+  // Empty chord serialized as [-]
+  const none = parse('[-] C4 D4 E4 F4', 4);
+  assert.match(parser.serializeScoreMeasures(none.measures), /^\[-\] /);
+});
+
+test('validateScore reports INVALID_CHORD_BEAT and DUPLICATE_CHORD_BEAT for mid-measure chords', function(){
+  // Non-integer beat
+  const nonInt = parser.validateScore('[1.5:Am] C4 D4 E4 F4', 4);
+  assert.ok(nonInt.errors.some(e => e.code === 'INVALID_CHORD_BEAT'));
+
+  // Out of range: beat 0 (< 1)
+  const zeroBeat = parser.validateScore('[0:Am, 2:G] C4 D4 E4 F4', 4);
+  assert.ok(zeroBeat.errors.some(e => e.code === 'INVALID_CHORD_BEAT'));
+
+  // Out of range: beat > bpb
+  const overBeat = parser.validateScore('[Am, 5:G] C4 D4 E4 F4', 4);
+  assert.ok(overBeat.errors.some(e => e.code === 'INVALID_CHORD_BEAT'));
+
+  // Missing beat specification on subsequent chord
+  const missingBeat = parser.validateScore('[Am, G/B] C4 D4 E4 F4', 4);
+  assert.ok(missingBeat.errors.some(e => e.code === 'INVALID_CHORD_BEAT'));
+
+  // Duplicate beat: explicit 1: with default 1:
+  const dup1 = parser.validateScore('[Am, 1:C] C4 D4 E4 F4', 4);
+  assert.ok(dup1.errors.some(e => e.code === 'DUPLICATE_CHORD_BEAT'));
+
+  // Duplicate beat: same beat repeated
+  const dup2 = parser.validateScore('[Am, 2:G, 2:C] C4 D4 E4 F4', 4);
+  assert.ok(dup2.errors.some(e => e.code === 'DUPLICATE_CHORD_BEAT'));
+
+  // Invalid chord syntax in multi-chord spec
+  const invalidChord = parser.validateScore('[Am, 2:한글코드] C4 D4 E4 F4', 4);
+  assert.ok(invalidChord.errors.some(e => e.code === 'INVALID_CHORD'));
+
+  // Unsupported chord warning in multi-chord spec
+  const unsupported = parser.validateScore('[Am, 2:Cmaj7] C4 D4 E4 F4', 4);
+  assert.ok(unsupported.warnings.some(w => w.code === 'UNSUPPORTED_CHORD'));
+});
+
 process.stdout.write('1..' + checks + '\n');

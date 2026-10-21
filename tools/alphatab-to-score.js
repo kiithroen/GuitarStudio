@@ -912,23 +912,37 @@ function convert(score, opts, forcedGrid){
     collected.records.forEach(function(record){ if (record.endRel > maxEnd) maxEnd = record.endRel; });
     carry = Math.max(0, Math.max(carry, maxEnd) - barLen);
 
-    // 코드 이름: 마디 안 첫 코드를 머리표에, 그 뒤에 바뀌는 코드는 메모에
+    // 코드 이름: 마디 안 첫 코드를 머리표에, 그 뒤에 바뀌는 코드도 머리표에 [first, n:second] 형태로 넣는다.
     collected.chords.sort(function(a, b){ return a.start - b.start; });
     let chordName = '-';
     if (collected.chords.length){
       const first = collected.chords[0];
+      let firstNormalized = '-';
+      let lastValid = null;
       if (isValidChordName(first.name)){
-        const normalized = dictionaryChordName(first.name);
-        chordName = normalized;
-        if (normalized !== first.name) memos.push('원본 ' + first.name);
-      } else memos.push('코드 이름 변환 불가: ' + first.name);
+        firstNormalized = dictionaryChordName(first.name);
+        if (firstNormalized !== first.name) memos.push('원본 ' + first.name);
+        lastValid = firstNormalized;
+      } else {
+        memos.push('코드 이름 변환 불가: ' + first.name);
+      }
+      const chordItems = [firstNormalized];
+      const seenCells = new Set([1]);
       collected.chords.slice(1).forEach(function(entry){
-        if (entry.name === first.name) return;
         const cellNumber = Math.min(grid.cells, Math.max(0, Math.floor((entry.start + TOLERANCE_TICKS) / grid.slotTicks))) + 1;
-        memos.push(cellNumber + '박부터 ' + entry.name);
+        if (seenCells.has(cellNumber)) return;
+        seenCells.add(cellNumber);
+        if (isValidChordName(entry.name)){
+          const normalized = dictionaryChordName(entry.name);
+          chordItems.push(cellNumber + ':' + normalized);
+          if (normalized !== entry.name) memos.push('원본 ' + entry.name);
+          lastValid = normalized;
+        } else {
+          memos.push('코드 이름 변환 불가: ' + entry.name);
+        }
       });
-      const lastName = collected.chords[collected.chords.length - 1].name;
-      endChord = isValidChordName(lastName) ? dictionaryChordName(lastName) : lastName;
+      chordName = chordItems.join(', ');
+      endChord = lastValid;
     } else if (isValidChordName(endChord)){
       // 교본은 같은 코드가 이어지는 마디에 코드 이름을 다시 적지 않는데, 앱의 코드 카드는 마디 머리표로 그려서 비우면 카드가 끊긴다.
       chordName = endChord;

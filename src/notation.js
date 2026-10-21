@@ -175,11 +175,28 @@
 
   function serializeScoreMeasures(measures, separator){
     return (measures || []).map(function(measure){
-      var chord = measure.chord || '-';
+      var chordStr;
+      if (measure.chords && measure.chords.length >= 2){
+        chordStr = measure.chords.map(function(c, idx){
+          var name = c.chord || '';
+          if (c.autoChord && !/\?$/.test(name)) name += '?';
+          var prefix = (idx === 0 && c.beat === 1) ? '' : (c.beat + ':');
+          return prefix + name;
+        }).join(', ');
+      } else if (measure.chords && measure.chords.length === 1){
+        var single = measure.chords[0];
+        var name = single.chord || '-';
+        if (single.autoChord && name !== '-' && !/\?$/.test(name)) name += '?';
+        var prefix = (single.beat && single.beat > 1) ? (single.beat + ':') : '';
+        chordStr = name === '-' ? '-' : (prefix + name);
+      } else {
+        var name = measure.chord || '-';
+        if (measure.autoChord && name !== '-' && !/\?$/.test(name)) name += '?';
+        chordStr = name;
+      }
       var notes = measure.notes || (measure.beats && measure.beats.map(function(beat){ return beat.tok; })) || [];
-      if (measure.autoChord && chord !== '-' && !/\?$/.test(chord)) chord += '?';
       var lyric = String(measure.lyric || '');
-      return '[' + chord + '] ' + notes.join(' ') + ' | ' + JSON.stringify(lyric);
+      return '[' + chordStr + '] ' + notes.join(' ') + ' | ' + JSON.stringify(lyric);
     }).join(separator == null ? '\n' : separator);
   }
 

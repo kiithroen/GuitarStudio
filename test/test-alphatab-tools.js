@@ -634,10 +634,10 @@ test('off-grid rhythm: a 5-tuplet is moved to the nearest position with ? and a 
   assert.equal(out.errors.length, 0);
 });
 
-test('chord names: first chord in the bar, unsupported names become [-] with a note, later changes are noted, padding is removed', function(){
+test('chord names: first chord in the bar, unsupported names become [-] with a note, later changes become measure-head multi-chords, padding is removed', function(){
   const out = convertTex('\\title "Ch" \\tempo 80 \\ts (4 4)\n0.1.4 {ch "Am"} 0.2.4 0.3.4 {ch "G7"} 0.4.4 |\n0.1.4 {ch "N.C."} 0.2.4 0.3.4 0.4.4 |\n');
   assert.equal(out.ok, true);
-  assert.equal(out.measures[0], '[Am] ' + [n(1, 0), n(2, 0), n(3, 0), n(4, 0)].join(' ') + ' | "3박부터 G7"');
+  assert.equal(out.measures[0], '[Am, 3:G7] ' + [n(1, 0), n(2, 0), n(3, 0), n(4, 0)].join(' '));
   assert.equal(out.measures[1], '[-] ' + [n(1, 0), n(2, 0), n(3, 0), n(4, 0)].join(' ') + ' | "코드 이름 변환 불가: N.C."');
   const forward = converter.toAlphaTex({ title: 'P', beats: 4, bpm: 60, capo: 0, lines: ['[CM7] E4 r r r', '[Cm7] E4 r r r'] });
   const back = tool.convertScore(importCleanTex(forward.tex, 'pad'), {});
@@ -653,10 +653,11 @@ test('chord names: a bar without a chord takes the chord that sounded at the end
   };
   const out = convertTex('\\title "Carry" \\tempo 80 \\ts (4 4)\n' + bar({}) + bar({ 0: 'Am' }) + bar({}) + bar({ 0: 'C', 2: 'G7' }) + bar({}) + bar({}) + bar({ 0: 'N.C.' }) + bar({}));
   assert.equal(out.ok, true);
-  const heads = out.measures.map(function(line){ return line.split(' ')[0]; });
-  assert.deepEqual(heads, ['[-]', '[Am]', '[Am]', '[C]', '[G7]', '[G7]', '[-]', '[-]']);
+  const heads = out.measures.map(function(line){ const m = line.match(/^\[([^\]]*)\]/); return m ? m[1] : ''; });
+  assert.deepEqual(heads, ['-', 'Am', 'Am', 'C, 3:G7', 'G7', 'G7', '-', '-']);
   assert.doesNotMatch(out.measures[2], /\|/, 'a carried chord has no memo');
-  assert.match(out.measures[3], /"3박부터 G7"$/, 'a change inside the bar keeps its memo');
+  assert.doesNotMatch(out.measures[3], /3박부터 G7/, 'a change inside the bar is in measure head, not in memo');
+  assert.doesNotMatch(out.measures[3], /\|/);
   assert.doesNotMatch(out.measures[4], /\|/);
   assert.match(out.measures[6], /코드 이름 변환 불가: N\.C\./);
   assert.doesNotMatch(out.measures[7], /\|/, 'an unusable carried name leaves [-] with no memo');
@@ -701,7 +702,8 @@ test('chord names: a name missing from the chord dictionary is rewritten (parent
     '[F#m7b5]' + cells + ' | "원본 F#m7(b5)"'
   ]);
   const mid = convertTex('\\title "Mid" \\tempo 80 \\ts (4 4)\n0.1.4 {ch "F7(b5)"} 0.2.4 0.3.4 {ch "Am7(9)"} 0.4.4 |\n');
-  assert.match(mid.measures[0], /"원본 F7\(b5\) · 3박부터 Am7\(9\)"$/, 'a change inside the bar keeps the original name');
+  assert.ok(mid.measures[0].startsWith('[F7b5, 3:Am9] '));
+  assert.match(mid.measures[0], /"원본 F7\(b5\) · 원본 Am7\(9\)"$/, 'a change inside the bar keeps the original names');
 });
 
 test('display transpose: \\displaytranspose 12 on a named-note song changes only the drawing height, not the converted result', function(){
@@ -1609,6 +1611,31 @@ test('mutant (코): keeping @string on a fret above MAX_FRET is caught', functio
 
 test('mutant (토): not noting a hammer-on whose destination has the same pitch is caught', function(){
   reviewMutantCaught('silent same-pitch hammer-on', 'else if (stringedPitch(hammerOrigin) === midi) memo(MEMO.slur);', '');
+});
+
+test('convert-chord-memos: transforms chord memos into measure-head multi-chords', function(){
+  const { convertMeasureChordMemos, convertScoreText } = require('../tools/convert-chord-memos.js');
+  const line1 = '[Am] E4 B3 C4 D4 | "2박부터 G/B · 3박부터 C · 4박부터 D7"';
+  assert.equal(convertMeasureChordMemos(line1), '[Am, 2:G/B, 3:C, 4:D7] E4 B3 C4 D4');
+
+  const line2 = '[Am] E4 B3 C4 D4 | "연습용 · 2박부터 G/B"';
+  assert.equal(convertMeasureChordMemos(line2), '[Am, 2:G/B] E4 B3 C4 D4 | "연습용"');
+
+  const multiLine = line1 + '\n' + line2;
+  const convertedMulti = convertScoreText(multiLine);
+  assert.equal(convertedMulti, '[Am, 2:G/B, 3:C, 4:D7] E4 B3 C4 D4\n[Am, 2:G/B] E4 B3 C4 D4 | "연습용"');
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-chord-'));
+  const tmpFile = path.join(tmpDir, 'score.txt');
+  fs.writeFileSync(tmpFile, line1, 'utf8');
+
+  const cliOut = childProcess.execFileSync(process.execPath, [path.join(__dirname, '../tools/convert-chord-memos.js'), tmpFile], { encoding: 'utf8' });
+  assert.equal(cliOut.trim(), '[Am, 2:G/B, 3:C, 4:D7] E4 B3 C4 D4');
+
+  childProcess.execFileSync(process.execPath, [path.join(__dirname, '../tools/convert-chord-memos.js'), '-i', tmpFile]);
+  assert.equal(fs.readFileSync(tmpFile, 'utf8').trim(), '[Am, 2:G/B, 3:C, 4:D7] E4 B3 C4 D4');
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 process.stdout.write('1..' + checks + '\n');
