@@ -160,10 +160,11 @@ function curCapo(){
     if (curSong.type === 'structured' && Array.isArray(curSong.measures)){
       var tokenMeasures = curSong.measures.map(function(measure){
         return {
-          chord:measure.chord || '-',
-          autoChord:!!measure.autoChord,
-          notes:(measure.beats || []).map(function(beat){ return beat && beat.tok != null ? beat.tok : ''; }),
-          lyric:measure.lyric || ''
+          chord: measure.chord || '-',
+          chords: measure.chords || [],
+          autoChord: !!measure.autoChord,
+          notes: (measure.beats || []).map(function(beat){ return beat && beat.tok != null ? beat.tok : ''; }),
+          lyric: measure.lyric || ''
         };
       });
       var tokenSource = serializeScoreMeasures(tokenMeasures, '\n');
