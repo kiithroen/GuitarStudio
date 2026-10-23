@@ -5929,6 +5929,8 @@ async function testAlphaTabTwoPage(client, httpPort) {
   const scaleStep = Number(alphaTabViewSource.match(/var TWO_PAGE_SCALE_STEP = ([0-9.]+);/)[1]);
   const maxScale = Number(alphaTabViewSource.match(/var TWO_PAGE_MAX_SCALE = ([0-9.]+);/)[1]);
   const swipeMin = Number(alphaTabViewSource.match(/var SWIPE_MIN_DISTANCE = ([0-9.]+);/)[1]);
+  const wheelCooldown = Number(alphaTabViewSource.match(/var WHEEL_COOLDOWN_MS = ([0-9.]+);/)[1]);
+  const wheelMinDelta = Number(alphaTabViewSource.match(/var WHEEL_MIN_DELTA = ([0-9.]+);/)[1]);
   const round2 = value => Math.round(value * 100) / 100;
   const song = builtinSongsJson.find(item => item.id === SONG_ID);
   assert.ok(song, SONG_ID + ' exists in songs.json');
@@ -6183,6 +6185,23 @@ async function testAlphaTabTwoPage(client, httpPort) {
     } finally {
       await client.send('Emulation.setTouchEmulationEnabled', { enabled: false });
     }
+
+    // 8c. 마우스 휠 넘김
+    const wheelOnPages = async (deltaY, waitMs = 50) => {
+      await client.evaluate(`(function(){
+        var el = document.querySelector('.at-pages');
+        if (el) el.dispatchEvent(new WheelEvent('wheel', { deltaY: ${deltaY}, bubbles: true, cancelable: true }));
+      })()`);
+      if (waitMs > 0) await sleep(waitMs);
+      return (await state()).spread;
+    };
+    assert.equal((await state()).spread, '0,1');
+    assert.equal(await wheelOnPages(100, 50), '2,3', 'scrolling wheel down turns to the next spread');
+    assert.equal(await wheelOnPages(100, 50), '2,3', 'scrolling within cooldown does not turn page again');
+    await sleep(wheelCooldown + 50);
+    assert.equal(await wheelOnPages(-100, 50), '0,1', 'scrolling wheel up turns back to the previous spread');
+    assert.equal(await wheelOnPages(-100, 50), '0,1', 'scrolling wheel up on the first spread stays');
+    assert.equal(await wheelOnPages(Math.floor(wheelMinDelta / 2), 50), '0,1', 'a minor wheel movement below threshold does not turn the page');
 
     // 9. 다시 열면 단추를 안 눌러도 두 쪽
     await navigate(viewUrl, viewSettled, 45000);

@@ -22,6 +22,8 @@
   var TWO_PAGE_SCALE_STEP = 0.1; // 확대·축소 단추 한 번에 바뀌는 배율
   var TWO_PAGE_MAX_SCALE = 1.5; // 확대 단추의 위 끝. 아래 끝은 TWO_PAGE_MIN_SCALE
   var SWIPE_MIN_DISTANCE = 48; // 터치로 쪽을 넘기는 가로 밀기의 최소 거리(px)
+  var WHEEL_COOLDOWN_MS = 250; // 마우스 휠 쪽 넘김 연속 입력 방지 간격(ms)
+  var WHEEL_MIN_DELTA = 20; // 쪽 넘김으로 인정하는 최소 휠 변화량
   var TWO_PAGE_HIDDEN_ELEMENTS = ['ScoreTitle', 'ScoreSubTitle', 'ScoreArtist', 'ScoreAlbum', 'ScoreWords', 'ScoreMusic', 'ScoreWordsAndMusic', 'ScoreCopyright']; // 두 쪽 보기에서 숨기는 악보 머리 글(alphaTab.NotationElement 이름). 곡 제목은 머리 막대에 있다. 조율 글은 applyTuningDisplay 가 숨긴다
 
   function byId(id){ return document.getElementById(id); }
@@ -600,6 +602,16 @@
         swipe = null;
       }, { passive: true });
       pagesEl.addEventListener('touchcancel', function(){ swipe = null; }, { passive: true });
+      var lastWheelTime = 0;
+      pagesEl.addEventListener('wheel', function(event){
+        var dx = event.deltaX, dy = event.deltaY;
+        var delta = Math.abs(dy) >= Math.abs(dx) ? dy : dx;
+        if (Math.abs(delta) < WHEEL_MIN_DELTA) return;
+        event.preventDefault();
+        if (Date.now() < lastWheelTime + WHEEL_COOLDOWN_MS) return;
+        lastWheelTime = Date.now();
+        turnPage(delta > 0 ? 1 : -1);
+      }, { passive: false });
       document.body.setAttribute('data-at-layout', 'two'); // 크기를 재기 전에 CSS 가 먹게
       pageScale = prefs.twoPageScale;
       applyTuningDisplay(true);
