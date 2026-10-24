@@ -757,4 +757,20 @@ test('classic piano engine disables sympathetic resonance and sets body modes ga
   assert.deepEqual(w83After72.imag, w83First.imag, 'PeriodicWave spectrum for MIDI 83 is deterministic regardless of playback order');
 });
 
+test('KS and classic register curves have no abrupt level cliffs across MIDI 54->55 and 64->65', function(){
+  const { context } = makeContext(0, false);
+  const hooks = context.__audioHooks;
+  const sr = 48000;
+  function sustainRms(midi, str){
+    const buf = hooks.renderKsString(context.actx, midi, false, str).getChannelData(0);
+    const i0 = Math.floor(sr * 0.02), i1 = Math.floor(sr * 0.25);
+    let sq = 0;
+    for (let i = i0; i < i1; i++) sq += buf[i] * buf[i];
+    return Math.sqrt(sq / (i1 - i0));
+  }
+  const dbDiff = (a, b) => Math.abs(20 * Math.log10(a / b));
+  assert.ok(dbDiff(sustainRms(54, 4), sustainRms(55, 3)) < 0.35, 'no level cliff between F#3 (MIDI 54) and G3 (MIDI 55)');
+  assert.ok(dbDiff(sustainRms(64, 1), sustainRms(65, 1)) < 0.35, 'no level cliff between E4 (MIDI 64) and F4 (MIDI 65)');
+});
+
 process.stdout.write('1..' + checks + '\n');

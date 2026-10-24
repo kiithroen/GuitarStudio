@@ -366,7 +366,7 @@
       var sincArg = k * Math.PI * fleshWidth;
       var sinc = sincArg !== 0 ? Math.sin(sincArg) / sincArg : 1;
       var amp = (Math.sin(k * Math.PI * beta) / Math.pow(k, p)) * sinc;
-      var ph = (rnd() * 2 - 1) * 0.6;
+      var ph = 0.22 * k * k + (rnd() * 2 - 1) * 0.08;
       // sin을 매 샘플 계산하지 않고 복소 회전으로 누적 (렌더링 속도)
       var cs = Math.cos(2 * Math.PI * k / N), sn = Math.sin(2 * Math.PI * k / N), re = Math.cos(ph), im = Math.sin(ph);
       for (i = 0; i < N; i++){
@@ -454,9 +454,22 @@
     ksRunString(V, exV, out, wts[0]);
     ksRunString(H, exH, out, wts[1]);
 
+    // 현 진동 자체의 초반 250ms RMS를 먼저 측정해 음마다 들쭉날쭉하지 않도록 정규화
+    // (단차 없는 연속 커브로 저음~고음 밸런스를 완만하게 보정)
+    var early = Math.min(len, Math.floor(sr * 0.25));
+    var sumSq = 0, n;
+    for (n = 0; n < early; n++){
+      sumSq += out[n] * out[n];
+    }
+    var rms = Math.sqrt(sumSq / Math.max(1, early));
+    var pitchScale = Math.pow(2, -0.0045 * (midi - 58));
+    var targetLevel = 0.275 * pitchScale;
+    var nrm = rms > 0 ? targetLevel / rms : 1;
+    for (n = 0; n < len; n++) out[n] *= nrm;
+
     if (!isHarmonic){
-      // 브리지·상판 타격음(Bridge knock): 초반 16ms 동안 188Hz, 385Hz 감쇠 사인파 (tau = 4.2ms)
-      var knockAmp = isApoyando ? 0.22 : (isSlur ? 0.06 : 0.14);
+      // 브리지·상판 타격음(Bridge knock): 정규화된 현 진동 위에 일정한 크기로 얹어 음별 음량 흔들림 방지
+      var knockAmp = (isApoyando ? 0.055 : (isSlur ? 0.018 : 0.036)) * pitchScale;
       var knockLen = Math.min(len, Math.floor(sr * 0.016));
       for (var kIdx = 0; kIdx < knockLen; kIdx++){
         var tK = kIdx / sr;
@@ -465,7 +478,7 @@
         out[kIdx] += knockAmp * envK * waveK;
       }
       // 비주기 탄현 마찰음(Pluck brush): 초반 9ms 동안 시드 고정 난수 대역 필터링
-      var brushAmp = isSlur ? 0.02 : (isApoyando ? 0.06 : 0.08);
+      var brushAmp = (isSlur ? 0.008 : (isApoyando ? 0.022 : 0.028)) * pitchScale;
       var brushLen = Math.min(len, Math.floor(sr * 0.009));
       var brushRnd = seededRandom(midi * 1013 + (isApoyando ? 7 : (isSlur ? 13 : 11)));
       var cBrush = 1 - Math.exp(-2 * Math.PI * 4000 / sr);
@@ -479,31 +492,10 @@
       }
     }
 
-    // 초반 120ms RMS와 피크를 함께 사용해 effLevel = Math.max(rms, peak * 0.32) 기준으로 정규화
-    var early = Math.min(len, Math.floor(sr * 0.12));
-    var sumSq = 0, peak = 0, n;
-    for (n = 0; n < early; n++){
-      var val = Math.abs(out[n]);
-      sumSq += val * val;
-      if (val > peak) peak = val;
-    }
-    var rms = Math.sqrt(sumSq / Math.max(1, early));
-    var effLevel = Math.max(rms, peak * 0.32);
-
-    // 음고별 등청감(Fletcher-Munson) 보정: 고음(midi > 64) 귀 민감도 반영 감쇠, 저음(midi < 55) 보강
-    var pitchScale = 1.0;
-    if (midi > 64){
-      pitchScale = Math.pow(2, -0.018 * (midi - 60));
-    } else if (midi < 55){
-      pitchScale = 1.06;
-    }
-    var targetLevel = 0.28 * pitchScale;
-    var nrm = effLevel > 0 ? targetLevel / effLevel : 1;
-
     var fade = Math.floor(sr * NATURAL_TAIL_FADE);
     for (n = 0; n < len; n++){
       var fg = n > len - fade ? (len - n) / fade : 1;
-      var s = out[n] * nrm * fg;
+      var s = out[n] * fg;
       if (s > 0.95){
         s = 0.95 + 0.05 * Math.tanh((s - 0.95) / 0.05);
       } else if (s < -0.95){
@@ -612,7 +604,7 @@
       src.playbackRate.exponentialRampToValueAtTime(1, t + 0.03);
     }
     var g = actx.createGain();
-    var peakGain = KS_VOICE_GAIN * (isBass ? 1.0 : 0.9) * scale;
+    var peakGain = KS_VOICE_GAIN * 0.95 * scale;
     var attackTime = art === 'harmonic' ? 0.006 : (art === 'slur' ? 0.004 : 0.002);
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(peakGain, t + attackTime);
@@ -647,6 +639,7 @@
     var real = new Float32Array(K + 1);
     var imag = new Float32Array(K + 1);
     for (var k = 1; k <= K; k++){
+      if (k === 2 || k === 3) continue; // 2·3배음은 o2·o3가 개별 엔벨로프로 담당해 위상 간섭·맥놀이를 막음
       var sincArg = k * Math.PI * feltWidth;
       var sinc = sincArg !== 0 ? Math.sin(sincArg) / sincArg : 1;
       imag[k] = (Math.sin(k * Math.PI * beta) / Math.pow(k, p)) * sinc;
@@ -697,25 +690,27 @@
       o3.frequency.setValueAtTime(freq * 3 * glideRatio, t);
       o3.frequency.exponentialRampToValueAtTime(freq * 3, t + glide.sec);
     } else {
-      // 피아노 가이드톤: 피치 벤드 없이 정확한 음정(o2는 +0.6센트 미세 복현 코러스감)
+      // 피아노 가이드톤: 피치 벤드·맥놀이 없이 정확한 배수 주파수
       o1.frequency.setValueAtTime(freq, t);
-      o2.frequency.setValueAtTime(freq * 2 * 1.00035, t);
+      o2.frequency.setValueAtTime(freq * 2, t);
       o3.frequency.setValueAtTime(freq * 3, t);
     }
 
+    // MIDI 55 경계의 급격한 음량 단차를 없애기 위해 음역 비율을 연속 보간
+    var bassBlend = Math.max(0, Math.min(1, (60 - midi) / 16));
     var g1 = actx.createGain();
     var g2 = actx.createGain();
     var g3 = actx.createGain();
-    g1.gain.value = isBass ? 0.78 : 0.88;
-    g2.gain.value = isBass ? 0.42 : 0.30;
-    g3.gain.setValueAtTime(isBass ? 0.28 : 0.22, t);
+    g1.gain.value = 0.88 - 0.10 * bassBlend;
+    g2.gain.value = 0.30 + 0.12 * bassBlend;
+    g3.gain.setValueAtTime(0.22 + 0.06 * bassBlend, t);
     g3.gain.exponentialRampToValueAtTime(0.003, t + Math.min(0.11, toneDuration * 0.45));
 
     filter.type = 'lowpass';
     filter.Q.value = 0.707;
     if (isFx){
-      var startCutoffMult = isBass ? 6.5 : 5.8;
-      var endCutoffMult = isBass ? 2.6 : 2.5;
+      var startCutoffMult = 5.8 + 0.7 * bassBlend;
+      var endCutoffMult = 2.5 + 0.1 * bassBlend;
       var attackCutoff = freq * startCutoffMult;
       var decayCutoff = freq * endCutoffMult;
       if (isBass){
@@ -730,7 +725,7 @@
       filter.frequency.exponentialRampToValueAtTime(isBass ? Math.max(freq * 3.0, CLASSIC_BASS_DECAY_CUTOFF) : freq * 3.0, t + toneDuration * 0.85);
     }
 
-    var peakGain = (isFx ? (isBass ? 0.44 : 0.38) : (isBass ? 0.42 : 0.36)) * scale;
+    var peakGain = ((isFx ? 0.38 : 0.36) + 0.05 * bassBlend) * scale;
     if (naturalDecay){
       var lifetime = profile.duration;
       var fadeStart = t + lifetime - NATURAL_TAIL_FADE;
