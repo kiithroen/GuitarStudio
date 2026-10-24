@@ -9,7 +9,16 @@
   var CLASSIC_BASS_DECAY_CUTOFF = 600;
   var NATURAL_TAIL_FADE = 0.04;
   // 클래식 기타 몸통 공명 모드 [주파수Hz, Q, 원음 대비 크기]: 공기(헬름홀츠) · 상판 기본 · 상판-뒤판 결합 · 고차 상판 모드
-  var BODY_MODES = [[98, 12, 0.45], [196, 16, 0.38], [245, 14, 0.15], [390, 10, 0.20], [550, 9, 0.12]];
+  var BODY_MODES = [
+    [96, 8.5, 0.36],   // 헬름홀츠 공기 공명 (A0)
+    [188, 9.5, 0.32],  // 상판 기본 모노폴 (T1)
+    [242, 8.0, 0.16],  // 상판-뒤판 결합 (T2)
+    [385, 7.5, 0.18],  // 상판 크로스그레인 (T3)
+    [540, 7.0, 0.14],  // 상판 중역 울림
+    [820, 5.5, 0.11],  // 브리지 힐(Bridge hill) 중심 대역
+    [1350, 4.5, 0.07]  // 브리지 힐 고역 나무 윤곽
+  ];
+  var DRY_BODY_RATIO = 0.35; // 콘서트홀 OFF(드라이)에서도 유지하는 기본 상판 공명 비율
   var REVERB_EARLY = [ // [초, 크기] 채널별로 시간만 다르게 해 자연스러운 좌우 폭
     [[0.019, 0.42], [0.027, 0.33], [0.041, 0.27], [0.053, 0.21], [0.068, 0.16], [0.083, 0.12]],
     [[0.022, 0.40], [0.031, 0.31], [0.037, 0.26], [0.058, 0.20], [0.072, 0.15], [0.089, 0.11]]
@@ -29,19 +38,23 @@
     var pre = 0.018;
     // 2단 1차 로우패스로 노이즈를 세 대역으로 나눠 각각 다른 속도로 감쇠
     var cLo = 1 - Math.exp(-2 * Math.PI * 500 / rate), cHi = 1 - Math.exp(-2 * Math.PI * 3500 / rate);
+    var cAir = 1 - Math.exp(-2 * Math.PI * 5200 / rate);
+    var cWall = 1 - Math.exp(-2 * Math.PI * 9000 / rate);
 
     for (var ch = 0; ch < 2; ch++){
       var data = buf.getChannelData(ch);
       var rnd = seededRandom(9001 + ch * 7919); // 매번 같은 잔향 음색 (좌우는 서로 다른 노이즈로 공간감)
-      var lo = 0, loB = 0, hi = 0, hiB = 0;
+      var lo = 0, loB = 0, hi = 0, hiB = 0, air = 0;
       for (var i = Math.floor(rate * pre); i < len; i++){
         var tt = i / rate - pre;
         var w = rnd() * 2 - 1;
         lo += cLo * (w - lo); loB += cLo * (lo - loB);
         hi += cHi * (w - hi); hiB += cHi * (hi - hiB);
+        var highNoise = w - hiB;
+        air += cAir * (highNoise - air);
         var env = loB * Math.exp(-6.91 * tt / REVERB_RT.low)
           + (hiB - loB) * Math.exp(-6.91 * tt / REVERB_RT.mid)
-          + (w - hiB) * Math.exp(-6.91 * tt / REVERB_RT.high);
+          + air * Math.exp(-6.91 * tt / REVERB_RT.high);
         data[i] = env * (1 - Math.exp(-tt / 0.03)) * 0.35;
       }
       // 초기 반사음: 2ms 폭으로 살짝 퍼뜨려 딱딱한 클릭 없이 벽면 반사의 입체감만 남김
@@ -52,6 +65,12 @@
           if (c + k >= 0 && c + k < len) data[c + k] += er[1] * (0.5 + 0.5 * Math.cos(Math.PI * k / spread)) / spread;
         }
       });
+      // 벽면 고역 흡수를 모사하는 가벼운 1차 스무딩
+      var sm = 0;
+      for (var s = 0; s < len; s++){
+        sm += cWall * (data[s] - sm);
+        data[s] = sm;
+      }
       var fade = Math.floor(rate * 0.1);
       for (var j = len - fade; j < len; j++) data[j] *= (len - j) / fade;
     }
@@ -134,7 +153,7 @@
         bp.frequency.value = m[0];
         bp.Q.value = m[1];
         var mg = actx.createGain();
-        mg.gain.value = appState.acousticFx ? m[2] * appState.bodyAmount : 0;
+        mg.gain.value = (appState.acousticFx ? 1.0 : DRY_BODY_RATIO) * m[2] * appState.bodyAmount;
         guitarBus.connect(bp);
         bp.connect(mg);
         mg.connect(bodyOut);
@@ -171,7 +190,7 @@
     bodyModes.forEach(function(m){
       m.gain.gain.cancelScheduledValues(now);
       m.gain.gain.setValueAtTime(m.gain.gain.value, now);
-      m.gain.gain.linearRampToValueAtTime(on ? m.level * appState.bodyAmount : 0.0, now + 0.04);
+      m.gain.gain.linearRampToValueAtTime(m.level * appState.bodyAmount * (on ? 1.0 : DRY_BODY_RATIO), now + 0.04);
     });
   }
 
@@ -249,19 +268,43 @@
     apo: [0.62, 0.48], tir: [0.48, 0.58] // [수직, 수평] 비율
   };
 
-  function getNaturalDecayProfile(midi, isApoyando, strNo){
+  function ksArticulationKey(articulation){
+    if (articulation === 'slur') return 'slur';
+    if (articulation === 'harmonic') return 'harmonic';
+    if (articulation === 'apoyando' || articulation === true) return true;
+    return false;
+  }
+
+  function getNaturalDecayProfile(midi, artOrApo, strNo){
+    var art = ksArticulationKey(artOrApo);
+    var isApoyando = art === true;
+    var isHarmonic = art === 'harmonic';
+    var isSlur = art === 'slur';
     var frequency = 440 * Math.pow(2, (midi - 69) / 12);
     var st = strNo ? STRINGS[strNo - 1] : null;
     var fret = st ? Math.max(0, midi - st.midi) : 0;
     var isWound = st ? strNo >= 4 : midi < 55;
-    var t60Fund = 8.0 * Math.pow(frequency / 82.4, -0.33) * (isApoyando ? 1.15 : 1.0) * (fret > 0 ? 0.92 : 1.0);
-    var t60High = (isWound ? 0.6 : (isApoyando ? 0.5 : 0.6)) * (fret > 0 ? 0.95 : 1.0) * Math.max(0.88, 1 - 0.008 * fret);
+
+    var noFretPenalty = isHarmonic || (typeof GuitarNotation !== 'undefined' && GuitarNotation.MAX_FRET ? fret > GuitarNotation.MAX_FRET : fret > 24);
+    var fretFundPenalty = noFretPenalty ? 1.0 : (fret > 0 ? 0.92 : 1.0);
+    var fretHighPenalty = noFretPenalty ? 1.0 : ((fret > 0 ? 0.95 : 1.0) * Math.max(0.88, 1 - 0.008 * fret));
+
+    var t60Fund = 8.0 * Math.pow(frequency / 82.4, -0.33) * (isApoyando ? 1.15 : 1.0) * fretFundPenalty;
+    var t60High = (isHarmonic ? (isWound ? 0.85 : 0.95) : (isWound ? 0.6 : (isApoyando ? 0.5 : 0.6))) * fretHighPenalty;
+
+    if (isHarmonic){
+      t60Fund *= 1.08;
+    }
+    if (isSlur){
+      t60High *= 0.85;
+    }
+
     var duration = Math.min(isWound ? 6 : 5, t60Fund * KS_POLAR.hT60);
     return {frequency:frequency,fret:fret,isWound:isWound,t60Fund:t60Fund,t60High:t60High,duration:duration};
   }
 
   // 한 방향 진동의 루프 필터·지연 설계: 기음과 3kHz 두 지점의 감쇠 시간(T60)과 정확한 음정을 동시에 맞춤
-  function ksDesign(sr, f, t60Fund, t60High){
+  function ksDesign(sr, f, t60Fund, t60High, dispCoeff){
     var w1 = 2 * Math.PI * f / sr, wh = 2 * Math.PI * 3000 / sr;
     var s1 = 6.91 / t60Fund, sh = 6.91 / t60High;
     // 루프 필터 g·(1-a)/(1-a·z^-1): 기음과 3kHz 두 지점의 감쇠가 목표와 맞도록 a를 이분 탐색한 뒤 g로 전체 길이 맞춤
@@ -277,23 +320,51 @@
       }
     }
     var g = Math.min(0.99999, Math.exp(-(s1 / f - ksLoopLoss(w1, a))));
-    // 정확한 음정: 지연선(정수) + 손실 필터 위상 지연 + 1차 allpass 분수 지연의 합이 정확히 한 주기가 되도록
+    // 정확한 음정: 지연선(정수) + 손실 필터 위상 지연 + 분산 올패스 위상 지연 + 1차 allpass 분수 지연의 합이 정확히 한 주기가 되도록
     var pd = Math.atan2(a * Math.sin(w1), 1 - a * Math.cos(w1)) / w1;
-    var N = Math.floor(sr / f - pd - 0.1);
-    var d = sr / f - pd - N;
-    return { a: a, g: g, N: N, C: (1 - d) / (1 + d) };
+    var D = dispCoeff || 0;
+    var dispDelay = D ? Math.atan2((1 - D * D) * Math.sin(w1), 2 * D + (1 + D * D) * Math.cos(w1)) / w1 : 0;
+    var totalDelay = sr / f - pd - dispDelay;
+    var N = Math.max(2, Math.floor(totalDelay - 0.1));
+    var d = totalDelay - N;
+    return { a: a, g: g, N: N, C: (1 - d) / (1 + d), D: D };
   }
 
-  // 탄현 파형: 배음 크기를 |sin(kπβ)|/k^p 로 정해 한 주기를 합성 (β: 브리지에서 튕긴 위치, 1/β번째 배음이 빠짐)
-  // 노이즈로 배음 크기를 정하면 음마다 우연히 2·3배음이 약해져 일부 음이 흐릿해지므로, 크기는 고정하고 위상만 살짝 흔들어 자연스러움 유지
-  // 아포얀도는 브리지에서 더 멀리(β 0.2) 둥글게(p 1.7), 표시 없는 음(티란도)은 브리지 쪽(β 0.14)에서 더 밝게(p 1.4)
-  function ksExcitation(N, f, midi, isApoyando, betaScale){
-    var rnd = seededRandom(midi * 977 + (isApoyando ? 1 : 2));
-    var beta = Math.min(0.45, (isApoyando ? 0.2 : 0.14) * (betaScale || 1)), p = isApoyando ? 1.7 : 1.4;
-    var K = Math.min(Math.floor(N / 2) - 1, Math.floor(10000 / f));
+  // 탄현 파형: 배음 크기를 |sin(kπβ)|/k^p * sinc(kπ·fleshWidth) 로 정해 한 주기를 합성 (β: 브리지에서 튕긴 위치)
+  function ksExcitation(N, f, midi, artOrApo, betaScale, isWound){
+    var art = ksArticulationKey(artOrApo);
+    var isApoyando = art === true;
+    var isHarmonic = art === 'harmonic';
+    var isSlur = art === 'slur';
+
+    var fleshWidth = isHarmonic ? 0.08 : (isSlur ? 0.065 : (isApoyando ? 0.042 : 0.032));
+    var beta, p, K;
+    if (isHarmonic){
+      beta = 0.25;
+      p = 2.5;
+      K = Math.min(Math.floor(N / 2) - 1, 4);
+    } else if (isSlur){
+      beta = Math.min(0.45, 0.22 * (betaScale || 1));
+      p = 1.95;
+      K = Math.min(Math.floor(N / 2) - 1, Math.floor(10000 / f));
+    } else if (isApoyando){
+      beta = Math.min(0.45, 0.20 * (betaScale || 1));
+      p = 1.65;
+      K = Math.min(Math.floor(N / 2) - 1, Math.floor(10000 / f));
+    } else {
+      beta = Math.min(0.45, 0.135 * (betaScale || 1));
+      p = isWound ? 1.32 : 1.48;
+      K = Math.min(Math.floor(N / 2) - 1, Math.floor(10000 / f));
+    }
+    if (K < 1) K = 1;
+
+    var rnd = seededRandom(midi * 977 + (isHarmonic ? 4 : (isSlur ? 3 : (isApoyando ? 1 : 2))));
     var tone = new Float32Array(N), nz = new Float32Array(N), s = 0, i, k;
     for (k = 1; k <= K; k++){
-      var amp = Math.sin(k * Math.PI * beta) / Math.pow(k, p), ph = (rnd() * 2 - 1) * 0.6;
+      var sincArg = k * Math.PI * fleshWidth;
+      var sinc = sincArg !== 0 ? Math.sin(sincArg) / sincArg : 1;
+      var amp = (Math.sin(k * Math.PI * beta) / Math.pow(k, p)) * sinc;
+      var ph = (rnd() * 2 - 1) * 0.6;
       // sin을 매 샘플 계산하지 않고 복소 회전으로 누적 (렌더링 속도)
       var cs = Math.cos(2 * Math.PI * k / N), sn = Math.sin(2 * Math.PI * k / N), re = Math.cos(ph), im = Math.sin(ph);
       for (i = 0; i < N; i++){
@@ -303,7 +374,7 @@
         re = nr;
       }
     }
-    // 손끝·손톱이 줄을 스치는 질감용 약한 노이즈 (10%)
+    // 손끝·손톱이 줄을 스치는 질감용 약한 노이즈
     for (i = 0; i < N; i++){
       s += 0.5 * ((rnd() * 2 - 1) - s);
       nz[i] = s;
@@ -316,20 +387,29 @@
       r = Math.sqrt(r / x.length) || 1;
       for (j = 0; j < x.length; j++) x[j] /= r;
     });
+    var nzRatio = isHarmonic ? 0.008 : (isSlur ? 0.015 : 0.025);
     var dl = new Float32Array(N);
-    for (i = 0; i < N; i++) dl[i] = 0.9 * tone[i] + 0.1 * nz[i];
+    for (i = 0; i < N; i++) dl[i] = (1 - nzRatio) * tone[i] + nzRatio * nz[i];
     return dl;
   }
 
   // 한 방향 진동을 렌더링해 out에 w 비율로 더함
   function ksRunString(D, dl, out, w){
-    var N = D.N, gb = D.g * (1 - D.a), a = D.a, C = D.C;
+    var N = D.N, gb = D.g * (1 - D.a), a = D.a, C = D.C, dispD = D.D || 0;
     var idx = 0, lp = 0, apX = 0, apY = 0;
+    var dpX = 0, dpY = 0;
+    var hasDisp = dispD !== 0;
     for (var n = 0; n < out.length; n++){
       var x = dl[idx];
       lp = gb * x + a * lp;                        // 손실(고역 감쇠) 필터
-      var y = C * lp + apX - C * apY;              // 튜닝 allpass
-      apX = lp; apY = y;
+      var sig = lp;
+      if (hasDisp){
+        var dp = dispD * lp + dpX - dispD * dpY;   // 1차 분산 올패스
+        dpX = lp; dpY = dp;
+        sig = dp;
+      }
+      var y = C * sig + apX - C * apY;             // 튜닝 allpass
+      apX = sig; apY = y;
       dl[idx] = y;
       out[n] += w * x;
       if (++idx === N) idx = 0;
@@ -342,48 +422,105 @@
   //    100% 반영하면 로망스 12프렛 E5 아포얀도의 2배음이 -27dB까지 떨어져 음이 흐릿해짐)
   // - 손가락으로 짚은 줄은 손끝이 고음을 흡수해 개방현보다 고음 배음과 여운이 조금 짧음
   // - 4·5·6번줄은 금속 권선현이라 고음 배음이 더 오래 남음
-  function renderKsString(ctx, midi, isApoyando, strNo){
+  function renderKsString(ctx, midi, artOrApo, strNo){
     var sr = ctx.sampleRate;
-    var profile = getNaturalDecayProfile(midi,isApoyando,strNo);
+    var art = ksArticulationKey(artOrApo);
+    var isApoyando = art === true;
+    var isHarmonic = art === 'harmonic';
+    var isSlur = art === 'slur';
+
+    var profile = getNaturalDecayProfile(midi, art, strNo);
     var f = profile.frequency;
     var fret = profile.fret;
     var isWound = profile.isWound;
-    // 감쇠 목표(두 진동을 합친 평균): 기음 T60은 저음일수록 길고(E2 8초 · E4 5초 · E5 4초), 3kHz 대역은 0.5~0.6초에 걸쳐 사라짐
-    // (고음 배음이 너무 빨리 죽으면 높은 음이 사인파처럼 뭉개져 음이 흐릿하게 들림)
     var t60Fund = profile.t60Fund;
     var t60High = profile.t60High;
     var P = KS_POLAR, wts = isApoyando ? P.apo : P.tir;
-    var V = ksDesign(sr, f * Math.pow(2, P.vDetuneCents / 1200), t60Fund * P.vT60, t60High * P.vHigh);
-    var H = ksDesign(sr, f, t60Fund * P.hT60, t60High * P.hHigh);
+
+    var baseDisp = isHarmonic ? 0 : (isWound ? -0.28 : (strNo === 3 ? -0.20 : -0.10));
+    var dispCoeff = baseDisp === 0 ? 0 : Math.max(baseDisp, -0.004 * (sr / f));
+
+    var V = ksDesign(sr, f * Math.pow(2, P.vDetuneCents / 1200), t60Fund * P.vT60, t60High * P.vHigh, dispCoeff);
+    var H = ksDesign(sr, f, t60Fund * P.hT60, t60High * P.hHigh, dispCoeff);
 
     var len = Math.floor(sr * profile.duration);
     var buf = ctx.createBuffer(1, len, sr);
     var out = buf.getChannelData(0);
     var betaScale = Math.pow(2, 0.2 * fret / 12);
-    var exV = ksExcitation(V.N, f, midi, isApoyando, betaScale);
-    var exH = H.N === V.N ? Float32Array.from(exV) : ksExcitation(H.N, f, midi, isApoyando, betaScale);
+    var exV = ksExcitation(V.N, f, midi, art, betaScale, isWound);
+    var exH = H.N === V.N ? Float32Array.from(exV) : ksExcitation(H.N, f, midi, art, betaScale, isWound);
     ksRunString(V, exV, out, wts[0]);
     ksRunString(H, exH, out, wts[1]);
 
-    // 첫 250ms 체감 음량(RMS) 기준 정규화로 음높이·주법이 달라도 비슷한 크기로 들리게 + 버퍼 끝 40ms 페이드 (딸깍 소리 방지)
-    var early = Math.min(len, Math.floor(sr * 0.25)), sumSq = 0, n;
-    for (n = 0; n < early; n++) sumSq += out[n] * out[n];
-    var rms = Math.sqrt(sumSq / early);
-    var fade = Math.floor(sr * NATURAL_TAIL_FADE), nrm = rms > 0 ? 0.28 / rms : 1;
+    if (!isHarmonic){
+      // 브리지·상판 타격음(Bridge knock): 초반 16ms 동안 188Hz, 385Hz 감쇠 사인파 (tau = 4.2ms)
+      var knockAmp = isApoyando ? 0.22 : (isSlur ? 0.06 : 0.14);
+      var knockLen = Math.min(len, Math.floor(sr * 0.016));
+      for (var kIdx = 0; kIdx < knockLen; kIdx++){
+        var tK = kIdx / sr;
+        var envK = Math.exp(-tK / 0.0042);
+        var waveK = 0.65 * Math.sin(2 * Math.PI * 188 * tK) + 0.35 * Math.sin(2 * Math.PI * 385 * tK);
+        out[kIdx] += knockAmp * envK * waveK;
+      }
+      // 비주기 탄현 마찰음(Pluck brush): 초반 9ms 동안 시드 고정 난수 대역 필터링
+      var brushAmp = isSlur ? 0.02 : (isApoyando ? 0.06 : 0.08);
+      var brushLen = Math.min(len, Math.floor(sr * 0.009));
+      var brushRnd = seededRandom(midi * 1013 + (isApoyando ? 7 : (isSlur ? 13 : 11)));
+      var cBrush = 1 - Math.exp(-2 * Math.PI * 4000 / sr);
+      var lpBrush = 0;
+      for (var bIdx = 0; bIdx < brushLen; bIdx++){
+        var tB = bIdx / sr;
+        var envB = (1 - bIdx / brushLen) * Math.exp(-tB / 0.003);
+        var wB = brushRnd() * 2 - 1;
+        lpBrush += cBrush * (wB - lpBrush);
+        out[bIdx] += brushAmp * envB * lpBrush;
+      }
+    }
+
+    // 초반 120ms RMS와 피크를 함께 사용해 effLevel = Math.max(rms, peak * 0.32) 기준으로 정규화
+    var early = Math.min(len, Math.floor(sr * 0.12));
+    var sumSq = 0, peak = 0, n;
+    for (n = 0; n < early; n++){
+      var val = Math.abs(out[n]);
+      sumSq += val * val;
+      if (val > peak) peak = val;
+    }
+    var rms = Math.sqrt(sumSq / Math.max(1, early));
+    var effLevel = Math.max(rms, peak * 0.32);
+
+    // 음고별 등청감(Fletcher-Munson) 보정: 고음(midi > 64) 귀 민감도 반영 감쇠, 저음(midi < 55) 보강
+    var pitchScale = 1.0;
+    if (midi > 64){
+      pitchScale = Math.pow(2, -0.018 * (midi - 60));
+    } else if (midi < 55){
+      pitchScale = 1.06;
+    }
+    var targetLevel = 0.28 * pitchScale;
+    var nrm = effLevel > 0 ? targetLevel / effLevel : 1;
+
+    var fade = Math.floor(sr * NATURAL_TAIL_FADE);
     for (n = 0; n < len; n++){
       var fg = n > len - fade ? (len - n) / fade : 1;
-      out[n] *= nrm * fg;
+      var s = out[n] * nrm * fg;
+      if (s > 0.95){
+        s = 0.95 + 0.05 * Math.tanh((s - 0.95) / 0.05);
+      } else if (s < -0.95){
+        s = -0.95 + 0.05 * Math.tanh((s + 0.95) / 0.05);
+      }
+      out[n] = s;
     }
     return buf;
   }
 
-  function getKsBuffer(midi, isApoyando, strNo){
-    var key = midi + (isApoyando ? 'a' : 't') + (strNo || 0);
+  function getKsBuffer(midi, artOrApo, strNo){
+    var art = ksArticulationKey(artOrApo);
+    var tag = art === 'slur' ? 's' : (art === 'harmonic' ? 'h' : (art === true ? 'a' : 't'));
+    var key = midi + tag + (strNo || 0);
     var buf = ksCache.get(key);
     if (buf){
       ksCache.delete(key); // 최근 사용 순서 갱신 (LRU)
     } else {
-      buf = renderKsString(actx, midi, isApoyando, strNo);
+      buf = renderKsString(actx, midi, art, strNo);
       if (ksCache.size >= KS_CACHE_MAX) ksCache.delete(ksCache.keys().next().value);
     }
     ksCache.set(key, buf);
@@ -401,19 +538,21 @@
     if (appState.synthEngine === 'classic' || !song) return;
     var capo = getSongCapo(song);
     var notes = {};
-    function add(midi, isApo, str){
+    function add(midi, art, str){
       if (!midi) return;
       midi = soundingMidi(midi, capo);
       var s = str || defaultStringFor(midi);
-      notes[midi + (isApo ? 'a' : 't') + (s || 0)] = [midi, isApo, s];
+      var k = ksArticulationKey(art);
+      var tag = k === 'slur' ? 's' : (k === 'harmonic' ? 'h' : (k === true ? 'a' : 't'));
+      notes[midi + tag + (s || 0)] = [midi, k, s];
     }
     function addBeatNotes(beat){
       var eb = getExplicitBass(beat);
       if (beat.chordNotes && beat.chordNotes.length > 2){
-        beat.chordNotes.forEach(function(cn){ add(cn.midi, cn.articulation === 'apoyando', cn.str); });
+        beat.chordNotes.forEach(function(cn){ add(cn.midi, cn.articulation, cn.str); });
       } else {
         if (eb && eb.midi) add(eb.midi, false, eb.str);
-        if (beat.midi) add(beat.midi, beat.articulation === 'apoyando', beat.str);
+        if (beat.midi) add(beat.midi, beat.articulation, beat.str);
       }
     }
     if (song.type === 'structured'){
@@ -427,7 +566,7 @@
               beatsPerBar: song.beats || 4,
               preview: false
             }).forEach(function(event){
-              add(event.note.midi, event.articulation === 'apoyando', event.str);
+              add(event.note.midi, event.articulation, event.str);
             });
           } else {
             addBeatNotes(b);
@@ -454,23 +593,27 @@
     return Number.isFinite(hardStopAt) ? Math.min(stopAt, hardStopAt + 0.015) : stopAt;
   }
 
-  function buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, strNo, exactDuration, hardStopAt, naturalDecay, glide){
+  function buildKsVoice(midi, t, dur, scale, isBass, artOrApo, isFx, strNo, exactDuration, hardStopAt, naturalDecay, glide){
+    var art = ksArticulationKey(artOrApo);
+    var isApoyando = art === true;
     exactDuration = !!exactDuration && !naturalDecay;
     var src = actx.createBufferSource();
-    src.buffer = getKsBuffer(midi, isApoyando, strNo);
+    src.buffer = getKsBuffer(midi, art, strNo);
     if (glide){
       // 슬라이드: 출발 음 높이에서 제 높이로 미끄러진다(재생 속도 비율)
       src.playbackRate.setValueAtTime(Math.pow(2, (glide.fromMidi - midi) / 12), t);
       src.playbackRate.exponentialRampToValueAtTime(1, t + glide.sec);
     } else {
       // 강한 탄현 순간 장력이 커져 음정이 살짝 높게 시작했다 안착하는 현상 (아포얀도가 더 큼)
-      src.playbackRate.setValueAtTime(isApoyando ? 1.004 : 1.002, t);
+      var bendStart = isApoyando ? 1.004 : (art === 'harmonic' ? 1.0006 : (art === 'slur' ? 1.0012 : 1.002));
+      src.playbackRate.setValueAtTime(bendStart, t);
       src.playbackRate.exponentialRampToValueAtTime(1, t + 0.03);
     }
     var g = actx.createGain();
     var peakGain = KS_VOICE_GAIN * (isBass ? 1.0 : 0.9) * scale;
+    var attackTime = art === 'harmonic' ? 0.006 : (art === 'slur' ? 0.004 : 0.002);
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(peakGain, t + 0.002);
+    g.gain.linearRampToValueAtTime(peakGain, t + attackTime);
     // 현은 스스로 감쇠하므로 엔벨로프는 음 길이가 끝날 때 손가락으로 줄을 멈추는 동작만 담당 (드라이 모드는 더 짧게 끊음)
     var relAt = exactDuration ? t + dur : t + Math.max(0.06, dur * 0.75);
     if (!naturalDecay) g.gain.setTargetAtTime(0, relAt, isFx ? 0.06 : 0.035);
@@ -484,12 +627,48 @@
     return { out: g, srcs: [src], stopAt: stopAt };
   }
 
+  var classicWaveCache = new Map();
+  function getClassicPeriodicWave(actx, art, isBass){
+    if (!actx || typeof actx.createPeriodicWave !== 'function') return null;
+    var key = (art === 'harmonic' ? 'h' : (art === 'slur' ? 's' : (art === true ? 'a' : 't'))) + (isBass ? 'b' : 't');
+    var cached = classicWaveCache.get(key);
+    if (cached) return cached;
+    var isHarmonic = art === 'harmonic';
+    var isSlur = art === 'slur';
+    var isApoyando = art === true;
+    var beta = isHarmonic ? 0.25 : (isSlur ? 0.22 : (isApoyando ? 0.20 : 0.135));
+    var p = isHarmonic ? 2.5 : (isSlur ? 1.95 : (isApoyando ? 1.65 : (isBass ? 1.32 : 1.48)));
+    var fleshWidth = isHarmonic ? 0.08 : (isSlur ? 0.065 : (isApoyando ? 0.042 : 0.032));
+    var K = isHarmonic ? 4 : 24;
+    var real = new Float32Array(K + 1);
+    var imag = new Float32Array(K + 1);
+    for (var k = 1; k <= K; k++){
+      var sincArg = k * Math.PI * fleshWidth;
+      var sinc = sincArg !== 0 ? Math.sin(sincArg) / sincArg : 1;
+      imag[k] = (Math.sin(k * Math.PI * beta) / Math.pow(k, p)) * sinc;
+    }
+    var wave;
+    try {
+      wave = actx.createPeriodicWave(real, imag, { disableNormalization: false });
+    } catch (e){
+      try {
+        wave = actx.createPeriodicWave(real, imag);
+      } catch (e2){
+        wave = null;
+      }
+    }
+    if (wave) classicWaveCache.set(key, wave);
+    return wave;
+  }
+
   // 기존 합성음 (삼각파 2개 + 사인파 + 로우패스 스윕): 물리 모델 음원과 A/B 비교용
-  function buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isFx, exactDuration, hardStopAt, naturalDecay, strNo, glide){
+  function buildClassicVoice(midi, t, dur, scale, isBass, artOrApo, isFx, exactDuration, hardStopAt, naturalDecay, strNo, glide){
+    var art = ksArticulationKey(artOrApo);
+    var isApoyando = art === true;
     var freq = 440 * Math.pow(2, (midi - 69) / 12);
     exactDuration = !!exactDuration && !naturalDecay;
     var toneDuration = exactDuration || naturalDecay ? Math.max(dur, legacyToneDuration(dur, isBass, isApoyando, isFx)) : dur;
-    var profile = naturalDecay ? getNaturalDecayProfile(midi,isApoyando,strNo) : null;
+    var profile = naturalDecay ? getNaturalDecayProfile(midi, art, strNo) : null;
 
     var o1 = actx.createOscillator();
     var o2 = actx.createOscillator();
@@ -501,6 +680,12 @@
     o1.type = 'triangle';
     o2.type = 'triangle';
     o3.type = 'sine';
+
+    var pw = getClassicPeriodicWave(actx, art, isBass);
+    if (pw){
+      if (typeof o1.setPeriodicWave === 'function') o1.setPeriodicWave(pw);
+      if (typeof o2.setPeriodicWave === 'function') o2.setPeriodicWave(pw);
+    }
 
     // 탄현 순간 줄의 장력으로 인해 음정이 아주 미세하게 높게 시작했다가 제자리로 안착하는 어쿠스틱 현 물리 특성
     if (glide){
@@ -617,7 +802,8 @@
     ensureAudioCtx();
     var t = when != null ? when : actx.currentTime;
     var isBass = midi < 55; // 4·5·6번 저음 권선현(E2~F#3) 여부
-    var isApoyando = articulation === 'apoyando';
+    var artKey = ksArticulationKey(articulation);
+    var isApoyando = artKey === true;
     var isFx = !!appState.acousticFx;
     var naturalDecay = !!(options && options.naturalDecay);
     var exactDuration = !!(options && options.exactDuration) && !naturalDecay;
@@ -630,8 +816,8 @@
     var glide = options && options.glide && Number.isFinite(options.glide.fromMidi) && options.glide.sec > 0
       ? { fromMidi:options.glide.fromMidi, sec:options.glide.sec } : null;
     var voice = appState.synthEngine === 'classic'
-      ? buildClassicVoice(midi, t, dur, scale, isBass, isApoyando, isFx, exactDuration, hardStopAt, naturalDecay, sNo, glide)
-      : buildKsVoice(midi, t, dur, scale, isBass, isApoyando, isFx, sNo, exactDuration, hardStopAt, naturalDecay, glide);
+      ? buildClassicVoice(midi, t, dur, scale, isBass, artKey, isFx, exactDuration, hardStopAt, naturalDecay, sNo, glide)
+      : buildKsVoice(midi, t, dur, scale, isBass, artKey, isFx, sNo, exactDuration, hardStopAt, naturalDecay, glide);
 
     // 같은 줄 재탄현 시 이 보이스만 독립적으로 끊을 수 있도록 엔벨로프 뒤에 별도 감쇠 게인을 둠
     var damp = actx.createGain();

@@ -42,6 +42,9 @@ note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}`, rest
 - `appState.guitarVol`(연주음 슬라이더)은 기타 소리 전부가 지나는 `guitarBus` gain에 곱해진다(`updateGuitarVolume`). 클릭 버스와 마스터 compressor 설정은 바꾸지 않는다.
 - 공유 마스터 compressor의 threshold는 여러 현이 동시에 날 때 생기는 순간 피크를 위한 여유를 두도록 낮춰 뒀다(`src/audio.js` compressor 생성부). ratio·knee·attack·release와 각 버스 gain은 기존 설정을 유지한다.
 - classic 음원의 저음 명료도를 위해 저음 권선현(`isBass`)에서만 필터 attack·decay cutoff에 하한 `CLASSIC_BASS_ATTACK_CUTOFF`·`CLASSIC_BASS_DECAY_CUTOFF`를 둔다. 기존 주파수 배수 계산값이 더 높으면 그 값을 유지하며, 고음과 KS 음원은 바꾸지 않는다.
+- KS 물리 모델은 `ksDesign`의 1차 분산 올패스 필터로 현의 강성에 따른 고주파 분산 지연을 반영하고, `renderKsString`에서 브리지 타격음과 비주기 탄현 마찰음 트랜지언트를 더해 어택감을 모사한다.
+- 주법별 키(`ksArticulationKey`)로 아포얀도(`!`), 자연 하모닉스(`h`), 슬러(`s`)의 배음 구성(`ksExcitation`), 초기 장력 피치 벤드, 어택 시간, 감쇠 프로파일(`getNaturalDecayProfile`)을 구분해 독립 캐시(`getKsBuffer`)로 관리한다.
+- 바디 공명(`BODY_MODES`)은 콘서트홀 리버브가 꺼진 드라이 모드에서도 `DRY_BODY_RATIO` 비율로 상판 울림을 유지한다. 콘서트홀 리버브 버퍼(`buildConcertHallReverbBuffer`)는 고역 공기 흡수 로우패스와 벽면 스무딩을 적용하며, classic 엔진(`buildClassicVoice`)은 주법·음역별 `PeriodicWave` 캐시를 적용한다.
 
 ## 재생음 정리와 시계
 

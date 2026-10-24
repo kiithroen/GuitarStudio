@@ -81,7 +81,7 @@ function makeContext(capo, acousticFx){
     console
   };
   vm.createContext(context);
-  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, renderKsString, getNaturalDecayProfile, legacyToneDuration, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, updateGuitarVolume, scheduleMetronomeClick, getBuses: function(){ return { guitarBus, clickBus }; }, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
+  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, renderKsString, getNaturalDecayProfile, ksDesign, ksArticulationKey, getKsBuffer: function(midi, art, str){ return getKsBuffer(midi, art, str); }, getBodyModes: function(){ return bodyModes; }, DRY_BODY_RATIO: DRY_BODY_RATIO, BODY_MODES: BODY_MODES, legacyToneDuration, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, updateGuitarVolume, scheduleMetronomeClick, getBuses: function(){ return { guitarBus, clickBus }; }, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
   return { context, oscillators, filters, compressors, gains };
 }
 
@@ -611,6 +611,119 @@ test('a glide option makes the classic oscillators slide from the start pitch to
     context.playGuitarNote(midi, 1, 3, 1, 'slide', 1, { naturalDecay:true, glide:glide });
     const played = context.trackedGuideVoices.at(-1).srcs[0].frequency.events;
     assert.ok(Math.abs(played[0][1] - freq * ratio) < 1e-9 && played[1][2] === 3 + glide.sec, 'playGuitarNote hands the glide to the classic voice');
+  });
+});
+
+test('articulation profile separation and KS buffer cache keys distinguish apoyando, slur, harmonic, and normal notes', function(){
+  const { context } = makeContext(0);
+  const hooks = context.__audioHooks;
+
+  const harm = hooks.getNaturalDecayProfile(64, 'harmonic', 1);
+  const slur = hooks.getNaturalDecayProfile(64, 'slur', 1);
+  const apo = hooks.getNaturalDecayProfile(64, 'apoyando', 1);
+  const plain = hooks.getNaturalDecayProfile(64, false, 1);
+
+  // harmonic t60High is longer than normal/slur/apoyando
+  assert.ok(harm.t60High > plain.t60High, 'harmonic high-decay is longer than plain');
+  assert.ok(harm.t60High > slur.t60High, 'harmonic high-decay is longer than slur');
+  assert.ok(slur.t60High < plain.t60High, 'slur high-decay is shorter than plain');
+
+  // warmKsCache warms slur and harmonic with appropriate keys
+  const calls = [];
+  hooks.replaceGetKsBuffer((midi, art, str) => calls.push([midi, art, str]));
+  hooks.warmKsCache({
+    type: 'structured', capo: 0,
+    measures: [{ beats: [
+      { midi: 64, str: 1, articulation: 'harmonic' },
+      { midi: 62, str: 2, articulation: 'slur' },
+      { midi: 60, str: 3, articulation: 'apoyando' },
+      { midi: 55, str: 4 }
+    ] }]
+  });
+  assert.deepEqual(calls, [
+    [64, 'harmonic', 1],
+    [62, 'slur', 2],
+    [60, true, 3],
+    [55, false, 4]
+  ], 'warmKsCache tags harmonic, slur, apoyando, and plain separately');
+
+  // getKsBuffer cache separation
+  const c2 = makeContext(0).context;
+  const bHarm = c2.__audioHooks.getKsBuffer(64, 'harmonic', 1);
+  const bSlur = c2.__audioHooks.getKsBuffer(64, 'slur', 1);
+  const bApo = c2.__audioHooks.getKsBuffer(64, true, 1);
+  const bPlain = c2.__audioHooks.getKsBuffer(64, false, 1);
+  assert.notEqual(bHarm, bSlur);
+  assert.notEqual(bHarm, bApo);
+  assert.notEqual(bHarm, bPlain);
+  assert.notEqual(bSlur, bApo);
+  assert.notEqual(bSlur, bPlain);
+  assert.notEqual(bApo, bPlain);
+});
+
+test('string stiffness dispersion filter preserves finite samples and fundamental pitch period', function(){
+  const { context } = makeContext(0);
+  const hooks = context.__audioHooks;
+
+  const sr = 48000;
+  const f = 220;
+  const des = hooks.ksDesign(sr, f, 6, 0.6, -0.28);
+  assert.equal(des.D, -0.28);
+  assert.ok(Number.isFinite(des.C) && Number.isFinite(des.N) && des.N >= 2);
+
+  [ { midi: 45, str: 5 }, { midi: 59, str: 2 }, { midi: 64, str: 1 } ].forEach(function(item){
+    const buf = hooks.renderKsString(context.actx, item.midi, false, item.str);
+    const data = buf.getChannelData(0);
+    assert.ok(data.length > sr * 1.0);
+    let finite = true;
+    for (let i = 0; i < data.length; i++){
+      if (!Number.isFinite(data[i])){ finite = false; break; }
+    }
+    assert.ok(finite, 'dispersed samples are finite for midi ' + item.midi + ' on string ' + item.str);
+
+    const freq = 440 * Math.pow(2, (item.midi - 69) / 12);
+    const expectedPeriod = sr / freq;
+    let maxCorr = -1, bestLag = 0;
+    const minLag = Math.floor(expectedPeriod * 0.95);
+    const maxLag = Math.ceil(expectedPeriod * 1.05);
+    const offset = Math.floor(sr * 0.03);
+    const windowLen = Math.floor(expectedPeriod * 4);
+    for (let lag = minLag; lag <= maxLag; lag++){
+      let corr = 0;
+      for (let j = 0; j < windowLen; j++){
+        corr += data[offset + j] * data[offset + j + lag];
+      }
+      if (corr > maxCorr){
+        maxCorr = corr;
+        bestLag = lag;
+      }
+    }
+    assert.ok(Math.abs(bestLag - expectedPeriod) <= 1.5, 'detected period ' + bestLag + ' matches expected ' + expectedPeriod);
+  });
+});
+
+test('body modes gain initializes and updates with DRY_BODY_RATIO in dry mode and full ratio in concert hall mode', function(){
+  const ctxOn = makeContext(0, true).context;
+  ctxOn.__audioHooks.ensureAudioCtx();
+  const modesOn = ctxOn.__audioHooks.getBodyModes();
+  assert.ok(modesOn.length >= 7, 'body modes configured with enhanced 7 modes');
+  modesOn.forEach(function(m){
+    assert.ok(Math.abs(m.gain.gain.value - 1.0 * m.level * ctxOn.appState.bodyAmount) < 1e-6);
+  });
+
+  ctxOn.appState.acousticFx = false;
+  ctxOn.__audioHooks.updateAudioFxRouting();
+  const dryRatio = ctxOn.__audioHooks.DRY_BODY_RATIO;
+  assert.ok(dryRatio > 0 && dryRatio < 1);
+  modesOn.forEach(function(m){
+    assert.ok(Math.abs(m.gain.gain.last[1] - dryRatio * m.level * ctxOn.appState.bodyAmount) < 1e-6);
+  });
+
+  const ctxOff = makeContext(0, false).context;
+  ctxOff.__audioHooks.ensureAudioCtx();
+  const modesOff = ctxOff.__audioHooks.getBodyModes();
+  modesOff.forEach(function(m){
+    assert.ok(Math.abs(m.gain.gain.value - dryRatio * m.level * ctxOff.appState.bodyAmount) < 1e-6);
   });
 });
 
