@@ -771,6 +771,18 @@ test('KS and classic register curves have no abrupt level cliffs across MIDI 54-
   const dbDiff = (a, b) => Math.abs(20 * Math.log10(a / b));
   assert.ok(dbDiff(sustainRms(54, 4), sustainRms(55, 3)) < 0.35, 'no level cliff between F#3 (MIDI 54) and G3 (MIDI 55)');
   assert.ok(dbDiff(sustainRms(64, 1), sustainRms(65, 1)) < 0.35, 'no level cliff between E4 (MIDI 64) and F4 (MIDI 65)');
+
+  const c54 = hooks.buildClassicVoice(54, 1, 0.5, 1, true, false, true, false, NaN, true, 4, null);
+  const c55 = hooks.buildClassicVoice(55, 1, 0.5, 1, false, false, true, false, NaN, true, 3, null);
+  const peak54 = c54.out.gain.events.find(e => e[0] === 'linear')[1];
+  const peak55 = c55.out.gain.events.find(e => e[0] === 'linear')[1];
+  assert.ok(dbDiff(peak54, peak55) < 0.35, 'classic peakGain has no abrupt cliff between MIDI 54 and 55');
+  const freq55 = 440 * Math.pow(2, (55 - 69) / 12);
+  assert.ok(Math.abs(c55.srcs[1].frequency.events[0][1] - freq55 * 2) < 1e-9, 'classic o2 uses exact 2x harmonic without beating detune');
+  const fakeCtx = { createPeriodicWave(real, imag){ return { imag: Array.from(imag) }; } };
+  const wave55 = hooks.getClassicPeriodicWave(fakeCtx, 55);
+  assert.equal(wave55.imag[2], 0, 'PeriodicWave omits 2nd harmonic handled by o2');
+  assert.equal(wave55.imag[3], 0, 'PeriodicWave omits 3rd harmonic handled by o3');
 });
 
 process.stdout.write('1..' + checks + '\n');
