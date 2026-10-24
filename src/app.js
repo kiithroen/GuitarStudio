@@ -884,12 +884,12 @@ function curCapo(){
               if (p.kind === 'rest' || GuitarNotation.isRestToken(p.tok)) return '쉼';
               if (p.kind === 'hold' || p.ko === '유지') return '유지';
               if (p.chordNotes && p.chordNotes.length >= 2){
-                return p.chordNotes.map(function(c){ return isSolfege ? c.ko : (c.en ? c.en.replace(/\d+$/, '') : c.ko); }).join('·');
+                return p.chordNotes.map(function(c){ return isSolfege ? c.ko : (c.en ? c.en.replace(/\d+$/, '') : c.ko); }).join('+');
               }
               return isSolfege ? p.ko : (p.en ? p.en.replace(/\d+$/, '') : p.ko);
             }
             if (!b.isSubdivided && b.chordNotes && b.chordNotes.length >= 2){
-              koEl.textContent = b.chordNotes.map(function(c){ return isSolfege ? c.ko : (c.en ? c.en.replace(/\d+$/, '') : c.ko); }).join('·');
+              koEl.textContent = b.chordNotes.map(function(c){ return isSolfege ? c.ko : (c.en ? c.en.replace(/\d+$/, '') : c.ko); }).join('+');
             } else if (b.isSubdivided && b.subNotes){
               koEl.textContent = b.subNotes.map(getDisplayPitch).join(' · ');
             } else {

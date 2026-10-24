@@ -1921,7 +1921,7 @@ async function testSubdividedGuide(client) {
       renderSong();
       var pairCard = document.querySelector('#measuresGrid .beat-cell[data-m="0"][data-b="1"]');
       var koMainText = pairCard.querySelector('.b-ko-main').textContent;
-      check((koMainText === 'G·C' || koMainText === '솔·도') && pairCard.querySelector('.b-note-sub').textContent === 'G3+C4', 'beat card shows both pair solfege and octave names');
+      check((koMainText === 'G+C' || koMainText === '솔+도') && pairCard.querySelector('.b-note-sub').textContent === 'G3+C4', 'beat card shows both pair solfege and octave names');
       emitted = [];
       window.actx.currentTime = 12;
       updateActiveCursor(0, 1, true);
