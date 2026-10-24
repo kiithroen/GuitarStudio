@@ -1783,6 +1783,11 @@ function curCapo(){
       $('#bpmUnitLabel').textContent = GuitarRhythm.getGridInfo(appState.beats).bpmUnitLabel;
     }
     $('#beatsSelect').value = String(appState.beats);
+    var isStructured = !!(curSong && curSong.type === 'structured');
+    $('#beatsSelect').disabled = isStructured;
+    $('#beatsSelect').title = isStructured
+      ? '곡 악보에 고정된 박자 (악보 편집 화면에서 변경 가능)'
+      : '메트로놈 박자 선택';
     $('#volRange').value = Math.round(appState.vol * 100);
     $('#guitarVolRange').value = Math.round(appState.guitarVol * 100);
     $('#clickModeSelect').value = appState.clickMode;
@@ -1836,6 +1841,7 @@ function curCapo(){
   }
 
   $('#beatsSelect').addEventListener('change', function(e){
+    if (curSong && curSong.type === 'structured') return;
     appState.beats = Number(e.target.value);
     if (curSong) curSong.beats = appState.beats;
     syncConsoleUI();

@@ -926,6 +926,28 @@ async function testVolumeSliders(client){
   }
   await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: '' }] });
   await client.send('Emulation.setDeviceMetricsOverride', { width:1024, height:768, deviceScaleFactor:1, mobile:false });
+
+  const beatsSelectState = await client.evaluate(`(function(){
+    var sel = document.getElementById('beatsSelect');
+    var isStructured = curSong && curSong.type === 'structured';
+    var structuredDisabled = sel.disabled;
+    var originalSong = curSong;
+    var mockImage = { id:'mock-img', type:'image', beats:3, bpm:80 };
+    curSong = mockImage;
+    appState.beats = mockImage.beats;
+    syncConsoleUI();
+    var imageDisabled = sel.disabled;
+    var imageVal = sel.value;
+    curSong = originalSong;
+    appState.beats = originalSong.beats;
+    syncConsoleUI();
+    return { isStructured: isStructured, structuredDisabled: structuredDisabled, imageDisabled: imageDisabled, imageVal: imageVal };
+  })()`);
+  assert.equal(beatsSelectState.isStructured, true, 'current song is structured');
+  assert.equal(beatsSelectState.structuredDisabled, true, 'beatsSelect is disabled for structured songs');
+  assert.equal(beatsSelectState.imageDisabled, false, 'beatsSelect is enabled for image songs');
+  assert.equal(beatsSelectState.imageVal, '3', 'beatsSelect reflects image song beats');
+
   assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'the volume sliders raise no console errors');
   process.stdout.write('Browser checkpoint: click and guitar volume sliders passed\n');
 }
