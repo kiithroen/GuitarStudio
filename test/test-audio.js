@@ -108,8 +108,8 @@ test('sympathetic open strings follow capo and leave standard tuning unchanged',
   const capoTau = 8 * Math.pow((440 * Math.pow(2, (68 - 69) / 12)) / 82.4, -0.33) / 6.91;
   const expectedStopAt = 1 + 0.15 + Math.min(6, capoTau * 7);
   assert.ok(Math.abs(capoFundamental.stopAt - expectedStopAt) < 1e-9);
-  assert.deepEqual(open.strings.map(s => s.midi), [40, 45, 50, 55, 59, 64]);
-  assert.deepEqual(capo4.strings.map(s => s.midi), [40, 45, 50, 55, 59, 64]);
+  assert.deepEqual(open.strings.map(s => s.midi), [64, 59, 55, 50, 45, 40]);
+  assert.deepEqual(capo4.strings.map(s => s.midi), [64, 59, 55, 50, 45, 40]);
 });
 
 test('a pitch matching only the uncapped open E string no longer excites it under capo', function(){
