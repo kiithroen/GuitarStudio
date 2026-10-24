@@ -36,8 +36,8 @@ function makeContext(capo, acousticFx){
     reverbNode: null,
     bodyModes: [],
     STRINGS: [
-      { str: 6, midi: 40 }, { str: 5, midi: 45 }, { str: 4, midi: 50 },
-      { str: 3, midi: 55 }, { str: 2, midi: 59 }, { str: 1, midi: 64 }
+      { str: 1, midi: 64 }, { str: 2, midi: 59 }, { str: 3, midi: 55 },
+      { str: 4, midi: 50 }, { str: 5, midi: 45 }, { str: 6, midi: 40 }
     ],
     stringVoices: {},
     actx: {
@@ -669,11 +669,13 @@ test('articulation profile separation and KS buffer cache keys distinguish apoya
     for (let i = i0; i < i1; i++) sq += d[i] * d[i];
     return Math.sqrt(sq / (i1 - i0));
   }
+  assert.equal(c2.STRINGS[0].str, 1, 'test STRINGS matches app 1st-to-6th string indexing');
+  assert.equal(c2.STRINGS[0].midi, 64, '1st string open MIDI is 64 (E4)');
   const rmsPlain76 = sustainRmsBuf(c2.__audioHooks.getKsBuffer(76, false, 1));
   const rmsHarm76 = sustainRmsBuf(c2.__audioHooks.getKsBuffer(76, 'harmonic', 1));
   const rmsHarm83 = sustainRmsBuf(c2.__audioHooks.getKsBuffer(83, 'harmonic', 1));
   assert.ok(rmsHarm76 < rmsPlain76 * 0.78, 'harmonic KS buffer RMS is softer than normal plucked note at the same pitch');
-  assert.ok(rmsHarm83 < rmsHarm76, 'higher-node harmonic (<7>, MIDI 83) is softer than octave harmonic (<12>, MIDI 76)');
+  assert.ok(rmsHarm83 < rmsHarm76, 'higher-pitched harmonic (MIDI 83) is softer than lower-pitched harmonic (MIDI 76)');
 
   // same-string reattack damps harmonics more gently than normal notes
   c2.appState.sympAmount = 0;

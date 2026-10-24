@@ -463,8 +463,8 @@
     }
     var rms = Math.sqrt(sumSq / Math.max(1, early));
     var pitchScale = Math.pow(2, -0.0045 * (midi - 58));
-    // 자연 하모닉스는 단일 고주파에 에너지가 집중되므로 일반 음보다 은은하게 낮추고, 7·5프렛 고차 배음일수록 더 부드럽게 감쇠
-    var harmScale = isHarmonic ? 0.68 * (fret > 12 ? Math.pow(2, -0.025 * (fret - 12)) : 1.0) : 1.0;
+    // 자연 하모닉스는 단일 고주파에 에너지가 집중되므로 일반 음보다 은은하게 낮추고, C5(MIDI 72) 위 고음역일수록 더 부드럽게 감쇠
+    var harmScale = isHarmonic ? 0.68 * (midi > 72 ? Math.pow(2, -0.025 * (midi - 72)) : 1.0) : 1.0;
     var targetLevel = 0.275 * pitchScale * harmScale;
     var nrm = rms > 0 ? targetLevel / rms : 1;
     for (n = 0; n < len; n++) out[n] *= nrm;
