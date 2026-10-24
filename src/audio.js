@@ -229,8 +229,8 @@
       if (v.end <= t) return false;
       if (t - v.start <= 0.03 && !v.symp) return true; // 공명현 울림은 그 줄을 직접 치면 항상 멈춤
       v.damp.gain.setValueAtTime(1, t);
-      v.damp.gain.setTargetAtTime(0, t, 0.012);
-      var cut = t + 0.1;
+      v.damp.gain.setTargetAtTime(0, t, v.harmonic ? 0.032 : 0.012);
+      var cut = t + (v.harmonic ? 0.18 : 0.1);
       if (cut < v.end){
         v.srcs.forEach(function(o){ try { o.stop(cut); } catch (e){} });
         v.end = cut;
@@ -292,7 +292,7 @@
     var fretHighPenalty = noFretPenalty ? 1.0 : ((fret > 0 ? 0.95 : 1.0) * Math.max(0.88, 1 - 0.008 * fret));
 
     var t60Fund = 8.0 * Math.pow(frequency / 82.4, -0.33) * (isApoyando ? 1.15 : 1.0) * fretFundPenalty;
-    var t60High = (isHarmonic ? (isWound ? 0.85 : 0.95) : (isWound ? 0.6 : (isApoyando ? 0.5 : 0.6))) * fretHighPenalty;
+    var t60High = (isHarmonic ? (isWound ? 0.72 : 0.78) : (isWound ? 0.6 : (isApoyando ? 0.5 : 0.6))) * fretHighPenalty;
 
     if (isHarmonic){
       t60Fund *= 1.08;
@@ -339,12 +339,12 @@
     var isHarmonic = art === 'harmonic';
     var isSlur = art === 'slur';
 
-    var fleshWidth = isHarmonic ? 0.08 : (isSlur ? 0.065 : (isApoyando ? 0.042 : 0.032));
+    var fleshWidth = isHarmonic ? 0.055 : (isSlur ? 0.065 : (isApoyando ? 0.042 : 0.032));
     var beta, p, K;
     if (isHarmonic){
-      beta = 0.25;
-      p = 2.5;
-      K = Math.min(Math.floor(N / 2) - 1, 4);
+      beta = 0.18;
+      p = 1.95;
+      K = Math.min(Math.floor(N / 2) - 1, 6);
     } else if (isSlur){
       beta = Math.min(0.45, 0.22 * (betaScale || 1));
       p = 1.95;
@@ -389,7 +389,7 @@
       r = Math.sqrt(r / x.length) || 1;
       for (j = 0; j < x.length; j++) x[j] /= r;
     });
-    var nzRatio = isHarmonic ? 0.008 : (isSlur ? 0.015 : 0.025);
+    var nzRatio = isHarmonic ? 0.014 : (isSlur ? 0.015 : 0.025);
     var dl = new Float32Array(N);
     for (i = 0; i < N; i++) dl[i] = (1 - nzRatio) * tone[i] + nzRatio * nz[i];
     return dl;
@@ -463,33 +463,32 @@
     }
     var rms = Math.sqrt(sumSq / Math.max(1, early));
     var pitchScale = Math.pow(2, -0.0045 * (midi - 58));
-    var targetLevel = 0.275 * pitchScale;
+    // 자연 하모닉스는 단일 고주파에 에너지가 집중되므로 일반 음보다 은은하게 낮추고, 7·5프렛 고차 배음일수록 더 부드럽게 감쇠
+    var harmScale = isHarmonic ? 0.68 * (fret > 12 ? Math.pow(2, -0.025 * (fret - 12)) : 1.0) : 1.0;
+    var targetLevel = 0.275 * pitchScale * harmScale;
     var nrm = rms > 0 ? targetLevel / rms : 1;
     for (n = 0; n < len; n++) out[n] *= nrm;
 
-    if (!isHarmonic){
-      // 브리지·상판 타격음(Bridge knock): 정규화된 현 진동 위에 일정한 크기로 얹어 음별 음량 흔들림 방지
-      var knockAmp = (isApoyando ? 0.055 : (isSlur ? 0.018 : 0.036)) * pitchScale;
-      var knockLen = Math.min(len, Math.floor(sr * 0.016));
-      for (var kIdx = 0; kIdx < knockLen; kIdx++){
-        var tK = kIdx / sr;
-        var envK = Math.exp(-tK / 0.0042);
-        var waveK = 0.65 * Math.sin(2 * Math.PI * 188 * tK) + 0.35 * Math.sin(2 * Math.PI * 385 * tK);
-        out[kIdx] += knockAmp * envK * waveK;
-      }
-      // 비주기 탄현 마찰음(Pluck brush): 초반 9ms 동안 시드 고정 난수 대역 필터링
-      var brushAmp = (isSlur ? 0.008 : (isApoyando ? 0.022 : 0.028)) * pitchScale;
-      var brushLen = Math.min(len, Math.floor(sr * 0.009));
-      var brushRnd = seededRandom(midi * 1013 + (isApoyando ? 7 : (isSlur ? 13 : 11)));
-      var cBrush = 1 - Math.exp(-2 * Math.PI * 4000 / sr);
-      var lpBrush = 0;
-      for (var bIdx = 0; bIdx < brushLen; bIdx++){
-        var tB = bIdx / sr;
-        var envB = (1 - bIdx / brushLen) * Math.exp(-tB / 0.003);
-        var wB = brushRnd() * 2 - 1;
-        lpBrush += cBrush * (wB - lpBrush);
-        out[bIdx] += brushAmp * envB * lpBrush;
-      }
+    // 브리지·상판 타격음(Bridge knock)과 손끝 마찰음: 하모닉스에도 약한 탄현 질감을 남겨 전자 사인파 같은 이질감 제거
+    var knockAmp = (isHarmonic ? 0.011 : (isApoyando ? 0.055 : (isSlur ? 0.018 : 0.036))) * pitchScale;
+    var knockLen = Math.min(len, Math.floor(sr * 0.016));
+    for (var kIdx = 0; kIdx < knockLen; kIdx++){
+      var tK = kIdx / sr;
+      var envK = Math.exp(-tK / 0.0042);
+      var waveK = 0.65 * Math.sin(2 * Math.PI * 188 * tK) + 0.35 * Math.sin(2 * Math.PI * 385 * tK);
+      out[kIdx] += knockAmp * envK * waveK;
+    }
+    var brushAmp = (isHarmonic ? 0.008 : (isSlur ? 0.008 : (isApoyando ? 0.022 : 0.028))) * pitchScale;
+    var brushLen = Math.min(len, Math.floor(sr * 0.009));
+    var brushRnd = seededRandom(midi * 1013 + (isHarmonic ? 19 : (isApoyando ? 7 : (isSlur ? 13 : 11))));
+    var cBrush = 1 - Math.exp(-2 * Math.PI * 4000 / sr);
+    var lpBrush = 0;
+    for (var bIdx = 0; bIdx < brushLen; bIdx++){
+      var tB = bIdx / sr;
+      var envB = (1 - bIdx / brushLen) * Math.exp(-tB / 0.003);
+      var wB = brushRnd() * 2 - 1;
+      lpBrush += cBrush * (wB - lpBrush);
+      out[bIdx] += brushAmp * envB * lpBrush;
     }
 
     var fade = Math.floor(sr * NATURAL_TAIL_FADE);
@@ -696,14 +695,15 @@
       o3.frequency.setValueAtTime(freq * 3, t);
     }
 
+    var isHarmonic = art === 'harmonic';
     // MIDI 55 경계의 급격한 음량 단차를 없애기 위해 음역 비율을 연속 보간
     var bassBlend = Math.max(0, Math.min(1, (60 - midi) / 16));
     var g1 = actx.createGain();
     var g2 = actx.createGain();
     var g3 = actx.createGain();
     g1.gain.value = 0.88 - 0.10 * bassBlend;
-    g2.gain.value = 0.30 + 0.12 * bassBlend;
-    g3.gain.setValueAtTime(0.22 + 0.06 * bassBlend, t);
+    g2.gain.value = isHarmonic ? 0.18 : (0.30 + 0.12 * bassBlend);
+    g3.gain.setValueAtTime(isHarmonic ? 0.08 : (0.22 + 0.06 * bassBlend), t);
     g3.gain.exponentialRampToValueAtTime(0.003, t + Math.min(0.11, toneDuration * 0.45));
 
     filter.type = 'lowpass';
@@ -725,7 +725,7 @@
       filter.frequency.exponentialRampToValueAtTime(isBass ? Math.max(freq * 3.0, CLASSIC_BASS_DECAY_CUTOFF) : freq * 3.0, t + toneDuration * 0.85);
     }
 
-    var peakGain = ((isFx ? 0.38 : 0.36) + 0.05 * bassBlend) * scale;
+    var peakGain = ((isFx ? 0.38 : 0.36) + 0.05 * bassBlend) * (isHarmonic ? 0.72 : 1.0) * scale;
     if (naturalDecay){
       var lifetime = profile.duration;
       var fadeStart = t + lifetime - NATURAL_TAIL_FADE;
@@ -815,7 +815,7 @@
     voice.out.connect(damp);
     damp.connect(guitarBus || actx.destination);
 
-    var voiceRecord = { start:t, end:voice.stopAt, damp:damp, srcs:voice.srcs };
+    var voiceRecord = { start:t, end:voice.stopAt, damp:damp, srcs:voice.srcs, harmonic:artKey === 'harmonic' };
     if (sNo){
       dampSameStringVoices(sNo, t);
       (stringVoices[sNo] = stringVoices[sNo] || []).push(voiceRecord);

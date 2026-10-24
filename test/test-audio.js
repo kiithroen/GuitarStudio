@@ -660,6 +660,33 @@ test('articulation profile separation and KS buffer cache keys distinguish apoya
   assert.notEqual(bSlur, bApo);
   assert.notEqual(bSlur, bPlain);
   assert.notEqual(bApo, bPlain);
+
+  // harmonic KS buffer is attenuated relative to plain plucked note and higher nodes are gentler
+  function sustainRmsBuf(buf){
+    const d = buf.getChannelData(0);
+    const i0 = Math.floor(48000 * 0.02), i1 = Math.floor(48000 * 0.25);
+    let sq = 0;
+    for (let i = i0; i < i1; i++) sq += d[i] * d[i];
+    return Math.sqrt(sq / (i1 - i0));
+  }
+  const rmsPlain76 = sustainRmsBuf(c2.__audioHooks.getKsBuffer(76, false, 1));
+  const rmsHarm76 = sustainRmsBuf(c2.__audioHooks.getKsBuffer(76, 'harmonic', 1));
+  const rmsHarm83 = sustainRmsBuf(c2.__audioHooks.getKsBuffer(83, 'harmonic', 1));
+  assert.ok(rmsHarm76 < rmsPlain76 * 0.78, 'harmonic KS buffer RMS is softer than normal plucked note at the same pitch');
+  assert.ok(rmsHarm83 < rmsHarm76, 'higher-node harmonic (<7>, MIDI 83) is softer than octave harmonic (<12>, MIDI 76)');
+
+  // same-string reattack damps harmonics more gently than normal notes
+  c2.appState.sympAmount = 0;
+  c2.playGuitarNote(76, 1.0, 1.0, 1.0, 'harmonic', 1, { naturalDecay:true });
+  const harmVoice = c2.trackedGuideVoices.at(-1);
+  assert.equal(harmVoice.harmonic, true, 'voice record marks harmonic notes');
+  c2.playGuitarNote(64, 1.0, 1.5, 1.0, null, 1, { naturalDecay:true });
+  const plainVoice = c2.trackedGuideVoices.at(-1);
+  assert.equal(plainVoice.harmonic, false, 'voice record marks normal notes as non-harmonic');
+  const harmDamp = harmVoice.damp.gain.events.find(e => e[0] === 'target' && e[2] === 1.5);
+  c2.playGuitarNote(64, 1.0, 2.0, 1.0, null, 1, { naturalDecay:true });
+  const plainDamp = plainVoice.damp.gain.events.find(e => e[0] === 'target' && e[2] === 2.0);
+  assert.ok(harmDamp && plainDamp && harmDamp[3] > plainDamp[3] * 2, 'same-string reattack damps harmonic voice with a gentler tau than normal notes');
 });
 
 test('string stiffness dispersion filter preserves finite samples and fundamental pitch period', function(){
