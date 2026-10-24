@@ -287,7 +287,7 @@ test('a parsed guide rest cuts a natural tail while capo is applied once to clas
     startTime:1, slotDuration:0.5, measures:parsed.measures, maxDurationSlots:4, capo:2
   });
   const first = context.trackedGuideVoices.find(voice => !voice.symp);
-  const expectedFrequency = 440 * Math.pow(2, (62 - 69) / 12) * 1.005;
+  const expectedFrequency = 440 * Math.pow(2, (62 - 69) / 12);
   assert.ok(Math.abs(oscillators[0].frequency.events[0][1] - expectedFrequency) < 1e-9,
     'classic natural guide receives the capo-adjusted pitch exactly once');
   context.scheduleBeatGuide(parsed.measures[0].beats[1], {
@@ -602,9 +602,10 @@ test('a glide option makes the classic oscillators slide from the start pitch to
 
     const plain = context.__audioHooks.buildClassicVoice(midi, 2, 1, 1, false, false, isFx, false, NaN, true, 1, null);
     const bend = plain.srcs[0].frequency.events;
-    assert.ok(bend[0][1] > freq && bend[0][1] < freq * 1.02, 'without a glide o1 keeps the pluck bend just above its pitch');
-    assert.deepEqual([bend[1][0], bend[1][1]], ['exponential', freq], 'and settles to its pitch');
-    assert.ok(bend[1][2] - 2 < glide.sec, 'the pluck bend settles faster than a glide');
+    assert.equal(bend.length, 1, 'without a glide o1 has only one frequency event');
+    assert.equal(bend[0][0], 'set');
+    assert.ok(Math.abs(bend[0][1] - freq) < 1e-9, 'without a glide o1 starts and stays at exact piano pitch');
+    assert.equal(plain.srcs[1].frequency.events.length, 1, 'o2 has no ramp without a glide');
     assert.equal(plain.srcs[2].frequency.events.length, 1, 'o3 has no ramp without a glide');
 
     context.appState.synthEngine = 'classic';
@@ -725,6 +726,27 @@ test('body modes gain initializes and updates with DRY_BODY_RATIO in dry mode an
   modesOff.forEach(function(m){
     assert.ok(Math.abs(m.gain.gain.value - dryRatio * m.level * ctxOff.appState.bodyAmount) < 1e-6);
   });
+});
+
+test('classic piano engine disables sympathetic resonance and sets body modes gain to 0', function(){
+  const { context, oscillators } = makeContext(0, true);
+  context.appState.synthEngine = 'classic';
+  context.__audioHooks.ensureAudioCtx();
+  const modes = context.__audioHooks.getBodyModes();
+  assert.ok(modes.length >= 7);
+  modes.forEach(function(m){
+    assert.equal(m.gain.gain.value, 0, 'initial body mode gain is 0 in classic engine');
+  });
+
+  context.appState.acousticFx = true;
+  context.__audioHooks.updateAudioFxRouting();
+  modes.forEach(function(m){
+    assert.equal(m.gain.gain.last[1], 0, 'body mode gain remains 0 after updateAudioFxRouting in classic engine');
+  });
+
+  const oscCountBefore = oscillators.length;
+  context.__audioHooks.addSympatheticResonance(64, 1, 1, 1);
+  assert.equal(oscillators.length, oscCountBefore, 'no sympathetic resonance oscillators are created in classic engine');
 });
 
 process.stdout.write('1..' + checks + '\n');

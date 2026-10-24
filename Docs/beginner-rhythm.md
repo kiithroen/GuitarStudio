@@ -36,7 +36,7 @@ note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}`, rest
 
 ## 오디오 출력
 
-`scheduleBeatGuide`는 실음 MIDI에 카포를 한 번 적용한다. 구조화 악보 이벤트는 `event.duration`을 악보상 길이로 유지하면서 `playGuitarNote(..., {naturalDecay:true,hardStopAt})`에 전달하고, 음가 끝에서 note-off를 강제하지 않는다. KS는 기존 버퍼가 가진 자연 감쇠를 따르고, classic은 기존 파형·배음·필터·어택을 보존하면서 공통 `getNaturalDecayProfile`의 음고·현 기반 감쇠 envelope를 사용한다. 그래서 실제 여운 길이는 악보 음가와 다를 수 있다. `exactDuration` API는 내부 테스트나 명시 호출에 남아 있지만 구조화 가이드는 사용하지 않는다.
+`scheduleBeatGuide`는 실음 MIDI에 카포를 한 번 적용한다. 구조화 악보 이벤트는 `event.duration`을 악보상 길이로 유지하면서 `playGuitarNote(..., {naturalDecay:true,hardStopAt})`에 전달하고, 음가 끝에서 note-off를 강제하지 않는다. KS는 물리 모델 버퍼가 가진 자연 감쇠를 따르고, classic은 피아노 타현 배음과 공통 `getNaturalDecayProfile` 감쇠 envelope를 사용하는 피아노형 가이드 음원이다. 그래서 실제 여운 길이는 악보 음가와 다를 수 있다. `exactDuration` API는 내부 테스트나 명시 호출에 남아 있지만 구조화 가이드는 사용하지 않는다.
 
 - 콘서트홀 wet gain은 `CONCERT_HALL_WET_GAIN` 단일 상수를 초기 ON 라우팅과 실시간 ON 전환에서 함께 쓴다. OFF는 0이고 dry gain과 전환 시간은 기존 값을 유지한다. 이 값은 wet 잔향만 조절하며 음원·명시 길이·IR을 바꾸지 않는다.
 - `appState.guitarVol`(연주음 슬라이더)은 기타 소리 전부가 지나는 `guitarBus` gain에 곱해진다(`updateGuitarVolume`). 클릭 버스와 마스터 compressor 설정은 바꾸지 않는다.
@@ -44,7 +44,8 @@ note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}`, rest
 - classic 음원의 저음 명료도를 위해 저음 권선현(`isBass`)에서만 필터 attack·decay cutoff에 하한 `CLASSIC_BASS_ATTACK_CUTOFF`·`CLASSIC_BASS_DECAY_CUTOFF`를 둔다. 기존 주파수 배수 계산값이 더 높으면 그 값을 유지하며, 고음과 KS 음원은 바꾸지 않는다.
 - KS 물리 모델은 `ksDesign`의 1차 분산 올패스 필터로 현의 강성에 따른 고주파 분산 지연을 반영하고, `renderKsString`에서 브리지 타격음과 비주기 탄현 마찰음 트랜지언트를 더해 어택감을 모사한다.
 - 주법별 키(`ksArticulationKey`)로 아포얀도(`!`), 자연 하모닉스(`h`), 슬러(`s`)의 배음 구성(`ksExcitation`), 초기 장력 피치 벤드, 어택 시간, 감쇠 프로파일(`getNaturalDecayProfile`)을 구분해 독립 캐시(`getKsBuffer`)로 관리한다.
-- 바디 공명(`BODY_MODES`)은 콘서트홀 리버브가 꺼진 드라이 모드에서도 `DRY_BODY_RATIO` 비율로 상판 울림을 유지한다. 콘서트홀 리버브 버퍼(`buildConcertHallReverbBuffer`)는 고역 공기 흡수 로우패스와 벽면 스무딩을 적용하며, classic 엔진(`buildClassicVoice`)은 주법·음역별 `PeriodicWave` 캐시를 적용한다.
+- 바디 공명(`BODY_MODES`)은 콘서트홀 리버브가 꺼진 드라이 모드에서도 `DRY_BODY_RATIO` 비율로 상판 울림을 유지하며, classic 음원(피아노 가이드 톤) 선택 시에는 0으로 비활성화된다. 콘서트홀 리버브 버퍼(`buildConcertHallReverbBuffer`)는 고역 공기 흡수 로우패스와 벽면 스무딩을 적용한다.
+- classic 음원(`buildClassicVoice`)은 기타 탄현 주법·피치 벤드·바디 공명·개방현 공명(`addSympatheticResonance`)을 배제하고, 해머 타현 배음(`PeriodicWave` 캐시)과 복현 디튠을 적용한 맑은 피아노 가이드 톤을 합성한다.
 
 ## 재생음 정리와 시계
 

@@ -147,13 +147,14 @@
       // 각 모드가 짧게(0.04~0.27초) 울리고 모드 사이에는 자연스러운 골이 생겨, 넓게 부풀리는 EQ보다 덜 답답한 나무 울림통 소리
       var bodyOut = actx.createGain();
       guitarBus.connect(bodyOut);
+      var bodyScale = appState.synthEngine === 'classic' ? 0 : (appState.acousticFx ? 1.0 : DRY_BODY_RATIO);
       bodyModes = BODY_MODES.map(function(m){
         var bp = actx.createBiquadFilter();
         bp.type = 'bandpass';
         bp.frequency.value = m[0];
         bp.Q.value = m[1];
         var mg = actx.createGain();
-        mg.gain.value = (appState.acousticFx ? 1.0 : DRY_BODY_RATIO) * m[2] * appState.bodyAmount;
+        mg.gain.value = bodyScale * m[2] * appState.bodyAmount;
         guitarBus.connect(bp);
         bp.connect(mg);
         mg.connect(bodyOut);
@@ -187,10 +188,11 @@
       wetGainNode.gain.setValueAtTime(wetGainNode.gain.value, now);
       wetGainNode.gain.linearRampToValueAtTime(on ? CONCERT_HALL_WET_GAIN : 0.0, now + 0.04);
     }
+    var bodyScale = appState.synthEngine === 'classic' ? 0 : (on ? 1.0 : DRY_BODY_RATIO);
     bodyModes.forEach(function(m){
       m.gain.gain.cancelScheduledValues(now);
       m.gain.gain.setValueAtTime(m.gain.gain.value, now);
-      m.gain.gain.linearRampToValueAtTime(m.level * appState.bodyAmount * (on ? 1.0 : DRY_BODY_RATIO), now + 0.04);
+      m.gain.gain.linearRampToValueAtTime(m.level * appState.bodyAmount * bodyScale, now + 0.04);
     });
   }
 
@@ -628,22 +630,20 @@
   }
 
   var classicWaveCache = new Map();
-  function getClassicPeriodicWave(actx, art, isBass){
+  function getClassicPeriodicWave(actx, midi){
     if (!actx || typeof actx.createPeriodicWave !== 'function') return null;
-    var key = (art === 'harmonic' ? 'h' : (art === 'slur' ? 's' : (art === true ? 'a' : 't'))) + (isBass ? 'b' : 't');
-    var cached = classicWaveCache.get(key);
+    var bucket = Math.floor(midi / 12);
+    var cached = classicWaveCache.get(bucket);
     if (cached) return cached;
-    var isHarmonic = art === 'harmonic';
-    var isSlur = art === 'slur';
-    var isApoyando = art === true;
-    var beta = isHarmonic ? 0.25 : (isSlur ? 0.22 : (isApoyando ? 0.20 : 0.135));
-    var p = isHarmonic ? 2.5 : (isSlur ? 1.95 : (isApoyando ? 1.65 : (isBass ? 1.32 : 1.48)));
-    var fleshWidth = isHarmonic ? 0.08 : (isSlur ? 0.065 : (isApoyando ? 0.042 : 0.032));
-    var K = isHarmonic ? 4 : 24;
+    var freq = 440 * Math.pow(2, (midi - 69) / 12);
+    var beta = 0.13;
+    var feltWidth = 0.04 + 0.0012 * Math.max(0, midi - 40);
+    var p = 1.65;
+    var K = Math.max(3, Math.min(20, Math.floor(12000 / freq)));
     var real = new Float32Array(K + 1);
     var imag = new Float32Array(K + 1);
     for (var k = 1; k <= K; k++){
-      var sincArg = k * Math.PI * fleshWidth;
+      var sincArg = k * Math.PI * feltWidth;
       var sinc = sincArg !== 0 ? Math.sin(sincArg) / sincArg : 1;
       imag[k] = (Math.sin(k * Math.PI * beta) / Math.pow(k, p)) * sinc;
     }
@@ -657,11 +657,11 @@
         wave = null;
       }
     }
-    if (wave) classicWaveCache.set(key, wave);
+    if (wave) classicWaveCache.set(bucket, wave);
     return wave;
   }
 
-  // 기존 합성음 (삼각파 2개 + 사인파 + 로우패스 스윕): 물리 모델 음원과 A/B 비교용
+  // 기존음원 (피아노 타현 배음 + 복현 디튠 + 버터워스 필터의 맑은 가이드 톤)
   function buildClassicVoice(midi, t, dur, scale, isBass, artOrApo, isFx, exactDuration, hardStopAt, naturalDecay, strNo, glide){
     var art = ksArticulationKey(artOrApo);
     var isApoyando = art === true;
@@ -676,18 +676,13 @@
     var filter = actx.createBiquadFilter();
     var g = actx.createGain();
 
-    // 순수 음향 악기 오실레이터 구성 (거친 전자음 노이즈를 유발하는 톱니파 배제하고 맑은 삼각파 기반 물리 배음 합성)
     o1.type = 'triangle';
     o2.type = 'triangle';
     o3.type = 'sine';
 
-    var pw = getClassicPeriodicWave(actx, art, isBass);
-    if (pw){
-      if (typeof o1.setPeriodicWave === 'function') o1.setPeriodicWave(pw);
-      if (typeof o2.setPeriodicWave === 'function') o2.setPeriodicWave(pw);
-    }
+    var pw = getClassicPeriodicWave(actx, midi);
+    if (pw && typeof o1.setPeriodicWave === 'function') o1.setPeriodicWave(pw);
 
-    // 탄현 순간 줄의 장력으로 인해 음정이 아주 미세하게 높게 시작했다가 제자리로 안착하는 어쿠스틱 현 물리 특성
     if (glide){
       // 슬라이드: 세 오실레이터가 출발 음 높이에서 제 높이로 미끄러진다
       var glideRatio = Math.pow(2, (glide.fromMidi - midi) / 12);
@@ -698,28 +693,25 @@
       o3.frequency.setValueAtTime(freq * 3 * glideRatio, t);
       o3.frequency.exponentialRampToValueAtTime(freq * 3, t + glide.sec);
     } else {
-      var bendRatio = isApoyando ? 1.008 : 1.005;
-      o1.frequency.setValueAtTime(freq * bendRatio, t);
-      o1.frequency.exponentialRampToValueAtTime(freq, t + 0.024);
-      o2.frequency.setValueAtTime(freq * 2 * 1.005, t);
-      o2.frequency.exponentialRampToValueAtTime(freq * 2, t + 0.022);
+      // 피아노 가이드톤: 피치 벤드 없이 정확한 음정(o2는 +0.6센트 미세 복현 코러스감)
+      o1.frequency.setValueAtTime(freq, t);
+      o2.frequency.setValueAtTime(freq * 2 * 1.00035, t);
       o3.frequency.setValueAtTime(freq * 3, t);
     }
 
     var g1 = actx.createGain();
     var g2 = actx.createGain();
     var g3 = actx.createGain();
-    // 아포얀도(눌러치기)는 상판 수직 진동으로 기음(o1)과 2배음(o2)이 두껍고 둥글며, 표시 없는 음(티란도, 뜯어치기)은 가볍고 맑게 발음
-    g1.gain.value = isBass ? 0.72 : (isApoyando ? 1.05 : 0.85);
-    g2.gain.value = isBass ? 0.55 : (isApoyando ? 0.36 : 0.28);
-    g3.gain.setValueAtTime(isBass ? 0.32 : (isApoyando ? 0.10 : 0.15), t);
-    g3.gain.exponentialRampToValueAtTime(0.008, t + Math.min(0.32, toneDuration * 0.45));
+    g1.gain.value = isBass ? 0.78 : 0.88;
+    g2.gain.value = isBass ? 0.42 : 0.30;
+    g3.gain.setValueAtTime(isBass ? 0.28 : 0.22, t);
+    g3.gain.exponentialRampToValueAtTime(0.003, t + Math.min(0.11, toneDuration * 0.45));
 
     filter.type = 'lowpass';
-    filter.Q.value = isBass ? 1.25 : (isApoyando ? 1.10 : 0.8);
+    filter.Q.value = 0.707;
     if (isFx){
-      var startCutoffMult = isBass ? 6.5 : (isApoyando ? 5.2 : 5.6);
-      var endCutoffMult = isBass ? 2.6 : (isApoyando ? 2.3 : 2.5);
+      var startCutoffMult = isBass ? 6.5 : 5.8;
+      var endCutoffMult = isBass ? 2.6 : 2.5;
       var attackCutoff = freq * startCutoffMult;
       var decayCutoff = freq * endCutoffMult;
       if (isBass){
@@ -734,11 +726,7 @@
       filter.frequency.exponentialRampToValueAtTime(isBass ? Math.max(freq * 3.0, CLASSIC_BASS_DECAY_CUTOFF) : freq * 3.0, t + toneDuration * 0.85);
     }
 
-    // 주법별 오실레이터 비율·피크 차이로 생기는 음량 차이 상쇄 (실측: 같은 scale에서 아포얀도 +3.9dB(드라이 +3.1dB))
-    // 강약은 호출부 scale(아포얀도 ×1.16)로만 정해져 물리음원과 같은 균형이 됨
-    var artComp = isBass ? 1 : (isApoyando ? (isFx ? 0.64 : 0.70) : 1);
-    var peakGain = (isFx ? (isBass ? 0.44 : (isApoyando ? 0.42 : 0.36)) :
-      (isBass ? 0.42 : (isApoyando ? 0.40 : 0.34))) * scale * artComp;
+    var peakGain = (isFx ? (isBass ? 0.44 : 0.38) : (isBass ? 0.42 : 0.36)) * scale;
     if (naturalDecay){
       var lifetime = profile.duration;
       var fadeStart = t + lifetime - NATURAL_TAIL_FADE;
@@ -746,14 +734,14 @@
       var decayStart, startGain;
       if (isFx){
         g.gain.setValueAtTime(0.0008, t);
-        g.gain.linearRampToValueAtTime(peakGain, t + (isBass ? 0.006 : 0.005));
-        decayStart = t + Math.min(0.20, toneDuration * 0.28);
-        startGain = peakGain * (isApoyando ? 0.50 : 0.42);
+        g.gain.linearRampToValueAtTime(peakGain, t + 0.0025);
+        decayStart = t + Math.min(0.16, toneDuration * 0.28);
+        startGain = peakGain * 0.45;
         g.gain.exponentialRampToValueAtTime(startGain, decayStart);
       } else {
         g.gain.setValueAtTime(0.0008, t);
-        g.gain.linearRampToValueAtTime(peakGain, t + 0.004);
-        decayStart = t + 0.004;
+        g.gain.linearRampToValueAtTime(peakGain, t + 0.0025);
+        decayStart = t + 0.0025;
         startGain = peakGain;
       }
       var targetGain = startGain * Math.exp(-(fadeStart - decayStart) / decayTau);
@@ -761,14 +749,13 @@
       g.gain.linearRampToValueAtTime(0, t + lifetime);
     } else if (isFx){
       g.gain.setValueAtTime(0.0008, t);
-      g.gain.linearRampToValueAtTime(peakGain, t + (isBass ? 0.006 : 0.005));
-      // 초기 탄현 어택 이후 몸통 서스테인으로 자연스럽게 이어지는 2단 감쇠(Pluck -> Sustain)
-      g.gain.exponentialRampToValueAtTime(peakGain * (isApoyando ? 0.50 : 0.42), t + Math.min(0.20, toneDuration * 0.28));
+      g.gain.linearRampToValueAtTime(peakGain, t + 0.0025);
+      g.gain.exponentialRampToValueAtTime(peakGain * 0.45, t + Math.min(0.16, toneDuration * 0.28));
       g.gain.exponentialRampToValueAtTime(0.0005, t + toneDuration);
     } else {
-      // 드라이 모드: 웅웅거리는 서스테인 꼬리 없이 음의 시작과 끝이 분명한 1단 직관적 감쇠
+      // 드라이 모드: 1단 직관적 감쇠
       g.gain.setValueAtTime(0.0008, t);
-      g.gain.linearRampToValueAtTime(peakGain, t + 0.004);
+      g.gain.linearRampToValueAtTime(peakGain, t + 0.0025);
       g.gain.exponentialRampToValueAtTime(0.0005, t + toneDuration);
     }
 
@@ -876,6 +863,7 @@
   }
 
   function addSympatheticResonance(midi, t, scale, playedStr){
+    if (appState.synthEngine === 'classic') return;
     if (!appState.acousticFx || !(appState.sympAmount > 0)) return;
     var capo = curCapo();
     var f = 440 * Math.pow(2, (midi - 69) / 12);

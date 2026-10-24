@@ -1795,8 +1795,8 @@ function curCapo(){
     $('#engineBtn').setAttribute('data-active', String(isKs));
     $('#engineBtn').textContent = isKs ? '물리음원' : '기존음원';
     $('#engineBtn').title = isKs
-      ? '물리 모델(Karplus-Strong) 나일론 현 음원 사용 중 (클릭하면 기존 합성음과 비교)'
-      : '기존 합성음(삼각파+필터) 사용 중 (클릭하면 물리 모델 음원으로 전환)';
+      ? '물리 모델(Karplus-Strong) 기타 음원 사용 중 (클릭하면 피아노 가이드 음원으로 전환)'
+      : '기존음원(피아노 가이드 톤) 사용 중 (클릭하면 물리 모델 기타 음원으로 전환)';
     if ($('#toggleFxBtn')){
       var isFx = !!appState.acousticFx;
       $('#toggleFxBtn').setAttribute('data-active', String(isFx));
@@ -1910,6 +1910,7 @@ function curCapo(){
 
   $('#engineBtn').addEventListener('click', function(){
     appState.synthEngine = appState.synthEngine === 'classic' ? 'ks' : 'classic';
+    updateAudioFxRouting();
     syncConsoleUI();
     saveAppState();
     // 두 음원 차이를 바로 비교할 수 있도록 정지 상태에서는 짧은 저음+멜로디 프리뷰 재생
