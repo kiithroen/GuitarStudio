@@ -81,7 +81,7 @@ function makeContext(capo, acousticFx){
     console
   };
   vm.createContext(context);
-  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, renderKsString, getNaturalDecayProfile, ksDesign, ksArticulationKey, getKsBuffer: function(midi, art, str){ return getKsBuffer(midi, art, str); }, getBodyModes: function(){ return bodyModes; }, DRY_BODY_RATIO: DRY_BODY_RATIO, BODY_MODES: BODY_MODES, legacyToneDuration, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, updateGuitarVolume, scheduleMetronomeClick, getBuses: function(){ return { guitarBus, clickBus }; }, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
+  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, getClassicPeriodicWave, renderKsString, getNaturalDecayProfile, ksDesign, ksArticulationKey, getKsBuffer: function(midi, art, str){ return getKsBuffer(midi, art, str); }, getBodyModes: function(){ return bodyModes; }, DRY_BODY_RATIO: DRY_BODY_RATIO, BODY_MODES: BODY_MODES, legacyToneDuration, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, updateGuitarVolume, scheduleMetronomeClick, getBuses: function(){ return { guitarBus, clickBus }; }, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
   return { context, oscillators, filters, compressors, gains };
 }
 
@@ -747,6 +747,14 @@ test('classic piano engine disables sympathetic resonance and sets body modes ga
   const oscCountBefore = oscillators.length;
   context.__audioHooks.addSympatheticResonance(64, 1, 1, 1);
   assert.equal(oscillators.length, oscCountBefore, 'no sympathetic resonance oscillators are created in classic engine');
+
+  const fakeCtxA = { createPeriodicWave(real, imag){ return { imag: Array.from(imag) }; } };
+  const fakeCtxB = { createPeriodicWave(real, imag){ return { imag: Array.from(imag) }; } };
+  const w72First = context.__audioHooks.getClassicPeriodicWave(fakeCtxA, 72);
+  const w83After72 = context.__audioHooks.getClassicPeriodicWave(fakeCtxA, 83);
+  const w83First = context.__audioHooks.getClassicPeriodicWave(fakeCtxB, 83);
+  assert.notEqual(w72First.imag.length, w83After72.imag.length, 'same-octave notes (MIDI 72 vs 83) do not collide in PeriodicWave cache');
+  assert.deepEqual(w83After72.imag, w83First.imag, 'PeriodicWave spectrum for MIDI 83 is deterministic regardless of playback order');
 });
 
 process.stdout.write('1..' + checks + '\n');

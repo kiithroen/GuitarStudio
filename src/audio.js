@@ -630,10 +630,14 @@
   }
 
   var classicWaveCache = new Map();
+  var classicWaveCacheCtx = null;
   function getClassicPeriodicWave(actx, midi){
     if (!actx || typeof actx.createPeriodicWave !== 'function') return null;
-    var bucket = Math.floor(midi / 12);
-    var cached = classicWaveCache.get(bucket);
+    if (classicWaveCacheCtx !== actx){
+      classicWaveCache.clear();
+      classicWaveCacheCtx = actx;
+    }
+    var cached = classicWaveCache.get(midi);
     if (cached) return cached;
     var freq = 440 * Math.pow(2, (midi - 69) / 12);
     var beta = 0.13;
@@ -657,7 +661,7 @@
         wave = null;
       }
     }
-    if (wave) classicWaveCache.set(bucket, wave);
+    if (wave) classicWaveCache.set(midi, wave);
     return wave;
   }
 
