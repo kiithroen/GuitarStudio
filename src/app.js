@@ -1793,10 +1793,10 @@ function curCapo(){
     $('#guideSoundBtn').textContent = appState.guideSound ? '가이드음' : '가이드음 끔';
     var isKs = appState.synthEngine !== 'classic';
     $('#engineBtn').setAttribute('data-active', String(isKs));
-    $('#engineBtn').textContent = isKs ? '물리음원' : '기존음원';
+    $('#engineBtn').textContent = isKs ? '기타' : '피아노';
     $('#engineBtn').title = isKs
-      ? '물리 모델(Karplus-Strong) 기타 음원 사용 중 (클릭하면 피아노 가이드 음원으로 전환)'
-      : '기존음원(피아노 가이드 톤) 사용 중 (클릭하면 물리 모델 기타 음원으로 전환)';
+      ? '기타 음원(Karplus-Strong 물리 모델) 사용 중 (클릭하면 피아노 음원으로 전환)'
+      : '피아노 음원(가이드 톤) 사용 중 (클릭하면 기타 음원으로 전환)';
     if ($('#toggleFxBtn')){
       var isFx = !!appState.acousticFx;
       $('#toggleFxBtn').setAttribute('data-active', String(isFx));
