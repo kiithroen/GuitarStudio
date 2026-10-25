@@ -1041,6 +1041,16 @@ function curCapo(){
           if (sys.bars.length < 10){ sys.bars.push({ chord: '', note: '', memo: '', w: 1 }); syncAfterImageGridChange(); }
         });
 
+        var detectB = document.createElement('button');
+        detectB.type = 'button';
+        detectB.textContent = '마디 감지';
+        detectB.title = '이 줄 안에서 마디선을 자동으로 감지합니다';
+        detectB.style.cssText = 'border:0;background:rgba(0,0,0,.35);color:#fff;border-radius:3px;padding:1px 6px;font-size:11px';
+        detectB.addEventListener('click', function(e){
+          e.stopPropagation();
+          triggerDetectBarlines(sysIdx);
+        });
+
         var eqB = document.createElement('button');
         eqB.type = 'button';
         eqB.textContent = '균등 간격';
@@ -1050,6 +1060,16 @@ function curCapo(){
           e.stopPropagation();
           sys.bars.forEach(function(b){ b.w = 1; });
           syncAfterImageGridChange();
+        });
+
+        var cloneSys = document.createElement('button');
+        cloneSys.type = 'button';
+        cloneSys.textContent = '줄 복제';
+        cloneSys.title = '이 줄의 크기와 마디 구조를 복사하여 아래에 새 줄을 추가합니다';
+        cloneSys.style.cssText = 'border:0;background:rgba(0,0,0,.35);color:#fff;border-radius:3px;padding:1px 6px;font-size:11px';
+        cloneSys.addEventListener('click', function(e){
+          e.stopPropagation();
+          duplicateSystem(sysIdx);
         });
 
         var delSys = document.createElement('button');
@@ -1064,7 +1084,9 @@ function curCapo(){
 
         lbl.appendChild(minusB);
         lbl.appendChild(plusB);
+        lbl.appendChild(detectB);
         lbl.appendChild(eqB);
+        lbl.appendChild(cloneSys);
         lbl.appendChild(delSys);
         box.appendChild(lbl);
 
@@ -2223,14 +2245,66 @@ function curCapo(){
     renderImageSystemsOverlay();
   });
 
+  function duplicateSystem(sysIdx){
+    if (!curSong || curSong.type !== 'image' || !curSong.systems[sysIdx]) return;
+    var orig = curSong.systems[sysIdx];
+    var systems = curSong.systems;
+    var stepY = orig.h + Math.max(0.02, orig.h * 0.15);
+    if (systems.length > 1){
+      if (sysIdx < systems.length - 1){
+        var gap = systems[sysIdx + 1].y - orig.y;
+        if (gap > orig.h * 0.5) stepY = gap;
+      } else if (sysIdx > 0){
+        var gapPrev = orig.y - systems[sysIdx - 1].y;
+        if (gapPrev > orig.h * 0.5) stepY = gapPrev;
+      }
+    }
+    var newY = Math.max(0.02, Math.min(0.98 - orig.h, +(orig.y + stepY).toFixed(4)));
+    var clonedBars = orig.bars.map(function(b){
+      return { chord: '', note: '', memo: '', w: (typeof b.w === 'number' && b.w > 0 ? b.w : 1) };
+    });
+    var newSys = {
+      x: orig.x,
+      y: newY,
+      w: orig.w,
+      h: orig.h,
+      bars: clonedBars
+    };
+    curSong.systems.splice(sysIdx + 1, 0, newSys);
+    syncAfterImageGridChange();
+  }
+
   $('#addSystemRowBtn').addEventListener('click', function(){
     if (!curSong || curSong.type !== 'image') return;
-    var n = curSong.systems.length;
-    var nextY = Math.min(0.80, 0.12 + n * 0.22);
-    curSong.systems.push({
-      x: 0.10, y: nextY, w: 0.70, h: 0.20,
-      bars: new Array(4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; })
-    });
+    var systems = curSong.systems;
+    var n = systems.length;
+    if (n > 0){
+      var last = systems[n - 1];
+      var stepY = last.h + Math.max(0.02, last.h * 0.15);
+      if (n >= 2){
+        var stride = last.y - systems[n - 2].y;
+        if (stride >= last.h * 0.6) stepY = stride;
+      }
+      var nextY = Math.max(0.02, Math.min(0.98 - last.h, +(last.y + stepY).toFixed(4)));
+      var clonedBars = last.bars.map(function(b){
+        return { chord: '', note: '', memo: '', w: (typeof b.w === 'number' && b.w > 0 ? b.w : 1) };
+      });
+      systems.push({
+        x: last.x,
+        y: nextY,
+        w: last.w,
+        h: last.h,
+        bars: clonedBars
+      });
+    } else {
+      systems.push({
+        x: 0.08,
+        y: 0.12,
+        w: 0.84,
+        h: 0.18,
+        bars: new Array(4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; })
+      });
+    }
     syncAfterImageGridChange();
   });
 
@@ -2296,11 +2370,12 @@ function curCapo(){
     updateActiveCursor(targetBar.globalIdx, 0, true);
   });
 
-  // ---------- 이미지에서 마디 경계만 자동 감지
-  $('#autoDetectBarsBtn').addEventListener('click', async function(){
-    if (!curSong || curSong.type !== 'image' || !curSong.systems.length) return;
+  // ---------- 이미지에서 마디 경계 감지 (단일 줄)
+  async function triggerDetectBarlines(sysIdx){
+    if (!curSong || curSong.type !== 'image' || !curSong.systems || !curSong.systems.length) return;
     var targetSong = curSong;
-    var targetSysIdx = 0;
+    var targetSysIdx = typeof sysIdx === 'number' ? sysIdx : (selectedImgBar ? selectedImgBar.sysIdx : 0);
+    if (targetSysIdx < 0 || targetSysIdx >= targetSong.systems.length) targetSysIdx = 0;
     var targetSys = targetSong.systems[targetSysIdx];
     var targetImage = targetSong.imageDataUrl;
     var targetSysSnapshot = JSON.stringify(targetSys);
@@ -2336,6 +2411,43 @@ function curCapo(){
       alert('마디선을 감지하지 못했습니다. 줄 영역 위치를 조절한 뒤 다시 시도하세요.');
     } catch (error){
       alert('마디 영역을 분석하지 못했습니다. 이미지와 줄 영역 위치를 확인하세요.');
+    }
+  }
+
+  $('#autoDetectBarsBtn').addEventListener('click', function(){
+    var idx = selectedImgBar ? selectedImgBar.sysIdx : 0;
+    triggerDetectBarlines(idx);
+  });
+
+  // ---------- 악보 전체 오선 줄 및 마디선 자동 감지
+  $('#autoDetectAllBtn').addEventListener('click', async function(){
+    if (!curSong || curSong.type !== 'image' || !curSong.imageDataUrl) return;
+    var targetSong = curSong;
+    var targetImage = targetSong.imageDataUrl;
+    var oldSystems = targetSong.systems || [];
+    var hasManualData = oldSystems.some(function(sys){
+      return (sys.bars || []).some(function(b){ return !!(b && (b.chord || b.note || b.memo)); });
+    });
+    if (hasManualData && !confirm('기존에 입력된 코드나 메모가 있습니다. 전체 자동 감지 결과로 교체하시겠습니까?')){
+      return;
+    }
+    try {
+      var scanFn = (typeof GuitarImageAnalysis !== 'undefined' && GuitarImageAnalysis.scanScoreSystems) || window.scanScoreSystems;
+      if (!scanFn){
+        alert('이미지 분석 모듈을 불러올 수 없습니다.');
+        return;
+      }
+      var detected = await scanFn(targetImage);
+      if (curSong !== targetSong || targetSong.imageDataUrl !== targetImage) return;
+      if (detected && detected.length > 0){
+        targetSong.systems = detected;
+        syncAfterImageGridChange();
+        alert(detected.length + '개의 악보 줄을 자동으로 감지했습니다.');
+      } else {
+        alert('오선 줄을 감지하지 못했습니다. 수동으로 줄을 추가해 주세요.');
+      }
+    } catch (err){
+      alert('악보 이미지를 분석하지 못했습니다. 이미지와 해상도를 확인하세요.');
     }
   });
   // ---------- 이미지/PDF 악보 삭제

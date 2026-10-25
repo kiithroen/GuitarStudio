@@ -36,6 +36,50 @@ async function main(){
     assert.equal(boundaries.every(function(value){ return typeof value === 'number'; }), true);
     checks++;
     process.stdout.write('ok ' + checks + ' - image analysis returns only detected barline coordinates\n');
+
+    // 2. 다중 줄 악보 자동 감지 (scanScoreSystems) 테스트
+    const w2 = 400, h2 = 200;
+    const pixels2 = new Uint8ClampedArray(w2 * h2 * 4);
+    pixels2.fill(255);
+    function drawHorizLine(y, xStart, xEnd){
+      for (let x = xStart; x <= xEnd; x++){
+        const idx = (y * w2 + x) * 4;
+        pixels2[idx] = pixels2[idx + 1] = pixels2[idx + 2] = 0;
+      }
+    }
+    function drawVertLine(x, yStart, yEnd){
+      for (let y = yStart; y <= yEnd; y++){
+        const idx = (y * w2 + x) * 4;
+        pixels2[idx] = pixels2[idx + 1] = pixels2[idx + 2] = 0;
+      }
+    }
+    // 줄 1: 5개 오선 (y=28, 32, 36, 40, 44), 마디선 (x=40, 140, 240, 340)
+    [28, 32, 36, 40, 44].forEach(y => drawHorizLine(y, 40, 340));
+    [40, 140, 240, 340].forEach(x => drawVertLine(x, 28, 44));
+
+    // 줄 2: 5개 오선 (y=128, 132, 136, 140, 144), 마디선 (x=40, 140, 240, 340)
+    [128, 132, 136, 140, 144].forEach(y => drawHorizLine(y, 40, 340));
+    [40, 140, 240, 340].forEach(x => drawVertLine(x, 128, 144));
+
+    global.Image = class FakeImage2 {
+      set src(value){ this._src = value; this.naturalWidth = w2; this.naturalHeight = h2; this.onload(); }
+    };
+    global.document = { createElement: function(){
+      return {
+        getContext: function(){ return {
+          drawImage: function(){},
+          getImageData: function(){ return { data: pixels2 }; }
+        }; }
+      };
+    } };
+
+    const detectedSystems = await imageAnalysis.scanScoreSystems('synthetic-systems');
+    assert.equal(detectedSystems.length, 2, 'detects 2 staff systems from image');
+    assert.ok(detectedSystems[0].y < detectedSystems[1].y, 'systems are ordered vertically');
+    assert.equal(detectedSystems[0].bars.length, 3, 'first system has 3 detected measures');
+    assert.equal(detectedSystems[1].bars.length, 3, 'second system has 3 detected measures');
+    checks++;
+    process.stdout.write('ok ' + checks + ' - scanScoreSystems detects multi-system staff rows and barlines\n');
   } finally {
     if (originalImage === undefined) delete global.Image;
     else global.Image = originalImage;

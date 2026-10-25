@@ -7135,6 +7135,63 @@ async function main() {
     })()`);
     assert.deepEqual(imageScanSafety, { staleIgnored:true, metadataPreserved:true, countMismatchProtected:true, sameCountAlert:true, mismatchAlert:true }, 'image barline scan ignores stale results and preserves manual metadata');
 
+    const imageUsability = await cdp.evaluate(`(async function(){
+      var savedSong = curSong;
+      var savedScanScoreSystems = window.GuitarImageAnalysis && window.GuitarImageAnalysis.scanScoreSystems;
+      var alerts = [];
+      var savedAlert = window.alert;
+      window.alert = function(msg){ alerts.push(String(msg)); };
+
+      var customSong = {
+        id:'browser-image-usability-test',
+        title:'Image usability',
+        type:'image',
+        imageDataUrl:'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
+        systems:[{
+          x: 0.15, y: 0.10, w: 0.72, h: 0.14,
+          bars:[{ chord:'Am', note:'A3', memo:'first', w:1.8 }, { chord:'', note:'', memo:'', w:0.6 }]
+        }]
+      };
+      curSong = customSong;
+      renderSong();
+
+      // 1. 새 줄 추가 시 직전 줄의 크기/위치 및 마디 구성 상속
+      document.getElementById('addSystemRowBtn').click();
+      var sys1 = customSong.systems[0];
+      var sys2 = customSong.systems[1];
+      var rowInherited = customSong.systems.length === 2 &&
+        sys2.x === sys1.x && sys2.w === sys1.w && sys2.h === sys1.h &&
+        sys2.bars.length === 2 && sys2.bars[0].w === 1.8 && sys2.bars[1].w === 0.6 &&
+        sys2.bars[0].chord === '' && sys2.y >= sys1.y + sys1.h;
+
+      // 2. 줄 복제 버튼 클릭
+      var cloneBtn = document.querySelector('.sys-box[data-sys="0"] button[title*="복사"]');
+      if (cloneBtn) cloneBtn.click();
+      var duplicated = customSong.systems.length === 3 &&
+        customSong.systems[1].x === sys1.x && customSong.systems[1].w === sys1.w &&
+        customSong.systems[1].bars.length === 2;
+
+      // 3. 전체 자동 감지 버튼 클릭
+      window.GuitarImageAnalysis.scanScoreSystems = function(){
+        return Promise.resolve([
+          { x: 0.08, y: 0.12, w: 0.84, h: 0.15, bars: [{ chord:'', note:'', memo:'', w:1 }] },
+          { x: 0.08, y: 0.35, w: 0.84, h: 0.15, bars: [{ chord:'', note:'', memo:'', w:1 }] }
+        ]);
+      };
+      window.confirm = function(){ return true; };
+      document.getElementById('autoDetectAllBtn').click();
+      await new Promise(function(resolve){ setTimeout(resolve, 30); });
+      var autoDetected = customSong.systems.length === 2 && alerts.some(function(m){ return m.indexOf('자동으로 감지') >= 0; });
+
+      window.alert = savedAlert;
+      if (savedScanScoreSystems) window.GuitarImageAnalysis.scanScoreSystems = savedScanScoreSystems;
+      curSong = savedSong;
+      renderSong();
+
+      return { rowInherited: rowInherited, duplicated: duplicated, autoDetected: autoDetected };
+    })()`);
+    assert.deepEqual(imageUsability, { rowInherited: true, duplicated: true, autoDetected: true }, 'image score row inheritance, duplication, and auto-detection work as expected');
+
     const imageLifecycle = await cdp.evaluate(`(async function(){
       var oldPrompt = window.prompt;
       var oldSave = window.dbSaveImageSong;
