@@ -2520,53 +2520,84 @@ function curCapo(){
     });
   }
 
-  $('#exportJsonBtn').addEventListener('click', async function(){
-    var songs;
-    try { songs = await dbGetImageSongs(); }
-    catch (error){ reportStorageError(error); return; }
-    var payload = {
+  async function buildBackupPayload(){
+    var songs = await dbGetImageSongs();
+    return {
       version: 1,
       exportedAt: new Date().toISOString(),
       appState: safeAppStateForPersistence(),
       customSongs: songs
     };
-    var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'guitar-studio-backup-' + new Date().toISOString().slice(0, 10) + '.json';
-    a.click();
-    URL.revokeObjectURL(a.href);
-  });
+  }
 
-  $('#importJsonBtn').addEventListener('click', function(){ $('#importFileInput').click(); });
-  $('#importFileInput').addEventListener('change', function(e){
-    var f = e.target.files && e.target.files[0];
-    if (!f) return;
-    var fr = new FileReader();
-    fr.onload = async function(){
-      var data;
-      try {
-        data = JSON.parse(fr.result);
-        if (!data || typeof data !== 'object' || (data.customSongs != null && !Array.isArray(data.customSongs))) throw new Error('Invalid backup format');
-      } catch (err){
-        alert('백업 파일 형식이 올바르지 않습니다.');
-        return;
+  async function restoreBackupData(data){
+    if (!data || typeof data !== 'object' || (data.customSongs != null && !Array.isArray(data.customSongs))){
+      throw new Error('백업 파일 형식이 올바르지 않습니다.');
+    }
+    if (Array.isArray(data.customSongs)){
+      for (var i = 0; i < data.customSongs.length; i++){
+        if (data.customSongs[i] && data.customSongs[i].type === 'image') await dbSaveImageSong(data.customSongs[i]);
       }
+    }
+    if (data.appState) ls.set('gs.state', stripRemovedAudioSettings(data.appState));
+    clearStorageError();
+    location.reload();
+  }
+
+  if ($('#exportJsonBtn')){
+    $('#exportJsonBtn').addEventListener('click', async function(){
       try {
-        if (Array.isArray(data.customSongs)){
-          for (var i = 0; i < data.customSongs.length; i++){
-            if (data.customSongs[i] && data.customSongs[i].type === 'image') await dbSaveImageSong(data.customSongs[i]);
-          }
+        var payload = await buildBackupPayload();
+        var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'guitar-studio-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } catch (error){
+        reportStorageError(error);
+      }
+    });
+  }
+
+  if ($('#importJsonBtn')){
+    $('#importJsonBtn').addEventListener('click', function(){ $('#importFileInput').click(); });
+  }
+  if ($('#importFileInput')){
+    $('#importFileInput').addEventListener('change', function(e){
+      var f = e.target.files && e.target.files[0];
+      if (!f) return;
+      var fr = new FileReader();
+      fr.onload = async function(){
+        var data;
+        try {
+          data = JSON.parse(fr.result);
+        } catch (err){
+          alert('백업 파일 형식이 올바르지 않습니다.');
+          return;
         }
-        if (data.appState) ls.set('gs.state', stripRemovedAudioSettings(data.appState));
-        clearStorageError();
-        location.reload();
-      } catch (err){
-        reportStorageError(err);
-      }
-    };
-    fr.readAsText(f);
-  });
+        try {
+          await restoreBackupData(data);
+        } catch (err){
+          if (err && err.message === '백업 파일 형식이 올바르지 않습니다.') alert(err.message);
+          else reportStorageError(err);
+        }
+      };
+      fr.readAsText(f);
+    });
+  }
+
+  if (typeof initGoogleDriveSyncUI === 'function'){
+    initGoogleDriveSyncUI({
+      getBackupPayload: buildBackupPayload,
+      restoreBackupPayload: restoreBackupData
+    });
+  } else if (typeof GuitarDriveSync !== 'undefined' && typeof GuitarDriveSync.initGoogleDriveSyncUI === 'function'){
+    GuitarDriveSync.initGoogleDriveSyncUI({
+      getBackupPayload: buildBackupPayload,
+      restoreBackupPayload: restoreBackupData
+    });
+  }
 
   // ---------- 초기화 및 곡 목록 구성
   function currentDraftOnlySongs(){
