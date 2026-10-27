@@ -30,7 +30,7 @@
   var els = {
     title: byId('atTitle'), play: byId('atPlayBtn'), rewind: byId('atRewindBtn'),
     bpm: byId('atBpmRange'), bpmValue: byId('atBpmValue'), view: byId('atViewSelect'), status: byId('atStatus'), host: byId('atHost'), source: byId('atSource'),
-    click: byId('atClickToggle'), clickVol: byId('atClickVolRange'), guitarVol: byId('atGuitarVolRange'), pages: byId('atPagesBtn'),
+    loop: byId('atLoopToggle'), click: byId('atClickToggle'), clickVol: byId('atClickVolRange'), guitarVol: byId('atGuitarVolRange'), pages: byId('atPagesBtn'),
     zoom: byId('atZoom'), zoomOut: byId('atZoomOutBtn'), zoomIn: byId('atZoomInBtn'), zoomValue: byId('atZoomValue')
   };
 
@@ -315,6 +315,7 @@
       api.masterVolume = PLAYBACK_MASTER_VOLUME;
       api.metronomeVolume = level;
       api.countInVolume = level;
+      if (els.loop) api.isLooping = !!els.loop.checked;
       if (api.score){
         // alphaTab 은 플레이어가 준비되면 트랙마다 악보에 적힌 음량(playbackInfo.volume / 16)을 채널 음량으로 준다. 연주음 100% 는 그 기본값이라야 마스터 음량 보정이 그대로 맞는다.
         api.score.tracks.forEach(function(track){
@@ -433,6 +434,12 @@
       }
     });
     els.bpm.addEventListener('input', applyBpm);
+    if (els.loop){
+      els.loop.addEventListener('change', function(){
+        api.isLooping = !!els.loop.checked;
+        els.loop.blur();
+      });
+    }
     els.click.addEventListener('change', function(){
       prefs.click = els.click.checked;
       savePrefs();
@@ -467,12 +474,17 @@
       els.view.blur();
     });
     document.addEventListener('keydown', function(event){
-      if (event.code !== 'Space' && event.key !== ' ') return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       var tag = event.target && event.target.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
-      event.preventDefault();
-      togglePlay();
+      if (event.code === 'Space' || event.key === ' '){
+        event.preventDefault();
+        togglePlay();
+      } else if ((event.key === 'r' || event.key === 'R' || event.key === 'ㄱ') && els.loop){
+        event.preventDefault();
+        els.loop.checked = !els.loop.checked;
+        api.isLooping = !!els.loop.checked;
+      }
     });
 
     // 시스템 색 구성이 바뀌면 색 토큰을 다시 읽어 그린다.

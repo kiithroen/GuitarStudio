@@ -5525,7 +5525,7 @@ async function testAlphaTabView(client, httpPort) {
   assert.equal(drawn.playEnabled && drawn.rewindEnabled, true, 'play and rewind are enabled once ready');
   assert.equal(drawn.playText, '재생');
   assert.equal(drawn.noSpeedSelect, true, 'the speed select is replaced by the BPM slider');
-  assert.equal(drawn.order, 'atPlayBtn,atRewindBtn,atBpmRange,atViewSelect,atPagesBtn,atZoomOutBtn,atZoomInBtn,atClickToggle,atClickVolRange,atGuitarVolRange', 'controls are in the order play, rewind, BPM, view, two pages, zoom out, zoom in, click, click volume, guitar volume');
+  assert.equal(drawn.order, 'atPlayBtn,atRewindBtn,atBpmRange,atViewSelect,atPagesBtn,atZoomOutBtn,atZoomInBtn,atLoopToggle,atClickToggle,atClickVolRange,atGuitarVolRange', 'controls are in the order play, rewind, BPM, view, two pages, zoom out, zoom in, loop, click, click volume, guitar volume');
   const butterflyExpected = expectedBpmSlider(handoff.stored.bpm, handoff.stored.practiceBpm);
   assert.deepEqual(drawn.bpm, { min: butterflyExpected.min, max: butterflyExpected.max, value: butterflyExpected.value, text: bpmText(butterflyExpected.value, handoff.stored.bpm), disabled: false, speed: butterflyExpected.value / handoff.stored.bpm }, 'the BPM slider starts at the practice BPM with the song-BPM ratio range');
   assert.equal(drawn.views, '오선+타브,타브,오선');
@@ -5821,7 +5821,7 @@ async function testAlphaTabControls(client, httpPort) {
   }
   const soundFacts = () => client.evaluate(`(function(){
     var api = window.__alphaTabApi;
-    return { click: document.getElementById('atClickToggle').checked, clickVol: Number(document.getElementById('atClickVolRange').value), guitarVol: Number(document.getElementById('atGuitarVolRange').value),
+    return { loop: document.getElementById('atLoopToggle').checked, isLooping: !!api.isLooping, click: document.getElementById('atClickToggle').checked, clickVol: Number(document.getElementById('atClickVolRange').value), guitarVol: Number(document.getElementById('atGuitarVolRange').value),
       metronome: api.metronomeVolume, countIn: api.countInVolume, master: api.masterVolume, guitar: document.body.getAttribute('data-at-guitar-volume'), stored: localStorage.getItem(${JSON.stringify(PREFS_KEY)}) };
   })()`);
   const near = (a, b) => Math.abs(a - b) < 1e-9;
@@ -5843,11 +5843,17 @@ async function testAlphaTabControls(client, httpPort) {
   assert.deepEqual(await client.evaluate('window.__storageWrites'), [], 'opening the view (storage.js and app-state.js included) writes nothing to localStorage');
   assert.equal(await client.evaluate(`localStorage.getItem('gs.state')`), null, 'the view does not write the practice screen state');
   let facts = await soundFacts();
-  assert.deepEqual([facts.click, facts.clickVol, facts.guitarVol], [true, 100, 100], 'the controls start with click on, 100% and 100%');
+  assert.deepEqual([facts.loop, facts.isLooping, facts.click, facts.clickVol, facts.guitarVol], [false, false, true, 100, 100], 'the controls start with loop off, click on, 100% and 100%');
   assert.ok(near(facts.metronome, metronomeBase) && near(facts.countIn, metronomeBase), 'click and count-in volumes are METRONOME_BASE_VOLUME at 100%: ' + JSON.stringify(facts));
   assert.ok(near(facts.master, masterVolume), 'the master volume stays PLAYBACK_MASTER_VOLUME');
   assert.equal(facts.guitar, '1');
   assert.equal(facts.stored, null, 'nothing is stored until a control changes');
+  await fire('atLoopToggle', { checked: true }, 'change');
+  facts = await soundFacts();
+  assert.deepEqual([facts.loop, facts.isLooping, facts.stored], [true, true, null], 'turning loop on sets api.isLooping without writing prefs');
+  await client.evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', code: 'KeyR', bubbles: true, cancelable: true })); true`);
+  facts = await soundFacts();
+  assert.deepEqual([facts.loop, facts.isLooping, facts.stored], [false, false, null], 'pressing R toggles loop off without writing prefs');
   const labels = await client.evaluate(`(function(){ var l = function(id){ return document.getElementById(id).closest('label'); }; return { click: l('atClickToggle').textContent.trim(), clickVol: l('atClickVolRange').textContent.trim(), guitarVol: l('atGuitarVolRange').textContent.trim(), clickTitle: !!l('atClickVolRange').title, guitarTitle: !!l('atGuitarVolRange').title, width: [document.getElementById('atClickVolRange'), document.getElementById('atGuitarVolRange')].map(function(n){ return Math.round(n.getBoundingClientRect().width); }) }; })()`);
   assert.deepEqual([labels.click, labels.clickVol, labels.guitarVol, labels.clickTitle, labels.guitarTitle], ['클릭', '클릭음', '연주음', true, true], 'labels are 클릭, 클릭음, 연주음 with tooltips and no value text');
   assert.deepEqual(labels.width, [68, 68], 'the volume sliders are as narrow as on the practice screen');

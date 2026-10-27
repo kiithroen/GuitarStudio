@@ -51,13 +51,14 @@ alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. �
 
 1. 연습 화면 머리의 `alphaTab` 단추(`#openAlphaTabBtn`, `단축키 안내` 옆, 구조화 곡일 때만 보인다)를 누른다. 지금 곡(수정 초안이면 초안 내용)을 localStorage `gs.alphaTab.view`에 `{ title, beats, bpm, capo, description, lines, savedAt }`로 넣고 `alphatab.html`을 새 탭으로 연다. `description`은 곡의 `badge`(시트 설명 열)다. 곡에 원본 `alphaTex`가 있고 고친 초안이 아니면(`scoreDrafts.status`의 `dirty`·`temporary`가 모두 거짓이면) `alphaTex`도 넣는다. 연습은 멈추지 않는다.
 2. 보기 창은 그 값을 읽어 그린다. `alphaTex`가 있으면 변환하지 않고 그대로 읽어 그리며 머리의 작은 꼬리표(`#atSource`)에 `원본 alphaTex`가 보인다. 없으면 우리 악보를 변환해 그리고 꼬리표는 `우리 악보에서 만든 미리보기`다. 원본 alphaTex를 alphaTab이 읽지 못하면 상태 줄에 알리고 변환 미리보기로 대신 그린다. 값을 지우지 않아서 새로고침해도 같은 곡이다. 값이 없거나 모양이 틀리면 상태 줄에 안내만 한다. 변환이나 alphaTab 읽기가 실패하면 이유를 상태 줄에 보인다.
-3. 조작은 머리 한 줄에 있다: 곡 제목, `재생`/`일시정지`(Space), `처음으로`, `BPM` 슬라이더, 보기(`오선+타브`·`타브`·`오선`), `두 쪽`(가로 화면에서만 보인다), `−`·`+`(두 쪽 보기에서만 보인다), `클릭` 체크, `클릭음`·`연주음` 슬라이더, 상태 줄. 보기를 바꾸면 다시 그린다. 컨트롤은 이 순서로 놓고 슬라이더는 연습 화면처럼 좁다.
+3. 조작은 머리 한 줄에 있다: 곡 제목, `재생`/`일시정지`(Space), `처음으로`, `BPM` 슬라이더, 보기(`오선+타브`·`타브`·`오선`), `두 쪽`(가로 화면에서만 보인다), `−`·`+`(두 쪽 보기에서만 보인다), `반복`(단축키 `R`/`ㄱ`), `클릭` 체크, `클릭음`·`연주음` 슬라이더, 상태 줄. 보기를 바꾸면 다시 그린다. 컨트롤은 이 순서로 놓고 슬라이더는 연습 화면처럼 좁다.
 
 | 컨트롤 | 범위 | 처음 값 | 저장 | alphaTab에 주는 값 |
 |---|---|---|---|---|
 | `BPM` | 곡 BPM의 `BPM_RATIO_MIN`~`BPM_RATIO_MAX`배, 1 단위 | 연습 화면이 열 때 쓰던 BPM(`practiceBpm`). 범위 밖이거나 없으면 곡 BPM | 안 한다. 열 때마다 처음 값 | `api.playbackSpeed` = 값 / 곡 BPM |
 | `두 쪽` | 켬/끔 | 끔 | `gs.alphaTab.prefs` | 없음. [두 쪽 보기](#두-쪽-보기) |
 | `−`·`+` | 두 쪽 보기 배율 `TWO_PAGE_MIN_SCALE`~`TWO_PAGE_MAX_SCALE`, `TWO_PAGE_SCALE_STEP` 단위 | `TWO_PAGE_DEFAULT_SCALE` | `gs.alphaTab.prefs` | 두 인스턴스의 `display.scale` |
+| `반복` | 켬/끔 | 끔 | 안 한다. 열 때마다 끔 | `api.isLooping` (악보에서 마우스로 드래그해 구간을 선택하면 그 구간만, 없으면 곡 전체를 반복 재생한다) |
 | `클릭` | 켬/끔 | 켬 | `gs.alphaTab.prefs` | `api.metronomeVolume`·`api.countInVolume` |
 | `클릭음` | 0~200%, 5 단위 | 100% | `gs.alphaTab.prefs` | `METRONOME_BASE_VOLUME` × 클릭음 |
 | `연주음` | 0~100%, 5 단위 | 100% | `gs.alphaTab.prefs` | 트랙 음량(`api.changeTrackVolume`) |
