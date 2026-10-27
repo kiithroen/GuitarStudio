@@ -2507,6 +2507,33 @@ async function testScoreInputScreen(client, httpPort) {
   assert.equal(measurePlay.first.maxDurationSlots, 4, 'first beat has 4 remaining slots in the measure');
   assert.equal(measurePlay.last.maxDurationSlots, 1, 'last beat has 1 remaining slot in the measure');
 
+  // 2c. 마디 중반 코드 입력 (.ti-cell-chord-input 및 .ti-cell-chord 배지)
+  const midChordUi = await client.evaluate(`(function(){
+    var card = document.querySelector('#tiMeasures .ti-measure[data-m="0"]');
+    var chordIn = card.querySelector('.ti-chord');
+    var cellIn = card.querySelector('.ti-cell-chord-input');
+    chordIn.value = 'Am';
+    chordIn.dispatchEvent(new Event('input', { bubbles:true }));
+    chordIn.dispatchEvent(new Event('change', { bubbles:true }));
+    card.querySelector('.ti-cell-head[data-c="2"]').click();
+    var ph = cellIn.placeholder;
+    cellIn.value = 'G7';
+    cellIn.dispatchEvent(new Event('input', { bubbles:true }));
+    cellIn.dispatchEvent(new Event('change', { bubbles:true }));
+    var badge = card.querySelector('.ti-cell-head[data-c="2"] .ti-cell-chord');
+    var lineWithMid = __tiTest.text().split('\\n')[0];
+    var syncedChord = chordIn.value;
+    // 원상 복구
+    chordIn.value = '';
+    chordIn.dispatchEvent(new Event('input', { bubbles:true }));
+    chordIn.dispatchEvent(new Event('change', { bubbles:true }));
+    return { ph: ph, badge: badge ? badge.textContent : null, lineWithMid: lineWithMid, syncedChord: syncedChord };
+  })()`);
+  assert.equal(midChordUi.ph, '3칸 코드', 'clicking beat 3 updates the cell chord input placeholder to 3칸 코드');
+  assert.equal(midChordUi.syncedChord, 'Am, 3:G7', 'typing G7 in 3칸 코드 updates the measure chord input to Am, 3:G7');
+  assert.equal(midChordUi.badge, 'G7', 'beat 3 cell head shows the mid-measure chord badge G7');
+  assert.ok(midChordUi.lineWithMid.startsWith('[Am, 3:G7] '), 'score line starts with [Am, 3:G7]');
+
   // 3. 칸 나누기, 운지, 확인 표시
   await client.evaluate(`(function(){ var t = __tiTest; document.querySelector('.ti-cell-head[data-c="0"]').click(); t.id('tiDiv2').click(); t.pos(0,0,1,1).click(); t.fret(1,0).click(); return true; })()`);
   assert.equal(await firstLine(), '[-] E2@6/E4@1 G2@6 E3@6 r | ""', 'dividing a cell and filling the second slot makes a slash token');

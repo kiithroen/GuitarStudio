@@ -409,6 +409,48 @@
     return { ok: true };
   }
 
+  function getCellChord(doc, m, c){
+    var measure = doc && doc.measures && doc.measures[m];
+    if (!measure || !isInt(c) || c < 0 || c >= measure.cells.length) return '';
+    var raw = String(measure.chord == null ? '' : measure.chord).trim();
+    if (!raw || raw === '-') return '';
+    var parts = raw.split(',');
+    var found = '';
+    for (var i = 0; i < parts.length; i++){
+      var part = parts[i].trim();
+      if (!part) continue;
+      var match = /^(\d+)\s*:\s*(.*)$/.exec(part);
+      var beatIdx = -1;
+      var name = '';
+      if (match){
+        beatIdx = Number(match[1]) - 1;
+        name = match[2].trim();
+      } else if (i === 0){
+        beatIdx = 0;
+        name = part;
+      }
+      if (beatIdx === c) found = name === '-' ? '' : name;
+    }
+    return found;
+  }
+
+  function setCellChord(doc, m, c, text){
+    var measure = doc && doc.measures && doc.measures[m];
+    if (!measure) throw new Error('올바르지 않은 마디입니다: ' + m);
+    if (!isInt(c) || c < 0 || c >= measure.cells.length) throw new Error('올바르지 않은 칸입니다: 마디 ' + m + ', 칸 ' + c);
+    if (typeof text !== 'string') throw new Error('코드는 문자열이어야 합니다.');
+    var nextVal = text.trim();
+    if (nextVal === '-') nextVal = '';
+    var parts = [];
+    for (var i = 0; i < measure.cells.length; i++){
+      var chord = i === c ? nextVal : getCellChord(doc, m, i);
+      if (!chord) continue;
+      parts.push(i === 0 ? chord : (i + 1) + ':' + chord);
+    }
+    measure.chord = parts.join(', ');
+    return { ok: true };
+  }
+
   function setMeasureMemo(doc, m, text){
     if (!doc.measures[m]) throw new Error('올바르지 않은 마디입니다: ' + m);
     if (typeof text !== 'string') throw new Error('메모는 문자열이어야 합니다.');
@@ -866,7 +908,7 @@
     setSkip: setSkip, isSkipCell: isSkipCell,
     setNote: setNote, removeNote: removeNote, toggleNote: toggleNote, setNoteAttrs: setNoteAttrs,
     setRest: setRest, setRestUncertain: setRestUncertain, clearSlot: clearSlot, setRoll: setRoll, slotRollShown: slotRollShown, ROLL_ERROR: ROLL_ERROR,
-    setDivision: setDivision, setBeats: setBeats, setKey: setKey, setMeasureChord: setMeasureChord, setMeasureMemo: setMeasureMemo,
+    setDivision: setDivision, setBeats: setBeats, setKey: setKey, setMeasureChord: setMeasureChord, getCellChord: getCellChord, setCellChord: setCellChord, setMeasureMemo: setMeasureMemo,
     insertEmptyMeasure: insertEmptyMeasure, duplicateRange: duplicateRange, deleteRange: deleteRange,
     clearRange: clearRange, copyRange: copyRange, pasteAfter: pasteAfter,
     createHistory: createHistory,

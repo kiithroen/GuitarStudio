@@ -1249,4 +1249,29 @@ test('a document with only a skip cell counts as having content; copy and paste 
   assert.equal(doc.measures[0].cells[5].skip, false, 'padded cells are plain empty cells');
 });
 
+test('getCellChord and setCellChord read and write mid-measure chords in [Am, 3:G7] format', function(){
+  const doc = fresh();
+  assert.equal(ti.getCellChord(doc, 0, 0), '');
+  assert.equal(ti.getCellChord(doc, 0, 2), '');
+  ti.setCellChord(doc, 0, 0, 'Am');
+  assert.equal(doc.measures[0].chord, 'Am');
+  assert.equal(ti.getCellChord(doc, 0, 0), 'Am');
+  ti.setCellChord(doc, 0, 2, 'G7');
+  assert.equal(doc.measures[0].chord, 'Am, 3:G7');
+  assert.equal(ti.getCellChord(doc, 0, 0), 'Am');
+  assert.equal(ti.getCellChord(doc, 0, 1), '');
+  assert.equal(ti.getCellChord(doc, 0, 2), 'G7');
+  assert.equal(ti.docToScoreLines(doc)[0], '[Am, 3:G7] r r r r | ""');
+  assert.deepEqual(ti.validateDoc(doc).errors, []);
+  // 1칸 코드를 비우면 3:G7 만 남는다
+  ti.setCellChord(doc, 0, 0, '');
+  assert.equal(doc.measures[0].chord, '3:G7');
+  assert.equal(ti.getCellChord(doc, 0, 0), '');
+  assert.equal(ti.getCellChord(doc, 0, 2), 'G7');
+  // 3칸 코드도 비우면 빈 문자열이 된다
+  ti.setCellChord(doc, 0, 2, '-');
+  assert.equal(doc.measures[0].chord, '');
+  assert.equal(ti.docToScoreLines(doc)[0], '[-] r r r r | ""');
+});
+
 process.stdout.write('1..' + checks + '\n');

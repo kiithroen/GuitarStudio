@@ -37,8 +37,9 @@ textarea.ti-input{height:auto;padding:8px 10px;font-family:var(--font-num);font-
 .ti-measure-head{display:flex;align-items:center;gap:6px;min-width:0}
 .ti-measure-num{min-width:32px;height:28px;padding:0 6px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);font-family:var(--font-num);font-weight:700;font-size:13px}
 .ti-measure-num[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
-.ti-chord,.ti-memo{height:28px;min-width:0;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:13px}
-.ti-chord{flex:1 1 0;width:0;min-width:64px}
+.ti-chord,.ti-cell-chord-input,.ti-memo{height:28px;min-width:0;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:13px}
+.ti-chord{flex:1 1 0;width:0;min-width:56px}
+.ti-cell-chord-input{flex:.8 1 0;width:0;min-width:52px;font-size:12px}
 .ti-memo{display:block;width:0;min-width:100%}
 .ti-line{display:block;width:0;min-width:100%;font-family:var(--font-num);font-size:11.5px;line-height:1.45;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
 .ti-measure-error{display:block;width:0;min-width:100%;font-size:12px;font-weight:600;line-height:1.4;color:var(--off);overflow-wrap:anywhere}
@@ -65,8 +66,9 @@ textarea.ti-input{height:auto;padding:8px 10px;font-family:var(--font-num);font-
 .ti-cells{display:flex;border-left:2px solid var(--fg);border-right:2px solid var(--fg)}
 .ti-cell{flex:none;width:max(48px,calc(var(--d,1) * var(--sw,26px)))}
 .ti-cell + .ti-cell{border-left:1px solid var(--line)}
-.ti-cell-head{height:18px;line-height:18px;text-align:center;font-family:var(--font-num);font-size:10.5px;color:var(--muted);cursor:pointer;user-select:none}
+.ti-cell-head{height:18px;line-height:18px;text-align:center;font-family:var(--font-num);font-size:10.5px;color:var(--muted);cursor:pointer;user-select:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 2px}
 .ti-cell-head:hover{color:var(--accent)}
+.ti-cell-chord{margin-left:3px;font-weight:700;color:var(--accent)}
 .ti-slots{display:flex}
 .ti-slot{flex:1 1 0;min-width:0;position:relative;display:flex;flex-direction:column;scroll-margin:8px}
 .ti-slot + .ti-slot{border-left:1px dashed var(--line)}

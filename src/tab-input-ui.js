@@ -346,6 +346,36 @@
     else input.removeAttribute('title');
   }
 
+  function updateCellHeadLabel(cellHead, m, c, d){
+    cellHead.textContent = String(c + 1) + (d >= 2 ? ' ÷' + d : '');
+    var cText = T.getCellChord(doc, m, c);
+    if (c >= 1 && cText){
+      cellHead.appendChild(el('span', 'ti-cell-chord', cText));
+    }
+  }
+
+  function refreshCardChords(m){
+    var box = $('tiMeasures');
+    var card = box && box.children[m];
+    var measure = doc.measures[m];
+    if (!card || !measure) return;
+    var chordInput = card.querySelector('.ti-chord');
+    if (chordInput && document.activeElement !== chordInput) setValue(chordInput, measure.chord);
+    var cellInput = card.querySelector('.ti-cell-chord-input');
+    var activeCell = cursor.m === m && cursor.c < measure.cells.length ? cursor.c : Number(cellInput && cellInput.dataset.c || 0);
+    if (activeCell < 0 || activeCell >= measure.cells.length) activeCell = 0;
+    if (cellInput){
+      cellInput.dataset.c = String(activeCell);
+      cellInput.placeholder = (activeCell + 1) + '칸 코드';
+      cellInput.setAttribute('aria-label', (m + 1) + '마디 ' + (activeCell + 1) + '칸 코드');
+      if (document.activeElement !== cellInput) setValue(cellInput, T.getCellChord(doc, m, activeCell));
+    }
+    var heads = card.querySelectorAll('.ti-cell-head');
+    for (var c = 0; c < measure.cells.length; c++){
+      if (heads[c]) updateCellHeadLabel(heads[c], m, c, measure.cells[c].slots.length);
+    }
+  }
+
   function buildCard(m){
     var measure = doc.measures[m];
     var card = el('article', 'ti-measure');
@@ -363,8 +393,18 @@
     chord.setAttribute('aria-label', (m + 1) + '마디 코드');
     chord.autocomplete = 'off';
     lockCardInput(chord, ui.inputMode === 'text');
+    var activeCell = cursor.m === m && cursor.c < measure.cells.length ? cursor.c : 0;
+    var cellChord = el('input', 'ti-cell-chord-input');
+    cellChord.type = 'text';
+    cellChord.dataset.c = String(activeCell);
+    cellChord.placeholder = (activeCell + 1) + '칸 코드';
+    cellChord.value = T.getCellChord(doc, m, activeCell);
+    cellChord.setAttribute('aria-label', (m + 1) + '마디 ' + (activeCell + 1) + '칸 코드');
+    cellChord.autocomplete = 'off';
+    lockCardInput(cellChord, ui.inputMode === 'text');
     head.appendChild(num);
     head.appendChild(chord);
+    head.appendChild(cellChord);
     card.appendChild(head);
 
     var scroll = el('div', 'ti-staff-scroll');
@@ -387,8 +427,9 @@
       // 빈칸 칸(시간 0)은 연습 화면 박 셀과 같은 .slot-skip 으로 빗금을 그린다(src/base.css)
       if (cell.skip === true) cellEl.classList.add('slot-skip');
       cellEl.style.setProperty('--d', String(d));
-      var cellHead = el('div', 'ti-cell-head', String(c + 1) + (d >= 2 ? ' ÷' + d : ''));
+      var cellHead = el('div', 'ti-cell-head');
       cellHead.dataset.c = String(c);
+      updateCellHeadLabel(cellHead, m, c, d);
       cellEl.appendChild(cellHead);
       var slotsEl = el('div', 'ti-slots');
       cell.slots.forEach(function(slot, s){ slotsEl.appendChild(buildSlot(m, c, s, slot, cell.skip === true)); });
@@ -439,6 +480,7 @@
       (byMeasure[error.measure] = byMeasure[error.measure] || []).push(error.message);
     });
     for (var i = 0; i < cards.length; i++){
+      refreshCardChords(i);
       cards[i].querySelector('.ti-line').textContent = lines[i] == null ? '' : lines[i];
       var errorEl = cards[i].querySelector('.ti-measure-error');
       var messages = byMeasure[i + 1];
@@ -535,6 +577,7 @@
     }
 
     placeStaffCursor(slotEl);
+    refreshCardChords(cursor.m);
 
     var slot = T.getSlot(doc, cursor);
     var division = doc.measures[cursor.m].cells[cursor.c].slots.length;
@@ -1200,7 +1243,7 @@
     // 텍스트 모드: 마디 추가 단추를 숨기고 카드 코드·메모 칸을 잠근다(선택 막대는 sel 이 없어 이미 숨는다)
     var text = mode === 'text';
     $('tiAddMeasureBtn').hidden = text;
-    Array.prototype.forEach.call($('tiMeasures').querySelectorAll('.ti-chord, .ti-memo'), function(input){ lockCardInput(input, text); });
+    Array.prototype.forEach.call($('tiMeasures').querySelectorAll('.ti-chord, .ti-cell-chord-input, .ti-memo'), function(input){ lockCardInput(input, text); });
     if (noteSel && !noteSelNote()) noteSel = null;
     refreshNoteMarks();
     if (!staff) return;
@@ -1961,26 +2004,39 @@
       apply(function(d){ return T.removeNote(d, next, next.str); }, { measures: [next.m] });
     });
 
+    box.addEventListener('dblclick', function(event){
+      if (ui.inputMode === 'text') return;
+      var head = event.target.closest('.ti-cell-head');
+      if (!head) return;
+      var card = head.closest('.ti-measure');
+      var cellInput = card && card.querySelector('.ti-cell-chord-input');
+      if (cellInput){
+        cellInput.focus();
+        cellInput.select();
+      }
+    });
+
     box.addEventListener('input', function(event){
       var input = event.target;
       var card = input.closest && input.closest('.ti-measure');
-      if (!card || !(input.classList.contains('ti-chord') || input.classList.contains('ti-memo'))) return;
+      if (!card || !(input.classList.contains('ti-chord') || input.classList.contains('ti-cell-chord-input') || input.classList.contains('ti-memo'))) return;
       if (!textSnapshot) textSnapshot = T.cloneDoc(doc);
       var m = Number(card.dataset.m);
       if (input.classList.contains('ti-chord')) T.setMeasureChord(doc, m, input.value);
+      else if (input.classList.contains('ti-cell-chord-input')) T.setCellChord(doc, m, Number(input.dataset.c || 0), input.value);
       else T.setMeasureMemo(doc, m, input.value);
       scheduleSave();
       refreshResults();
     });
     box.addEventListener('focusin', function(event){
       var input = event.target;
-      if (input.classList && (input.classList.contains('ti-chord') || input.classList.contains('ti-memo')) && !textSnapshot){
+      if (input.classList && (input.classList.contains('ti-chord') || input.classList.contains('ti-cell-chord-input') || input.classList.contains('ti-memo')) && !textSnapshot){
         textSnapshot = T.cloneDoc(doc);
       }
     });
     box.addEventListener('change', function(event){
       var input = event.target;
-      if (input.classList && (input.classList.contains('ti-chord') || input.classList.contains('ti-memo'))) commitText();
+      if (input.classList && (input.classList.contains('ti-chord') || input.classList.contains('ti-cell-chord-input') || input.classList.contains('ti-memo'))) commitText();
     });
   }
 
