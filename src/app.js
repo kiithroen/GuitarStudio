@@ -1988,11 +1988,38 @@ function curCapo(){
     });
   }
 
-  // 메인 화면 키보드 단축키 (Space: 연습 시작/정지, G: 소리 토글, F: 특수효과 토글, T: 타브 → 둘 다 → 오선 → 카드 보기 순환, P: 집중연습뷰, Home: 처음으로, Esc: 전체화면)
+  function stepMeasure(delta){
+    if (isPlaying || !curSong) return;
+    var total = getMeasureCount(curSong);
+    if (total <= 0) return;
+    var nextIdx = Math.max(0, Math.min(total - 1, curMeasureIdx + delta));
+    curMeasureIdx = nextIdx;
+    curBeatIdx = 0;
+    if (nextIdx + 1 < appState.loopStart || nextIdx + 1 > appState.loopEnd){
+      appState.loopStart = nextIdx + 1;
+      appState.loopEnd = total;
+      if ($('#loopStart')) $('#loopStart').value = appState.loopStart;
+      if ($('#loopEnd')) $('#loopEnd').value = appState.loopEnd;
+      updateLoopClasses();
+    }
+    saveAppState();
+    updateActiveCursor(curMeasureIdx, 0, !!appState.guideSound);
+  }
+
+  // 메인 화면 키보드 단축키 (Space: 연습 시작/정지, ←/→: 마디 이동, [/]: BPM 조절, R: 구간 반복, G: 소리 토글, F: 특수효과 토글, T: 보기 순환, P: 집중연습뷰, Home: 처음으로, Esc: 팝업/집중뷰 닫기)
   window.addEventListener('keydown', function(e){
     var tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    if (!$('#audioOffsetModal').hidden || !$('#sheetSyncModal').hidden || !$('#backupModal').hidden || !$('#toneModal').hidden || ($('#helpModal') && !$('#helpModal').hidden)) return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+    var openModal = [$('#helpModal'), $('#audioOffsetModal'), $('#sheetSyncModal'), $('#backupModal'), $('#toneModal'), $('#barEditModal')].find(function(m){ return m && !m.hidden; });
+    if (openModal){
+      if (e.key === 'Escape'){
+        e.preventDefault();
+        openModal.hidden = true;
+      }
+      return;
+    }
 
     if (e.code === 'Space'){
       e.preventDefault();
@@ -2000,6 +2027,27 @@ function curCapo(){
     } else if (e.key === 'Home'){
       e.preventDefault();
       if ($('#rewindToFirstBtn')) $('#rewindToFirstBtn').click();
+    } else if (e.key === 'ArrowLeft'){
+      if (!isPlaying){
+        e.preventDefault();
+        stepMeasure(-1);
+      }
+    } else if (e.key === 'ArrowRight'){
+      if (!isPlaying){
+        e.preventDefault();
+        stepMeasure(1);
+      }
+    } else if (e.key === '[' || e.key === '-'){
+      e.preventDefault();
+      setBpm(appState.bpm - 2);
+    } else if (e.key === ']' || e.key === '=' || e.key === '+'){
+      e.preventDefault();
+      setBpm(appState.bpm + 2);
+    } else if (e.key === 'r' || e.key === 'R' || e.key === 'ㄱ'){
+      e.preventDefault();
+      appState.loopEnable = !appState.loopEnable;
+      if ($('#loopEnable')) $('#loopEnable').checked = appState.loopEnable;
+      saveAppState();
     } else if (e.key === 'g' || e.key === 'G' || e.key === 'ㅎ'){
       e.preventDefault();
       $('#guideSoundBtn').click();
@@ -2019,11 +2067,6 @@ function curCapo(){
       e.preventDefault();
       if ($('#helpModalOpenBtn')) $('#helpModalOpenBtn').click();
     } else if (e.key === 'Escape'){
-      if ($('#helpModal') && !$('#helpModal').hidden){
-        e.preventDefault();
-        $('#helpModal').hidden = true;
-        return;
-      }
       if (appState.isCompactPractice){
         e.preventDefault();
         setCompactPractice(false);

@@ -182,6 +182,7 @@ const idb = {
     return request;
   }
 };
+const windowListeners = Object.create(null);
 const sandbox = {
   console,
   document,
@@ -202,8 +203,13 @@ const sandbox = {
   innerWidth: 1200,
   innerHeight: 800,
   devicePixelRatio: 1,
-  addEventListener(){},
-  removeEventListener(){},
+  addEventListener(type, fn){ (windowListeners[type] ||= []).push(fn); },
+  removeEventListener(type, fn){ windowListeners[type] = (windowListeners[type] || []).filter(item => item !== fn); },
+  dispatchWindowKey(event){
+    const ev = Object.assign({ target: document.body, preventDefault(){ this.defaultPrevented = true; } }, event);
+    for (const fn of windowListeners.keydown || []) fn(ev);
+    return ev;
+  },
   matchMedia(){ return { matches: false, addListener(){}, addEventListener(){} }; }
 };
 sandbox.window = sandbox;
@@ -537,6 +543,66 @@ async function main(){
   await chooseScoreView('tab');
   assert.equal(context.appState.scoreView, 'tab', 'TAB view remains selectable');
   assert.equal(scoreMode.value, 'tab', 'the select follows the saved view');
+
+  // 연습 화면 키보드 단축키: 마디 이동(←/→), BPM 조절([/], -/=), 구간 반복(R/ㄱ), 모달 닫기(Escape)
+  {
+    for (const id of ['helpModal', 'audioOffsetModal', 'sheetSyncModal', 'backupModal', 'toneModal', 'barEditModal']){
+      document.querySelector('#' + id).hidden = true;
+    }
+    const origActx = context.actx;
+    const origEnsureAudio = context.ensureAudioCtx;
+    const origPlayNote = context.playGuitarNote;
+    const origStopNotes = context.stopGuitarNotes;
+    context.actx = { currentTime: 0 };
+    context.ensureAudioCtx = function(){};
+    context.playGuitarNote = function(){};
+    context.stopGuitarNotes = function(){};
+    try {
+      context.changeSongById('builtin-lv1-butterfly');
+      context.isPlaying = false;
+      context.curMeasureIdx = 0;
+      context.curBeatIdx = 2;
+      const baseBpm = context.appState.bpm;
+      sandbox.dispatchWindowKey({ key: 'ArrowRight', code: 'ArrowRight' });
+      assert.deepEqual([context.curMeasureIdx, context.curBeatIdx], [1, 0], 'ArrowRight moves to the next measure first beat when stopped');
+      sandbox.dispatchWindowKey({ key: 'ArrowLeft', code: 'ArrowLeft' });
+      assert.deepEqual([context.curMeasureIdx, context.curBeatIdx], [0, 0], 'ArrowLeft moves back to the previous measure');
+      sandbox.dispatchWindowKey({ key: 'ArrowLeft', code: 'ArrowLeft' });
+      assert.equal(context.curMeasureIdx, 0, 'ArrowLeft clamps at the first measure');
+
+      context.isPlaying = true;
+      sandbox.dispatchWindowKey({ key: 'ArrowRight', code: 'ArrowRight' });
+      assert.equal(context.curMeasureIdx, 0, 'ArrowRight is ignored while playing');
+      context.isPlaying = false;
+
+      sandbox.dispatchWindowKey({ key: ']', code: 'BracketRight' });
+      assert.equal(context.appState.bpm, baseBpm + 2, '] increases BPM by 2');
+      sandbox.dispatchWindowKey({ key: '[', code: 'BracketLeft' });
+      assert.equal(context.appState.bpm, baseBpm, '[ decreases BPM by 2');
+      sandbox.dispatchWindowKey({ key: '=', code: 'Equal' });
+      assert.equal(context.appState.bpm, baseBpm + 2, '= increases BPM by 2');
+      sandbox.dispatchWindowKey({ key: '-', code: 'Minus' });
+      assert.equal(context.appState.bpm, baseBpm, '- decreases BPM by 2');
+
+      const prevLoop = context.appState.loopEnable;
+      sandbox.dispatchWindowKey({ key: 'r', code: 'KeyR' });
+      assert.equal(context.appState.loopEnable, !prevLoop, 'R toggles loopEnable');
+      assert.equal(elements.get('loopEnable').checked, !prevLoop, 'R syncs #loopEnable checkbox');
+      sandbox.dispatchWindowKey({ key: 'ㄱ', code: 'KeyR' });
+      assert.equal(context.appState.loopEnable, prevLoop, 'Korean ㄱ toggles loopEnable back');
+
+      elements.get('helpModal').hidden = false;
+      sandbox.dispatchWindowKey({ key: ']', code: 'BracketRight' });
+      assert.equal(context.appState.bpm, baseBpm, 'shortcuts are ignored while a modal is open');
+      sandbox.dispatchWindowKey({ key: 'Escape', code: 'Escape' });
+      assert.equal(elements.get('helpModal').hidden, true, 'Escape closes the open modal');
+    } finally {
+      context.actx = origActx;
+      context.ensureAudioCtx = origEnsureAudio;
+      context.playGuitarNote = origPlayNote;
+      context.stopGuitarNotes = origStopNotes;
+    }
+  }
 
   const image = { id:'vm-image', title:'VM image', type:'image', imageDataUrl:'data:image/png;base64,AA==', pdfPages:['data:image/png;base64,AA==','data:image/png;base64,AQ=='], curPageIdx:0, systems:[{ x:0.1,y:0.1,w:0.8,h:0.2,bars:[{ chord:'C',note:'C4',memo:'old',w:1 }] }] };
   const originalImageSave = context.dbSaveImageSong;
