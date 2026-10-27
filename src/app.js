@@ -1862,6 +1862,31 @@ function curCapo(){
     });
   }
 
+  var tapTempoTimes = [];
+  var tapTempoResetTimer = null;
+  function recordTapTempo(nowMs){
+    var t = typeof nowMs === 'number' ? nowMs : Date.now();
+    if (tapTempoTimes.length && (t - tapTempoTimes[tapTempoTimes.length - 1] > 2500 || t < tapTempoTimes[tapTempoTimes.length - 1])){
+      tapTempoTimes = [];
+    }
+    tapTempoTimes.push(t);
+    if (tapTempoTimes.length > 5) tapTempoTimes.shift();
+    if (tapTempoTimes.length >= 2){
+      var avgMs = (tapTempoTimes[tapTempoTimes.length - 1] - tapTempoTimes[0]) / (tapTempoTimes.length - 1);
+      if (avgMs > 0) setBpm(Math.round(60000 / avgMs));
+    }
+    if ($('#tapTempoBtn')){
+      $('#tapTempoBtn').setAttribute('data-active', 'true');
+      if (tapTempoResetTimer) clearTimeout(tapTempoResetTimer);
+      tapTempoResetTimer = setTimeout(function(){
+        if ($('#tapTempoBtn')) $('#tapTempoBtn').setAttribute('data-active', 'false');
+      }, 220);
+    }
+  }
+  if ($('#tapTempoBtn')){
+    $('#tapTempoBtn').addEventListener('click', function(){ recordTapTempo(Date.now()); });
+  }
+
   $('#beatsSelect').addEventListener('change', function(e){
     if (curSong && curSong.type === 'structured') return;
     appState.beats = Number(e.target.value);

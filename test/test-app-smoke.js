@@ -596,6 +596,21 @@ async function main(){
       assert.equal(context.appState.bpm, baseBpm, 'shortcuts are ignored while a modal is open');
       sandbox.dispatchWindowKey({ key: 'Escape', code: 'Escape' });
       assert.equal(elements.get('helpModal').hidden, true, 'Escape closes the open modal');
+
+      // 탭 템포: 첫 탭은 기준 시각만 기록하고, 두 번째 탭부터 평균 간격으로 BPM을 반영하며, 2.5초 초과 시 초기화한다
+      assert.match(html, /id="tapTempoBtn"/, 'index.html includes #tapTempoBtn');
+      context.setBpm(64);
+      context.recordTapTempo(10000);
+      assert.equal(context.appState.bpm, 64, 'first tap does not change BPM');
+      context.recordTapTempo(10500);
+      assert.equal(context.appState.bpm, 120, 'second tap 500ms later sets 120 BPM');
+      context.recordTapTempo(11000);
+      assert.equal(context.appState.bpm, 120, 'third tap at 500ms interval keeps 120 BPM');
+      context.recordTapTempo(15000);
+      assert.equal(context.appState.bpm, 120, 'a tap after >2.5s resets the sequence instead of computing a slow interval');
+      context.recordTapTempo(16000);
+      assert.equal(context.appState.bpm, 60, 'next tap 1000ms after reset sets 60 BPM');
+      context.setBpm(baseBpm);
     } finally {
       context.actx = origActx;
       context.ensureAudioCtx = origEnsureAudio;
