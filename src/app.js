@@ -379,6 +379,7 @@ function curCapo(){
   var MEASURE_MIN_WIDTH_TAB = [[9, 560], [8, 460], [6, 330], [0, 250]]; // [칸 수 이상, 마디 기본 폭]
   var MEASURE_MIN_WIDTH_CARD = [[9, 560], [8, 460], [6, 340], [0, 260]];
   var MEASURE_WIDTH_PERCENTILE = 0.9;        // 기준 열 폭: 마디의 이 비율이 들어가는 폭
+  var MEASURE_DENSE_RATIO = 1.15;            // 마디 축소 임계치: 전체 격자 폭 대비 필요 폭 비율
   var measureView = { base:0, needs:[], cols:0 };
 
   function pickByThreshold(table, value){
@@ -430,7 +431,7 @@ function curCapo(){
     for (var i = 0; i < grid.children.length && i < measureView.needs.length; i++){
       var k = Math.ceil(measureView.needs[i] / measureView.base);
       grid.children[i].style.gridColumn = k <= 1 ? '' : (k >= cols ? '1 / -1' : 'span ' + k);
-      grid.children[i].classList.toggle('is-dense', gw > 0 && measureView.needs[i] > gw * 1.15);
+      grid.children[i].classList.toggle('is-dense', gw > 0 && measureView.needs[i] > gw * MEASURE_DENSE_RATIO);
     }
   }
 
@@ -439,10 +440,12 @@ function curCapo(){
   function watchGridResize(grid){
     if (staffView.observer || typeof ResizeObserver === 'undefined') return;
     var lastWidth = -1;
+    var spanTimer = 0;
     staffView.observer = new ResizeObserver(function(){
       if (grid.clientWidth !== lastWidth){
         lastWidth = grid.clientWidth;
-        setTimeout(applyMeasureSpans, 0);
+        clearTimeout(spanTimer);
+        spanTimer = setTimeout(applyMeasureSpans, 0);
       }
       clearTimeout(staffView.timer);
       staffView.timer = setTimeout(drawStaffLayers, 120);

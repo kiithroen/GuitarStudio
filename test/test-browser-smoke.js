@@ -5031,7 +5031,7 @@ async function testMeasureWidth(client, httpPort) {
   assertNoOverflow(await probe(), 'E compact 400px then 900px');
   await client.evaluate("document.getElementById('toggleCompactBtn').click(); true");
 
-  // 320px 콘솔·마디 폭 및 375px 4분할 마디 .is-dense 축소 확인
+  // 320px 콘솔·마디 폭과 375px 4분할 마디의 .is-dense 축소를 확인한다.
   await openSong('B');
   await setView('tab');
   await setWidth(320);
