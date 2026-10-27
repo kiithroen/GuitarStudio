@@ -20,8 +20,46 @@
     var status = $('#storageStatus');
     if (status) status.hidden = true;
   }
+  function cloneSystemsLayout(systems){
+    if (!Array.isArray(systems) || !systems.length){
+      return [
+        { x: 0.08, y: 0.14, w: 0.84, h: 0.18, bars: new Array(4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; }) },
+        { x: 0.08, y: 0.42, w: 0.84, h: 0.18, bars: new Array(4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; }) }
+      ];
+    }
+    return systems.map(function(sys){
+      return {
+        x: sys.x,
+        y: sys.y,
+        w: sys.w,
+        h: sys.h,
+        bars: (sys.bars || []).map(function(b){
+          return { chord: '', note: '', memo: '', w: (typeof b.w === 'number' && b.w > 0 ? b.w : 1) };
+        })
+      };
+    });
+  }
+
+  function ensurePdfPageSystems(song){
+    if (!song || song.type !== 'image' || !Array.isArray(song.pdfPages) || song.pdfPages.length <= 1) return;
+    var count = song.pdfPages.length;
+    var curIdx = Math.max(0, Math.min(count - 1, Number(song.curPageIdx) || 0));
+    song.curPageIdx = curIdx;
+    if (!Array.isArray(song.pageSystems)){
+      song.pageSystems = new Array(count).fill(null);
+    }
+    song.pageSystems[curIdx] = Array.isArray(song.systems) ? song.systems : cloneSystemsLayout(null);
+    song.systems = song.pageSystems[curIdx];
+    for (var i = 0; i < count; i++){
+      if (!Array.isArray(song.pageSystems[i])){
+        song.pageSystems[i] = cloneSystemsLayout(song.systems);
+      }
+    }
+  }
+
   async function persistImageSong(song){
     if (!song || song.type !== 'image'){ reportStorageError(); return false; }
+    ensurePdfPageSystems(song);
     try { await dbSaveImageSong(song); return true; }
     catch (error){ reportStorageError(error); return false; }
   }
@@ -984,6 +1022,7 @@ function curCapo(){
 
   // ---------- 악보 렌더링: 2) 이미지 / PDF 악보 + 마디 그리드 매퍼 (B안 주력)
   function renderImageScore(){
+    ensurePdfPageSystems(curSong);
     var img = $('#scoreImg');
     img.src = curSong.imageDataUrl;
     $('#pdfPageCtrl').hidden = !(curSong.pdfPages && curSong.pdfPages.length > 1);
@@ -2285,6 +2324,9 @@ function curCapo(){
     ] : [
       { x: 0.12, y: 0.15, w: 0.55, h: 0.72, bars: blankBars() }
     ];
+    var pageSystems = pdfPages && pdfPages.length > 1
+      ? pdfPages.map(function(_, idx){ return idx === 0 ? defaultSystems : cloneSystemsLayout(defaultSystems); })
+      : null;
     var song = {
       id: 'song-' + Date.now(),
       title: title,
@@ -2297,6 +2339,7 @@ function curCapo(){
       pdfPages: pdfPages || null,
       curPageIdx: 0,
       systems: defaultSystems,
+      pageSystems: pageSystems,
       ytUrl: ''
     };
     if (!await persistImageSong(song)) return;
@@ -2376,26 +2419,56 @@ function curCapo(){
     syncAfterImageGridChange();
   });
 
-  $('#pdfPrevBtn').addEventListener('click', async function(){
-    if (!curSong || !curSong.pdfPages || curSong.curPageIdx <= 0) return;
+  async function switchPdfPage(nextIdx){
+    if (!curSong || curSong.type !== 'image' || !Array.isArray(curSong.pdfPages)) return;
+    if (nextIdx < 0 || nextIdx >= curSong.pdfPages.length || nextIdx === curSong.curPageIdx) return;
+    if (isPlaying) stopPractice();
     var targetSong = curSong;
-    var nextIdx = targetSong.curPageIdx - 1;
-    var candidate = Object.assign({}, targetSong, { curPageIdx: nextIdx, imageDataUrl: targetSong.pdfPages[nextIdx] });
+    ensurePdfPageSystems(targetSong);
+    var nextPageSystems = targetSong.pageSystems.map(function(sysList, idx){
+      return idx === targetSong.curPageIdx ? targetSong.systems : sysList;
+    });
+    if (!Array.isArray(nextPageSystems[nextIdx])){
+      nextPageSystems[nextIdx] = cloneSystemsLayout(targetSong.systems);
+    }
+    var nextSystems = JSON.parse(JSON.stringify(nextPageSystems[nextIdx]));
+    nextPageSystems[nextIdx] = nextSystems;
+    var candidate = Object.assign({}, targetSong, {
+      curPageIdx: nextIdx,
+      imageDataUrl: targetSong.pdfPages[nextIdx],
+      systems: nextSystems,
+      pageSystems: nextPageSystems
+    });
     if (!await persistImageSong(candidate)) return;
     Object.assign(targetSong, candidate);
+    var cs = imageSongs.find(function(s){ return s.id === targetSong.id; });
+    if (cs && cs !== targetSong) Object.assign(cs, candidate);
+    var allSong = allSongs.find(function(s){ return s.id === targetSong.id; });
+    if (allSong && allSong !== targetSong) Object.assign(allSong, candidate);
     if (curSong !== targetSong) return;
+    selectedImgBar = null;
+    curMeasureIdx = 0;
+    curBeatIdx = 0;
+    var total = getMeasureCount(targetSong);
+    appState.loopStart = 1;
+    appState.loopEnd = total;
+    $('#loopStart').max = total;
+    $('#loopEnd').max = total;
+    $('#loopStart').value = 1;
+    $('#loopEnd').value = total;
     renderImageScore();
+    updateLoopClasses();
+    updateActiveCursor(0, 0, false);
+  }
+
+  $('#pdfPrevBtn').addEventListener('click', async function(){
+    if (!curSong || !curSong.pdfPages) return;
+    await switchPdfPage((curSong.curPageIdx || 0) - 1);
   });
 
   $('#pdfNextBtn').addEventListener('click', async function(){
-    if (!curSong || !curSong.pdfPages || curSong.curPageIdx >= curSong.pdfPages.length - 1) return;
-    var targetSong = curSong;
-    var nextIdx = targetSong.curPageIdx + 1;
-    var candidate = Object.assign({}, targetSong, { curPageIdx: nextIdx, imageDataUrl: targetSong.pdfPages[nextIdx] });
-    if (!await persistImageSong(candidate)) return;
-    Object.assign(targetSong, candidate);
-    if (curSong !== targetSong) return;
-    renderImageScore();
+    if (!curSong || !curSong.pdfPages) return;
+    await switchPdfPage((curSong.curPageIdx || 0) + 1);
   });
 
   // 마디 코드/메모 수정 모달

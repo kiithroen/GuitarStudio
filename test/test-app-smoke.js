@@ -651,7 +651,29 @@ async function main(){
   assert.equal(context.curSong.id, 'builtin-lv1-butterfly', 'late image metadata save does not replace a newly selected score');
   assert.equal(image.systems[0].bars[0].memo, 'race update', 'late image metadata save updates the originally edited image');
 
+  context.dbSaveImageSong = originalImageSave;
   context.changeSongById(image.id);
+  // PDF 쪽별 마디 그리드 분리: 다음 쪽으로 넘겨 줄·마디를 수정해도 1쪽의 코드·메모가 보존된다
+  assert.equal(image.curPageIdx, 0, 'PDF starts on page 0');
+  assert.equal(image.systems[0].bars[0].chord, 'Am', 'page 0 keeps its edited chord');
+  await document.querySelector('#pdfNextBtn').click();
+  assert.equal(image.curPageIdx, 1, 'pdfNextBtn moves to page 1');
+  assert.equal(image.systems[0].bars[0].chord, '', 'page 1 has its own blank bar metadata');
+  context.selectedImgBar = { sysIdx: 0, barIdx: 0, globalIdx: 0 };
+  await elements.get('editBarMetaBtn').click();
+  elements.get('beChord').value = 'G7';
+  elements.get('beNote').value = 'B4';
+  elements.get('beMemo').value = 'page 2 memo';
+  await elements.get('saveBarEditBtn').click();
+  assert.equal(image.systems[0].bars[0].chord, 'G7', 'page 1 stores its own edited chord');
+  await document.querySelector('#pdfPrevBtn').click();
+  assert.equal(image.curPageIdx, 0, 'pdfPrevBtn returns to page 0');
+  assert.equal(image.systems[0].bars[0].chord, 'Am', 'returning to page 0 restores page 0 chord');
+  assert.equal(image.systems[0].bars[0].memo, 'race update', 'returning to page 0 restores page 0 memo');
+  await document.querySelector('#pdfNextBtn').click();
+  assert.equal(image.systems[0].bars[0].chord, 'G7', 'returning to page 1 restores page 1 chord');
+  await document.querySelector('#pdfPrevBtn').click();
+
   let promptResponse = 'VM renamed image';
   const oldPrompt = context.prompt;
   context.prompt = () => promptResponse;
