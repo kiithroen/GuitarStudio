@@ -95,13 +95,14 @@ textarea.ti-input{height:auto;padding:8px 10px;font-family:var(--font-num);font-
 .ti-dock-inner{position:relative;max-width:1080px;margin:0 auto;padding:6px 16px;display:flex;flex-direction:column;gap:4px}
 .ti-dock-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 #tiDock .btn.sm{min-height:28px}
-/* 첫 줄: 모드 전환이 들어와도 타브 모드 1024px에서 한 줄에 들어가도록 단추 안쪽 여백과 간격을 줄인다 */
-.ti-dock-row{gap:2px}
-.ti-dock-row > .btn.sm,.ti-mode-group .btn.sm{padding:0 4px;font-size:12px}
+/* 첫 줄: 모드 전환과 마디 듣기 단추가 들어와도 타브 모드 1024px에서 한 줄을 유지한다 */
+.ti-dock-row{gap:2px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}
+.ti-dock-row > *{flex:none}
+.ti-dock-row > .btn.sm,.ti-mode-group .btn.sm{padding:0 3.5px;font-size:11.5px}
 #tiAttrsToggle{display:none}
-#tiCursorLabel{font-weight:700;font-size:13.5px;margin-right:2px;white-space:nowrap}
+#tiCursorLabel{font-weight:700;font-size:12.5px;margin-right:2px;white-space:nowrap}
 .ti-div-group{display:inline-flex;align-items:center;gap:2px}
-.ti-div-group .btn{min-width:26px;padding:0 5px}
+.ti-div-group .btn{min-width:22px;padding:0 3px;font-size:11.5px}
 #tiDockBody{display:flex;flex-direction:column;gap:4px}
 .ti-fb-scroll{overflow-x:auto;scrollbar-width:thin}
 .ti-fb{display:grid;grid-template-columns:22px repeat(var(--fret-cols,20),minmax(32px,1fr));gap:1px 2px;min-width:480px}

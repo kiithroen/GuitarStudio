@@ -5031,6 +5031,28 @@ async function testMeasureWidth(client, httpPort) {
   assertNoOverflow(await probe(), 'E compact 400px then 900px');
   await client.evaluate("document.getElementById('toggleCompactBtn').click(); true");
 
+  // 320px 콘솔·마디 폭 및 375px 4분할 마디 .is-dense 축소 확인
+  await openSong('B');
+  await setView('tab');
+  await setWidth(320);
+  assertNoOverflow(await probe(), 'B tab 320px');
+  await setWidth(375);
+  const dense375 = await client.evaluate(`(function(){
+    var plain = document.querySelector('#measuresGrid .measure-card[data-m="0"]');
+    var split4 = document.querySelector('#measuresGrid .measure-card[data-m="40"]');
+    var plainPill = plain.querySelector('.tab-fret-pill');
+    var splitPill = split4.querySelector('.tab-fret-pill');
+    return {
+      plainDense: plain.classList.contains('is-dense'),
+      splitDense: split4.classList.contains('is-dense'),
+      plainFont: parseFloat(getComputedStyle(plainPill).fontSize),
+      splitFont: parseFloat(getComputedStyle(splitPill).fontSize)
+    };
+  })()`);
+  assert.equal(dense375.plainDense, false, 'B tab 375px: plain 3-beat measure is not is-dense');
+  assert.equal(dense375.splitDense, true, 'B tab 375px: 4-split measure is marked is-dense');
+  assert.ok(dense375.splitFont < dense375.plainFont, 'B tab 375px: is-dense measure shrinks tab-fret-pill font size (' + dense375.splitFont + ' < ' + dense375.plainFont + ')');
+
   // 좁아진 4분할 마디에서 글자가 겹치는지 눈으로 보도록 캡처를 남긴다
   fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
   async function capture(name, key, viewName, dark, targetIndex, width, lead) {

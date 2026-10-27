@@ -426,9 +426,11 @@ function curCapo(){
     var cols = gridColumnCount(grid);
     measureView.cols = cols;
     grid.dataset.cols = cols;
+    var gw = grid.clientWidth;
     for (var i = 0; i < grid.children.length && i < measureView.needs.length; i++){
       var k = Math.ceil(measureView.needs[i] / measureView.base);
       grid.children[i].style.gridColumn = k <= 1 ? '' : (k >= cols ? '1 / -1' : 'span ' + k);
+      grid.children[i].classList.toggle('is-dense', gw > 0 && measureView.needs[i] > gw * 1.15);
     }
   }
 
