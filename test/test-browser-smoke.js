@@ -2423,7 +2423,7 @@ async function testScoreInputScreen(client, httpPort) {
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
     'tiResultPanel', 'tiDiagnostics', 'tiScoreText', 'tiCopyTextBtn', 'tiCopyTsvBtn', 'tiOpenPracticeBtn', 'tiResultStatus', 'tiDock', 'tiCursorLabel', 'tiPrevBtn', 'tiNextBtn',
-    'tiRestBtn', 'tiClearSlotBtn', 'tiDiv1', 'tiDiv2', 'tiDiv3', 'tiDiv4', 'tiPlaySlotBtn', 'tiAutoAdvance', 'tiSoundToggle', 'tiStaffToggle', 'tiDockToggle', 'tiFretboard', 'tiAttrs', 'tiUncertainBtn', 'tiRollBtn',
+    'tiRestBtn', 'tiClearSlotBtn', 'tiDiv1', 'tiDiv2', 'tiDiv3', 'tiDiv4', 'tiPlaySlotBtn', 'tiPlayMeasureBtn', 'tiAutoAdvance', 'tiSoundToggle', 'tiStaffToggle', 'tiDockToggle', 'tiFretboard', 'tiAttrs', 'tiUncertainBtn', 'tiRollBtn',
     'tiImportDialog', 'tiImportText', 'tiImportError', 'tiImportApplyBtn', 'tiImportCancelBtn', 'backToPracticeLink'
   ].forEach(id => assert.match(inputHtml, new RegExp('id="' + id + '"'), 'score-input.html includes #' + id));
 
@@ -2480,6 +2480,32 @@ async function testScoreInputScreen(client, httpPort) {
   assert.equal(await firstLine(), '[-] E2@6 G2@6 E3@6 - | ""', 'quick 1 then 2 writes fret 12');
   await client.evaluate(`(function(){ var t = __tiTest; t.key('ArrowRight','ArrowRight'); t.key('r','KeyR'); return true; })()`);
   assert.equal(await text(), '[-] E2@6 G2@6 E3@6 r | ""', 'the R key writes a rest');
+
+  // 2b. 마디 듣기(단추와 Shift+Space): 커서가 있는 마디의 각 칸을 scheduleBeatGuide로 예약한다
+  const measurePlay = await client.evaluate(`(function(){
+    var calls = [];
+    var origSchedule = window.scheduleBeatGuide;
+    var origEnsure = window.ensureAudioCtx;
+    var origStop = window.stopGuitarNotes;
+    window.ensureAudioCtx = function(){ return { currentTime: 10 }; };
+    window.stopGuitarNotes = function(){};
+    window.scheduleBeatGuide = function(beat, opts){ calls.push({ tok: beat.tok, startTime: opts.startTime, maxDurationSlots: opts.maxDurationSlots }); return []; };
+    try {
+      document.getElementById('tiPlayMeasureBtn').click();
+      var fromBtn = calls.length;
+      __tiTest.key(' ', 'Space', { shiftKey: true });
+      var fromKey = calls.length - fromBtn;
+      return { fromBtn: fromBtn, fromKey: fromKey, first: calls[0], last: calls[calls.length - 1] };
+    } finally {
+      window.scheduleBeatGuide = origSchedule;
+      window.ensureAudioCtx = origEnsure;
+      window.stopGuitarNotes = origStop;
+    }
+  })()`);
+  assert.equal(measurePlay.fromBtn, 4, 'clicking #tiPlayMeasureBtn schedules all 4 non-skip beats in the current measure');
+  assert.equal(measurePlay.fromKey, 4, 'Shift+Space schedules all 4 non-skip beats in the current measure');
+  assert.equal(measurePlay.first.maxDurationSlots, 4, 'first beat has 4 remaining slots in the measure');
+  assert.equal(measurePlay.last.maxDurationSlots, 1, 'last beat has 1 remaining slot in the measure');
 
   // 3. 칸 나누기, 운지, 확인 표시
   await client.evaluate(`(function(){ var t = __tiTest; document.querySelector('.ti-cell-head[data-c="0"]').click(); t.id('tiDiv2').click(); t.pos(0,0,1,1).click(); t.fret(1,0).click(); return true; })()`);

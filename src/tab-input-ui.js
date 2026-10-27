@@ -985,6 +985,37 @@
 
   function playSlot(){ playNotes(slotNotes(cursor), T.slotRollShown(T.getSlot(doc, cursor)), copyPos(cursor)); }
 
+  function playMeasure(){
+    if (!ui.sound) return;
+    try {
+      var parsed = P.parseScore(T.docScoreText(doc), doc.beats);
+      var measure = parsed && parsed.measures && parsed.measures[cursor.m];
+      if (!measure || !Array.isArray(measure.beats)) return;
+      var now = ensureAudioCtx().currentTime + 0.02;
+      stopGuitarNotes(now);
+      var slotSec = 60 / Math.max(30, Math.min(240, Number(doc.bpm) || 64));
+      var capo = T.docCapo(doc);
+      var nonSkipBeats = measure.beats.filter(function(b){ return !window.GuitarRhythm.isSkipBeat(b); });
+      var totalSlots = nonSkipBeats.length;
+      if (!totalSlots) return;
+      var slotIdx = 0;
+      measure.beats.forEach(function(beat){
+        if (window.GuitarRhythm.isSkipBeat(beat)) return;
+        scheduleBeatGuide(beat, {
+          startTime: now + slotIdx * slotSec,
+          slotDuration: slotSec,
+          capo: capo,
+          measures: parsed.measures,
+          resumeHold: slotIdx === 0,
+          maxDurationSlots: totalSlots - slotIdx
+        });
+        slotIdx++;
+      });
+    } catch (error) {
+      // 오디오가 없거나 실패해도 입력은 계속한다
+    }
+  }
+
   // ---------- 오선 입력 (계산은 src/staff-input.js, 규칙은 Docs/staff-input.md)
 
   var PICK_TOP_WRITTEN = P.noteNameForMidi(P.STRINGS[0].midi + N.MAX_FRET + 12, false); // 기타 음역 최고음의 적는 이름(실음 + 12)
@@ -1968,6 +1999,7 @@
       (function(count){ $('tiDiv' + count).addEventListener('click', function(){ setDivision(count); }); })(d);
     }
     $('tiPlaySlotBtn').addEventListener('click', playSlot);
+    if ($('tiPlayMeasureBtn')) $('tiPlayMeasureBtn').addEventListener('click', playMeasure);
     $('tiAutoAdvance').addEventListener('click', function(){
       ui.autoAdvance = !ui.autoAdvance;
       saveUi();
@@ -2087,7 +2119,8 @@
       if (tag === 'BUTTON' || tag === 'A') return;
       event.preventDefault();
       flushPending(true);
-      playSlot();
+      if (event.shiftKey) playMeasure();
+      else playSlot();
       return;
     }
     var handled = true;
