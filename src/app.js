@@ -107,9 +107,6 @@
   var playSession = null;
 
   // ---------- 유틸 함수
-  function clampBpm(v, fallback){
-    return Math.max(30, Math.min(240, Math.round(Number(v) || fallback || 64)));
-  }
   function tempoName(b){
     if (b < 45) return 'Grave';
     if (b < 60) return 'Largo';
@@ -185,9 +182,10 @@
 
   function ensureMeasureInLoop(mIdx){
     if (mIdx + 1 < appState.loopStart || mIdx + 1 > appState.loopEnd){
+      var total = getMeasureCount(curSong);
       appState.loopStart = mIdx + 1;
-      appState.loopEnd = getMeasureCount(curSong);
-      syncLoopInputs();
+      appState.loopEnd = total;
+      syncLoopInputs(total);
       updateLoopClasses();
       return true;
     }
@@ -639,16 +637,16 @@
     });
   }
 
-  function createTabPill(note, token, componentIndex, leftPct, transform){
+  function createTabPill(note, token, componentIndex, opts){
     var pill = document.createElement('span');
     pill.className = 'tab-fret-pill note-fret';
     pill.style.top = ((note.str - 1) * 20) + '%';
-    if (leftPct){
+    if (opts && opts.leftPct){
       pill.style.position = 'absolute';
-      pill.style.left = leftPct;
-      pill.style.transform = transform || 'translate(-50%, -50%)';
-    } else if (transform){
-      pill.style.left = transform;
+      pill.style.left = opts.leftPct;
+      pill.style.transform = opts.transform || 'translate(-50%, -50%)';
+    } else if (opts && opts.left){
+      pill.style.left = opts.left;
     }
     appendPillFretLabel(pill, note, token, componentIndex);
     return pill;
@@ -677,7 +675,7 @@
         if (isHold) appendHeldFretPills(gridEl, sn.startUnits, leftPct);
       } else if (sn.chordNotes && sn.chordNotes.length > 2){
         sn.chordNotes.forEach(function(cn, componentIndex){
-          if (cn && cn.str) gridEl.appendChild(createTabPill(cn, subToken, componentIndex, leftPct));
+          if (cn && cn.str) gridEl.appendChild(createTabPill(cn, subToken, componentIndex, { leftPct: leftPct }));
         });
         if (sn.rolled) appendRollMark(gridEl, chordNoteStrs(sn.chordNotes), leftPct);
       } else if (sn.chordNotes && sn.chordNotes.length === 2){
@@ -686,11 +684,11 @@
         var pairSameFret = pairSameStr && subBass.fret === sn.fret;
         var pairBassTransform = pairSameStr && !pairSameFret ? 'translate(-85%, -50%)' : null;
         var pairMelTransform = pairSameStr && !pairSameFret ? 'translate(-15%, -50%)' : null;
-        if (subBass && subBass.midi && subBass.str) gridEl.appendChild(createTabPill(subBass, subToken, 0, leftPct, pairBassTransform));
-        if (sn.midi && !pairSameFret && sn.str) gridEl.appendChild(createTabPill(sn, subToken, 1, leftPct, pairMelTransform));
+        if (subBass && subBass.midi && subBass.str) gridEl.appendChild(createTabPill(subBass, subToken, 0, { leftPct: leftPct, transform: pairBassTransform }));
+        if (sn.midi && !pairSameFret && sn.str) gridEl.appendChild(createTabPill(sn, subToken, 1, { leftPct: leftPct, transform: pairMelTransform }));
         if (sn.rolled) appendRollMark(gridEl, chordNoteStrs(sn.chordNotes), leftPct);
       } else if (sn.midi && sn.str){
-        gridEl.appendChild(createTabPill(sn, subToken, 0, leftPct));
+        gridEl.appendChild(createTabPill(sn, subToken, 0, { leftPct: leftPct }));
       }
     });
   }
@@ -720,10 +718,10 @@
     var sameFret = sameStr && (effBass.fret === b.fret);
     var diffFret = sameStr && (effBass.fret !== b.fret);
 
-    if (hasBass) gridEl.appendChild(createTabPill(effBass, beatToken, 0, null, diffFret ? '38%' : null));
+    if (hasBass) gridEl.appendChild(createTabPill(effBass, beatToken, 0, diffFret ? { left: '38%' } : null));
     if (hasMel){
       if (!sameFret){
-        gridEl.appendChild(createTabPill(b, beatToken, b.chordNotes && b.chordNotes.length >= 2 ? 1 : 0, null, diffFret ? '62%' : null));
+        gridEl.appendChild(createTabPill(b, beatToken, b.chordNotes && b.chordNotes.length >= 2 ? 1 : 0, diffFret ? { left: '62%' } : null));
       }
       if (b.rolled) appendRollMark(gridEl, chordNoteStrs(b.chordNotes), diffFret ? '38%' : '50%');
     } else if (!hasBass && b.kind !== 'skip'){
@@ -983,17 +981,14 @@
     card.addEventListener('click', function(e){
       if (e.shiftKey){
         appState.loopEnd = Math.max(appState.loopStart, mIdx + 1);
+        syncLoopInputs();
+        updateLoopClasses();
       } else {
         curMeasureIdx = mIdx;
         curBeatIdx = 0;
-        if (mIdx + 1 < appState.loopStart || mIdx + 1 > appState.loopEnd){
-          appState.loopStart = mIdx + 1;
-          appState.loopEnd = getMeasureCount(curSong);
-        }
+        ensureMeasureInLoop(mIdx);
       }
-      syncLoopInputs();
       saveAppState();
-      updateLoopClasses();
       updateActiveCursor(curMeasureIdx, curBeatIdx, false);
     });
 
@@ -1164,7 +1159,7 @@
             selectedImgBar = { sysIdx: sI, barIdx: bI, globalIdx: targetGlobalIdx };
             if (e.shiftKey){
               appState.loopEnd = Math.max(appState.loopStart, targetGlobalIdx + 1);
-              $('#loopEnd').value = appState.loopEnd;
+              syncLoopInputs();
             } else {
               curMeasureIdx = targetGlobalIdx;
               curBeatIdx = 0;
@@ -1927,7 +1922,7 @@
   $('#loopEnd').addEventListener('change', function(e){
     var maxM = getMeasureCount(curSong);
     appState.loopEnd = Math.max(appState.loopStart, Math.min(maxM, Number(e.target.value) || maxM));
-    $('#loopEnd').value = appState.loopEnd;
+    syncLoopInputs(maxM);
     updateLoopClasses();
     saveAppState();
   });
@@ -2311,7 +2306,7 @@
     renderImageSystemsOverlay();
   });
 
-  function buildSystemCopy(systems, refIdx){
+  function buildSystemCopy(systems, refIdx, minGapFactor, inclusive){
     var orig = systems[refIdx];
     var stepY = orig.h + Math.max(0.02, orig.h * 0.15);
     if (systems.length > 1){
@@ -2320,8 +2315,8 @@
         if (gap > orig.h * 0.5) stepY = gap;
       } else if (refIdx > 0){
         var gapPrev = orig.y - systems[refIdx - 1].y;
-        var minGap = refIdx === systems.length - 1 ? orig.h * 0.6 : orig.h * 0.5;
-        if (gapPrev >= minGap) stepY = gapPrev;
+        var minGap = orig.h * (minGapFactor != null ? minGapFactor : 0.6);
+        if (inclusive ? gapPrev >= minGap : gapPrev > minGap) stepY = gapPrev;
       }
     }
     var newY = Math.max(0.02, Math.min(0.98 - orig.h, +(orig.y + stepY).toFixed(4)));
@@ -2336,7 +2331,7 @@
 
   function duplicateSystem(sysIdx){
     if (!curSong || curSong.type !== 'image' || !curSong.systems[sysIdx]) return;
-    curSong.systems.splice(sysIdx + 1, 0, buildSystemCopy(curSong.systems, sysIdx));
+    curSong.systems.splice(sysIdx + 1, 0, buildSystemCopy(curSong.systems, sysIdx, 0.5, false));
     syncAfterImageGridChange();
   }
 
@@ -2344,7 +2339,7 @@
     if (!curSong || curSong.type !== 'image') return;
     var systems = curSong.systems;
     if (systems.length > 0){
-      systems.push(buildSystemCopy(systems, systems.length - 1));
+      systems.push(buildSystemCopy(systems, systems.length - 1, 0.6, true));
     } else {
       systems.push({
         x: 0.08,

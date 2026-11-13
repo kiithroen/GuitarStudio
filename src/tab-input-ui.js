@@ -1036,7 +1036,7 @@
       if (!measure || !Array.isArray(measure.beats)) return;
       var now = ensureAudioCtx().currentTime + 0.02;
       stopGuitarNotes(now);
-      var slotSec = 60 / Math.max(30, Math.min(240, Number(doc.bpm) || 64));
+      var slotSec = 60 / clampBpm(doc.bpm, T.DEFAULT_BPM);
       var capo = T.docCapo(doc);
       var nonSkipBeats = measure.beats.filter(function(b){ return !window.GuitarRhythm.isSkipBeat(b); });
       var totalSlots = nonSkipBeats.length;
@@ -1804,7 +1804,7 @@
     var result = T.scoreToDoc({
       title: title,
       beats: request.beats,
-      bpm: Math.max(30, Math.min(240, Math.round(Number(request.bpm) || T.DEFAULT_BPM))),
+      bpm: clampBpm(request.bpm, T.DEFAULT_BPM),
       description: typeof request.badge === 'string' ? request.badge : '',
       raw: request.lines.join('\n')
     });

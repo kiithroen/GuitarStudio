@@ -25,6 +25,10 @@
   }));
   if (typeof appState.acousticFx !== 'boolean') appState.acousticFx = true;
   // 클릭음 vol 은 0~2(100%를 넘기면 기본보다 크게), 기타 연주음 guitarVol 은 0~1. 숫자가 아니거나 범위 밖이면 기본값
+  var BPM_MIN = 30, BPM_MAX = 240, DEFAULT_BPM = 64;
+  function clampBpm(v, fallback){
+    return Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(Number(v) || fallback || DEFAULT_BPM)));
+  }
   function normalizeVolume(v, def, max){ return typeof v === 'number' && isFinite(v) && v >= 0 && v <= max ? v : def; }
   appState.vol = normalizeVolume(appState.vol, 0.55, 2);
   appState.guitarVol = normalizeVolume(appState.guitarVol, 1, 1);

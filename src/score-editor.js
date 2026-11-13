@@ -11,9 +11,6 @@ var scoreEditorHooks = (function(){
   var EDIT_BUTTON_TITLE_ALPHATEX = '악보 입력 화면에서 고치면 우리 악보 사본으로 저장됩니다';
 
   function statusNode(){ return document.getElementById('scoreDraftStatus'); }
-  function clampBpm(value, fallback){
-    return Math.max(30, Math.min(240, Math.round(Number(value) || fallback || 64)));
-  }
 
   function snapshotSession(){
     return {
@@ -225,7 +222,7 @@ var scoreEditorHooks = (function(){
         var copy = scoreDrafts.createFromScore({
           title:copyTitleFor(source.title, sources),
           beats:Number(handoff.beats),
-          bpm:clampBpm(isFinite(handoffBpm) && handoffBpm > 0 ? handoffBpm : source.bpm, 64),
+          bpm:clampBpm(isFinite(handoffBpm) && handoffBpm > 0 ? handoffBpm : (Math.round(Number(source.bpm)) || 64), 64),
           badge:typeof handoff.badge === 'string' ? handoff.badge : source.badge,
           lines:handoff.lines,
           key:validKey ? handoff.key : 0,
