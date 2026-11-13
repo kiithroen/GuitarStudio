@@ -20,11 +20,19 @@
     var status = $('#storageStatus');
     if (status) status.hidden = true;
   }
+  function makeBlankBars(count){
+    return new Array(count || 4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; });
+  }
+  function cloneSystemBars(bars){
+    return (bars || []).map(function(b){
+      return { chord: '', note: '', memo: '', w: (typeof b.w === 'number' && b.w > 0 ? b.w : 1) };
+    });
+  }
   function cloneSystemsLayout(systems){
     if (!Array.isArray(systems) || !systems.length){
       return [
-        { x: 0.08, y: 0.14, w: 0.84, h: 0.18, bars: new Array(4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; }) },
-        { x: 0.08, y: 0.42, w: 0.84, h: 0.18, bars: new Array(4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; }) }
+        { x: 0.08, y: 0.14, w: 0.84, h: 0.18, bars: makeBlankBars(4) },
+        { x: 0.08, y: 0.42, w: 0.84, h: 0.18, bars: makeBlankBars(4) }
       ];
     }
     return systems.map(function(sys){
@@ -33,9 +41,7 @@
         y: sys.y,
         w: sys.w,
         h: sys.h,
-        bars: (sys.bars || []).map(function(b){
-          return { chord: '', note: '', memo: '', w: (typeof b.w === 'number' && b.w > 0 ? b.w : 1) };
-        })
+        bars: cloneSystemBars(sys.bars)
       };
     });
   }
@@ -63,6 +69,15 @@
     try { await dbSaveImageSong(song); return true; }
     catch (error){ reportStorageError(error); return false; }
   }
+  async function applyImageSongUpdate(targetSong, candidate){
+    if (!await persistImageSong(candidate)) return false;
+    Object.assign(targetSong, candidate);
+    var cs = imageSongs.find(function(s){ return s.id === candidate.id; });
+    if (cs && cs !== targetSong) Object.assign(cs, candidate);
+    var allSong = allSongs.find(function(s){ return s.id === candidate.id; });
+    if (allSong && allSong !== targetSong) Object.assign(allSong, candidate);
+    return true;
+  }
   async function removePersistedImageSong(id){
     try { await dbDeleteImageSong(id); return true; }
     catch (error){ reportStorageError(error); return false; }
@@ -78,10 +93,9 @@
 
   appState.isCompactPractice = false;
 
-
-function curCapo(){
-  return curSong ? getSongCapo(curSong) : 0;
-}
+  function curCapo(){
+    return curSong ? getSongCapo(curSong) : 0;
+  }
 
 
   // 이미지 악보 편집 상태
@@ -93,6 +107,9 @@ function curCapo(){
   var playSession = null;
 
   // ---------- 유틸 함수
+  function clampBpm(v, fallback){
+    return Math.max(30, Math.min(240, Math.round(Number(v) || fallback || 64)));
+  }
   function tempoName(b){
     if (b < 45) return 'Grave';
     if (b < 60) return 'Largo';
@@ -154,19 +171,39 @@ function curCapo(){
     };
   }
 
+  function syncLoopInputs(total){
+    var count = total != null ? total : getMeasureCount(curSong);
+    if ($('#loopStart')){
+      $('#loopStart').max = count;
+      $('#loopStart').value = appState.loopStart;
+    }
+    if ($('#loopEnd')){
+      $('#loopEnd').max = count;
+      $('#loopEnd').value = appState.loopEnd;
+    }
+  }
+
+  function ensureMeasureInLoop(mIdx){
+    if (mIdx + 1 < appState.loopStart || mIdx + 1 > appState.loopEnd){
+      appState.loopStart = mIdx + 1;
+      appState.loopEnd = getMeasureCount(curSong);
+      syncLoopInputs();
+      updateLoopClasses();
+      return true;
+    }
+    return false;
+  }
+
   function restoreSongSession(song){
     var snapshot = song && songSessionStates[song.id];
     if (!snapshot || !song) return false;
     var count = Math.max(1, getMeasureCount(song));
-    appState.bpm = Math.max(30, Math.min(240, Math.round(Number(snapshot.bpm) || Number(song.bpm) || 64)));
+    appState.bpm = clampBpm(snapshot.bpm, Number(song.bpm) || 64);
     appState.loopStart = Math.max(1, Math.min(count, Number(snapshot.loopStart) || 1));
     appState.loopEnd = Math.max(appState.loopStart, Math.min(count, Number(snapshot.loopEnd) || count));
     curMeasureIdx = Math.max(0, Math.min(count - 1, Number(snapshot.measure) || 0));
     curBeatIdx = Math.max(0, Math.min((song.beats || 1) - 1, Number(snapshot.beat) || 0));
-    $('#loopStart').max = count;
-    $('#loopEnd').max = count;
-    $('#loopStart').value = appState.loopStart;
-    $('#loopEnd').value = appState.loopEnd;
+    syncLoopInputs(count);
     syncConsoleUI();
     updateLoopClasses();
     updateActiveCursor(curMeasureIdx, curBeatIdx, false);
@@ -251,10 +288,7 @@ function curCapo(){
     appState.loopEnd = Math.min(totalM, Math.max(appState.loopStart, (savedMeta && savedMeta.loopEnd) || totalM));
     if (savedMeta && savedMeta.ytUrl) curSong.ytUrl = savedMeta.ytUrl;
 
-    $('#loopStart').max = totalM;
-    $('#loopEnd').max = totalM;
-    $('#loopStart').value = appState.loopStart;
-    $('#loopEnd').value = appState.loopEnd;
+    syncLoopInputs(totalM);
 
     if (savedMeta && savedMeta.at){
       $('#resumeBanner').hidden = false;
@@ -568,6 +602,404 @@ function curCapo(){
     return bar;
   }
 
+  function isArpGroupStart(bpb, bIdx){
+    return ((bpb === 9 || bpb === 6) && (bIdx === 3 || bIdx === 6)) || (bpb === 8 && bIdx === 4);
+  }
+
+  function createRestOrHoldDash(isHold, leftPct, withTitle){
+    var dash = document.createElement('span');
+    dash.className = 'tab-rest-dash ' + (isHold ? 'tab-hold-mark' : 'tab-rest-mark');
+    dash.textContent = isHold ? '—' : 'r';
+    if (withTitle) dash.title = isHold ? '앞 음을 다시 치지 않고 유지' : '쉼';
+    if (leftPct){
+      dash.style.position = 'absolute';
+      dash.style.left = leftPct;
+      dash.style.top = '50%';
+      dash.style.transform = 'translate(-50%, -50%)';
+      dash.style.opacity = '0.4';
+    }
+    return dash;
+  }
+
+  function appendHeldFretPills(gridEl, startUnits, leftPct){
+    if (typeof GuitarRhythm === 'undefined') return;
+    GuitarRhythm.getSoundingNotes(curSong.measures, startUnits).forEach(function(record){
+      var heldNote = record.note;
+      if (!heldNote.str) return;
+      var heldPill = document.createElement('span');
+      heldPill.className = 'tab-fret-pill note-fret tab-held-fret';
+      heldPill.style.top = ((heldNote.str - 1) * 20) + '%';
+      if (leftPct){
+        heldPill.style.position = 'absolute';
+        heldPill.style.left = leftPct;
+        heldPill.style.transform = 'translate(-50%, -50%)';
+      }
+      appendPillFretLabel(heldPill, heldNote, heldNote.tok || heldNote.customTok || heldNote.en, undefined, true);
+      gridEl.appendChild(heldPill);
+    });
+  }
+
+  function createTabPill(note, token, componentIndex, leftPct, transform){
+    var pill = document.createElement('span');
+    pill.className = 'tab-fret-pill note-fret';
+    pill.style.top = ((note.str - 1) * 20) + '%';
+    if (leftPct){
+      pill.style.position = 'absolute';
+      pill.style.left = leftPct;
+      pill.style.transform = transform || 'translate(-50%, -50%)';
+    } else if (transform){
+      pill.style.left = transform;
+    }
+    appendPillFretLabel(pill, note, token, componentIndex);
+    return pill;
+  }
+
+  function bindStructuredBeatClick(cell, mIdx, bIdx){
+    cell.addEventListener('click', function(e){
+      if (e.shiftKey) return;
+      e.stopPropagation();
+      curMeasureIdx = mIdx;
+      curBeatIdx = bIdx;
+      ensureMeasureInLoop(mIdx);
+      saveAppState();
+      updateActiveCursor(mIdx, bIdx, !isPlaying);
+    });
+  }
+
+  function populateSubdividedTabGrid(gridEl, subNotes){
+    var numSubs = subNotes.length;
+    subNotes.forEach(function(sn, sIdx){
+      var leftPct = (((sIdx + 0.5) / numSubs) * 100) + '%';
+      var subToken = sn.tok || sn.customTok || sn.en;
+      var isHold = sn.kind === 'hold' || sn.tok === '-';
+      if (isHold || sn.kind === 'rest' || GuitarNotation.isRestToken(sn.tok)){
+        gridEl.appendChild(createRestOrHoldDash(isHold, leftPct, true));
+        if (isHold) appendHeldFretPills(gridEl, sn.startUnits, leftPct);
+      } else if (sn.chordNotes && sn.chordNotes.length > 2){
+        sn.chordNotes.forEach(function(cn, componentIndex){
+          if (cn && cn.str) gridEl.appendChild(createTabPill(cn, subToken, componentIndex, leftPct));
+        });
+        if (sn.rolled) appendRollMark(gridEl, chordNoteStrs(sn.chordNotes), leftPct);
+      } else if (sn.chordNotes && sn.chordNotes.length === 2){
+        var subBass = getExplicitBass(sn);
+        var pairSameStr = !!(subBass && subBass.str && sn.str && subBass.str === sn.str);
+        var pairSameFret = pairSameStr && subBass.fret === sn.fret;
+        var pairBassTransform = pairSameStr && !pairSameFret ? 'translate(-85%, -50%)' : null;
+        var pairMelTransform = pairSameStr && !pairSameFret ? 'translate(-15%, -50%)' : null;
+        if (subBass && subBass.midi && subBass.str) gridEl.appendChild(createTabPill(subBass, subToken, 0, leftPct, pairBassTransform));
+        if (sn.midi && !pairSameFret && sn.str) gridEl.appendChild(createTabPill(sn, subToken, 1, leftPct, pairMelTransform));
+        if (sn.rolled) appendRollMark(gridEl, chordNoteStrs(sn.chordNotes), leftPct);
+      } else if (sn.midi && sn.str){
+        gridEl.appendChild(createTabPill(sn, subToken, 0, leftPct));
+      }
+    });
+  }
+
+  function populateTabBeatGrid(gridEl, b, beatToken){
+    if (b.kind === 'rest' || b.kind === 'hold'){
+      var isHold = b.kind === 'hold';
+      gridEl.appendChild(createRestOrHoldDash(isHold, null, true));
+      if (isHold) appendHeldFretPills(gridEl, b.startUnits, null);
+      return;
+    }
+    if (!b.isSubdivided && b.chordNotes && b.chordNotes.length > 2){
+      b.chordNotes.forEach(function(cn, cnIdx){
+        if (cn.str) gridEl.appendChild(createTabPill(cn, beatToken, cnIdx));
+      });
+      if (b.rolled) appendRollMark(gridEl, chordNoteStrs(b.chordNotes), '50%');
+      return;
+    }
+    if (b.isSubdivided && b.subNotes && b.subNotes.length > 1){
+      populateSubdividedTabGrid(gridEl, b.subNotes);
+      return;
+    }
+    var effBass = getExplicitBass(b);
+    var hasBass = !!(effBass && effBass.str);
+    var hasMel = !!(b.midi && b.str);
+    var sameStr = hasBass && hasMel && (effBass.str === b.str);
+    var sameFret = sameStr && (effBass.fret === b.fret);
+    var diffFret = sameStr && (effBass.fret !== b.fret);
+
+    if (hasBass) gridEl.appendChild(createTabPill(effBass, beatToken, 0, null, diffFret ? '38%' : null));
+    if (hasMel){
+      if (!sameFret){
+        gridEl.appendChild(createTabPill(b, beatToken, b.chordNotes && b.chordNotes.length >= 2 ? 1 : 0, null, diffFret ? '62%' : null));
+      }
+      if (b.rolled) appendRollMark(gridEl, chordNoteStrs(b.chordNotes), diffFret ? '38%' : '50%');
+    } else if (!hasBass && b.kind !== 'skip'){
+      gridEl.appendChild(createRestOrHoldDash(b.kind === 'hold', null, false));
+    }
+  }
+
+  function buildTabBeatCell(m, mIdx, b, bIdx, bpb){
+    var cell = document.createElement('div');
+    var extraCls = ' tab-cell';
+    var uniformArticulation = getUniformBeatArticulation(b);
+    if (isArpGroupStart(bpb, bIdx)) extraCls += ' arp-group-start';
+    if (b.uncertain) extraCls += ' is-uncertain';
+    if (b.kind === 'skip') extraCls += ' slot-skip';
+    cell.className = 'beat-cell' + extraCls;
+    cell.dataset.m = mIdx;
+    cell.dataset.b = bIdx;
+
+    var beatToken = b.tok || b.customTok || b.en;
+    var pitchLabel = formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(effectiveChordAtBeat(m, bIdx))});
+    var articDesc = uniformArticulation === 'apoyando' ? ' [악보 지정 아포얀도]' : '';
+    var tabDurationInfo = getBeatDurationInfo(m.beats, bIdx, bpb);
+    cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + (pitchLabel ? ': ' + pitchLabel : '') +
+      (pitchLabel && tabDurationInfo.durName && tabDurationInfo.kind !== 'rest' && tabDurationInfo.kind !== 'hold' && tabDurationInfo.kind !== 'skip' ? ' · 길이: ' + tabDurationInfo.durName : '') +
+      articDesc + ' (클릭: 운지 보기 및 음 듣기)' + (b.uncertain ? ' · 확인 필요(?)' : '');
+
+    var topRow = document.createElement('div');
+    topRow.className = 'tab-cell-top';
+    if (b.midi || (b.isSubdivided && b.subNotes) || b.kind === 'rest' || b.kind === 'hold'){
+      var solfegeWrap = document.createElement('span');
+      solfegeWrap.className = 'tab-cell-solfege-wrap';
+      var enEl = document.createElement('span');
+      enEl.className = 'tab-cell-en';
+      enEl.textContent = formatBeatPitchLabel(b, {compact:true, chord:cleanChordToken(effectiveChordAtBeat(m, bIdx))});
+      if (enEl.textContent){
+        solfegeWrap.appendChild(enEl);
+        topRow.appendChild(solfegeWrap);
+      }
+    }
+    cell.appendChild(topRow);
+
+    var gridEl = document.createElement('div');
+    gridEl.className = 'tab-cell-grid';
+    populateTabBeatGrid(gridEl, b, beatToken);
+    cell.appendChild(gridEl);
+
+    bindStructuredBeatClick(cell, mIdx, bIdx);
+    return cell;
+  }
+
+  function formatCardDisplayPitch(p, isSolfege){
+    if (p.kind === 'rest' || GuitarNotation.isRestToken(p.tok)) return '쉼';
+    if (p.kind === 'hold' || p.ko === '유지') return '유지';
+    if (p.chordNotes && p.chordNotes.length >= 2){
+      return p.chordNotes.map(function(c){ return isSolfege ? c.ko : (c.en ? c.en.replace(/\d+$/, '') : c.ko); }).join('+');
+    }
+    return isSolfege ? p.ko : (p.en ? p.en.replace(/\d+$/, '') : p.ko);
+  }
+
+  function buildCardBeatCell(m, mIdx, b, bIdx, bpb){
+    var durInfo = getBeatDurationInfo(m.beats, bIdx, bpb);
+    var cell = document.createElement('div');
+    var extraCls = '';
+    var uniformArticulation = getUniformBeatArticulation(b);
+    if (isArpGroupStart(bpb, bIdx)) extraCls += ' arp-group-start';
+    var mainKind = b.kind || (b.midi ? 'note' : 'rest');
+    var pitchLabel = formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(effectiveChordAtBeat(m, bIdx))});
+    if (mainKind === 'rest') extraCls += ' is-rest';
+    if (mainKind === 'skip') extraCls += ' slot-skip';
+    if (b.uncertain) extraCls += ' is-uncertain';
+    cell.className = 'beat-cell' + extraCls;
+    cell.dataset.m = mIdx;
+    cell.dataset.b = bIdx;
+
+    var articDesc = uniformArticulation === 'apoyando' ? ' [악보 지정 아포얀도]' : '';
+    cell.title = m.no + '마디 ' + (bIdx + 1) + '박: ' +
+      (mainKind === 'rest' ? '쉼' : (mainKind === 'hold' ? '유지' : (mainKind === 'skip' ? '빈칸' : (pitchLabel + ' · ' + durInfo.durName)))) +
+      (durInfo.kind === 'group' ? ' · 분할별 길이: ' + durInfo.durName : '') +
+      articDesc + ' (클릭: 음 듣기 및 지판 확인)' + (b.uncertain ? ' · 확인 필요(?)' : '');
+
+    var rhythmHead = document.createElement('div');
+    rhythmHead.className = 'b-rhythm-head';
+    var idxBadge = document.createElement('span');
+    idxBadge.className = 'b-idx-badge';
+    idxBadge.textContent = (bIdx + 1) + '박';
+    rhythmHead.appendChild(idxBadge);
+    if (b.midi || (b.isSubdivided && b.subNotes)){
+      var durBadge = document.createElement('span');
+      durBadge.className = 'b-dur-badge';
+      durBadge.innerHTML = durInfo.svg || '';
+      if (!durInfo.svg) durBadge.textContent = durInfo.label || durInfo.durName;
+      durBadge.title = durInfo.durName;
+      rhythmHead.appendChild(durBadge);
+    }
+    cell.appendChild(rhythmHead);
+
+    var isSolfege = appState.notationMode === 'solfege';
+    var koEl = document.createElement('span');
+    if (b.midi || (b.isSubdivided && b.subNotes)){
+      koEl.className = 'b-ko-main';
+      if (b.isSubdivided && b.subNotes){
+        koEl.textContent = b.subNotes.map(function(sn){ return formatCardDisplayPitch(sn, isSolfege); }).join(' · ');
+      } else {
+        koEl.textContent = formatCardDisplayPitch(b, isSolfege);
+      }
+      var koLen = koEl.textContent.length;
+      if (koLen >= 7) koEl.classList.add('b-ko-ultra');
+      else if (koLen >= 5) koEl.classList.add('b-ko-dense');
+      cell.appendChild(koEl);
+
+      var subEl = document.createElement('span');
+      subEl.className = 'b-note-sub';
+      subEl.textContent = (!b.isSubdivided && (!b.chordNotes || b.chordNotes.length < 2) ? getOctaveLabel(b.midi) + ' ' : '') + pitchLabel;
+      cell.appendChild(subEl);
+
+      var rightHandLabel = getBeatRightHandLabel(b);
+      if (rightHandLabel){
+        var rightHandEl = document.createElement('span');
+        rightHandEl.className = 'b-right-hand';
+        rightHandEl.textContent = rightHandLabel;
+        cell.appendChild(rightHandEl);
+      }
+    } else if (mainKind === 'hold'){
+      koEl.className = 'b-ko-main b-hold-label';
+      koEl.textContent = '유지';
+      cell.appendChild(koEl);
+    } else if (mainKind === 'skip'){
+      koEl.className = 'b-ko-main b-skip-label';
+      koEl.textContent = '빈칸';
+      koEl.title = '시간이 흐르지 않는 칸';
+      cell.appendChild(koEl);
+    } else {
+      koEl.className = 'b-ko-main b-rest-sym';
+      koEl.textContent = '쉼';
+      koEl.title = durInfo.durName;
+      cell.appendChild(koEl);
+    }
+
+    bindStructuredBeatClick(cell, mIdx, bIdx);
+    return cell;
+  }
+
+  function buildStructuredMeasureHeader(m, mIdx){
+    var head = document.createElement('div');
+    head.className = 'm-head';
+    var num = document.createElement('span');
+    num.className = 'm-num';
+    num.textContent = m.no + '마디';
+    head.appendChild(num);
+    if (m.lyric){
+      var lyr = document.createElement('span');
+      lyr.className = 'm-lyric';
+      lyr.textContent = m.lyric;
+      lyr.title = m.lyric;
+      head.appendChild(lyr);
+    }
+    if (scoreEditorHooks) scoreEditorHooks.appendMeasureEditButton(head, mIdx);
+    return head;
+  }
+
+  function buildTabStaveSide(mIdx){
+    var side = document.createElement('div');
+    side.className = 'tab-stave-side';
+    var sideTitle = document.createElement('div');
+    sideTitle.className = 'tab-badge-title';
+    sideTitle.textContent = 'TAB';
+    var strNames = document.createElement('div');
+    strNames.className = 'tab-str-names';
+    ['1E', '2B', '3G', '4D', '5A', '6E'].forEach(function(s, idx){
+      var sn = document.createElement('span');
+      sn.textContent = s;
+      sn.style.top = (idx * 20) + '%';
+      strNames.appendChild(sn);
+    });
+    if (staffView.layout){
+      var staffHeader = staffHeaderFor(mIdx);
+      var headerBox = document.createElement('div');
+      headerBox.className = 'tab-staff-head';
+      headerBox.innerHTML = GuitarStaffSvg.renderHeader(staffHeader);
+      side.appendChild(headerBox);
+      side.style.width = Math.max(36, GuitarStaffSvg.headerWidth(staffHeader)) + 'px';
+    }
+    side.appendChild(sideTitle);
+    side.appendChild(strNames);
+    return side;
+  }
+
+  function collectMeasureChords(m, chordsSet){
+    if (m.chords && m.chords.length){
+      m.chords.forEach(function(c){
+        if (c && c.chord && chordsSet.indexOf(c.chord) < 0) chordsSet.push(c.chord);
+      });
+    } else if (m.chord && chordsSet.indexOf(m.chord) < 0){
+      chordsSet.push(m.chord);
+    }
+  }
+
+  function buildStructuredMeasureCard(m, mIdx, isTab){
+    var card = document.createElement('div');
+    card.className = 'measure-card' + (isTab ? ' tab-mode' : '');
+    if (isTab && staffView.layout){
+      card.classList.add('staff-on');
+      if (appState.scoreView === 'staff') card.classList.add('tab-off');
+      card.style.setProperty('--staff-h', GuitarStaffSvg.STAFF_HEIGHT + 'px');
+    }
+    card.dataset.m = mIdx;
+    card.classList.toggle('in-loop', (mIdx + 1) >= appState.loopStart && (mIdx + 1) <= appState.loopEnd);
+    card.appendChild(buildStructuredMeasureHeader(m, mIdx));
+
+    var bpb = curSong.beats;
+    if (isTab){
+      var staveWrap = document.createElement('div');
+      staveWrap.className = 'tab-stave-wrap';
+      var side = buildTabStaveSide(mIdx);
+      staveWrap.appendChild(side);
+
+      var body = document.createElement('div');
+      body.className = 'tab-stave-body';
+      if (staffView.layout){
+        var staffLayer = document.createElement('div');
+        staffLayer.className = 'tab-staff-layer';
+        staffLayer.dataset.m = mIdx;
+        body.appendChild(staffLayer);
+      }
+
+      var linesBg = document.createElement('div');
+      linesBg.className = 'tab-lines-bg';
+      for (var l = 0; l < 6; l++){
+        var lh = document.createElement('div');
+        lh.className = 'tab-line-h';
+        lh.style.top = (l * 20) + '%';
+        linesBg.appendChild(lh);
+      }
+      body.appendChild(linesBg);
+
+      var beatsRow = document.createElement('div');
+      beatsRow.className = 'beats-row tab-mode';
+      beatsRow.style.setProperty('--bpb', bpb);
+      m.beats.forEach(function(b, bIdx){ beatsRow.appendChild(buildTabBeatCell(m, mIdx, b, bIdx, bpb)); });
+      body.appendChild(beatsRow);
+      staveWrap.appendChild(body);
+
+      var chordsBar = buildMeasureChordsBar(m, bpb, true, side.style.width);
+      if (chordsBar) card.appendChild(chordsBar);
+      card.appendChild(staveWrap);
+    } else {
+      var cardBeatsRow = document.createElement('div');
+      cardBeatsRow.className = 'beats-row';
+      cardBeatsRow.style.setProperty('--bpb', bpb);
+      m.beats.forEach(function(b, bIdx){ cardBeatsRow.appendChild(buildCardBeatCell(m, mIdx, b, bIdx, bpb)); });
+
+      var cardChordsBar = buildMeasureChordsBar(m, bpb, false);
+      if (cardChordsBar) card.appendChild(cardChordsBar);
+      card.appendChild(cardBeatsRow);
+    }
+
+    card.addEventListener('click', function(e){
+      if (e.shiftKey){
+        appState.loopEnd = Math.max(appState.loopStart, mIdx + 1);
+      } else {
+        curMeasureIdx = mIdx;
+        curBeatIdx = 0;
+        if (mIdx + 1 < appState.loopStart || mIdx + 1 > appState.loopEnd){
+          appState.loopStart = mIdx + 1;
+          appState.loopEnd = getMeasureCount(curSong);
+        }
+      }
+      syncLoopInputs();
+      saveAppState();
+      updateLoopClasses();
+      updateActiveCursor(curMeasureIdx, curBeatIdx, false);
+    });
+
+    return card;
+  }
+
   function renderStructuredMeasures(){
     var grid = $('#measuresGrid');
     grid.textContent = '';
@@ -579,444 +1011,8 @@ function curCapo(){
     var chordsSet = [];
 
     curSong.measures.forEach(function(m, mIdx){
-      if (m.chords && m.chords.length){
-        m.chords.forEach(function(c){
-          if (c && c.chord && chordsSet.indexOf(c.chord) < 0) chordsSet.push(c.chord);
-        });
-      } else if (m.chord && chordsSet.indexOf(m.chord) < 0){
-        chordsSet.push(m.chord);
-      }
-
-      var card = document.createElement('div');
-      card.className = 'measure-card' + (isTab ? ' tab-mode' : '');
-      if (isTab && staffView.layout){
-        card.classList.add('staff-on');
-        if (appState.scoreView === 'staff') card.classList.add('tab-off');
-        card.style.setProperty('--staff-h', GuitarStaffSvg.STAFF_HEIGHT + 'px');
-      }
-      card.dataset.m = mIdx;
-      var inLoop = (mIdx + 1) >= appState.loopStart && (mIdx + 1) <= appState.loopEnd;
-      card.classList.toggle('in-loop', inLoop);
-
-      var head = document.createElement('div');
-      head.className = 'm-head';
-      var num = document.createElement('span');
-      num.className = 'm-num';
-      num.textContent = m.no + '마디';
-      head.appendChild(num);
-      if (m.lyric){
-        var lyr = document.createElement('span');
-        lyr.className = 'm-lyric';
-        lyr.textContent = m.lyric;
-        lyr.title = m.lyric;
-        head.appendChild(lyr);
-      }
-      if (scoreEditorHooks) scoreEditorHooks.appendMeasureEditButton(head, mIdx);
-      card.appendChild(head);
-
-      if (isTab){
-        var staveWrap = document.createElement('div');
-        staveWrap.className = 'tab-stave-wrap';
-
-        var side = document.createElement('div');
-        side.className = 'tab-stave-side';
-        var sideTitle = document.createElement('div');
-        sideTitle.className = 'tab-badge-title';
-        sideTitle.textContent = 'TAB';
-        var strNames = document.createElement('div');
-        strNames.className = 'tab-str-names';
-        ['1E', '2B', '3G', '4D', '5A', '6E'].forEach(function(s, idx){
-          var sn = document.createElement('span');
-          sn.textContent = s;
-          sn.style.top = (idx * 20) + '%';
-          strNames.appendChild(sn);
-        });
-        if (staffView.layout){
-          var staffHeader = staffHeaderFor(mIdx);
-          var headerBox = document.createElement('div');
-          headerBox.className = 'tab-staff-head';
-          headerBox.innerHTML = GuitarStaffSvg.renderHeader(staffHeader);
-          side.appendChild(headerBox);
-          side.style.width = Math.max(36, GuitarStaffSvg.headerWidth(staffHeader)) + 'px';
-        }
-        side.appendChild(sideTitle);
-        side.appendChild(strNames);
-        staveWrap.appendChild(side);
-
-        var body = document.createElement('div');
-        body.className = 'tab-stave-body';
-        if (staffView.layout){
-          var staffLayer = document.createElement('div');
-          staffLayer.className = 'tab-staff-layer';
-          staffLayer.dataset.m = mIdx;
-          body.appendChild(staffLayer);
-        }
-
-        var linesBg = document.createElement('div');
-        linesBg.className = 'tab-lines-bg';
-        for (var l = 0; l < 6; l++){
-          var lh = document.createElement('div');
-          lh.className = 'tab-line-h';
-          lh.style.top = (l * 20) + '%';
-          linesBg.appendChild(lh);
-        }
-        body.appendChild(linesBg);
-
-        var beatsRow = document.createElement('div');
-        beatsRow.className = 'beats-row tab-mode';
-        beatsRow.style.setProperty('--bpb', curSong.beats);
-
-        m.beats.forEach(function(b, bIdx){
-          var cell = document.createElement('div');
-          var extraCls = ' tab-cell';
-          var uniformArticulation = getUniformBeatArticulation(b);
-          if (((curSong.beats === 9 || curSong.beats === 6) && (bIdx === 3 || bIdx === 6)) || (curSong.beats === 8 && bIdx === 4)){
-            extraCls += ' arp-group-start';
-          }
-          if (b.uncertain) extraCls += ' is-uncertain';
-          if (b.kind === 'skip') extraCls += ' slot-skip';
-          cell.className = 'beat-cell' + extraCls;
-          cell.dataset.m = mIdx;
-          cell.dataset.b = bIdx;
-          var beatToken = b.tok || b.customTok || b.en;
-          var effBass = getExplicitBass(b);
-          var pitchLabel = formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(effectiveChordAtBeat(m, bIdx))});
-          var articDesc = uniformArticulation === 'apoyando' ? ' [악보 지정 아포얀도]' : '';
-          var tabDurationInfo = getBeatDurationInfo(m.beats, bIdx, curSong.beats);
-          cell.title = m.no + '마디 ' + (bIdx + 1) + '박' + (pitchLabel ? ': ' + pitchLabel : '') +
-            (pitchLabel && tabDurationInfo.durName && tabDurationInfo.kind !== 'rest' && tabDurationInfo.kind !== 'hold' && tabDurationInfo.kind !== 'skip' ? ' · 길이: ' + tabDurationInfo.durName : '') +
-            articDesc + ' (클릭: 운지 보기 및 음 듣기)' + (b.uncertain ? ' · 확인 필요(?)' : '');
-
-          var topRow = document.createElement('div');
-          topRow.className = 'tab-cell-top';
-          if (b.midi || (b.isSubdivided && b.subNotes) || b.kind === 'rest' || b.kind === 'hold'){
-            var solfegeWrap = document.createElement('span');
-            solfegeWrap.className = 'tab-cell-solfege-wrap';
-
-            var enEl = document.createElement('span');
-            enEl.className = 'tab-cell-en';
-
-            enEl.textContent = formatBeatPitchLabel(b, {compact:true, chord:cleanChordToken(effectiveChordAtBeat(m, bIdx))});
-            if (enEl.textContent){
-              solfegeWrap.appendChild(enEl);
-              topRow.appendChild(solfegeWrap);
-            }
-          }
-          cell.appendChild(topRow);
-
-          var gridEl = document.createElement('div');
-          gridEl.className = 'tab-cell-grid';
-
-          if (b.kind === 'rest' || b.kind === 'hold'){
-            var marker = document.createElement('span');
-            marker.className = 'tab-rest-dash ' + (b.kind === 'hold' ? 'tab-hold-mark' : 'tab-rest-mark');
-            marker.textContent = b.kind === 'hold' ? '—' : 'r';
-            marker.title = b.kind === 'hold' ? '앞 음을 다시 치지 않고 유지' : '쉼';
-            gridEl.appendChild(marker);
-            if (b.kind === 'hold' && typeof GuitarRhythm !== 'undefined'){
-              var heldRecords = GuitarRhythm.getSoundingNotes(curSong.measures, b.startUnits);
-              heldRecords.forEach(function(record){
-                var heldNote = record.note;
-                if (!heldNote.str) return;
-                var heldPill = document.createElement('span');
-                heldPill.className = 'tab-fret-pill note-fret tab-held-fret';
-                heldPill.style.top = ((heldNote.str - 1) * 20) + '%';
-                appendPillFretLabel(heldPill, heldNote, heldNote.tok || heldNote.customTok || heldNote.en, undefined, true);
-                gridEl.appendChild(heldPill);
-              });
-            }
-          } else if (!b.isSubdivided && b.chordNotes && b.chordNotes.length > 2){
-            b.chordNotes.forEach(function(cn, cnIdx){
-              if (cn.str){
-                var cPill = document.createElement('span');
-                cPill.className = 'tab-fret-pill note-fret';
-                cPill.style.top = ((cn.str - 1) * 20) + '%';
-                appendPillFretLabel(cPill, cn, beatToken, cnIdx);
-                gridEl.appendChild(cPill);
-              }
-            });
-            if (b.rolled) appendRollMark(gridEl, chordNoteStrs(b.chordNotes), '50%');
-          } else if (b.isSubdivided && b.subNotes && b.subNotes.length > 1){
-            var numSubs = b.subNotes.length;
-            b.subNotes.forEach(function(sn, sIdx){
-              var leftPct = (((sIdx + 0.5) / numSubs) * 100) + '%';
-              var subToken = sn.tok || sn.customTok || sn.en;
-              function addSubPill(note, transform, componentIndex){
-                if (!note || !note.str) return;
-                var pill = document.createElement('span');
-                pill.className = 'tab-fret-pill note-fret';
-                pill.style.position = 'absolute';
-                pill.style.top = ((note.str - 1) * 20) + '%';
-                pill.style.left = leftPct;
-                pill.style.transform = transform || 'translate(-50%, -50%)';
-                appendPillFretLabel(pill, note, subToken, componentIndex);
-                gridEl.appendChild(pill);
-              }
-              if (sn.kind === 'hold' || sn.kind === 'rest' || sn.tok === '-' || GuitarNotation.isRestToken(sn.tok)){
-                var dash = document.createElement('span');
-                dash.className = 'tab-rest-dash ' + (sn.kind === 'hold' || sn.tok === '-' ? 'tab-hold-mark' : 'tab-rest-mark');
-                dash.textContent = (sn.kind === 'hold' || sn.tok === '-') ? '—' : 'r';
-                dash.title = (sn.kind === 'hold' || sn.tok === '-') ? '앞 음을 다시 치지 않고 유지' : '쉼';
-                dash.style.position = 'absolute';
-                dash.style.left = leftPct;
-                dash.style.top = '50%';
-                dash.style.transform = 'translate(-50%, -50%)';
-                dash.style.opacity = '0.4';
-                gridEl.appendChild(dash);
-                if ((sn.kind === 'hold' || sn.tok === '-') && typeof GuitarRhythm !== 'undefined'){
-                  var subHeldRecords = GuitarRhythm.getSoundingNotes(curSong.measures, sn.startUnits);
-                  subHeldRecords.forEach(function(record){
-                    var heldNote = record.note;
-                    if (!heldNote.str) return;
-                    var heldPill = document.createElement('span');
-                    heldPill.className = 'tab-fret-pill note-fret tab-held-fret';
-                    heldPill.style.position = 'absolute';
-                    heldPill.style.top = ((heldNote.str - 1) * 20) + '%';
-                    heldPill.style.left = leftPct;
-                    heldPill.style.transform = 'translate(-50%, -50%)';
-                    appendPillFretLabel(heldPill, heldNote, heldNote.tok || heldNote.customTok || heldNote.en, undefined, true);
-                    gridEl.appendChild(heldPill);
-                  });
-                }
-              } else if (sn.chordNotes && sn.chordNotes.length > 2){
-                sn.chordNotes.forEach(function(cn, componentIndex){ addSubPill(cn, null, componentIndex); });
-                if (sn.rolled) appendRollMark(gridEl, chordNoteStrs(sn.chordNotes), leftPct);
-              } else if (sn.chordNotes && sn.chordNotes.length === 2){
-                var subBass = getExplicitBass(sn);
-                var pairSameStr = !!(subBass && subBass.str && sn.str && subBass.str === sn.str);
-                var pairSameFret = pairSameStr && subBass.fret === sn.fret;
-                var pairBassTransform = pairSameStr && !pairSameFret ? 'translate(-85%, -50%)' : null;
-                var pairMelTransform = pairSameStr && !pairSameFret ? 'translate(-15%, -50%)' : null;
-                if (subBass && subBass.midi) addSubPill(subBass, pairBassTransform, 0);
-                if (sn.midi && !pairSameFret) addSubPill(sn, pairMelTransform, 1);
-                if (sn.rolled) appendRollMark(gridEl, chordNoteStrs(sn.chordNotes), leftPct);
-              } else if (sn.midi && sn.str){
-                var mPill = document.createElement('span');
-                mPill.className = 'tab-fret-pill note-fret';
-                mPill.style.position = 'absolute';
-                mPill.style.top = ((sn.str - 1) * 20) + '%';
-                mPill.style.left = leftPct;
-                mPill.style.transform = 'translate(-50%, -50%)';
-                appendPillFretLabel(mPill, sn, subToken, 0);
-                gridEl.appendChild(mPill);
-              }
-            });
-          } else {
-            var hasBass = !!(effBass && effBass.str);
-            var hasMel = !!(b.midi && b.str);
-            var sameStr = hasBass && hasMel && (effBass.str === b.str);
-            var sameFret = sameStr && (effBass.fret === b.fret);
-            var diffFret = sameStr && (effBass.fret !== b.fret);
-
-            // 1. 낮은 구성음 프렛
-            if (hasBass){
-              var bPill = document.createElement('span');
-              bPill.className = 'tab-fret-pill note-fret';
-              bPill.style.top = ((effBass.str - 1) * 20) + '%';
-              if (diffFret){
-                bPill.style.left = '38%';
-              }
-              appendPillFretLabel(bPill, effBass, beatToken, 0);
-              gridEl.appendChild(bPill);
-            }
-
-            // 2. 높은 구성음 프렛
-            if (hasMel){
-              if (!sameFret){
-                var mPill = document.createElement('span');
-                mPill.className = 'tab-fret-pill note-fret';
-                mPill.style.top = ((b.str - 1) * 20) + '%';
-                if (diffFret){
-                  mPill.style.left = '62%';
-                }
-                appendPillFretLabel(mPill, b, beatToken, b.chordNotes && b.chordNotes.length >= 2 ? 1 : 0);
-                gridEl.appendChild(mPill);
-              }
-              if (b.rolled) appendRollMark(gridEl, chordNoteStrs(b.chordNotes), diffFret ? '38%' : '50%');
-            } else if (!hasMel && !hasBass && b.kind !== 'skip'){
-              var dash = document.createElement('span');
-              dash.className = 'tab-rest-dash ' + (b.kind === 'hold' ? 'tab-hold-mark' : 'tab-rest-mark');
-              dash.textContent = b.kind === 'hold' ? '—' : 'r';
-              gridEl.appendChild(dash);
-            }
-          }
-
-          cell.appendChild(gridEl);
-
-          cell.addEventListener('click', function(e){
-            if (e.shiftKey) return;
-            e.stopPropagation();
-            curMeasureIdx = mIdx;
-            curBeatIdx = bIdx;
-            if (mIdx + 1 < appState.loopStart || mIdx + 1 > appState.loopEnd){
-              appState.loopStart = mIdx + 1;
-              appState.loopEnd = getMeasureCount(curSong);
-              $('#loopStart').value = appState.loopStart;
-              $('#loopEnd').value = appState.loopEnd;
-              updateLoopClasses();
-            }
-            saveAppState();
-            updateActiveCursor(mIdx, bIdx, !isPlaying);
-          });
-
-          beatsRow.appendChild(cell);
-        });
-
-        body.appendChild(beatsRow);
-        staveWrap.appendChild(body);
-        var chordsBar = buildMeasureChordsBar(m, curSong.beats, true, side.style.width);
-        if (chordsBar) card.appendChild(chordsBar);
-        card.appendChild(staveWrap);
-      } else {
-        var beatsRow = document.createElement('div');
-        beatsRow.className = 'beats-row';
-        beatsRow.style.setProperty('--bpb', curSong.beats);
-
-        m.beats.forEach(function(b, bIdx){
-          var durInfo = getBeatDurationInfo(m.beats, bIdx, curSong.beats);
-          var cell = document.createElement('div');
-          var extraCls = '';
-          var uniformArticulation = getUniformBeatArticulation(b);
-          if (((curSong.beats === 9 || curSong.beats === 6) && (bIdx === 3 || bIdx === 6)) || (curSong.beats === 8 && bIdx === 4)){
-            extraCls += ' arp-group-start';
-          }
-          var mainKind = b.kind || (b.midi ? 'note' : 'rest');
-          var pitchLabel = formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(effectiveChordAtBeat(m, bIdx))});
-          if (mainKind === 'rest'){
-            extraCls += ' is-rest';
-          }
-          if (mainKind === 'skip') extraCls += ' slot-skip';
-          if (b.uncertain) extraCls += ' is-uncertain';
-          cell.className = 'beat-cell' + extraCls;
-          cell.dataset.m = mIdx;
-          cell.dataset.b = bIdx;
-
-          var articDesc = uniformArticulation === 'apoyando' ? ' [악보 지정 아포얀도]' : '';
-
-          var detailDesc = m.no + '마디 ' + (bIdx + 1) + '박: ' +
-            (mainKind === 'rest' ? '쉼' : (mainKind === 'hold' ? '유지' : (mainKind === 'skip' ? '빈칸' : (pitchLabel + ' · ' + durInfo.durName)))) +
-            (durInfo.kind === 'group' ? ' · 분할별 길이: ' + durInfo.durName : '') +
-            articDesc + ' (클릭: 음 듣기 및 지판 확인)' + (b.uncertain ? ' · 확인 필요(?)' : '');
-          cell.title = detailDesc;
-
-          // 1. 박자 번호 및 음표 길이 헤더 (친절한 리듬 표기)
-          var rhythmHead = document.createElement('div');
-          rhythmHead.className = 'b-rhythm-head';
-
-          var idxBadge = document.createElement('span');
-          idxBadge.className = 'b-idx-badge';
-          idxBadge.textContent = (bIdx + 1) + '박';
-          rhythmHead.appendChild(idxBadge);
-
-          if (b.midi || (b.isSubdivided && b.subNotes)){
-            var durBadge = document.createElement('span');
-            durBadge.className = 'b-dur-badge';
-            durBadge.innerHTML = durInfo.svg || '';
-            if (!durInfo.svg) durBadge.textContent = durInfo.label || durInfo.durName;
-            durBadge.title = durInfo.durName;
-            rhythmHead.appendChild(durBadge);
-          }
-          cell.appendChild(rhythmHead);
-
-          // 2. 오선지 음이름 (계이름) 또는 쉼표 기호 (한글 쉼표 대신 1박 옆에 있던 음표/쉼표 기호만 표시)
-          var isSolfege = appState.notationMode === 'solfege';
-          var koEl = document.createElement('span');
-          if (b.midi || (b.isSubdivided && b.subNotes)){
-            koEl.className = 'b-ko-main';
-            function getDisplayPitch(p){
-              if (p.kind === 'rest' || GuitarNotation.isRestToken(p.tok)) return '쉼';
-              if (p.kind === 'hold' || p.ko === '유지') return '유지';
-              if (p.chordNotes && p.chordNotes.length >= 2){
-                return p.chordNotes.map(function(c){ return isSolfege ? c.ko : (c.en ? c.en.replace(/\d+$/, '') : c.ko); }).join('+');
-              }
-              return isSolfege ? p.ko : (p.en ? p.en.replace(/\d+$/, '') : p.ko);
-            }
-            if (!b.isSubdivided && b.chordNotes && b.chordNotes.length >= 2){
-              koEl.textContent = b.chordNotes.map(function(c){ return isSolfege ? c.ko : (c.en ? c.en.replace(/\d+$/, '') : c.ko); }).join('+');
-            } else if (b.isSubdivided && b.subNotes){
-              koEl.textContent = b.subNotes.map(getDisplayPitch).join(' · ');
-            } else {
-              koEl.textContent = isSolfege ? b.ko : (b.en ? b.en.replace(/\d+$/, '') : b.ko);
-            }
-            var koLen = koEl.textContent.length;
-            if (koLen >= 7){
-              koEl.classList.add('b-ko-ultra');
-            } else if (koLen >= 5){
-              koEl.classList.add('b-ko-dense');
-            }
-            cell.appendChild(koEl);
-
-            // 3. 옥타브 위치 및 영문 음높이 서브 표기 (가온 C4, 중간 E4 등)
-            var subEl = document.createElement('span');
-            subEl.className = 'b-note-sub';
-            subEl.textContent = (!b.isSubdivided && (!b.chordNotes || b.chordNotes.length < 2) ? getOctaveLabel(b.midi) + ' ' : '') + formatBeatPitchLabel(b, {compact:false, chord:cleanChordToken(effectiveChordAtBeat(m, bIdx))});
-            cell.appendChild(subEl);
-            var rightHandLabel = getBeatRightHandLabel(b);
-            if (rightHandLabel){
-              var rightHandEl = document.createElement('span');
-              rightHandEl.className = 'b-right-hand';
-              rightHandEl.textContent = rightHandLabel;
-              cell.appendChild(rightHandEl);
-            }
-          } else if (mainKind === 'hold') {
-            koEl.className = 'b-ko-main b-hold-label';
-            koEl.textContent = '유지';
-            cell.appendChild(koEl);
-          } else if (mainKind === 'skip') {
-            koEl.className = 'b-ko-main b-skip-label';
-            koEl.textContent = '빈칸';
-            koEl.title = '시간이 흐르지 않는 칸';
-            cell.appendChild(koEl);
-          } else {
-            koEl.className = 'b-ko-main b-rest-sym';
-            koEl.textContent = '쉼';
-            koEl.title = durInfo.durName;
-            cell.appendChild(koEl);
-          }
-
-          cell.addEventListener('click', function(e){
-            if (e.shiftKey) return;
-            e.stopPropagation();
-            curMeasureIdx = mIdx;
-            curBeatIdx = bIdx;
-            if (mIdx + 1 < appState.loopStart || mIdx + 1 > appState.loopEnd){
-              appState.loopStart = mIdx + 1;
-              appState.loopEnd = getMeasureCount(curSong);
-              $('#loopStart').value = appState.loopStart;
-              $('#loopEnd').value = appState.loopEnd;
-              updateLoopClasses();
-            }
-            saveAppState();
-            updateActiveCursor(mIdx, bIdx, !isPlaying);
-          });
-
-          beatsRow.appendChild(cell);
-        });
-
-        var chordsBar = buildMeasureChordsBar(m, curSong.beats, false);
-        if (chordsBar) card.appendChild(chordsBar);
-        card.appendChild(beatsRow);
-      }
-
-      card.addEventListener('click', function(e){
-        if (e.shiftKey){
-          appState.loopEnd = Math.max(appState.loopStart, mIdx + 1);
-        } else {
-          curMeasureIdx = mIdx;
-          curBeatIdx = 0;
-          if (mIdx + 1 < appState.loopStart || mIdx + 1 > appState.loopEnd){
-            appState.loopStart = mIdx + 1;
-            appState.loopEnd = getMeasureCount(curSong);
-          }
-        }
-        $('#loopStart').value = appState.loopStart;
-        $('#loopEnd').value = appState.loopEnd;
-        saveAppState();
-        updateLoopClasses();
-        updateActiveCursor(curMeasureIdx, curBeatIdx, false);
-      });
-
-      grid.appendChild(card);
+      collectMeasureChords(m, chordsSet);
+      grid.appendChild(buildStructuredMeasureCard(m, mIdx, isTab));
     });
 
     renderChordCards(chordsSet);
@@ -1035,6 +1031,19 @@ function curCapo(){
       $('#pdfPageTxt').textContent = (curSong.curPageIdx + 1) + ' / ' + curSong.pdfPages.length;
     }
     renderImageSystemsOverlay();
+  }
+
+  function createOverlaySysButton(label, title, onClick, isDanger){
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = label;
+    if (title) btn.title = title;
+    btn.style.cssText = 'border:0;background:' + (isDanger ? '#c03f2a' : 'rgba(0,0,0,.35)') + ';color:#fff;border-radius:3px;padding:1px 6px;font-size:11px';
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      onClick();
+    });
+    return btn;
   }
 
   function renderImageSystemsOverlay(){
@@ -1067,71 +1076,26 @@ function curCapo(){
         grip.textContent = ':: 이동 · ' + (sysIdx + 1) + '번째 줄 (' + sys.bars.length + '마디)';
         lbl.appendChild(grip);
 
-        var minusB = document.createElement('button');
-        minusB.type = 'button';
-        minusB.textContent = '-마디';
-        minusB.style.cssText = 'border:0;background:rgba(0,0,0,.35);color:#fff;border-radius:3px;padding:1px 6px;font-size:11px';
-        minusB.addEventListener('click', function(e){
-          e.stopPropagation();
+        lbl.appendChild(createOverlaySysButton('-마디', '', function(){
           if (sys.bars.length > 1){ sys.bars.pop(); syncAfterImageGridChange(); }
-        });
-
-        var plusB = document.createElement('button');
-        plusB.type = 'button';
-        plusB.textContent = '+마디';
-        plusB.style.cssText = 'border:0;background:rgba(0,0,0,.35);color:#fff;border-radius:3px;padding:1px 6px;font-size:11px';
-        plusB.addEventListener('click', function(e){
-          e.stopPropagation();
+        }));
+        lbl.appendChild(createOverlaySysButton('+마디', '', function(){
           if (sys.bars.length < 10){ sys.bars.push({ chord: '', note: '', memo: '', w: 1 }); syncAfterImageGridChange(); }
-        });
-
-        var detectB = document.createElement('button');
-        detectB.type = 'button';
-        detectB.textContent = '마디 감지';
-        detectB.title = '이 줄 안에서 마디선을 자동으로 감지합니다';
-        detectB.style.cssText = 'border:0;background:rgba(0,0,0,.35);color:#fff;border-radius:3px;padding:1px 6px;font-size:11px';
-        detectB.addEventListener('click', function(e){
-          e.stopPropagation();
+        }));
+        lbl.appendChild(createOverlaySysButton('마디 감지', '이 줄 안에서 마디선을 자동으로 감지합니다', function(){
           triggerDetectBarlines(sysIdx);
-        });
-
-        var eqB = document.createElement('button');
-        eqB.type = 'button';
-        eqB.textContent = '균등 간격';
-        eqB.title = '마디 간격을 똑같이 초기화합니다';
-        eqB.style.cssText = 'border:0;background:rgba(0,0,0,.35);color:#fff;border-radius:3px;padding:1px 6px;font-size:11px';
-        eqB.addEventListener('click', function(e){
-          e.stopPropagation();
+        }));
+        lbl.appendChild(createOverlaySysButton('균등 간격', '마디 간격을 똑같이 초기화합니다', function(){
           sys.bars.forEach(function(b){ b.w = 1; });
           syncAfterImageGridChange();
-        });
-
-        var cloneSys = document.createElement('button');
-        cloneSys.type = 'button';
-        cloneSys.textContent = '줄 복제';
-        cloneSys.title = '이 줄의 크기와 마디 구조를 복사하여 아래에 새 줄을 추가합니다';
-        cloneSys.style.cssText = 'border:0;background:rgba(0,0,0,.35);color:#fff;border-radius:3px;padding:1px 6px;font-size:11px';
-        cloneSys.addEventListener('click', function(e){
-          e.stopPropagation();
+        }));
+        lbl.appendChild(createOverlaySysButton('줄 복제', '이 줄의 크기와 마디 구조를 복사하여 아래에 새 줄을 추가합니다', function(){
           duplicateSystem(sysIdx);
-        });
-
-        var delSys = document.createElement('button');
-        delSys.type = 'button';
-        delSys.textContent = '줄 삭제';
-        delSys.style.cssText = 'border:0;background:#c03f2a;color:#fff;border-radius:3px;padding:1px 6px;font-size:11px';
-        delSys.addEventListener('click', function(e){
-          e.stopPropagation();
+        }));
+        lbl.appendChild(createOverlaySysButton('줄 삭제', '', function(){
           curSong.systems.splice(sysIdx, 1);
           syncAfterImageGridChange();
-        });
-
-        lbl.appendChild(minusB);
-        lbl.appendChild(plusB);
-        lbl.appendChild(detectB);
-        lbl.appendChild(eqB);
-        lbl.appendChild(cloneSys);
-        lbl.appendChild(delSys);
+        }, true));
         box.appendChild(lbl);
 
         // 좌/우/하/우하단 크기 조절 핸들
@@ -1233,10 +1197,7 @@ function curCapo(){
     var total = getMeasureCount(curSong);
     appState.loopStart = 1;
     appState.loopEnd = total;
-    $('#loopStart').max = total;
-    $('#loopEnd').max = total;
-    $('#loopStart').value = 1;
-    $('#loopEnd').value = total;
+    syncLoopInputs(total);
     persistImageSong(curSong);
     renderImageSystemsOverlay();
   }
@@ -1394,7 +1355,7 @@ function curCapo(){
       if (w > 0.12 && h > 0.04){
         curSong.systems.push({
           x: +x.toFixed(4), y: +y.toFixed(4), w: +w.toFixed(4), h: +h.toFixed(4),
-          bars: new Array(4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; })
+          bars: makeBlankBars(4)
         });
         syncAfterImageGridChange();
       }
@@ -1480,7 +1441,6 @@ function curCapo(){
       }
 
       var beatObj = m.beats[bIdx];
-      var effBass = getExplicitBass(beatObj);
       var targetForFb = (beatObj && beatObj.isSubdivided && beatObj.subNotes)
         ? beatObj.subNotes[0]
         : beatObj;
@@ -1662,8 +1622,7 @@ function curCapo(){
     if (appState.loopStart > 1){
       appState.loopStart = 1;
       appState.loopEnd = getMeasureCount(curSong);
-      if ($('#loopStart')) $('#loopStart').value = appState.loopStart;
-      if ($('#loopEnd')) $('#loopEnd').value = appState.loopEnd;
+      syncLoopInputs();
       updateLoopClasses();
     }
     saveAppState();
@@ -1677,6 +1636,11 @@ function curCapo(){
     if (wasPlaying){
       startPractice();
     }
+  }
+
+  function getAudioHardwareLatencySec(){
+    if (!actx) return 0;
+    return (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010) + ((appState.audioOffsetMs || 0) / 1000);
   }
 
   function schedulerTick(){
@@ -1737,7 +1701,7 @@ function curCapo(){
 
           // UI 동기화 예약 (WebAudio 하드웨어 버퍼 출력 지연 baseLatency + outputLatency + 블루투스 오프셋 보정)
           (function(mI, bI, loopCnt, beatTime, spbVal, curBObj, curM){
-            var hwLat = (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010) + ((appState.audioOffsetMs || 0) / 1000);
+            var hwLat = getAudioHardwareLatencySec();
             var delay = Math.max(0, (beatTime + hwLat - actx.currentTime) * 1000);
             setTimeout(function(){
               if (playSession !== s) return;
@@ -1794,8 +1758,7 @@ function curCapo(){
               }
             } else {
               s.endScheduled = true;
-              var endHwLat = (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010) + ((appState.audioOffsetMs || 0) / 1000);
-              var endDelay = Math.max(0, (s.nextBeatTime + endHwLat - actx.currentTime) * 1000);
+              var endDelay = Math.max(0, (s.nextBeatTime + getAudioHardwareLatencySec() - actx.currentTime) * 1000);
               setTimeout(function(){
                 if (playSession === s) stopPractice();
               }, endDelay);
@@ -1806,12 +1769,9 @@ function curCapo(){
       }
     }
 
-    // 이미지 악보일 때 부드러운 Playhead 이동 (하드웨어 레이턴시 hwLat + 블루투스 오프셋 보정)
+    // 이미지 악보일 때 부드러운 Playhead 이동 (하드웨어 레이턴시 + 블루투스 오프셋 보정)
     if (curSong && curSong.type === 'image' && !s.inCountIn){
-      var hwLat = (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010) + ((appState.audioOffsetMs || 0) / 1000);
-      var audioNow = now - hwLat;
-      var elapsedInBar = audioNow - (s.measureStartTime - s.spb * s.bpb);
-      var barDur = s.spb * s.bpb;
+      var audioNow = now - getAudioHardwareLatencySec();
       var frac = ((audioNow - (s.nextBeatTime - s.spb)) / s.spb + ((s.bIdx + s.bpb - 1) % s.bpb)) / s.bpb;
       var ph = $('#systemsOverlay .img-playhead');
       if (ph && isFinite(frac)){
@@ -1889,7 +1849,7 @@ function curCapo(){
   }
 
   function setBpm(v){
-    appState.bpm = Math.max(30, Math.min(240, Math.round(Number(v) || 64)));
+    appState.bpm = clampBpm(v, 64);
     if (playSession) playSession.spb = 60 / appState.bpm;
     syncConsoleUI();
     saveAppState();
@@ -1959,8 +1919,7 @@ function curCapo(){
     var maxM = getMeasureCount(curSong);
     appState.loopStart = Math.max(1, Math.min(maxM, Number(e.target.value) || 1));
     if (appState.loopEnd < appState.loopStart) appState.loopEnd = appState.loopStart;
-    $('#loopStart').value = appState.loopStart;
-    $('#loopEnd').value = appState.loopEnd;
+    syncLoopInputs(maxM);
     updateLoopClasses();
     saveAppState();
   });
@@ -1974,10 +1933,10 @@ function curCapo(){
   });
 
   $('#loopAllBtn').addEventListener('click', function(){
+    var maxM = getMeasureCount(curSong);
     appState.loopStart = 1;
-    appState.loopEnd = getMeasureCount(curSong);
-    $('#loopStart').value = appState.loopStart;
-    $('#loopEnd').value = appState.loopEnd;
+    appState.loopEnd = maxM;
+    syncLoopInputs(maxM);
     updateLoopClasses();
     saveAppState();
   });
@@ -2064,13 +2023,7 @@ function curCapo(){
     var nextIdx = Math.max(0, Math.min(total - 1, curMeasureIdx + delta));
     curMeasureIdx = nextIdx;
     curBeatIdx = 0;
-    if (nextIdx + 1 < appState.loopStart || nextIdx + 1 > appState.loopEnd){
-      appState.loopStart = nextIdx + 1;
-      appState.loopEnd = total;
-      if ($('#loopStart')) $('#loopStart').value = appState.loopStart;
-      if ($('#loopEnd')) $('#loopEnd').value = appState.loopEnd;
-      updateLoopClasses();
-    }
+    ensureMeasureInLoop(nextIdx);
     saveAppState();
     updateActiveCursor(curMeasureIdx, 0, !!appState.guideSound);
   }
@@ -2145,7 +2098,6 @@ function curCapo(){
 
   // ---------- 유튜브 레퍼런스 연동
   var ytPlayer = null;
-  var ytApiReady = false;
 
   function extractYoutubeId(url){
     if (!url) return null;
@@ -2190,11 +2142,10 @@ function curCapo(){
   }
 
   function ensureYtApi(){
-    if (window.YT && window.YT.Player){ ytApiReady = true; return Promise.resolve(); }
+    if (window.YT && window.YT.Player) return Promise.resolve();
     return new Promise(function(resolve){
       var prev = window.onYouTubeIframeAPIReady;
       window.onYouTubeIframeAPIReady = function(){
-        ytApiReady = true;
         if (prev) prev();
         resolve();
       };
@@ -2322,12 +2273,11 @@ function curCapo(){
   }
 
   async function createImageSong(title, firstDataUrl, pdfPages){
-    function blankBars(){ return new Array(4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; }); }
     var defaultSystems = pdfPages ? [
-      { x: 0.08, y: 0.14, w: 0.84, h: 0.18, bars: blankBars() },
-      { x: 0.08, y: 0.42, w: 0.84, h: 0.18, bars: blankBars() }
+      { x: 0.08, y: 0.14, w: 0.84, h: 0.18, bars: makeBlankBars(4) },
+      { x: 0.08, y: 0.42, w: 0.84, h: 0.18, bars: makeBlankBars(4) }
     ] : [
-      { x: 0.12, y: 0.15, w: 0.55, h: 0.72, bars: blankBars() }
+      { x: 0.12, y: 0.15, w: 0.55, h: 0.72, bars: makeBlankBars(4) }
     ];
     var pageSystems = pdfPages && pdfPages.length > 1
       ? pdfPages.map(function(_, idx){ return idx === 0 ? defaultSystems : cloneSystemsLayout(defaultSystems); })
@@ -2361,64 +2311,47 @@ function curCapo(){
     renderImageSystemsOverlay();
   });
 
-  function duplicateSystem(sysIdx){
-    if (!curSong || curSong.type !== 'image' || !curSong.systems[sysIdx]) return;
-    var orig = curSong.systems[sysIdx];
-    var systems = curSong.systems;
+  function buildSystemCopy(systems, refIdx){
+    var orig = systems[refIdx];
     var stepY = orig.h + Math.max(0.02, orig.h * 0.15);
     if (systems.length > 1){
-      if (sysIdx < systems.length - 1){
-        var gap = systems[sysIdx + 1].y - orig.y;
+      if (refIdx < systems.length - 1){
+        var gap = systems[refIdx + 1].y - orig.y;
         if (gap > orig.h * 0.5) stepY = gap;
-      } else if (sysIdx > 0){
-        var gapPrev = orig.y - systems[sysIdx - 1].y;
-        if (gapPrev > orig.h * 0.5) stepY = gapPrev;
+      } else if (refIdx > 0){
+        var gapPrev = orig.y - systems[refIdx - 1].y;
+        var minGap = refIdx === systems.length - 1 ? orig.h * 0.6 : orig.h * 0.5;
+        if (gapPrev >= minGap) stepY = gapPrev;
       }
     }
     var newY = Math.max(0.02, Math.min(0.98 - orig.h, +(orig.y + stepY).toFixed(4)));
-    var clonedBars = orig.bars.map(function(b){
-      return { chord: '', note: '', memo: '', w: (typeof b.w === 'number' && b.w > 0 ? b.w : 1) };
-    });
-    var newSys = {
+    return {
       x: orig.x,
       y: newY,
       w: orig.w,
       h: orig.h,
-      bars: clonedBars
+      bars: cloneSystemBars(orig.bars)
     };
-    curSong.systems.splice(sysIdx + 1, 0, newSys);
+  }
+
+  function duplicateSystem(sysIdx){
+    if (!curSong || curSong.type !== 'image' || !curSong.systems[sysIdx]) return;
+    curSong.systems.splice(sysIdx + 1, 0, buildSystemCopy(curSong.systems, sysIdx));
     syncAfterImageGridChange();
   }
 
   $('#addSystemRowBtn').addEventListener('click', function(){
     if (!curSong || curSong.type !== 'image') return;
     var systems = curSong.systems;
-    var n = systems.length;
-    if (n > 0){
-      var last = systems[n - 1];
-      var stepY = last.h + Math.max(0.02, last.h * 0.15);
-      if (n >= 2){
-        var stride = last.y - systems[n - 2].y;
-        if (stride >= last.h * 0.6) stepY = stride;
-      }
-      var nextY = Math.max(0.02, Math.min(0.98 - last.h, +(last.y + stepY).toFixed(4)));
-      var clonedBars = last.bars.map(function(b){
-        return { chord: '', note: '', memo: '', w: (typeof b.w === 'number' && b.w > 0 ? b.w : 1) };
-      });
-      systems.push({
-        x: last.x,
-        y: nextY,
-        w: last.w,
-        h: last.h,
-        bars: clonedBars
-      });
+    if (systems.length > 0){
+      systems.push(buildSystemCopy(systems, systems.length - 1));
     } else {
       systems.push({
         x: 0.08,
         y: 0.12,
         w: 0.84,
         h: 0.18,
-        bars: new Array(4).fill(null).map(function(){ return { chord: '', note: '', memo: '', w: 1 }; })
+        bars: makeBlankBars(4)
       });
     }
     syncAfterImageGridChange();
@@ -2444,12 +2377,7 @@ function curCapo(){
       systems: nextSystems,
       pageSystems: nextPageSystems
     });
-    if (!await persistImageSong(candidate)) return;
-    Object.assign(targetSong, candidate);
-    var cs = imageSongs.find(function(s){ return s.id === targetSong.id; });
-    if (cs && cs !== targetSong) Object.assign(cs, candidate);
-    var allSong = allSongs.find(function(s){ return s.id === targetSong.id; });
-    if (allSong && allSong !== targetSong) Object.assign(allSong, candidate);
+    if (!await applyImageSongUpdate(targetSong, candidate)) return;
     if (curSong !== targetSong) return;
     selectedImgBar = null;
     curMeasureIdx = 0;
@@ -2457,10 +2385,7 @@ function curCapo(){
     var total = getMeasureCount(targetSong);
     appState.loopStart = 1;
     appState.loopEnd = total;
-    $('#loopStart').max = total;
-    $('#loopEnd').max = total;
-    $('#loopStart').value = 1;
-    $('#loopEnd').value = total;
+    syncLoopInputs(total);
     renderImageScore();
     updateLoopClasses();
     updateActiveCursor(0, 0, false);
@@ -2503,12 +2428,7 @@ function curCapo(){
     bar.chord = $('#beChord').value.trim();
     bar.note = $('#beNote').value.trim();
     bar.memo = $('#beMemo').value.trim();
-    if (!await persistImageSong(candidate)) return;
-    Object.assign(targetSong, candidate);
-    var customIdx = imageSongs.findIndex(function(s){ return s.id === candidate.id; });
-    if (customIdx >= 0 && imageSongs[customIdx] !== targetSong) Object.assign(imageSongs[customIdx], candidate);
-    var allSong = allSongs.find(function(s){ return s.id === candidate.id; });
-    if (allSong && allSong !== targetSong) Object.assign(allSong, candidate);
+    if (!await applyImageSongUpdate(targetSong, candidate)) return;
     clearStorageError();
     if (curSong !== targetSong || !selectedImgBar || selectedImgBar.sysIdx !== targetBar.sysIdx || selectedImgBar.barIdx !== targetBar.barIdx || selectedImgBar.globalIdx !== targetBar.globalIdx) return;
     $('#barEditModal').hidden = true;
@@ -2625,13 +2545,7 @@ function curCapo(){
     if (newTitle === oldTitle) return;
 
     var renamedSong = Object.assign({}, targetSong, { title: newTitle });
-    if (!await persistImageSong(renamedSong)) return;
-    Object.assign(targetSong, renamedSong);
-    var cs = imageSongs.find(function(s){ return s.id === targetSong.id; });
-    if (cs && cs !== targetSong) Object.assign(cs, renamedSong);
-
-    var allSong = allSongs.find(function(s){ return s.id === targetSong.id; });
-    if (allSong && allSong !== targetSong) Object.assign(allSong, targetSong);
+    if (!await applyImageSongUpdate(targetSong, renamedSong)) return;
     clearStorageError();
     if (curSong !== targetSong) return;
     rebuildSongSelect(targetSong.id);
@@ -2719,6 +2633,7 @@ function curCapo(){
   }
 
   // ---------- 수동 오디오 출력 지연 설정
+  var AUDIO_OFFSET_PRESETS = [['#btPresetWired', 0], ['#btPresetNormal', 180], ['#btPresetHeavy', 240]];
   function updateAudioOffsetBadge(){
     var v = appState.audioOffsetMs || 0;
     var text = (v > 0 ? '+' : '') + v + 'ms';
@@ -2728,9 +2643,10 @@ function curCapo(){
     var v = appState.audioOffsetMs || 0;
     if ($('#audioOffsetRange')) $('#audioOffsetRange').value = v;
     if ($('#audioOffsetVal')) $('#audioOffsetVal').textContent = (v > 0 ? '+' : '') + v + ' ms';
-    if ($('#btPresetWired')) $('#btPresetWired').classList.toggle('primary', v === 0);
-    if ($('#btPresetNormal')) $('#btPresetNormal').classList.toggle('primary', v === 180);
-    if ($('#btPresetHeavy')) $('#btPresetHeavy').classList.toggle('primary', v === 240);
+    AUDIO_OFFSET_PRESETS.forEach(function(preset){
+      var btn = $(preset[0]);
+      if (btn) btn.classList.toggle('primary', v === preset[1]);
+    });
     updateAudioOffsetBadge();
   }
   $('#audioOffsetOpenBtn').addEventListener('click', function(){
@@ -2747,14 +2663,13 @@ function curCapo(){
       updateAudioOffsetUI();
     });
   }
-  if ($('#btPresetWired')) $('#btPresetWired').addEventListener('click', function(){
-    appState.audioOffsetMs = 0; saveAppState(); updateAudioOffsetUI();
-  });
-  if ($('#btPresetNormal')) $('#btPresetNormal').addEventListener('click', function(){
-    appState.audioOffsetMs = 180; saveAppState(); updateAudioOffsetUI();
-  });
-  if ($('#btPresetHeavy')) $('#btPresetHeavy').addEventListener('click', function(){
-    appState.audioOffsetMs = 240; saveAppState(); updateAudioOffsetUI();
+  AUDIO_OFFSET_PRESETS.forEach(function(preset){
+    var btn = $(preset[0]);
+    if (btn) btn.addEventListener('click', function(){
+      appState.audioOffsetMs = preset[1];
+      saveAppState();
+      updateAudioOffsetUI();
+    });
   });
 
   // ---------- 백업 및 복원
@@ -2845,13 +2760,11 @@ function curCapo(){
     });
   }
 
-  if (typeof initGoogleDriveSyncUI === 'function'){
-    initGoogleDriveSyncUI({
-      getBackupPayload: buildBackupPayload,
-      restoreBackupPayload: restoreBackupData
-    });
-  } else if (typeof GuitarDriveSync !== 'undefined' && typeof GuitarDriveSync.initGoogleDriveSyncUI === 'function'){
-    GuitarDriveSync.initGoogleDriveSyncUI({
+  var initDriveUi = typeof initGoogleDriveSyncUI === 'function'
+    ? initGoogleDriveSyncUI
+    : (typeof GuitarDriveSync !== 'undefined' && typeof GuitarDriveSync.initGoogleDriveSyncUI === 'function' ? GuitarDriveSync.initGoogleDriveSyncUI : null);
+  if (initDriveUi){
+    initDriveUi({
       getBackupPayload: buildBackupPayload,
       restoreBackupPayload: restoreBackupData
     });
@@ -2889,112 +2802,56 @@ function curCapo(){
     });
   }
 
+  function appendSongOptgroup(selectEl, label, items, resolveSong, prefix){
+    if (!items.length) return;
+    var group = document.createElement('optgroup');
+    group.label = label;
+    items.forEach(function(item){
+      var s = resolveSong ? resolveSong(item) : item;
+      var opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = (prefix || '') + s.title;
+      group.appendChild(opt);
+    });
+    selectEl.appendChild(group);
+  }
+
+  function populateSongSelect(selectEl, labels){
+    if (!selectEl) return;
+    selectEl.textContent = '';
+    appendBuiltinSongGroups(selectEl);
+    var findLiveSong = function(source){ return allSongs.find(function(song){ return song.id === source.id; }) || source; };
+    appendSongOptgroup(selectEl, labels.sheet, sheetSongs, findLiveSong, '☁️ ');
+    appendSongOptgroup(selectEl, labels.image, imageSongs);
+    appendSongOptgroup(selectEl, '임시 악보', currentDraftOnlySongs());
+  }
+
   function syncCompactSongSelectOptions(){
     var cSel = $('#compactSongSelect');
     if (!cSel) return;
-    cSel.textContent = '';
-
-    appendBuiltinSongGroups(cSel);
-
-    if (sheetSongs.length){
-      var grpSheet = document.createElement('optgroup');
-      grpSheet.label = '구글 시트 연동';
-      sheetSongs.forEach(function(source){
-        var s = allSongs.find(function(song){ return song.id === source.id; }) || source;
-        var opt = document.createElement('option');
-        opt.value = s.id;
-        opt.textContent = '☁️ ' + s.title;
-        grpSheet.appendChild(opt);
-      });
-      cSel.appendChild(grpSheet);
-    }
-
-    if (imageSongs.length){
-      var grp2 = document.createElement('optgroup');
-      grp2.label = '내 이미지·PDF 악보';
-      imageSongs.forEach(function(s){
-        var opt = document.createElement('option');
-        opt.value = s.id;
-        opt.textContent = s.title;
-        grp2.appendChild(opt);
-      });
-      cSel.appendChild(grp2);
-    }
-
-    var drafts = currentDraftOnlySongs();
-    if (drafts.length){
-      var draftGroup = document.createElement('optgroup');
-      draftGroup.label = '임시 악보';
-      drafts.forEach(function(song){
-        var opt = document.createElement('option');
-        opt.value = song.id;
-        opt.textContent = song.title;
-        draftGroup.appendChild(opt);
-      });
-      cSel.appendChild(draftGroup);
-    }
-
+    populateSongSelect(cSel, { sheet: '구글 시트 연동', image: '내 이미지·PDF 악보' });
     if (curSong) cSel.value = curSong.id;
+  }
+
+  function applySelectedSong(target){
+    curSong = target;
+    appState.lastSongId = target.id;
+    appState.bpm = Number(target.bpm) || 64;
+    if ($('#songSelect')) $('#songSelect').value = target.id;
+    if ($('#compactSongSelect')) $('#compactSongSelect').value = target.id;
+    renderSong();
+    restoreSongSession(target);
+    saveAppState();
   }
 
   function rebuildSongSelect(selectId){
     if (curSong) rememberCurrentSession();
     stopPractice();
     allSongs = scoreDrafts.list(BUILTIN_SONGS.concat(sheetSongs).concat(imageSongs));
-    var sel = $('#songSelect');
-    sel.textContent = '';
-
-    appendBuiltinSongGroups(sel);
-
-    if (sheetSongs.length){
-      var grpSheet = document.createElement('optgroup');
-      grpSheet.label = '내 구글 드라이브 스프레드시트 연동 악보';
-      sheetSongs.forEach(function(source){
-        var s = allSongs.find(function(song){ return song.id === source.id; }) || source;
-        var opt = document.createElement('option');
-        opt.value = s.id;
-        opt.textContent = '☁️ ' + s.title;
-        grpSheet.appendChild(opt);
-      });
-      sel.appendChild(grpSheet);
-    }
-
-    if (imageSongs.length){
-      var grp2 = document.createElement('optgroup');
-      grp2.label = '이 기기에 저장된 이미지·PDF 악보';
-      imageSongs.forEach(function(s){
-        var opt = document.createElement('option');
-        opt.value = s.id;
-        opt.textContent = s.title;
-        grp2.appendChild(opt);
-      });
-      sel.appendChild(grp2);
-    }
-
-    var draftSongs = currentDraftOnlySongs();
-    if (draftSongs.length){
-      var draftGroup = document.createElement('optgroup');
-      draftGroup.label = '임시 악보';
-      draftSongs.forEach(function(song){
-        var opt = document.createElement('option');
-        opt.value = song.id;
-        opt.textContent = song.title;
-        draftGroup.appendChild(opt);
-      });
-      sel.appendChild(draftGroup);
-    }
-
+    populateSongSelect($('#songSelect'), { sheet: '내 구글 드라이브 스프레드시트 연동 악보', image: '이 기기에 저장된 이미지·PDF 악보' });
     syncCompactSongSelectOptions();
-
     var target = allSongs.find(function(s){ return s.id === selectId; }) || allSongs[0];
-    sel.value = target.id;
-    if ($('#compactSongSelect')) $('#compactSongSelect').value = target.id;
-    curSong = target;
-    appState.lastSongId = target.id;
-    appState.bpm = Number(target.bpm) || 64;
-    renderSong();
-    restoreSongSession(target);
-    saveAppState();
+    applySelectedSong(target);
   }
 
   function changeSongById(songId){
@@ -3004,14 +2861,7 @@ function curCapo(){
     curBeatIdx = 0;
     var found = allSongs.find(function(s){ return s.id === songId; });
     if (found){
-      curSong = found;
-      appState.lastSongId = found.id;
-      appState.bpm = Number(found.bpm) || 64;
-      if ($('#songSelect')) $('#songSelect').value = found.id;
-      if ($('#compactSongSelect')) $('#compactSongSelect').value = found.id;
-      renderSong();
-      restoreSongSession(found);
-      saveAppState();
+      applySelectedSong(found);
       if (appState.isCompactPractice && curSong.type === 'structured'){
         var card = $('#measuresGrid .measure-card[data-m="0"]');
         var nextCard = $('#measuresGrid .measure-card[data-m="1"]');

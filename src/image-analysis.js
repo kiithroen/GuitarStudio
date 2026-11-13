@@ -24,6 +24,10 @@
     return { canvas: canvas, ctx: ctx, cw: cw, ch: ch, pixels: ctx.getImageData(0, 0, cw, ch).data };
   }
 
+  function isDarkPixel(pixels, idx, threshold){
+    return pixels[idx] < threshold && pixels[idx + 1] < threshold && pixels[idx + 2] < threshold;
+  }
+
   function findBarlinePeaks(pixels, cw, ch, sysRect){
     var rx0 = Math.floor((sysRect ? sysRect.x : 0.05) * cw);
     var ry0 = Math.floor((sysRect ? sysRect.y : 0.12) * ch);
@@ -39,7 +43,7 @@
       var darkCount = 0;
       for (var dy = Math.floor(rh * 0.1); dy < Math.floor(rh * 0.9); dy++){
         var idx = ((ry0 + dy) * cw + rx0 + dx) * 4;
-        if (pixels[idx] < 75 && pixels[idx + 1] < 75 && pixels[idx + 2] < 75) darkCount++;
+        if (isDarkPixel(pixels, idx, 75)) darkCount++;
       }
       colDark[dx] = darkCount / (rh * 0.8);
     }
@@ -80,7 +84,7 @@
       var rowOffset = y * cw * 4;
       for (var x = 0; x < cw; x++){
         var idx = rowOffset + x * 4;
-        var isDark = pixels[idx] < 85 && pixels[idx + 1] < 85 && pixels[idx + 2] < 85;
+        var isDark = isDarkPixel(pixels, idx, 85);
         if (isDark){
           run++;
         } else {
@@ -154,7 +158,7 @@
         var rOff = sy * cw * 4;
         for (var sx = 0; sx < cw; sx++){
           var pIdx = rOff + sx * 4;
-          if (pixels[pIdx] < 85 && pixels[pIdx + 1] < 85 && pixels[pIdx + 2] < 85){
+          if (isDarkPixel(pixels, pIdx, 85)){
             colHits[sx]++;
           }
         }

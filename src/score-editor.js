@@ -11,6 +11,9 @@ var scoreEditorHooks = (function(){
   var EDIT_BUTTON_TITLE_ALPHATEX = '악보 입력 화면에서 고치면 우리 악보 사본으로 저장됩니다';
 
   function statusNode(){ return document.getElementById('scoreDraftStatus'); }
+  function clampBpm(value, fallback){
+    return Math.max(30, Math.min(240, Math.round(Number(value) || fallback || 64)));
+  }
 
   function snapshotSession(){
     return {
@@ -26,7 +29,7 @@ var scoreEditorHooks = (function(){
   function restoreSession(snapshot){
     if (!snapshot || !curSong) return;
     var count = Math.max(1, curSong.measures.length);
-    appState.bpm = Math.max(30, Math.min(240, Math.round(Number(snapshot.bpm) || Number(curSong.bpm) || 64)));
+    appState.bpm = clampBpm(snapshot.bpm, Number(curSong.bpm) || 64);
     appState.loopStart = Math.max(1, Math.min(count, Number(snapshot.loopStart) || 1));
     appState.loopEnd = Math.max(appState.loopStart, Math.min(count, Number(snapshot.loopEnd) || count));
     curMeasureIdx = Math.max(0, Math.min(count - 1, Number(snapshot.measure) || 0));
@@ -128,7 +131,7 @@ var scoreEditorHooks = (function(){
       sourceId:curSong.id,
       title:curSong.title,
       beats:curSong.beats,
-      bpm:Math.max(30, Math.min(240, Math.round(Number(curSong.bpm) || 64))),
+      bpm:clampBpm(curSong.bpm, 64),
       badge:curSong.badge || '',
       lines:serializeScoreMeasures(curSong.measures, '\n').split('\n'),
       key:key,
@@ -147,7 +150,7 @@ var scoreEditorHooks = (function(){
     var payload = {
       title:curSong.title,
       beats:curSong.beats,
-      bpm:Math.max(30, Math.min(240, Math.round(Number(curSong.bpm) || 64))),
+      bpm:clampBpm(curSong.bpm, 64),
       practiceBpm:appState.bpm, // 연습 화면이 지금 쓰는 BPM. 보기 창의 BPM 슬라이더가 이 값으로 시작한다
       capo:GuitarParser.getSongCapo(curSong),
       description:curSong.badge || '',
@@ -222,7 +225,7 @@ var scoreEditorHooks = (function(){
         var copy = scoreDrafts.createFromScore({
           title:copyTitleFor(source.title, sources),
           beats:Number(handoff.beats),
-          bpm:Math.max(30, Math.min(240, isFinite(handoffBpm) && handoffBpm > 0 ? handoffBpm : (Math.round(Number(source.bpm)) || 64))),
+          bpm:clampBpm(isFinite(handoffBpm) && handoffBpm > 0 ? handoffBpm : source.bpm, 64),
           badge:typeof handoff.badge === 'string' ? handoff.badge : source.badge,
           lines:handoff.lines,
           key:validKey ? handoff.key : 0,
@@ -241,7 +244,7 @@ var scoreEditorHooks = (function(){
       var song = scoreDrafts.createFromScore({
         title:handoff.title,
         beats:Number(handoff.beats),
-        bpm:Math.max(30, Math.min(240, Math.round(Number(handoff.bpm) || 64))),
+        bpm:clampBpm(handoff.bpm, 64),
         badge:handoff.badge,
         lines:handoff.lines,
         key:validKey ? handoff.key : 0,

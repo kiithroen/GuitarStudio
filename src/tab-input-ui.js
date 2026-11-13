@@ -1356,13 +1356,9 @@
     if (result && result.ok === false) setStatus(result.error);
   }
 
-  function transposeSelected(semitones){
-    if (!noteSel){
-      setStatus('고른 음이 없습니다.');
-      return;
-    }
+  function applySelectedNoteEdit(fn){
     var target = { pos: copyPos(noteSel.pos), str: noteSel.str };
-    var result = apply(function(d){ return S.transposeNote(d, target.pos, target.str, semitones); }, {
+    var result = apply(function(d){ return fn(d, target.pos, target.str); }, {
       measures: [target.pos.m],
       onDone: function(res){ noteSel = { pos: target.pos, str: res.str }; cursor.str = res.str; }
     });
@@ -1374,19 +1370,17 @@
     playNoteSel();
   }
 
-  function moveSelectedToString(toStr){
-    if (!noteSel || toStr === noteSel.str) return;
-    var target = { pos: copyPos(noteSel.pos), str: noteSel.str };
-    var result = apply(function(d){ return S.moveToString(d, target.pos, target.str, toStr); }, {
-      measures: [target.pos.m],
-      onDone: function(res){ noteSel = { pos: target.pos, str: res.str }; cursor.str = res.str; }
-    });
-    if (!result) return;
-    if (result.ok === false){
-      setStatus(result.error);
+  function transposeSelected(semitones){
+    if (!noteSel){
+      setStatus('고른 음이 없습니다.');
       return;
     }
-    playNoteSel();
+    applySelectedNoteEdit(function(d, pos, str){ return S.transposeNote(d, pos, str, semitones); });
+  }
+
+  function moveSelectedToString(toStr){
+    if (!noteSel || toStr === noteSel.str) return;
+    applySelectedNoteEdit(function(d, pos, str){ return S.moveToString(d, pos, str, toStr); });
   }
 
   function setStaffDur(change){
