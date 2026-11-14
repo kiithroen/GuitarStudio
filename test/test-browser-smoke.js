@@ -6757,7 +6757,7 @@ const LOUDNESS_TAP_SOURCE = `(function(){
 })();`;
 
 async function testPlaybackLoudness(client, httpPort) {
-  const SONG_IDS = ['builtin-lv1-butterfly', 'builtin-romanza-accomp']; // 가장 성긴 한 줄 선율 곡과 가장 빽빽한 곡(동시음 6개, 최대값이 가장 큼)
+  const SONG_IDS = ['builtin-lv1-butterfly', 'builtin-romance-full']; // 가장 성긴 한 줄 선율 곡과 3성부 아르페지오가 빽빽한 곡
   const VIEW_KEY = 'gs.alphaTab.view';
   const PREFS_KEY = 'gs.alphaTab.prefs';
   const CLICK_SONG_ID = 'builtin-lv1-butterfly'; // 한 칸 = 4분음표(4/4)라 연습 화면과 alphaTab 의 클릭 수가 같다

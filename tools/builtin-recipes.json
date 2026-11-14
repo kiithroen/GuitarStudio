@@ -1352,5 +1352,19 @@
     },
     "edits": [],
     "lineOverrides": []
+  },
+  {
+    "id": "builtin-mertz-skole-04",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/MertzJK/guitar-skole-no-04/guitar-skole-no-04.mid",
+    "file": "guitar-skole-no-04.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
   }
 ]

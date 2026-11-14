@@ -20,7 +20,7 @@ const convertedIds = [
   'builtin-giuliani-op50-01', 'builtin-carcassi-op60-03', 'builtin-carcassi-op60-07',
   'builtin-sor-op35-22', 'builtin-tarrega-adelita', 'builtin-greensleeves-bass',
   'builtin-bach-minuet-g', 'builtin-beethoven-fur-elise', 'builtin-romance-part2', 'builtin-romance-full',
-  'builtin-romanza-accomp',
+  'builtin-mertz-skole-04',
   'builtin-hot-cross-buns', 'builtin-hush-little-baby', 'builtin-go-tell-aunt-rhody', 'builtin-old-macdonald',
   'builtin-ten-little-indians', 'builtin-this-old-man', 'builtin-a-tisket-a-tasket', 'builtin-bobby-shafto',
   'builtin-jesus-loves-me', 'builtin-still-still-still', 'builtin-suo-gan', 'builtin-cossack-lullaby',
