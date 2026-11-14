@@ -41,7 +41,7 @@ const convertedIds = [
   'builtin-sor-op35-02', 'builtin-sor-op35-04', 'builtin-sor-op35-05', 'builtin-sor-op35-09',
   'builtin-sor-op35-12', 'builtin-sor-op35-17', 'builtin-sor-op6-01', 'builtin-sor-op6-02',
   'builtin-carcassi-op60-01', 'builtin-carcassi-op60-05', 'builtin-carcassi-op60-06', 'builtin-carcassi-op60-08',
-  'builtin-carcassi-op60-19', 'builtin-mertz-etude-am', 'builtin-sanz-preludio'
+  'builtin-carcassi-op60-19', 'builtin-mertz-etude-am', 'builtin-sanz-preludio', 'builtin-carcassi-op60-16'
 ];
 
 assert.ok(songs.length > 0, 'catalog is not empty');
@@ -290,14 +290,5 @@ const graceCarry=parsedGrace.measures[8].beats.slice(0,2);
 assert.deepEqual(graceCarry.map(hold=>hold.tieFrom),[{measureIndex:7,beatIndex:0,subIndex:null},{measureIndex:7,beatIndex:0,subIndex:null}],'Amazing Grace first two slots in body m8 continue the prior D4');
 assert.equal(rhythm.resolveHold(parsedGrace.measures,graceCarry[0]).midi,62,'Amazing Grace carry resolves to D4');
 assert.deepEqual(parsedGrace.measures[16].beats.map(beat=>beat.kind),['hold','hold','rest'],'Amazing Grace final measure holds twice then rests');
-
-const canon = songById.get('builtin-lv4-canon');
-assert.equal(canon.title, '캐논 화성 연습 (C장조 · 17마디 앱 편곡)');
-assert.equal(canon.badge, '4/4의 8분음표 칸 · 운지·주법은 앱 연습용 제안');
-assert.match(canon.lines.at(-1), /^\[C\] 3C3@5:p\+2E3@4:i\+0G3@3:m\+1C4@2:a - - - - - - - \| "C코드 동시 탄현 · p\/i\/m\/a, 전체 4박 유지"$/);
-for (const [index, line] of canon.lines.entries()){
-  const memo = line.split('|')[1] || '';
-  assert.doesNotMatch(memo, /엄지|파\(엄지\)/, `Canon m${index + 1} memo does not call the F2 bass a thumb fingering`);
-}
 
 process.stdout.write(`Result: built-in score contracts passed (${songs.length} scores, ${melodyPracticeIds.length} single-note practice scores)\n`);

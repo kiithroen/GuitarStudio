@@ -1366,5 +1366,19 @@
     },
     "edits": [],
     "lineOverrides": []
+  },
+  {
+    "id": "builtin-carcassi-op60-16",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/CarcassiM/O60/carcassi-op60-16/carcassi-op60-16.mid",
+    "file": "carcassi-op60-16.mid",
+    "options": {
+      "cells": 8,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
   }
 ]

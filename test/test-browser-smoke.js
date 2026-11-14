@@ -5882,8 +5882,8 @@ async function testAlphaTabControls(client, httpPort) {
     await waitForCondition(client, ready, timeoutMs || 8000);
   }
   const butterfly = builtinSongsJson.find(item => item.id === 'builtin-lv1-butterfly');
-  const canon = builtinSongsJson.find(item => item.id === 'builtin-lv4-canon');
-  assert.equal(canon.beats, 8, 'builtin-lv4-canon is an 8-cell song');
+  const canon = builtinSongsJson.find(item => item.id === 'builtin-carcassi-op60-16');
+  assert.equal(canon.beats, 8, 'builtin-carcassi-op60-16 is an 8-cell song');
   const handoffOf = (song, extra) => Object.assign({ title: song.title, beats: song.beats, bpm: Number(song.bpm), capo: 0, lines: song.lines, savedAt: Date.now() }, extra || {});
   const setLocal = (key, value) => client.evaluate(`localStorage.setItem(${JSON.stringify(key)}, ${JSON.stringify(typeof value === 'string' ? value : JSON.stringify(value))}); true`);
   async function openView(handoff, prefs) {
