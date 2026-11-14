@@ -25,7 +25,7 @@
 
 ## 메트로놈 클릭
 
-`appState.clickMode`(`all`/`countin`/`off`, 기본 `all`)로 고르고 localStorage 앱 설정에 저장한다. `off`는 카운트인 마디도 건너뛴다. 구간 반복으로 첫 마디에 돌아갈 때는 어느 모드든 카운트인을 다시 하지 않는다.
+`appState.clickMode`(`all`/`countin`/`off`, 기본 `all`)로 고르고 localStorage 앱 설정에 저장한다. `off`는 카운트인 마디도 건너뛴다. 구간 반복으로 구간 시작에 돌아갈 때도 처음 시작할 때처럼 카운트인 한 마디를 센 뒤 다시 치고(`off`면 세지 않고 바로 잇는다), 카운트인이 시작될 때 커서를 구간의 첫 소리 나는 칸으로 옮긴다(`scheduleLoopRestartCursor`). 자동 가속이 BPM을 올리면 카운트인도 새 BPM으로 센다.
 
 - 콘솔 박자 칸은 두 줄이다. 첫 줄은 `박자`·`클릭 모드`, 둘째 줄은 `클릭음`·`연주음`이다. 구조화 악보(`curSong.type === 'structured'`)일 때 `박자`(`#beatsSelect`)는 마디 칸 수가 고정되어 있어 `disabled`로 잠그고 툴팁(`곡 악보에 고정된 박자 (악보 편집 화면에서 변경 가능)`)을 둔다. 이미지 악보(`curSong.type === 'image'`)에서만 선택할 수 있다.
 - `클릭음`(`#volRange`)은 `appState.vol`(0~2, 화면 0~200%)이고 클릭 gain은 `vol` × 클릭별 진폭이다.

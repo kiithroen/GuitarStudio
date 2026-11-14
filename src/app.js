@@ -1488,24 +1488,22 @@
   // 빈칸에서 그대로 시작하면 남은 칸이 모두 빈칸일 때 소리 없이 끝나거나 완주 횟수만 올라간다.
   function seekPastSkipBeats(startM, endM){
     if (!curSong || curSong.type !== 'structured') return;
-    var isSkipAt = function(mIdx, bIdx){
-      var measure = curSong.measures[mIdx];
-      return !!(measure && GuitarRhythm.isSkipBeat(measure.beats[bIdx]));
-    };
-    if (!isSkipAt(curMeasureIdx, curBeatIdx)) return;
-    for (var m = curMeasureIdx; m <= endM; m++){
+    var next = nextSoundingBeat(curMeasureIdx, curBeatIdx, endM);
+    curMeasureIdx = next ? next.m : startM;
+    curBeatIdx = next ? next.b : 0;
+  }
+
+  // (mIdx, bIdx)부터 endM 마디 끝까지에서 처음 소리 나는(빈칸이 아닌) 칸. 없으면 null. 이미지 악보는 그 자리 그대로다.
+  function nextSoundingBeat(mIdx, bIdx, endM){
+    if (!curSong || curSong.type !== 'structured') return { m: mIdx, b: bIdx };
+    for (var m = mIdx; m <= endM; m++){
       var measure = curSong.measures[m];
       if (!measure) break;
-      for (var b = m === curMeasureIdx ? curBeatIdx + 1 : 0; b < measure.beats.length; b++){
-        if (!isSkipAt(m, b)){
-          curMeasureIdx = m;
-          curBeatIdx = b;
-          return;
-        }
+      for (var b = m === mIdx ? bIdx : 0; b < measure.beats.length; b++){
+        if (!GuitarRhythm.isSkipBeat(measure.beats[b])) return { m: m, b: b };
       }
     }
-    curMeasureIdx = startM;
-    curBeatIdx = 0;
+    return null;
   }
 
   // ---------- 메트로놈 재생 루프 (카운트인 + 마디 진행 + 구간 반복 + 자동 가속)
@@ -1638,6 +1636,17 @@
     return (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010) + ((appState.audioOffsetMs || 0) / 1000);
   }
 
+  // 구간을 다시 시작하는 카운트인의 첫 클릭 시각(오디오 출력 지연 보정)에 커서를 다시 칠 칸으로 옮긴다.
+  function scheduleLoopRestartCursor(session, target, beatTime){
+    var delay = Math.max(0, (beatTime + getAudioHardwareLatencySec() - actx.currentTime) * 1000);
+    setTimeout(function(){
+      if (playSession !== session) return;
+      curMeasureIdx = target.m;
+      curBeatIdx = target.b;
+      updateActiveCursor(target.m, target.b, false, 0);
+    }, delay);
+  }
+
   function schedulerTick(){
     if (!isPlaying || !playSession || !actx) return;
     var s = playSession;
@@ -1750,6 +1759,13 @@
                 appState.bpm = Math.min(180, appState.bpm + 3);
                 s.spb = 60 / appState.bpm;
                 syncConsoleUI();
+              }
+              // 처음 시작할 때처럼 클릭 모드가 off 가 아니면 카운트인 한 마디를 센 뒤 구간 시작부터 다시 친다.
+              // 카운트인이 시작될 때 커서를 구간의 첫 소리 나는 칸으로 옮긴다.
+              if (appState.clickMode !== 'off'){
+                s.inCountIn = true;
+                s.countInBeat = 0;
+                scheduleLoopRestartCursor(s, nextSoundingBeat(startM, 0, endM) || { m: startM, b: 0 }, s.nextBeatTime);
               }
             } else {
               s.endScheduled = true;

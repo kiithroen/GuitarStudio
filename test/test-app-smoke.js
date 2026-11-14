@@ -531,6 +531,87 @@ async function main(){
     context.renderSong();
   }
 
+  // 구간 반복: 구간 시작으로 돌아갈 때 처음 시작처럼 카운트인 한 마디를 센다(클릭 off 면 처음처럼 세지 않는다)
+  const savedLoop = {
+    song: context.curSong, measure: context.curMeasureIdx, beat: context.curBeatIdx, actx: context.actx,
+    playing: context.isPlaying, session: context.playSession, setTimeout: context.setTimeout,
+    scheduleMetronomeClick: context.scheduleMetronomeClick, playGuitarNote: context.playGuitarNote,
+    stopGuitarNotes: context.stopGuitarNotes, highlightFretboard: context.highlightFretboard, ensureAudioCtx: context.ensureAudioCtx, warmKsCache: context.warmKsCache,
+    appState: { bpm: context.appState.bpm, beats: context.appState.beats, loopStart: context.appState.loopStart, loopEnd: context.appState.loopEnd,
+      loopEnable: context.appState.loopEnable, speedTrainer: context.appState.speedTrainer, guideSound: context.appState.guideSound, clickMode: context.appState.clickMode }
+  };
+  try {
+    const loopParsed = context.parseScore('[-] _ _ C4 D4\n[C] E4 F4 G4 A4', 4);
+    assert.equal(loopParsed.errors.length, 0, 'the loop count-in score parses without errors');
+    const firstMidi = context.parseNoteToken('C4', 0).midi;
+    const lastMidi = context.parseNoteToken('A4', 0).midi;
+    const clicks = [];
+    const notes = [];
+    const timers = [];
+    context.warmKsCache = function(){};
+    context.scheduleMetronomeClick = function(time, accent){ clicks.push({ time, accent }); };
+    context.playGuitarNote = function(midi, duration, when){ notes.push({ midi, when }); };
+    context.stopGuitarNotes = function(){};
+    context.highlightFretboard = function(){};
+    context.ensureAudioCtx = function(){};
+    context.setTimeout = function(fn){ timers.push(fn); return 0; };
+    context.curSong = { id: 'loop-count-in', title: '구간 반복 카운트인', type: 'structured', builtin: false, bpm: 120, beats: 4, capo: 0, measures: loopParsed.measures, notationVersion: 2 };
+    const runTwoLoops = function(clickMode){
+      Object.assign(context.appState, { bpm: 120, beats: 4, loopStart: 1, loopEnd: 2, loopEnable: true, speedTrainer: false, guideSound: true, clickMode });
+      clicks.length = 0; notes.length = 0; timers.length = 0;
+      context.actx = { currentTime: 0, outputLatency: 0, baseLatency: 0 };
+      context.isPlaying = false;
+      context.playSession = null;
+      context.curMeasureIdx = 0;
+      context.curBeatIdx = 0;
+      context.startPractice();
+      const session = context.playSession;
+      for (let guard = 0; guard < 200 && session.loopCompleted < 2; guard++){
+        context.actx.currentTime = session.nextBeatTime - 0.01;
+        context.schedulerTick();
+      }
+      timers.forEach(fn => fn());
+      const firsts = notes.filter(note => note.midi === firstMidi).map(note => note.when);
+      const lasts = notes.filter(note => note.midi === lastMidi).map(note => note.when);
+      const gapClicks = clicks.filter(click => click.time > lasts[0] && click.time < firsts[1]);
+      const result = { spb: session.spb, bpb: session.bpb, startTime: session.startTime, firsts, lasts, gapClicks, cursor: [context.curMeasureIdx, context.curBeatIdx], inCountIn: session.inCountIn };
+      context.isPlaying = false;
+      context.playSession = null;
+      return result;
+    };
+    for (const mode of ['all', 'countin']){
+      const r = runTwoLoops(mode);
+      assert.equal(r.firsts.length, 2, mode + ': the loop start note plays once per pass');
+      assert.ok(Math.abs(r.firsts[0] - (r.startTime + r.bpb * r.spb)) < 1e-9, mode + ': the first pass starts after one count-in measure');
+      assert.ok(Math.abs(r.firsts[1] - (r.lasts[0] + (1 + r.bpb) * r.spb)) < 1e-9, mode + ': going back to the loop start waits one count-in measure after the last cell');
+      assert.equal(r.gapClicks.length, r.bpb, mode + ': the loop restart clicks a full count-in measure');
+      assert.equal(r.gapClicks[0].accent, true, mode + ': the restart count-in starts on an accent');
+      assert.equal(r.inCountIn, true, mode + ': the second loop end starts another count-in');
+      assert.deepEqual(r.cursor, [0, 2], mode + ': the restart count-in moves the cursor to the first sounding cell of the loop');
+    }
+    const off = runTwoLoops('off');
+    assert.ok(Math.abs(off.firsts[0] - off.startTime) < 1e-9, 'off: the first pass starts without a count-in');
+    assert.ok(Math.abs(off.firsts[1] - (off.lasts[0] + off.spb)) < 1e-9, 'off: going back to the loop start continues on the next cell without a count-in');
+    assert.equal(off.gapClicks.length, 0, 'off: no clicks between passes');
+    assert.equal(off.inCountIn, false, 'off: the loop restart does not enter a count-in');
+  } finally {
+    context.curSong = savedLoop.song;
+    context.curMeasureIdx = savedLoop.measure;
+    context.curBeatIdx = savedLoop.beat;
+    context.actx = savedLoop.actx;
+    context.isPlaying = savedLoop.playing;
+    context.playSession = savedLoop.session;
+    context.setTimeout = savedLoop.setTimeout;
+    context.scheduleMetronomeClick = savedLoop.scheduleMetronomeClick;
+    context.playGuitarNote = savedLoop.playGuitarNote;
+    context.stopGuitarNotes = savedLoop.stopGuitarNotes;
+    context.highlightFretboard = savedLoop.highlightFretboard;
+    context.ensureAudioCtx = savedLoop.ensureAudioCtx;
+    context.warmKsCache = savedLoop.warmKsCache;
+    Object.assign(context.appState, savedLoop.appState);
+    context.renderSong();
+  }
+
   const scoreMode = elements.get('scoreViewSelect');
   assert.equal(scoreMode.hidden, false, 'score view select is available for structured songs');
   const chooseScoreView = async view => { scoreMode.value = view; await scoreMode.dispatch('change'); };
