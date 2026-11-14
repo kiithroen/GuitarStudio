@@ -4911,6 +4911,170 @@ async function testSkipCells(client, httpPort) {
   process.stdout.write('Browser checkpoint: skip cells in practice TAB, card, and staff views passed\n');
 }
 
+async function testCountInCountdown(client, httpPort) {
+  const errorsBefore = client.consoleErrors.length;
+  const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await client.send('Page.navigate', { url: `http://127.0.0.1:${httpPort}/index.html` });
+  await waitForPageLoadAfter(client, before);
+  await waitForCondition(client, 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= ' + builtinSongCount + ' && window.curSong != null', 8000);
+
+  const setup = await client.evaluate(`(function(){
+    var song = scoreDrafts.createFromScore({ title: '카운트다운 시험', beats: 4, bpm: 120, lines: ['[-] _ _ C4 D4', '[G] E4 F4 G4 A4'], origin: 'tab-input' });
+    rebuildSongSelect(song.id);
+    appState.clickMode = 'all';
+    appState.guideSound = false;
+    appState.loopEnable = false;
+    syncConsoleUI();
+    window.__ciOriginal = {
+      setTimeout: window.setTimeout,
+      actx: window.actx,
+      ensureAudioCtx: window.ensureAudioCtx,
+      warmKsCache: window.warmKsCache,
+      scheduleMetronomeClick: window.scheduleMetronomeClick,
+      playGuitarNote: window.playGuitarNote,
+      stopGuitarNotes: window.stopGuitarNotes
+    };
+    window.__ciTimers = [];
+    window.ensureAudioCtx = function(){};
+    window.warmKsCache = function(){};
+    window.scheduleMetronomeClick = function(){};
+    window.playGuitarNote = function(){};
+    window.stopGuitarNotes = function(){};
+    window.actx = { currentTime: 0, outputLatency: 0.02, baseLatency: 0.01 };
+    window.setTimeout = function(fn, delay){ window.__ciTimers.push({ fn: fn, delay: delay }); return window.__ciTimers.length; };
+    try {
+      startPractice();
+      var session = window.playSession;
+      var countInTotal = session.countInPositions.length;
+      for (var i = 0; i < countInTotal + 1; i++){
+        window.actx.currentTime = session.nextBeatTime - 0.01;
+        schedulerTick();
+      }
+      return { countInTotal: countInTotal, positions: session.countInPositions.slice(), timerCount: window.__ciTimers.length };
+    } finally {
+      window.setTimeout = window.__ciOriginal.setTimeout;
+    }
+  })()`);
+  assert.equal(setup.countInTotal, 6, 'pickup measure at 120 BPM counts 6 beats (1 bar + 2 leading skip beats)');
+  assert.deepEqual(setup.positions, [0, 1, 2, 3, 0, 1], 'count-in beat positions follow bar grid');
+  assert.equal(setup.timerCount, 7, '6 count-in UI timers and 1st playback beat UI timer captured');
+
+  const stepAndProbe = idx => client.evaluate(`(function(){
+    window.__ciTimers[${idx}].fn();
+    var card = document.querySelector('#measuresGrid .measure-card[data-m="0"]');
+    var badge = card ? card.querySelector('.count-in-badge') : null;
+    var activeBeat = document.querySelector('#measuresGrid .beat-cell.active-beat');
+    var leds = Array.prototype.map.call(document.querySelectorAll('#leds .led'), function(el){ return el.classList.contains('on'); });
+    var cr = card ? card.getBoundingClientRect() : null;
+    var br = badge ? badge.getBoundingClientRect() : null;
+    return {
+      phase: document.getElementById('phaseTxt').textContent,
+      compact: document.getElementById('compactStatusBadge').textContent,
+      compactVisible: document.getElementById('compactStatusBadge').getClientRects().length > 0,
+      badgeText: badge ? badge.textContent : null,
+      badgeInside: !!(cr && br && br.width > 0 && br.left >= cr.left && br.right <= cr.right && br.top >= cr.top && br.bottom <= cr.bottom),
+      anyBadgeCount: document.querySelectorAll('.count-in-badge').length,
+      activeBar: !!(card && card.classList.contains('active-bar')),
+      activeBeat: activeBeat ? activeBeat.dataset.m + ',' + activeBeat.dataset.b : null,
+      leds: leds
+    };
+  })()`);
+
+  const beat0 = await stepAndProbe(0);
+  assert.equal(beat0.phase, '카운트인 · 첫 음까지 6박 (120 BPM)');
+  assert.equal(beat0.compact, '120 BPM · 첫 음까지 6');
+  assert.equal(beat0.badgeText, '첫 음까지6');
+  assert.equal(beat0.badgeInside, true, 'TAB view: count-in badge sits inside the target measure card');
+  assert.equal(beat0.activeBar, true, 'count-in moves active-bar to target measure');
+  assert.equal(beat0.activeBeat, '0,2', 'count-in moves active-beat to the first sounding beat');
+  assert.deepEqual(beat0.leds, [true, false, false, false], 'beat 0 lights LED 0');
+
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  const tabShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const tabTarget = path.join(root, 'test-artifacts', 'practice-count-in-tab.png');
+  fs.writeFileSync(tabTarget, Buffer.from(tabShot.data, 'base64'));
+  process.stdout.write('Artifact: ' + tabTarget + '\n');
+
+  await client.evaluate(`(function(){ var s = document.getElementById('scoreViewSelect'); s.value = 'both'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+  await waitForCondition(client, 'document.querySelectorAll("#measuresGrid .tab-staff-layer svg").length > 0', 4000);
+  const beat1 = await stepAndProbe(1);
+  assert.equal(beat1.badgeText, '첫 음까지5', 're-rendered both view keeps updating count-in badge');
+  assert.equal(beat1.badgeInside, true, 'both view: count-in badge sits inside the target measure card');
+  assert.deepEqual(beat1.leds, [false, true, false, false], 'beat 1 lights LED 1');
+  const bothShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const bothTarget = path.join(root, 'test-artifacts', 'practice-count-in-both.png');
+  fs.writeFileSync(bothTarget, Buffer.from(bothShot.data, 'base64'));
+  process.stdout.write('Artifact: ' + bothTarget + '\n');
+
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 700, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate(`setCompactPractice(true); true`);
+  const beat2 = await stepAndProbe(2);
+  assert.equal(beat2.compactVisible, true, 'compact mode shows compactStatusBadge');
+  assert.equal(beat2.compact, '120 BPM · 첫 음까지 4');
+  assert.equal(beat2.badgeText, '첫 음까지4');
+  const compactShot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const compactTarget = path.join(root, 'test-artifacts', 'practice-count-in-compact.png');
+  fs.writeFileSync(compactTarget, Buffer.from(compactShot.data, 'base64'));
+  process.stdout.write('Artifact: ' + compactTarget + '\n');
+
+  await client.evaluate(`setCompactPractice(false); var s = document.getElementById('scoreViewSelect'); s.value = 'tab'; s.dispatchEvent(new Event('change', { bubbles: true })); true`);
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+
+  const beat3 = await stepAndProbe(3);
+  const beat4 = await stepAndProbe(4);
+  const beat5 = await stepAndProbe(5);
+  assert.deepEqual([beat3.badgeText, beat4.badgeText, beat5.badgeText], ['첫 음까지3', '첫 음까지2', '첫 음까지1']);
+  assert.deepEqual(beat5.leds, [false, true, false, false], 'final count-in beat lights LED 1 before beat 2');
+
+  const play0 = await stepAndProbe(6);
+  assert.equal(play0.anyBadgeCount, 0, 'first playback beat removes the count-in badge');
+  assert.equal(play0.phase, '1마디 · 3/4박 진행 중 (120 BPM)');
+  assert.equal(play0.compact, '120 BPM · 1마디 3박');
+  assert.deepEqual(play0.leds, [false, false, true, false], 'first playback beat lights LED 2');
+
+  // 카운트인 도중 정지하면 카드 배지와 콤팩트 상태 배지, LED가 모두 정리된다
+  const stopped = await client.evaluate(`(function(){
+    stopPractice();
+    window.__ciTimers = [];
+    window.actx = { currentTime: 0, outputLatency: 0.02, baseLatency: 0.01 };
+    window.setTimeout = function(fn, delay){ window.__ciTimers.push({ fn: fn, delay: delay }); return window.__ciTimers.length; };
+    try {
+      startPractice();
+      window.actx.currentTime = window.playSession.nextBeatTime - 0.01;
+      schedulerTick();
+    } finally {
+      window.setTimeout = window.__ciOriginal.setTimeout;
+    }
+    window.__ciTimers[0].fn();
+    var during = document.querySelectorAll('.count-in-badge').length;
+    stopPractice();
+    var after = {
+      during: during,
+      badgeCount: document.querySelectorAll('.count-in-badge').length,
+      phase: document.getElementById('phaseTxt').textContent,
+      compact: document.getElementById('compactStatusBadge').textContent,
+      ledsOn: document.querySelectorAll('#leds .led.on').length
+    };
+    window.ensureAudioCtx = window.__ciOriginal.ensureAudioCtx;
+    window.warmKsCache = window.__ciOriginal.warmKsCache;
+    window.scheduleMetronomeClick = window.__ciOriginal.scheduleMetronomeClick;
+    window.playGuitarNote = window.__ciOriginal.playGuitarNote;
+    window.stopGuitarNotes = window.__ciOriginal.stopGuitarNotes;
+    window.actx = window.__ciOriginal.actx;
+    return after;
+  })()`);
+  assert.equal(stopped.during, 1, 'badge appeared before stop');
+  assert.equal(stopped.badgeCount, 0, 'stopPractice removes count-in badge mid-count-in');
+  assert.equal(stopped.phase, '정지됨 · 마디를 클릭하여 계속 연습');
+  assert.equal(stopped.compact, '120 BPM · 1마디 3박', 'stopPractice resets compactStatusBadge away from countdown');
+  assert.equal(stopped.ledsOn, 0, 'stopPractice turns off all LEDs');
+
+  await client.send('Emulation.clearDeviceMetricsOverride');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'count-in countdown checks run without console errors');
+  process.stdout.write('Browser checkpoint: count-in countdown badge, status line, compact badge, LEDs, and screenshots passed\n');
+}
+
 // 마디 폭: 마디마다 자기 분할로 필요 폭을 정하고, 기준 열 폭(90%)보다 넓은 마디는 열을 더 차지하며, 어떤 보기·폭에서도 가로로 넘치지 않는다. 규칙은 Docs/ui.md 마디 폭.
 async function testMeasureWidth(client, httpPort) {
   const errorsBefore = client.consoleErrors.length;
@@ -7565,6 +7729,7 @@ async function main() {
     await testRollMarks(cdp, httpPort);
     await testRollInput(cdp, httpPort);
     await testSkipCells(cdp, httpPort);
+    await testCountInCountdown(cdp, httpPort);
     await testSkipInput(cdp, httpPort);
     await testMeasureWidth(cdp, httpPort);
     await testAlphaTabView(cdp, httpPort);

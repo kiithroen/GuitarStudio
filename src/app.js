@@ -1431,9 +1431,7 @@
       var cell = $('#measuresGrid .beat-cell[data-m="' + mIdx + '"][data-b="' + bIdx + '"]');
       if (cell) cell.classList.add('active-beat');
       var effChord = effectiveChordAtBeat(m, bIdx);
-      if ($('#compactStatusBadge')){
-        $('#compactStatusBadge').textContent = appState.bpm + ' BPM · ' + (mIdx + 1) + '마디 ' + (bIdx + 1) + '박' + (effChord ? ' [' + effChord + ']' : '');
-      }
+      updateCompactStatusBadge(mIdx, bIdx, effChord);
 
       var beatObj = m.beats[bIdx];
       var targetForFb = (beatObj && beatObj.isSubdivided && beatObj.subNotes)
@@ -1475,6 +1473,7 @@
         scrollScoreLookAhead($('#imgStageScroll'), imgCell, nextImgCell, prog);
       }
       var barData = getFlatImageBar(mIdx);
+      updateCompactStatusBadge(mIdx, bIdx, barData && barData.chord ? barData.chord : '');
       var parsedNote = barData && barData.note ? parseNoteToken(barData.note, 0) : null;
       highlightFretboard(barData && barData.chord ? barData.chord : '', parsedNote, false, false, bIdx);
       if (playPreviewSound && parsedNote && parsedNote.midi){
@@ -1580,6 +1579,7 @@
       inCountIn: countIn,
       countInBeat: 0,
       countInPositions: countInPositions,
+      countInTarget: { m: curMeasureIdx, b: curBeatIdx },
       mIdx: curMeasureIdx,
       bIdx: curBeatIdx,
       loopCompleted: 0,
@@ -1638,10 +1638,27 @@
     }
     isPlaying = false;
     syncCompactPlayButtons();
+    showCountInRemaining(0);
+    var stopChord = '';
+    if (curSong){
+      if (curSong.type === 'structured' && curSong.measures && curSong.measures[curMeasureIdx]){
+        stopChord = effectiveChordAtBeat(curSong.measures[curMeasureIdx], curBeatIdx);
+      } else if (curSong.type === 'image'){
+        var stopBar = getFlatImageBar(curMeasureIdx);
+        stopChord = stopBar && stopBar.chord ? stopBar.chord : '';
+      }
+    }
+    updateCompactStatusBadge(curMeasureIdx, curBeatIdx, stopChord);
     $('#phaseTxt').textContent = '정지됨 · 마디를 클릭하여 계속 연습';
     setLeds(-1);
     saveAppState();
     playSession = null;
+  }
+
+  function updateCompactStatusBadge(mIdx, bIdx, chord){
+    if ($('#compactStatusBadge')){
+      $('#compactStatusBadge').textContent = appState.bpm + ' BPM · ' + (mIdx + 1) + '마디 ' + (bIdx + 1) + '박' + (chord ? ' [' + chord + ']' : '');
+    }
   }
 
   function resetToFirstMeasure(){
@@ -1673,14 +1690,47 @@
     return (actx.outputLatency || 0.025) + (actx.baseLatency || 0.010) + ((appState.audioOffsetMs || 0) / 1000);
   }
 
-  // 구간을 다시 시작하는 카운트인의 첫 클릭 시각(오디오 출력 지연 보정)에 커서를 다시 칠 칸으로 옮긴다.
-  function scheduleLoopRestartCursor(session, target, beatTime){
+  // 카운트인 동안 첫 음까지 남은 박 수(마지막 카운트인 박이 1)를 상태 줄, 콤팩트 상태 배지, 첫 음이 있는 마디 카드의 배지에 보인다.
+  // remaining 이 0 이하면 카드 배지를 지운다(상태 줄은 재생 화면 동기화가 덮어쓴다).
+  var countInBadge = null, countInBadgeNumber = null;
+  function showCountInRemaining(remaining, target){
+    if (!(remaining > 0)){
+      if (countInBadge) countInBadge.remove();
+      return;
+    }
+    $('#phaseTxt').textContent = '카운트인 · 첫 음까지 ' + remaining + '박 (' + appState.bpm + ' BPM)';
+    if ($('#compactStatusBadge')) $('#compactStatusBadge').textContent = appState.bpm + ' BPM · 첫 음까지 ' + remaining;
+    var card = target && curSong && curSong.type === 'structured' ? $('#measuresGrid .measure-card[data-m="' + target.m + '"]') : null;
+    if (!card){
+      if (countInBadge) countInBadge.remove();
+      return;
+    }
+    if (!countInBadge){
+      countInBadge = document.createElement('span');
+      countInBadge.className = 'count-in-badge';
+      countInBadge.title = '첫 음까지 남은 박';
+      var label = document.createElement('span');
+      label.textContent = '첫 음까지';
+      countInBadgeNumber = document.createElement('b');
+      countInBadge.appendChild(label);
+      countInBadge.appendChild(countInBadgeNumber);
+    }
+    if (countInBadge.parentNode !== card) card.appendChild(countInBadge);
+    countInBadgeNumber.textContent = String(remaining);
+  }
+
+  // 카운트인 박 하나의 화면 동기화(오디오 출력 지연 보정): 첫 박에서 커서를 첫 음 칸으로 옮기고, LED는 박 위치를, 배지는 남은 박 수를 보인다.
+  function scheduleCountInBeatUi(session, beatTime, position, remaining, target, moveCursor){
     var delay = Math.max(0, (beatTime + getAudioHardwareLatencySec() - actx.currentTime) * 1000);
     setTimeout(function(){
       if (playSession !== session) return;
-      curMeasureIdx = target.m;
-      curBeatIdx = target.b;
-      updateActiveCursor(target.m, target.b, false, 0);
+      if (moveCursor){
+        curMeasureIdx = target.m;
+        curBeatIdx = target.b;
+        updateActiveCursor(target.m, target.b, false, 0);
+      }
+      setLeds(position);
+      showCountInRemaining(remaining, target);
     }, delay);
   }
 
@@ -1696,6 +1746,7 @@
         if (appState.clickMode !== 'off'){
           scheduleMetronomeClick(t, countInPos === 0, s.bpb === 9 && countInPos % 3 !== 0);
         }
+        scheduleCountInBeatUi(s, t, countInPos, s.countInPositions.length - s.countInBeat, s.countInTarget, s.countInBeat === 0);
         s.countInBeat++;
         s.nextBeatTime += s.spb;
         if (s.countInBeat >= s.countInPositions.length){
@@ -1747,6 +1798,7 @@
             var delay = Math.max(0, (beatTime + hwLat - actx.currentTime) * 1000);
             setTimeout(function(){
               if (playSession !== s) return;
+              showCountInRemaining(0);
               curMeasureIdx = mI;
               curBeatIdx = bI;
               setLeds(bI);
@@ -1799,13 +1851,13 @@
                 syncConsoleUI();
               }
               // 클릭 모드가 off 가 아니면 카운트인 한 마디를 센 뒤 구간 시작부터 다시 친다. 끝 마디의 뒤쪽 빈칸과
-              // 시작 마디의 앞쪽 빈칸만큼 박을 더 친다. 카운트인이 시작될 때 커서를 구간의 첫 소리 나는 칸으로 옮긴다.
+              // 시작 마디의 앞쪽 빈칸만큼 박을 더 친다. 카운트인 첫 박에서 커서를 구간의 첫 소리 나는 칸으로 옮긴다.
               if (appState.clickMode !== 'off'){
                 var restartAt = nextSoundingBeat(startM, 0, endM) || { m: startM, b: 0 };
                 s.inCountIn = true;
                 s.countInBeat = 0;
                 s.countInPositions = countInBeatPositions(s.bpb, 1, trailingSkipBeats(endM), leadingSkipBeats(restartAt.m, restartAt.b));
-                scheduleLoopRestartCursor(s, restartAt, s.nextBeatTime);
+                s.countInTarget = restartAt;
               }
             } else {
               s.endScheduled = true;

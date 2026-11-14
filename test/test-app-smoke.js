@@ -535,7 +535,7 @@ async function main(){
   // 끝 마디의 뒤쪽 빈칸과 시작 마디의 앞쪽 빈칸만큼 박을 더 친다. 클릭 off 면 카운트인이 없다.
   const savedLoop = {
     song: context.curSong, measure: context.curMeasureIdx, beat: context.curBeatIdx, actx: context.actx,
-    playing: context.isPlaying, session: context.playSession, setTimeout: context.setTimeout,
+    playing: context.isPlaying, session: context.playSession, setTimeout: context.setTimeout, showCountInRemaining: context.showCountInRemaining,
     scheduleMetronomeClick: context.scheduleMetronomeClick, playGuitarNote: context.playGuitarNote,
     stopGuitarNotes: context.stopGuitarNotes, highlightFretboard: context.highlightFretboard, ensureAudioCtx: context.ensureAudioCtx, warmKsCache: context.warmKsCache,
     appState: { bpm: context.appState.bpm, beats: context.appState.beats, loopStart: context.appState.loopStart, loopEnd: context.appState.loopEnd,
@@ -545,6 +545,9 @@ async function main(){
     const clicks = [];
     const notes = [];
     const timers = [];
+    const countdowns = [];
+    const savedShowCountIn = context.showCountInRemaining;
+    context.showCountInRemaining = function(remaining, target){ if (remaining > 0) countdowns.push(remaining); return savedShowCountIn(remaining, target); };
     context.warmKsCache = function(){};
     context.scheduleMetronomeClick = function(time, accent){ clicks.push({ time, accent }); };
     context.playGuitarNote = function(midi, duration, when){ notes.push({ midi, when }); };
@@ -564,7 +567,7 @@ async function main(){
     };
     const start = function(beats, bpm, clickMode, loopEnd){
       Object.assign(context.appState, { bpm, beats, loopStart: 1, loopEnd, loopEnable: true, speedTrainer: false, guideSound: true, clickMode });
-      clicks.length = 0; notes.length = 0; timers.length = 0;
+      clicks.length = 0; notes.length = 0; timers.length = 0; countdowns.length = 0;
       context.actx = { currentTime: 0, outputLatency: 0, baseLatency: 0 };
       context.isPlaying = false;
       context.playSession = null;
@@ -598,7 +601,8 @@ async function main(){
       const song = useSong(text, beats, bpm);
       const lastMidi = context.parseNoteToken(lastToken, 0).midi;
       const session = start(beats, bpm, clickMode, song.loopEnd);
-      for (let guard = 0; guard < 200 && session.loopCompleted < 2; guard++){
+      // 두 번째 반복 끝의 카운트인 첫 박까지 돌린다(그 박의 화면 동기화가 커서를 구간 시작으로 옮긴다)
+      for (let guard = 0; guard < 200 && !(session.loopCompleted >= 2 && (clickMode === 'off' || session.countInBeat >= 1)); guard++){
         context.actx.currentTime = session.nextBeatTime - 0.01;
         context.schedulerTick();
       }
@@ -606,7 +610,7 @@ async function main(){
       const firsts = notes.filter(note => note.midi === firstMidi).map(note => note.when);
       const lasts = notes.filter(note => note.midi === lastMidi).map(note => note.when);
       const gapClicks = clicks.filter(click => click.time > lasts[0] && click.time < firsts[1]);
-      const result = { song, spb: session.spb, bpb: session.bpb, bars: startBars(beats, bpm), startTime: session.startTime, firsts, lasts, gapClicks, cursor: [context.curMeasureIdx, context.curBeatIdx], inCountIn: session.inCountIn };
+      const result = { song, spb: session.spb, bpb: session.bpb, bars: startBars(beats, bpm), startTime: session.startTime, firsts, lasts, gapClicks, countdowns: countdowns.slice(), cursor: [context.curMeasureIdx, context.curBeatIdx], inCountIn: session.inCountIn };
       context.isPlaying = false;
       context.playSession = null;
       return result;
@@ -632,14 +636,19 @@ async function main(){
         assert.deepEqual(r.gapClicks.map(click => click.accent), wantAccents, label + 'restart accents fall on bar starts of the beat grid');
         assert.equal(r.inCountIn, true, label + 'the second loop end starts another count-in');
         assert.deepEqual(r.cursor, [0, r.song.lead], label + 'the restart count-in moves the cursor to the first sounding cell of the loop');
+        const countdownFrom = n => Array.from({ length: n }, (_, i) => n - i);
+        const wantCountdowns = countdownFrom(r.bars * r.bpb + r.song.lead).concat(countdownFrom(restartBeats), [restartBeats]);
+        assert.deepEqual(r.countdowns, wantCountdowns, label + 'each count-in beat shows the beats left to the first note, ending at 1');
       }
       const off = runTwoLoops(loopCase.text, 4, 120, loopCase.last, 'off');
       assert.ok(Math.abs(off.firsts[0] - off.startTime) < 1e-9, 'off: the first pass starts without a count-in');
       assert.ok(Math.abs(off.firsts[1] - (off.lasts[0] + off.spb)) < 1e-9, 'off: going back to the loop start continues on the next cell without a count-in');
       assert.equal(off.gapClicks.length, 0, 'off: no clicks between passes');
       assert.equal(off.inCountIn, false, 'off: the loop restart does not enter a count-in');
+      assert.deepEqual(off.countdowns, [], 'off: no count-in countdown is shown');
     }
   } finally {
+    context.showCountInRemaining = savedLoop.showCountInRemaining;
     context.curSong = savedLoop.song;
     context.curMeasureIdx = savedLoop.measure;
     context.curBeatIdx = savedLoop.beat;
