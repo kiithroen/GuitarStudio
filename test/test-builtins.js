@@ -20,7 +20,28 @@ const convertedIds = [
   'builtin-giuliani-op50-01', 'builtin-carcassi-op60-03', 'builtin-carcassi-op60-07',
   'builtin-sor-op35-22', 'builtin-tarrega-adelita', 'builtin-greensleeves-bass',
   'builtin-bach-minuet-g', 'builtin-beethoven-fur-elise', 'builtin-romance-part2', 'builtin-romance-full',
-  'builtin-romanza-accomp'
+  'builtin-romanza-accomp',
+  'builtin-hot-cross-buns', 'builtin-hush-little-baby', 'builtin-go-tell-aunt-rhody', 'builtin-old-macdonald',
+  'builtin-ten-little-indians', 'builtin-this-old-man', 'builtin-a-tisket-a-tasket', 'builtin-bobby-shafto',
+  'builtin-jesus-loves-me', 'builtin-still-still-still', 'builtin-suo-gan', 'builtin-cossack-lullaby',
+  'builtin-polly-wolly-doodle', 'builtin-ai-vist-lo-lop', 'builtin-es-wird-scho-glei-dumpa',
+  'builtin-oranges-and-lemons', 'builtin-my-bonnie', 'builtin-bahay-kubo',
+  'builtin-yankee-doodle', 'builtin-alouette', 'builtin-skip-to-my-lou', 'builtin-the-muffin-man',
+  'builtin-sur-le-pont-davignon', 'builtin-comin-thro-the-rye', 'builtin-little-brown-jug',
+  'builtin-sor-op60-02', 'builtin-sor-op60-03', 'builtin-sor-op60-08', 'builtin-sor-op60-09',
+  'builtin-giuliani-op50-02', 'builtin-giuliani-op51-01',
+  'builtin-sor-op60-04', 'builtin-sor-op60-10', 'builtin-sor-op60-11', 'builtin-sor-op60-13',
+  'builtin-giuliani-op50-03', 'builtin-giuliani-op50-04', 'builtin-giuliani-op50-05', 'builtin-giuliani-op50-06',
+  'builtin-giuliani-op50-07', 'builtin-giuliani-op50-08', 'builtin-giuliani-op50-10', 'builtin-giuliani-op50-11',
+  'builtin-giuliani-op50-12',
+  'builtin-giuliani-op50-13', 'builtin-giuliani-op50-14', 'builtin-giuliani-op50-15', 'builtin-giuliani-op50-16',
+  'builtin-giuliani-op50-17', 'builtin-giuliani-op50-18', 'builtin-giuliani-op50-21', 'builtin-giuliani-op50-22',
+  'builtin-giuliani-op51-02', 'builtin-giuliani-op51-03', 'builtin-giuliani-op51-04', 'builtin-giuliani-op100-01',
+  'builtin-aguado-aminor-study', 'builtin-sor-op35-01',
+  'builtin-sor-op35-02', 'builtin-sor-op35-04', 'builtin-sor-op35-05', 'builtin-sor-op35-09',
+  'builtin-sor-op35-12', 'builtin-sor-op35-17', 'builtin-sor-op6-01', 'builtin-sor-op6-02',
+  'builtin-carcassi-op60-01', 'builtin-carcassi-op60-05', 'builtin-carcassi-op60-06', 'builtin-carcassi-op60-08',
+  'builtin-carcassi-op60-19', 'builtin-mertz-etude-am', 'builtin-sanz-preludio'
 ];
 
 assert.ok(songs.length > 0, 'catalog is not empty');

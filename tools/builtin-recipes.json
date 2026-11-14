@@ -330,5 +330,1027 @@
         "to": "r"
       }
     ]
+  },
+  {
+    "id": "builtin-hot-cross-buns",
+    "sourceUrl": "https://www.flutetunes.com/tunes/hot-cross-buns.mid",
+    "file": "hot-cross-buns.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-hush-little-baby",
+    "sourceUrl": "https://www.flutetunes.com/tunes/hush-little-baby.mid",
+    "file": "hush-little-baby.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-go-tell-aunt-rhody",
+    "sourceUrl": "https://www.flutetunes.com/tunes/go-tell-aunt-rhody.mid",
+    "file": "go-tell-aunt-rhody.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-old-macdonald",
+    "sourceUrl": "https://www.flutetunes.com/tunes/old-macdonald-had-a-farm.mid",
+    "file": "old-macdonald-had-a-farm.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-ten-little-indians",
+    "sourceUrl": "https://www.flutetunes.com/tunes/ten-little-indians.mid",
+    "file": "ten-little-indians.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-this-old-man",
+    "sourceUrl": "https://www.flutetunes.com/tunes/this-old-man.mid",
+    "file": "this-old-man.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-a-tisket-a-tasket",
+    "sourceUrl": "https://www.flutetunes.com/tunes/a-tisket-a-tasket.mid",
+    "file": "a-tisket-a-tasket.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-bobby-shafto",
+    "sourceUrl": "https://www.flutetunes.com/tunes/bobby-shafto.mid",
+    "file": "bobby-shafto.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-jesus-loves-me",
+    "sourceUrl": "https://www.flutetunes.com/tunes/jesus-loves-me.mid",
+    "file": "jesus-loves-me.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-still-still-still",
+    "sourceUrl": "https://www.flutetunes.com/tunes/still-still-still.mid",
+    "file": "still-still-still.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-suo-gan",
+    "sourceUrl": "https://www.flutetunes.com/tunes/suo-gan.mid",
+    "file": "suo-gan.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-cossack-lullaby",
+    "sourceUrl": "https://www.flutetunes.com/tunes/cossack-lullaby.mid",
+    "file": "cossack-lullaby.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-polly-wolly-doodle",
+    "sourceUrl": "https://www.flutetunes.com/tunes/polly-wolly-doodle.mid",
+    "file": "polly-wolly-doodle.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-ai-vist-lo-lop",
+    "sourceUrl": "https://www.flutetunes.com/tunes/ai-vist-lo-lop.mid",
+    "file": "ai-vist-lo-lop.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-es-wird-scho-glei-dumpa",
+    "sourceUrl": "https://www.flutetunes.com/tunes/es-wird-scho-glei-dumpa.mid",
+    "file": "es-wird-scho-glei-dumpa.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-oranges-and-lemons",
+    "sourceUrl": "https://www.flutetunes.com/tunes/oranges-and-lemons.mid",
+    "file": "oranges-and-lemons.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-my-bonnie",
+    "sourceUrl": "https://www.flutetunes.com/tunes/my-bonnie-lies-over-the-ocean.mid",
+    "file": "my-bonnie-lies-over-the-ocean.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-bahay-kubo",
+    "sourceUrl": "https://www.flutetunes.com/tunes/bahay-kubo.mid",
+    "file": "bahay-kubo.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-yankee-doodle",
+    "sourceUrl": "https://www.flutetunes.com/tunes/yankee-doodle.mid",
+    "file": "yankee-doodle.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-alouette",
+    "sourceUrl": "https://www.flutetunes.com/tunes/alouette.mid",
+    "file": "alouette.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-skip-to-my-lou",
+    "sourceUrl": "https://www.flutetunes.com/tunes/skip-to-my-lou.mid",
+    "file": "skip-to-my-lou.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-the-muffin-man",
+    "sourceUrl": "https://www.flutetunes.com/tunes/the-muffin-man.mid",
+    "file": "the-muffin-man.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sur-le-pont-davignon",
+    "sourceUrl": "https://www.flutetunes.com/tunes/sur-le-pont-davignon.mid",
+    "file": "sur-le-pont-davignon.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-comin-thro-the-rye",
+    "sourceUrl": "https://www.flutetunes.com/tunes/comin-thro-the-rye.mid",
+    "file": "comin-thro-the-rye.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-little-brown-jug",
+    "sourceUrl": "https://www.flutetunes.com/tunes/little-brown-jug.mid",
+    "file": "little-brown-jug.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op60-02",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O60/sor_op60-02/sor_op60-02.mid",
+    "file": "sor_op60-02.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op60-03",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O60/sor_op60-03/sor_op60-03.mid",
+    "file": "sor_op60-03.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op60-08",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O60/sor_op60-08/sor_op60-08.mid",
+    "file": "sor_op60-08.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op60-09",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O60/sor_op60-09/sor_op60-09.mid",
+    "file": "sor_op60-09.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-02",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n02/giuliani-op50n02.mid",
+    "file": "giuliani-op50n02.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op51-01",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O51/giuliani-o51-01/giuliani-o51-01.mid",
+    "file": "giuliani-o51-01.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op60-04",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O60/sor_op60-04/sor_op60-04.mid",
+    "file": "sor_op60-04.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op60-10",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O60/sor_op60-10/sor_op60-10.mid",
+    "file": "sor_op60-10.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op60-11",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O60/sor_op60-11/sor_op60-11.mid",
+    "file": "sor_op60-11.mid",
+    "options": {
+      "cells": 6,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op60-13",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O60/sor_op60-13/sor_op60-13.mid",
+    "file": "sor_op60-13.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-03",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n03/giuliani-op50n03.mid",
+    "file": "giuliani-op50n03.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-04",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n04/giuliani-op50n04.mid",
+    "file": "giuliani-op50n04.mid",
+    "options": {
+      "cells": 6,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-05",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n05/giuliani-op50n05.mid",
+    "file": "giuliani-op50n05.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-06",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n06/giuliani-op50n06.mid",
+    "file": "giuliani-op50n06.mid",
+    "options": {
+      "cells": 6,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-07",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n07/giuliani-op50n07.mid",
+    "file": "giuliani-op50n07.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-08",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n08/giuliani-op50n08.mid",
+    "file": "giuliani-op50n08.mid",
+    "options": {
+      "cells": 6,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-10",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n10/giuliani-op50n10.mid",
+    "file": "giuliani-op50n10.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-11",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n11/giuliani-op50n11.mid",
+    "file": "giuliani-op50n11.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-12",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n12/giuliani-op50n12.mid",
+    "file": "giuliani-op50n12.mid",
+    "options": {
+      "cells": 6,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-13",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n13/giuliani-op50n13.mid",
+    "file": "giuliani-op50n13.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-14",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n14/giuliani-op50n14.mid",
+    "file": "giuliani-op50n14.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-15",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n15/giuliani-op50n15.mid",
+    "file": "giuliani-op50n15.mid",
+    "options": {
+      "cells": 6,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-16",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n16/giuliani-op50n16.mid",
+    "file": "giuliani-op50n16.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-17",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n17/giuliani-op50n17.mid",
+    "file": "giuliani-op50n17.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-18",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n18/giuliani-op50n18.mid",
+    "file": "giuliani-op50n18.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-21",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n21/giuliani-op50n21.mid",
+    "file": "giuliani-op50n21.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op50-22",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O50/giuliani-op50n22/giuliani-op50n22.mid",
+    "file": "giuliani-op50n22.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op51-02",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O51/giuliani-o51-02/giuliani-o51-02.mid",
+    "file": "giuliani-o51-02.mid",
+    "options": {
+      "cells": 6,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op51-03",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O51/giuliani-o51-03/giuliani-o51-03.mid",
+    "file": "giuliani-o51-03.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op51-04",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O51/giuliani-o51-04/giuliani-o51-04.mid",
+    "file": "giuliani-o51-04.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-giuliani-op100-01",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/GiulianiM/O100/GiulianiOp100No1/GiulianiOp100No1.mid",
+    "file": "GiulianiOp100No1.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-aguado-aminor-study",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/AguadoD/aminor-study/aminor-study.mid",
+    "file": "aminor-study.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op35-01",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O35/sorf_op35_no1/sorf_op35_no1.mid",
+    "file": "sorf_op35_no1.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op35-02",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O35/sorf_op35_no2/sorf_op35_no2.mid",
+    "file": "sorf_op35_no2.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op35-04",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O35/sorf_op35_no4/sorf_op35_no4.mid",
+    "file": "sorf_op35_no4.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op35-05",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O35/sorf_op35_no5/sorf_op35_no5.mid",
+    "file": "sorf_op35_no5.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op35-09",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O35/sorf_op35_no9/sorf_op35_no9.mid",
+    "file": "sorf_op35_no9.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op35-12",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O35/sorf_op35_no12/sorf_op35_no12.mid",
+    "file": "sorf_op35_no12.mid",
+    "options": {
+      "cells": 6,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op35-17",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O35/sorf_op35_no17/sorf_op35_no17.mid",
+    "file": "sorf_op35_no17.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op6-01",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O6/sorf-op6n01/sorf-op6n01.mid",
+    "file": "sorf-op6n01.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sor-op6-02",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SorF/O6/sorf-op6n02/sorf-op6n02.mid",
+    "file": "sorf-op6n02.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-carcassi-op60-01",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/CarcassiM/O60/carcassi-op60-01/carcassi-op60-01.mid",
+    "file": "carcassi-op60-01.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-carcassi-op60-05",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/CarcassiM/O60/carcassi-op60-05/carcassi-op60-05.mid",
+    "file": "carcassi-op60-05.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-carcassi-op60-06",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/CarcassiM/O60/carcassi-op60-06/carcassi-op60-06.mid",
+    "file": "carcassi-op60-06.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": true
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-carcassi-op60-08",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/CarcassiM/O60/carcassi-op60-08/carcassi-op60-08.mid",
+    "file": "carcassi-op60-08.mid",
+    "options": {
+      "cells": 2,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-carcassi-op60-19",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/CarcassiM/O60/carcassi-op60-19/carcassi-op60-19.mid",
+    "file": "carcassi-op60-19.mid",
+    "options": {
+      "cells": 3,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-mertz-etude-am",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/MertzJK/mertz_etude/mertz_etude.mid",
+    "file": "mertz_etude.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": 0,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
+  },
+  {
+    "id": "builtin-sanz-preludio",
+    "sourceUrl": "https://www.mutopiaproject.org/ftp/SanzG/sanz-1/sanz-1.mid",
+    "file": "sanz-1.mid",
+    "options": {
+      "cells": 4,
+      "pickup": 0,
+      "grace": 0.125,
+      "transpose": -12,
+      "fixStrings": false
+    },
+    "edits": [],
+    "lineOverrides": []
   }
 ]
