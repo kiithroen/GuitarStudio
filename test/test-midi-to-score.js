@@ -390,5 +390,23 @@ function body(line){
   pass('편집 setPitch 는 시작 틱과 원래 음으로 찾은 음 하나의 음높이를 바꾼다');
 }
 
+// 13. 못갖춘마디 앞 칸은 빈칸(_)
+{
+  // 4/4, 한 칸 96틱. pickup 96: 첫 음이 마지막 칸에 오고 앞 세 칸은 빈칸이다
+  const whole = convert({ timeSig: [4, 2], tempoUs: 500000, notes: [note(0, 96, 60), note(96, 384, 62)] }, { pickup: 96 });
+  assert.equal(body(whole.measures[0]), '_ _ _ C4');
+  assert.equal(body(whole.measures[1]), 'D4 - - -');
+  // pickup 48: 첫 음이 칸 중간에서 시작하면 그 칸은 빈칸이 아니라 쉼으로 앞을 채운 칸이다
+  const half = convert({ timeSig: [4, 2], tempoUs: 500000, notes: [note(0, 48, 60), note(48, 384, 62)] }, { pickup: 48 });
+  assert.equal(body(half.measures[0]), '_ _ _ r/C4');
+  // pickup 없이 앞이 빈 곡은 빈칸을 쓰지 않는다
+  const plain = convert({ timeSig: [4, 2], tempoUs: 500000, notes: [note(288, 96, 60)] });
+  assert.equal(body(plain.measures[0]), 'r r r C4');
+  // 결과 악보는 오류 없이 읽힌다
+  assert.deepEqual(parser.validateScore(whole.measures.join('\n'), 4).errors, []);
+  assert.deepEqual(parser.validateScore(half.measures.join('\n'), 4).errors, []);
+  pass('pickup 으로 채운 앞쪽의 음 없는 칸은 빈칸 _ 으로 적는다');
+}
+
 fs.rmSync(tmpDir, { recursive: true, force: true });
 process.stdout.write('1..' + checks + '\n');

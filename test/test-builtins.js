@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const parser = require('../src/parser.js');
+const notation = require('../src/notation.js');
 const rhythm = require('../src/rhythm.js');
 
 const songs = JSON.parse(fs.readFileSync(path.join(__dirname, '../songs.json'), 'utf8'));
@@ -45,6 +46,11 @@ const convertedIds = [
   'builtin-sor-op60-05'
 ];
 
+// 소리를 새로 내지 않는 조각: 유지(-), 쉼, 빈칸(_). 쉼·빈칸 판별은 GuitarNotation 의 SSOT 함수만 쓴다.
+function isNonAttackPart(part){
+  return part === '-' || notation.isRestToken(part) || notation.isSkipToken(part);
+}
+
 assert.ok(songs.length > 0, 'catalog is not empty');
 assert.equal(new Set(songs.map(song => song.id)).size, songs.length, 'built-in ids are unique');
 assert.equal(songById.has('builtin-lv3-arirang'), false, 'Arirang is absent from the built-in catalog');
@@ -62,7 +68,7 @@ for (const song of songs){
   for (const line of song.lines){
     const scoreText = line.split('|', 1)[0].replace(/^\s*\[[^\]]*\]\s*/, '');
     for (const beat of parser.tokenizeMeasureBeats(scoreText)) for (const part of beat.split('/')){
-      if (part === '-' || part === '_' || /^[rR]$/.test(part)) continue;
+      if (isNonAttackPart(part)) continue;
       for (const noteToken of part.split('+')){
         assert.doesNotMatch(noteToken, /\*(?:\d|\.)/, `${song.id} does not use the removed per-note length suffix: ${noteToken}`);
       }
@@ -70,13 +76,14 @@ for (const song of songs){
   }
   const parsed = parser.parseScore(song.lines, song.beats);
   assert.deepEqual(parsed.errors, [], `${song.id} parses without score errors`);
+  for (const line of song.lines) assert.ok(!line.split('|', 1)[0].includes('?'), `${song.id} has no confirmation mark: ${line}`);
   if (!convertedIds.includes(song.id)) assert.match(song.badge, /앱 (운지|연습용) 제안/, `${song.id} labels the app's fingering as a proposal`);
   assert.doesNotMatch(`${song.title} ${song.badge}`, /원곡 그대로|원곡 완곡|원곡 완결|정통 스코어|완벽 구현|전곡/, `${song.id} does not overstate source fidelity`);
   if (convertedIds.includes(song.id)) continue;
   for (const line of song.lines){
     const scoreText = line.split('|', 1)[0].replace(/^\s*\[[^\]]*\]\s*/, '');
     for (const beat of parser.tokenizeMeasureBeats(scoreText)) for (const part of beat.split('/')){
-      if (part === '-' || part === '_' || /^[rR]$/.test(part)) continue;
+      if (isNonAttackPart(part)) continue;
       for (const noteToken of part.split('+')){
         assert.match(noteToken, /^!?[0-4].+@[1-6]:[pima]$/, `${song.id} attack states articulation, LH, string, and RH: ${noteToken}`);
         const parsed = parser.parseNoteToken(noteToken, 0);
@@ -94,7 +101,6 @@ for (const id of convertedIds){
   const checked = parser.validateScore(song.lines.join('\n'), song.beats);
   assert.deepEqual(checked.errors, [], `${id} has no score errors`);
   assert.deepEqual(checked.warnings, [], `${id} has no score warnings`);
-  for (const line of song.lines) assert.ok(!line.split('|', 1)[0].includes('?'), `${id} has no confirmation mark: ${line}`);
 }
 const catalogLevels = songs.map(song => song.level);
 for (let index = 1; index < catalogLevels.length; index++){
@@ -109,7 +115,7 @@ for (const id of melodyPracticeIds){
     const scoreText = line.split('|', 1)[0].replace(/^\s*\[[^\]]*\]\s*/, '');
     for (const beat of parser.tokenizeMeasureBeats(scoreText)){
       for (const part of beat.split('/')){
-        if (part === '-' || part === '_' || /^[rR]$/.test(part)) continue;
+        if (isNonAttackPart(part)) continue;
         for (const noteToken of part.split('+')){
           assert.match(noteToken, /^[0-4].+@[1-6]:[im]$/, `${id} attack has explicit LH, string, and alternating RH data: ${noteToken}`);
           const parsed = parser.parseNoteToken(noteToken, 0);
@@ -127,7 +133,7 @@ for (const id of melodyPracticeIds){
 for (const id of ['builtin-lv3-clementine', 'builtin-lv3-brahms', 'builtin-lv4-amazinggrace']){
   const firstMeasure = songById.get(id).lines[0].split('|', 1)[0].replace(/^\s*\[[^\]]*\]\s*/, '');
   const tokens = parser.tokenizeMeasureBeats(firstMeasure);
-  assert.ok(tokens.length > 1 && tokens[0] === '_', `${id} marks leading pickup gaps with skip cells`);
+  assert.ok(tokens.length > 1 && notation.isSkipToken(tokens[0]), `${id} marks leading pickup gaps with skip cells`);
 }
 
 const clementine = songById.get('builtin-lv3-clementine');
@@ -266,7 +272,7 @@ const brahmsRhythm=rhythm.annotate(parsedBrahms.measures,brahms.beats);
 const g4Attack=brahmsRhythm.events.find(event=>event.measureIndex===1&&event.part.midi===67);
 assert.equal(g4Attack.durationUnits,18,'Brahms dotted-quarter G4 sustains for one and a half slots');
 const brahmsLast=brahmsRhythm.events.filter(event=>event.measureIndex===15);
-const brahmsLastStart=brahmsLast[0].startUnits;
+const brahmsLastStart=parsedBrahms.measures[15].beats[0].startUnits;
 assert.deepEqual(brahmsLast.slice(0,3).map(event=>[event.part.midi,event.startUnits-brahmsLastStart,event.durationUnits]),[[65,0,3],[67,3,3],[65,6,6]],'Brahms final four-part beat attacks F4/G4/F4 at quarter-slot offsets 0, 1/4, and 1/2, then holds F4');
 const brahmsFinalHold=parsedBrahms.measures[15].beats[0].subNotes[3];
 assert.equal(brahmsFinalHold.startUnits-brahmsLastStart,9,'Brahms final subdivision holds at the final quarter-slot offset');
@@ -275,8 +281,9 @@ assert.equal(brahmsFinalHold.durationUnits,3,'Brahms final F4 remains held throu
 const grace=songById.get('builtin-lv4-amazinggrace');
 const parsedGrace=parser.parseScore(grace.lines,grace.beats);
 const graceRhythm=rhythm.annotate(parsedGrace.measures,grace.beats);
-const graceM1=graceRhythm.events.filter(event=>event.measureIndex===1&&event.startUnits>=36);
-assert.deepEqual(graceM1.map(event=>[event.part.midi,event.startUnits,event.part.slotUnits]),[[59,36,4],[57,40,4],[55,44,4]],'Amazing Grace pickup subdivision starts at active units 36, 40, and 44');
+const graceM1Start=parsedGrace.measures[1].beats[0].startUnits;
+const graceM1=graceRhythm.events.filter(event=>event.measureIndex===1&&event.startUnits-graceM1Start>=24);
+assert.deepEqual(graceM1.map(event=>[event.part.midi,event.startUnits-graceM1Start,event.part.slotUnits]),[[59,24,4],[57,28,4],[55,32,4]],'Amazing Grace second-bar triplet starts at offsets 24, 28, and 32 from the bar start');
 const graceCarry=parsedGrace.measures[8].beats.slice(0,2);
 assert.deepEqual(graceCarry.map(hold=>hold.tieFrom),[{measureIndex:7,beatIndex:0,subIndex:null},{measureIndex:7,beatIndex:0,subIndex:null}],'Amazing Grace first two slots in body m8 continue the prior D4');
 assert.equal(rhythm.resolveHold(parsedGrace.measures,graceCarry[0]).midi,62,'Amazing Grace carry resolves to D4');

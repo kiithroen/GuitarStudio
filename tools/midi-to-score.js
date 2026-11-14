@@ -4,6 +4,7 @@
 // 사용: node tools/midi-to-score.js <파일.mid> [--cells N] [--pickup T] [--grace R] [--transpose N] [--track-transpose "트랙:반음,…"] [--lowest-only 트랙,…] [--downbeat-only 트랙,…] [--edits 파일.json] [--measures 시작-끝] [--fix-strings]
 // 트랙은 이름(MIDI 트랙 이름) 또는 0부터 세는 번호로 고른다. --track-transpose 는 --transpose 에 더해지고, --lowest-only 는 그 트랙에서 같은 틱에 시작하는 음 중 가장 낮은 음 하나만 남긴다.
 // --downbeat-only 는 그 트랙에서 마디 시작 틱(--pickup 을 반영한 마디 경계)에 시작하지 않는 음을 버린다. 편집 뒤 --lowest-only 앞에 적용되므로 둘을 같이 쓰면 마디 첫 박 음 중 최저음 하나가 남는다.
+// --pickup 은 못갖춘마디 길이(틱)다. 첫 마디를 그 앞쪽으로 채우고, 채운 쪽에서 음이 없는 칸은 빈칸 `_` 으로 적는다.
 // --measures 는 변환 결과의 마디 줄 중 시작~끝(1부터, 양끝 포함, --pickup 으로 채운 첫 줄이 1)만 남긴다. 잘라낸 첫 칸이 `-` 로 시작하면 그 시점에 울리고 있던 음을 다시 적는다.
 // --cells 를 생략하면 MIDI 정보만 출력한다. 결과는 표준 출력 JSON.
 const fs = require('node:fs');
