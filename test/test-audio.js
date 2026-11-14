@@ -8,6 +8,11 @@ const parser = require('../src/parser.js');
 
 const guideSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'guide.js'), 'utf8');
 const audioSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'audio.js'), 'utf8');
+// 마스터 리미터는 app-state.js 의 공통 함수다. 화면에서처럼 audio.js 앞에 그 함수만 같이 싣는다.
+const appStateSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'app-state.js'), 'utf8');
+const limiterMatch = appStateSource.match(/\n  function createMasterLimiter\(ctx\)\{[\s\S]*?\n  \}\n/);
+assert.ok(limiterMatch, 'app-state.js defines createMasterLimiter');
+const limiterSource = limiterMatch[0];
 
 function makeContext(capo, acousticFx){
   const oscillators = [];
@@ -81,7 +86,7 @@ function makeContext(capo, acousticFx){
     console
   };
   vm.createContext(context);
-  vm.runInContext(guideSource + '\n' + audioSource + '\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, getClassicPeriodicWave, renderKsString, getNaturalDecayProfile, ksDesign, ksArticulationKey, getKsBuffer: function(midi, art, str){ return getKsBuffer(midi, art, str); }, getBodyModes: function(){ return bodyModes; }, DRY_BODY_RATIO: DRY_BODY_RATIO, BODY_MODES: BODY_MODES, legacyToneDuration, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, updateGuitarVolume, scheduleMetronomeClick, getBuses: function(){ return { guitarBus, clickBus }; }, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
+  vm.runInContext(guideSource + '\n' + limiterSource + '\n' + audioSource +'\nthis.__audioHooks = { addSympatheticResonance, warmKsCache, buildKsVoice, buildClassicVoice, getClassicPeriodicWave, renderKsString, getNaturalDecayProfile, ksDesign, ksArticulationKey, getKsBuffer: function(midi, art, str){ return getKsBuffer(midi, art, str); }, getBodyModes: function(){ return bodyModes; }, DRY_BODY_RATIO: DRY_BODY_RATIO, BODY_MODES: BODY_MODES, legacyToneDuration, dampSameStringVoices, trackGuideVoice, stopGuitarNotes, ensureAudioCtx, updateAudioFxRouting, updateGuitarVolume, scheduleMetronomeClick, getBuses: function(){ return { guitarBus, clickBus }; }, getFxNodes: function(){ return { dryGainNode, wetGainNode }; }, replaceGetKsBuffer: function(fn){ getKsBuffer = fn; } };', context);
   return { context, oscillators, filters, compressors, gains };
 }
 

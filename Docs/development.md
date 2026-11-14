@@ -25,7 +25,7 @@
 | `src/score-editor.js` | 초안 상태 줄·원본 복원, 악보 입력 화면과 주고받기 |
 | `src/app.js` | 앱 상태, UI 부팅과 기능 연결 |
 
-`app.js` 부팅 때 앱 모듈과 상태가 준비된 뒤 `initFretboard()`, `initScoreUi()`, `initSheetSync()`, `GuitarScorePrompt.initScorePromptButton()`과 편집 UI가 이벤트를 등록한다. 로컬 스크립트는 모두 같은 `v` 쿼리 버전을 쓴다. DOM 구조나 스크립트 구성이 바뀌면 버전을 같이 올려 캐시된 이전 코드와 섞이지 않게 한다.
+`app.js` 부팅 때 앱 모듈과 상태가 준비된 뒤 `initFretboard()`, `initScoreUi()`, `initSheetSync()`, `GuitarScorePrompt.initScorePromptButton()`과 편집 UI가 이벤트를 등록한다. 로컬 스크립트는 모두 같은 `v` 쿼리 버전을 쓴다. DOM 구조나 스크립트 구성, 스크립트끼리 부르는 공통 함수가 바뀌면 버전을 같이 올려 캐시된 이전 코드와 섞이지 않게 한다.
 
 화면·단축키 규칙은 [화면과 조작](ui.md)에 있다.
 
@@ -42,7 +42,7 @@ alphaTab 보기 창은 `app.js` 없이 따로 스크립트를 부른다. 구성�
 | `tools/build-scores.js` | 폴더의 `.tex` 원본 → 시트용 6열 TSV(`곡.tsv`) 도구. 같은 이름의 `.tex`가 없는 Guitar Pro 파일은 먼저 `.tex`로 만든다. 흐름은 [alphaTab 보기](alphatab.md#원본은-alphatex) |
 | `tools/gp-to-alphatex.js` | Guitar Pro 파일의 기타 트랙 하나 → alphaTex 원본(`.tex`) 명령줄 도구(읽기·트랙 고르기는 `alphatab-to-score.js`의 것을 쓴다). 흐름은 [alphaTab 보기](alphatab.md#원본은-alphatex) |
 
-악보 입력 화면 `score-input.html`은 `app.js` 없이 따로 스크립트를 부른다. 구성과 규칙은 [악보 입력](tab-input.md)에 있다. 두 화면이 같이 쓰는 색 토큰과 기본 컨트롤 스타일(`:root`, `.btn`, `.panel`, `.badge` 등)은 `src/base.css`에 두고 `index.html`은 `<style>` 앞에서 불러 캐스케이드 순서를 지킨다. 설정 상태와 오디오 런타임 전역은 `src/app-state.js`에서 같이 불러온다.
+악보 입력 화면 `score-input.html`은 `app.js` 없이 따로 스크립트를 부른다. 구성과 규칙은 [악보 입력](tab-input.md)에 있다. 두 화면이 같이 쓰는 색 토큰과 기본 컨트롤 스타일(`:root`, `.btn`, `.panel`, `.badge` 등)은 `src/base.css`에 두고 `index.html`은 `<style>` 앞에서 불러 캐스케이드 순서를 지킨다. 설정 상태와 오디오 런타임 전역, 마스터 리미터(`createMasterLimiter`, alphaTab 보기 창도 쓴다)는 `src/app-state.js`에서 같이 불러온다.
 
 ## 파싱과 재생 흐름
 

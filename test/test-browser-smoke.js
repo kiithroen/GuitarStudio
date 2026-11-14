@@ -2417,8 +2417,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=cleanup-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=cleanup-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=limiter-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=limiter-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -6663,10 +6663,11 @@ async function testAlphaTexSongs(client, httpPort) {
 
 // 연습 화면 합성음과 alphaTab 보기 창의 실제 출력 크기를 같은 곡으로 재서 견준다.
 // 출력 쪽 AudioDestinationNode 로 가는 연결을 가로채(탭) 두 채널의 모든 표본을 센다. 크기는 400ms 블록(표본 수)의 평균 제곱을 -60 dBFS 문턱으로 거른 RMS 와 표본 최대값이다.
-// 재생을 시작하고 첫 문턱 위 블록부터 오디오 표본 시간으로 8초를 모은다(벽시계로 재지 않는다).
+// 재생을 시작하고 첫 문턱 위 블록부터 오디오 표본 시간으로 LOUDNESS_WINDOW_SECONDS 초를 모은다(벽시계로 재지 않는다).
+const LOUDNESS_WINDOW_SECONDS = 8;
 const LOUDNESS_TAP_SOURCE = `(function(){
   if (window.__loudnessTap) return;
-  var BLOCK_SECONDS = 0.4, WINDOW_SECONDS = 8, GATE_DB = -60;
+  var BLOCK_SECONDS = 0.4, WINDOW_SECONDS = ${LOUDNESS_WINDOW_SECONDS}, GATE_DB = -60;
   var originalConnect = AudioNode.prototype.connect;
   var originalDisconnect = AudioNode.prototype.disconnect;
   var tapOf = new WeakMap();
@@ -6756,8 +6757,28 @@ const LOUDNESS_TAP_SOURCE = `(function(){
   };
 })();`;
 
+// 재는 구간 안에서 한 번에 치는 음이 가장 많은 내장곡(같으면 그 구간의 음 수가 많은 곡). 최대 음량 검사가 카탈로그에서 가장 센 경우를 재도록 songs.json 에서 고른다.
+function densestOpeningSongId() {
+  const parser = require(path.join(root, 'src', 'parser.js'));
+  const rhythm = require(path.join(root, 'src', 'rhythm.js'));
+  let best = null;
+  builtinSongsJson.forEach(song => {
+    const measures = parser.parseScore(song.lines, song.beats).measures;
+    const limit = LOUDNESS_WINDOW_SECONDS * Number(song.bpm) / 60 * rhythm.UNITS_PER_SLOT;
+    let chord = 0, notes = 0;
+    rhythm.annotate(measures, song.beats).events.forEach(event => {
+      if (event.startUnits >= limit) return;
+      const count = (event.part.chordNotes && event.part.chordNotes.length) || 1;
+      chord = Math.max(chord, count);
+      notes += count;
+    });
+    if (!best || chord > best.chord || (chord === best.chord && notes > best.notes)) best = { id: song.id, chord, notes };
+  });
+  return best.id;
+}
+
 async function testPlaybackLoudness(client, httpPort) {
-  const SONG_IDS = ['builtin-lv1-butterfly', 'builtin-romance-full']; // 가장 성긴 한 줄 선율 곡과 3성부 아르페지오가 빽빽한 곡
+  const SONG_IDS = ['builtin-lv1-butterfly', densestOpeningSongId()]; // 가장 성긴 한 줄 선율 곡과 재는 구간에 동시음이 가장 많은 곡
   const VIEW_KEY = 'gs.alphaTab.view';
   const PREFS_KEY = 'gs.alphaTab.prefs';
   const CLICK_SONG_ID = 'builtin-lv1-butterfly'; // 한 칸 = 4분음표(4/4)라 연습 화면과 alphaTab 의 클릭 수가 같다
@@ -6917,7 +6938,7 @@ async function testPlaybackLoudness(client, httpPort) {
     assert.ok(item.alpha.peak < 1, item.id + ': the alphaTab output does not clip (peak ' + item.alpha.peak.toFixed(3) + ')');
   });
   assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'no console errors while measuring playback loudness');
-  process.stdout.write('Browser checkpoint: playback loudness (practice screen vs alphaTab view, gated RMS over 400ms blocks, 8 seconds, two built-in songs) passed\n');
+  process.stdout.write('Browser checkpoint: playback loudness (practice screen vs alphaTab view, gated RMS over 400ms blocks, ' + LOUDNESS_WINDOW_SECONDS + ' seconds, two built-in songs) passed\n');
 }
 
 const TEMP_PROFILE_PREFIX = 'gs-browser-smoke-';
@@ -6964,7 +6985,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/gdrive.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=cleanup-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=limiter-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

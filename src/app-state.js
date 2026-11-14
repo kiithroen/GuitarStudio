@@ -47,3 +47,15 @@
   var stringVoices = {}; // 줄 번호(1~6)별 현재 울리고 있는 보이스 목록 (같은 줄 재탄현 시 이전 음 정지용)
   // 기타 마스터 음량: 화음과 명시 아포얀도의 동시 탄현을 고려한 공통 출력 레벨
   var GUITAR_MASTER_GAIN = 0.75;
+
+  // 마스터 리미터: 여러 현과 클릭의 순간 합산 피크를 누른다. 연습 화면(audio.js)과 alphaTab 보기 창(alphatab-view.js)이 같이 쓴다.
+  // DynamicsCompressorNode 는 룩어헤드 지연이 있어서 한 화면의 소리는 모두 이 노드 하나를 거쳐 타이밍을 맞춘다.
+  function createMasterLimiter(ctx){
+    var comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -3.0;
+    comp.knee.value = 0;
+    comp.ratio.value = 20.0;
+    comp.attack.value = 0.001;
+    comp.release.value = 0.10;
+    return comp;
+  }

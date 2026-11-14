@@ -14,8 +14,8 @@
   var GUITAR_VOLUME_MAX = 1; // 연주음 슬라이더 최대(100%)
   var SCROLL_MARGIN = 8; // 자동 스크롤 때 지금 줄의 맨 위와 머리 막대 아랫단 사이 여유(px)
   var NARROW_SCALE = 0.7; // 폰 폭(500px 미만)에서는 악보 제목 줄까지 한 화면에 들어오게 줄여 그린다
-  var METRONOME_BASE_VOLUME = 0.47; // 클릭음 100% 일 때 alphaTab 클릭 음량(배율). 연습 화면 클릭과 같은 크기로 잰 값. 근거는 Docs/alphatab.md
-  var PLAYBACK_MASTER_VOLUME = 5.61; // 연습 화면 합성음과 비슷한 크기로 맞추되 가장 빽빽한 내장곡이 1.0을 넘지 않게 낮춘 alphaTab 마스터 음량(배율). 근거는 Docs/alphatab.md
+  var METRONOME_BASE_VOLUME = 0.40; // 클릭음 100% 일 때 alphaTab 클릭 음량(배율). 연습 화면 클릭과 같은 크기로 잰 값. 근거는 Docs/alphatab.md
+  var PLAYBACK_MASTER_VOLUME = 5.61; // 연습 화면 합성음과 비슷한 크기로 맞춘 alphaTab 마스터 음량(배율). 넘치는 피크는 routeOutputThroughLimiter 의 리미터가 누른다. 근거는 Docs/alphatab.md
   var TWO_PAGE_PADDING = [12, 8]; // 두 쪽 보기의 alphaTab 안쪽 여백(display.padding, [좌우, 위아래]). 한 쪽 보기는 alphaTab 기본값
   var TWO_PAGE_MIN_SCALE = 0.5; // 두 쪽 보기 배율의 아래 끝(축소 단추와, 줄 하나가 쪽 창보다 높을 때 줄여 그리는 배율 모두)
   var TWO_PAGE_DEFAULT_SCALE = 1; // 두 쪽 보기의 처음 배율(한 쪽 보기와 같다). 크기는 −·+ 로 맞춘다
@@ -27,6 +27,31 @@
   var TWO_PAGE_HIDDEN_ELEMENTS = ['ScoreTitle', 'ScoreSubTitle', 'ScoreArtist', 'ScoreAlbum', 'ScoreWords', 'ScoreMusic', 'ScoreWordsAndMusic', 'ScoreCopyright']; // 두 쪽 보기에서 숨기는 악보 머리 글(alphaTab.NotationElement 이름). 곡 제목은 머리 막대에 있다. 조율 글은 applyTuningDisplay 가 숨긴다
 
   function byId(id){ return document.getElementById(id); }
+
+  // alphaTab(vendor)은 자기 AudioContext 의 출력 노드를 destination 에 바로 잇는다. 그 연결을 destination 마다 하나인
+  // 마스터 리미터(app-state.js 의 createMasterLimiter, 연습 화면과 같은 설정)로 돌려 클릭과 기타의 합산 피크가 잘리지 않게 한다.
+  function routeOutputThroughLimiter(){
+    var proto = window.AudioNode && window.AudioNode.prototype;
+    if (!proto || !window.AudioDestinationNode || proto.connect.gsLimiterRoute) return;
+    var originalConnect = proto.connect;
+    var limiterOf = new WeakMap();
+    var limiters = new WeakSet();
+    function connectThroughLimiter(target){
+      if (!(target instanceof window.AudioDestinationNode) || limiters.has(this)) return originalConnect.apply(this, arguments);
+      var limiter = limiterOf.get(target);
+      if (!limiter){
+        limiter = createMasterLimiter(target.context);
+        limiters.add(limiter);
+        originalConnect.call(limiter, target);
+        limiterOf.set(target, limiter);
+      }
+      originalConnect.call(this, limiter, arguments.length > 1 ? arguments[1] : 0, 0);
+      return target;
+    }
+    connectThroughLimiter.gsLimiterRoute = true;
+    proto.connect = connectThroughLimiter;
+  }
+  routeOutputThroughLimiter();
   var els = {
     title: byId('atTitle'), play: byId('atPlayBtn'), rewind: byId('atRewindBtn'),
     bpm: byId('atBpmRange'), bpmValue: byId('atBpmValue'), view: byId('atViewSelect'), status: byId('atStatus'), host: byId('atHost'), source: byId('atSource'),

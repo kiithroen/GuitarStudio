@@ -117,14 +117,8 @@
       outGain = actx.createGain();
       outGain.gain.value = GUITAR_MASTER_GAIN;
 
-      // 마스터 리미터: 여러 현의 순간 합산 피크를 누른다.
-      // (DynamicsCompressorNode 룩어헤드 지연이 있으므로 기타와 클릭이 모두 이 노드를 거쳐 타이밍을 맞춘다.)
-      var comp = actx.createDynamicsCompressor();
-      comp.threshold.value = -3.0;
-      comp.knee.value = 0;
-      comp.ratio.value = 20.0;
-      comp.attack.value = 0.001;
-      comp.release.value = 0.10;
+      // 마스터 리미터(createMasterLimiter): 기타와 클릭이 모두 이 노드를 거친다.
+      var comp = createMasterLimiter(actx);
 
       // 메트로놈 클릭 전용 버스 (기타 마스터 음량과 독립, 리미터만 공유)
       clickBus = actx.createGain();
