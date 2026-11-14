@@ -14,7 +14,7 @@
 | `tools/score-to-alphatex.js`, `tools/alphatab-to-score.js` | 우리 악보 ↔ alphaTab 양방향 명령줄 도구. [명령줄 도구](#명령줄-도구) |
 | `tools/build-scores.js` | 폴더의 `.tex` 원본을 시트용 6열 TSV로 바꾸는 도구. 같은 이름의 `.tex`도 손으로 만든 `.tsv`도 없는 Guitar Pro 파일은 먼저 `.tex`로 만든다. [원본은 alphaTex](#원본은-alphatex) |
 | `tools/gp-to-alphatex.js` | Guitar Pro 파일의 기타 트랙 하나를 alphaTex 원본(`.tex`)으로 쓰는 도구. [원본은 alphaTex](#원본은-alphatex) |
-| `test/test-alphatab-tools.js`, `test/fixtures/alphatab/` | 명령줄 도구 테스트와 예제(손으로 짠 alphaTex, MusicXML, 브랜치 alphaTex 16곡) |
+| `test/test-alphatab-tools.js`, `test/fixtures/alphatab/` | 명령줄 도구 테스트와 예제(손으로 짠 alphaTex, MusicXML, 이전 내장곡 alphaTex 16곡 `branch-builtins.json`) |
 
 ## 원본은 alphaTex
 
@@ -138,10 +138,10 @@ BPM 값 글은 `BPM 값 · 비율%`(예: `48 · 75%`)이고 클릭음·연주음
 
 ## 설계 기준과 함정
 
-- **역할 분리**: 연습 기능(구간 반복, 메트로놈, 가이드음, 지판)과 소리는 우리 앱이 맡고, 보기 창은 곡 전체 통주 연습과 눈으로 비교하는 미리보기로 둔다. 구간 반복·마디 편집은 보기 창에 넣지 않으며, 앱은 기존 합성 엔진을 유지한다.
+- **역할 분리**: 연습 기능(구간 반복, 메트로놈, 가이드음, 지판)과 소리는 우리 앱이 맡고, 보기 창은 곡 전체 통주 연습과 눈으로 비교하는 미리보기로 둔다. 마디 편집은 보기 창에 넣지 않으며, 앱은 기존 합성 엔진을 유지한다.
 - **배치 SSOT**: 변환은 `layoutScore` 결과 하나만 쓴다. 음 길이·점·붙임줄·셋잇단·슬러/슬라이드·롤 첫 토막을 따로 계산하지 않는다.
 - **롤 방향(`ad`)**: alphaTab의 `ad`(ArpeggioDown)가 낮은 줄(낮은 소리)부터 높은 줄로 굴리고 화면 화살표도 위를 가리킨다.
-- **좁은 화면 배율**: 폭 500px 미만에서는 alphaTab 배율을 `NARROW_SCALE`로 낮춰 그린다.
+- **좁은 화면 배율**: 폭 500px 미만에서는 alphaTab 배율을 `NARROW_SCALE`로 낮춰 그린다. 배율은 불러올 때만 정한다.
 - **사운드폰트와 음량**: `sonivox.sf2` 대신 `MuseScore_General.sf3`를 첫 재생 시 로드한다(`sonivox.sf2`는 `vendor/alphatab` 원본 유지를 위해 남기되 쓰지 않는다). 연주음 100%를 트랙 음량 1.0으로 주면 alphaTab 기본 채널 음량(`playbackInfo.volume / 16`)보다 커져 마스터 음량 보정이 깨지므로 트랙마다 기본 음량을 곱해 준다.
 - **스크롤 좌표 기준**: 줄 bounds의 좌표 기준은 컨테이너가 아니라 그리기 면(`.at-surface`)이다. 컨테이너 기준으로 계산하면 호스트의 패딩·테두리만큼 어긋난다.
 - **알려진 vendor 동작**: 재생을 시작하자마자 바로 멈추면 alphaTab 내부(`pause`)에서 `InvalidStateError`가 발생할 수 있다(vendor 코드라 수정하지 않으며 스모크 테스트에서는 재생 뒤 잠시 기다렸다 멈춘다).

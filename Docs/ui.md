@@ -35,7 +35,7 @@
 ## 음이름 표기
 
 - 표기 문자열은 `src/score.js`의 `formatBeatPitchLabel`·`getNoteDisplayName`이 SSOT이다. 기본은 CDE이고 헤더에 `도레미 표기 / CDE 표기` 전환 버튼을 둔다.
-- 음이름에는 음높이만 쓴다. `!`·`~` 주법은 원문 메타데이터로 남고 재생에도 쓰이지만 음이름 뒤 기호나 주법 색으로 표시하지 않는다.
+- 음이름에는 음높이만 쓴다. `!`·`~` 주법은 원문 메타데이터로 남고 재생에도 쓰이지만 음이름 뒤 기호나 주법 색으로 표시하지 않는다. `test/test-score.js`가 주법이 달라도 표기가 같은지, formatter가 악보 객체를 바꾸지 않는지 확인한다.
 
 ## 박자 카드
 
@@ -51,7 +51,7 @@
 - 필요 폭이 기준 폭보다 큰 마디는 `grid-column: span k`(k = 필요 폭 / 기준 폭을 올림)로 열을 더 차지한다. k가 지금 격자의 열 수 이상이면 `grid-column: 1 / -1`(한 줄 전체)이다(열 수보다 큰 span은 보이지 않는 열을 만들어 가로로 넘치기 때문이다).
 - 열 수는 `getComputedStyle(grid).gridTemplateColumns`의 열 목록을 센다(`gridColumnCount`, 값을 `#measuresGrid`의 `data-cols`에도 둔다). 그리는 때와 격자 폭이 바뀔 때(창 크기·콤팩트 뷰) 다시 센다. 크기가 바뀔 때는 이미 붙은 `span k`가 만든 암시 열을 세지 않도록 열을 세기 전에 모든 카드의 `style.gridColumn`을 지운다. 폭 관찰은 오선 층 다시 그리기와 같은 `ResizeObserver`(`watchGridResize`)가 하고, 열 걸침은 관찰 콜백 루프를 피하려고 `setTimeout`으로 다음 틱에 바꾼다.
 - 어떤 곡·보기·폭에서도 `#structuredScoreWrap`·`#measuresGrid`·페이지가 가로로 넘치지 않는다(콤팩트 뷰 포함). 마디가 필요 폭보다 좁아지면 칸이 줄어든 폭에 맞춰 같이 줄고 오선 층도 마디 폭에 맞춰 다시 그린다.
-- 필요 폭이 현재 격자 전체 폭(`grid.clientWidth`)에 비례한 임계치(`src/app.js`의 `MEASURE_DENSE_RATIO`)를 넘는 마디에는 `applyMeasureSpans`가 `.is-dense` 클래스를 붙여 TAB 프렛 알약(`.tab-fret-pill`)과 음이름 줄(`.tab-cell-en`)의 글자 크기·안쪽 여백을 줄인다.
+- 필요 폭이 현재 격자 전체 폭(`grid.clientWidth`)에 비례한 임계치(`src/app.js`의 `MEASURE_DENSE_RATIO`)를 넘는 마디에는 `applyMeasureSpans`가 `.is-dense` 클래스를 붙여 TAB 프렛 알약(`.tab-fret-pill`)과 음이름 줄(`.tab-cell-en`)의 글자 크기·안쪽 여백을 줄인다. 브라우저 스모크의 `testMeasureWidth`가 여러 칸 수·분할의 곡을 보기와 폭별로 열어 넘침, span, `.is-dense`를 확인한다.
 - 320px에서도 콘솔 그리드(`.stage-grid`)를 `minmax(0, …)`로 두고 컨트롤 항목에 `min-width: 0; max-width: 100%`를 주어 콘솔(`.stage-box`)과 페이지가 가로로 넘치지 않는다.
 
 ## TAB과 지판

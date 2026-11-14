@@ -66,7 +66,7 @@ alphaTab 보기 창은 `app.js` 없이 따로 스크립트를 부른다. 구성�
 - 곡 선택 바의 `#copyScorePromptBtn`이 `src/score-prompt.js`의 `buildScoreImagePrompt()` 결과를 클립보드에 복사한다. 이 프롬프트는 악보 이미지를 alphaTex로 옮기는 규칙을 담고 있다([alphaTab 보기](alphatab.md#사진-변환)).
 - 저장소를 읽고 명령을 실행할 수 있는 코딩 에이전트용 프롬프트는 `#copyProjectPromptBtn`(`buildProjectPrompt()`)으로 복사한다. `Docs/alphatab.md`("원본은 alphaTex", "사진 변환")와 `buildScoreImagePrompt()` 출력 규칙을 따라 `Temp/scores/<제목>.tex`를 저장하고 `node tools/build-scores.js Temp/scores`로 `<제목>.tsv`(6열)를 만든다.
 - `test/test-score-prompt.js`는 프롬프트 속 예시 코드블록(`ALPHATEX_EXAMPLES`)이 vendor alphaTab에서 진단 0으로 읽히고 `tools/alphatab-to-score.js`로 바꾼 결과가 `validateScore` 오류 0인지, 규칙 속 alphaTex 조각과 이동 표시 이름이 읽히는지, 규칙 문장(`REQUIRED` 목록)이 빠지지 않았는지, 문서·도구 파일 존재와 프롬프트 속 명령 실행, 일부러 어긋난 사본이 걸리는지 확인한다. `RHYTHM_EXAMPLES`(음 길이 표)와 우리 악보 예시 행은 현재 파서로 읽히는지 확인한다. 알려진 alphaTex 표기를 바꾸면 프롬프트 규칙과 이 목록을 같이 고친다.
-- 클립보드 API가 없거나 거부되면 화면 밖 textarea와 `execCommand('copy')`로 복사한다.
+- 클립보드 API가 없거나 거부되면 화면 밖 textarea와 `execCommand('copy')`로 복사한다. `window.prompt`는 여러 줄을 한 줄로 뭉개서 쓰지 않는다.
 
 ## UI 톤
 
