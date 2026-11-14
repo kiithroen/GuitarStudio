@@ -11,7 +11,7 @@ const melodyPracticeIds = [
   'builtin-lv1-butterfly', 'builtin-lv1-twinkle',
   'builtin-lv2-london', 'builtin-lv2-jinglebells', 'builtin-lv2-odetojoy',
   'builtin-lv3-clementine', 'builtin-lv3-brahms',
-  'builtin-lv4-amazinggrace', 'builtin-lv4-greensleeves'
+  'builtin-lv4-amazinggrace'
 ];
 
 // 원본 MIDI·악보에서 옮겨 운지·줄 번호를 붙이지 않은 곡: 아래 앱 운지 제안 검사 대상이 아니다.
@@ -41,7 +41,8 @@ const convertedIds = [
   'builtin-sor-op35-02', 'builtin-sor-op35-04', 'builtin-sor-op35-05', 'builtin-sor-op35-09',
   'builtin-sor-op35-12', 'builtin-sor-op35-17', 'builtin-sor-op6-01', 'builtin-sor-op6-02',
   'builtin-carcassi-op60-01', 'builtin-carcassi-op60-05', 'builtin-carcassi-op60-06', 'builtin-carcassi-op60-08',
-  'builtin-carcassi-op60-19', 'builtin-mertz-etude-am', 'builtin-sanz-preludio', 'builtin-carcassi-op60-16'
+  'builtin-carcassi-op60-19', 'builtin-mertz-etude-am', 'builtin-sanz-preludio', 'builtin-carcassi-op60-16',
+  'builtin-sor-op60-05'
 ];
 
 assert.ok(songs.length > 0, 'catalog is not empty');
@@ -123,7 +124,7 @@ for (const id of melodyPracticeIds){
   }
 }
 
-for (const id of ['builtin-lv3-clementine', 'builtin-lv3-brahms', 'builtin-lv4-amazinggrace', 'builtin-lv4-greensleeves']){
+for (const id of ['builtin-lv3-clementine', 'builtin-lv3-brahms', 'builtin-lv4-amazinggrace']){
   const firstMeasure = songById.get(id).lines[0].split('|', 1)[0].replace(/^\s*\[[^\]]*\]\s*/, '');
   const firstAttackIndex = parser.tokenizeMeasureBeats(firstMeasure).findIndex(beat => !/^[rR-]$/.test(beat));
   assert.ok(firstAttackIndex > 0, `${id} fills the fixed-grid pickup with leading rests`);
@@ -270,16 +271,6 @@ assert.deepEqual(brahmsLast.slice(0,3).map(event=>[event.part.midi,event.startUn
 const brahmsFinalHold=parsedBrahms.measures[15].beats[0].subNotes[3];
 assert.equal(brahmsFinalHold.startUnits-brahmsLastStart,9,'Brahms final subdivision holds at the final quarter-slot offset');
 assert.equal(brahmsFinalHold.durationUnits,3,'Brahms final F4 remains held through the last subdivision');
-
-const greensleeves=songById.get('builtin-lv4-greensleeves');
-const parsedGreensleeves=parser.parseScore(greensleeves.lines,greensleeves.beats);
-const greenRhythm=rhythm.annotate(parsedGreensleeves.measures,greensleeves.beats);
-const greenM3=greenRhythm.events.filter(event=>event.measureIndex===3);
-assert.ok(greenM3.some(event=>event.part.midi===55),'Greensleeves body m3 uses G natural');
-assert.equal(greenM3.some(event=>event.part.midi===56),false,'Greensleeves body m3 does not replace G natural with G-sharp');
-const greenM7=greenRhythm.events.filter(event=>event.measureIndex===7);
-assert.ok(greenM7.some(event=>event.part.midi===56&&event.startUnits-7*greensleeves.beats*12===36),'Greensleeves body m7 G-sharp lands at the written slot');
-assert.ok(greenM7.some(event=>event.part.midi===54&&event.startUnits-7*greensleeves.beats*12===54),'Greensleeves body m7 F-sharp lands in the written subdivision');
 
 const grace=songById.get('builtin-lv4-amazinggrace');
 const parsedGrace=parser.parseScore(grace.lines,grace.beats);

@@ -591,12 +591,14 @@ test('import keeps string, fret, fingering, articulation and check marks', funct
 function soundEvents(lines, beats){
   const events = [];
   let previous = null;
-  lines.forEach(function(line, m){
+  let slot = 0;
+  lines.forEach(function(line){
     const tokens = notation.tokenizeMeasureBeats(notation.decodeMeasureLine(line).notation);
-    tokens.forEach(function(token, c){
+    tokens.forEach(function(token){
+      if (notation.isSkipToken(token)) return;
       const parts = notation.splitBeatSubtokens(token);
       parts.forEach(function(part, i){
-        const time = (m * beats + c + i / parts.length).toFixed(6);
+        const time = (slot + i / parts.length).toFixed(6);
         const text = part.trim();
         if (text === '-') return;
         if (notation.isRestToken(text)){
@@ -618,6 +620,7 @@ function soundEvents(lines, beats){
         previous = { rest: false };
         events.push({ time: time, notes: notes });
       });
+      slot++;
     });
   });
   return events;

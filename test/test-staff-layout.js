@@ -450,11 +450,13 @@ test('every built-in song lays out: lengths add up, strikes match, steps stay on
     const text = song.lines.join('\n');
     const result = layoutApi.layoutScore(text, song.beats, 0);
     assert.equal(result.error, undefined, song.id + ': ' + result.error);
-    const expected = rhythm.annotate(parser.parseScore(text, song.beats).measures, song.beats);
+    const parsed = parser.parseScore(text, song.beats).measures;
+    const expected = rhythm.annotate(parsed, song.beats);
     let strikes = 0;
     result.measures.forEach(function(measure, index){
       const total = measure.items.reduce(function(sum, item){ return sum + item.lengthUnits; }, 0);
-      assert.equal(total, song.beats * 12, song.id + ' measure ' + (index + 1) + ' length');
+      const activeSlots = parsed[index].beats.filter(function(beat){ return !rhythm.isSkipBeat(beat); }).length;
+      assert.equal(total, activeSlots * 12, song.id + ' measure ' + (index + 1) + ' length');
       measure.items.forEach(function(item){
         if (item.type !== 'chord') return;
         if (!item.tieFromPrev) strikes++;

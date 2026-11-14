@@ -259,6 +259,10 @@ function convertMidi(midi, options) {
   for (var ci = 0; ci < totalCells; ci++) {
     var list = cellsNotes[ci];
     var cellStart = ci * cellLen;
+    if (o.pickup > 0 && !list.length && cellStart + cellLen <= shift + tol) {
+      tokens.push('_');
+      continue;
+    }
     // 분할 d 선택
     var chosen = 4, ok = false;
     for (var d = 1; d <= 4; d++) {

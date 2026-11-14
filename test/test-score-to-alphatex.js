@@ -56,14 +56,18 @@ function noteOnEvents(score){
     .map(function(event){ return { tick: event.tick, key: event.noteKey }; });
 }
 
-function expectedBarTicks(beats){
+function expectedBarTicks(beats, activeSlots){
   const grid = rhythm.getGridInfo(beats);
-  return grid.numerator * (TICKS_PER_QUARTER * 4 / grid.denominator);
+  const slotTicks = (grid.numerator * (TICKS_PER_QUARTER * 4 / grid.denominator)) / beats;
+  return (activeSlots == null ? beats : activeSlots) * slotTicks;
 }
 
-function assertBarLengths(staff, beats, label){
-  const want = expectedBarTicks(beats);
+function assertBarLengths(staff, beats, label, measures){
   staff.bars.forEach(function(bar, index){
+    const activeSlots = measures
+      ? measures[index].beats.filter(function(beat){ return !rhythm.isSkipBeat(beat); }).length
+      : null;
+    const want = expectedBarTicks(beats, activeSlots);
     const sum = bar.voices[0].beats.reduce(function(total, beat){ return total + beat.playbackDuration; }, 0);
     assert.equal(sum, want, label + ' bar ' + (index + 1) + ' tick sum');
     assert.equal(bar.masterBar.calculateDuration(), want, label + ' bar ' + (index + 1) + ' master bar length');
@@ -82,12 +86,13 @@ test('built-in songs: alphaTex imports without diagnostics, bar count and bar le
     assert.deepEqual(imported.diagnostics, [], song.id + ' diagnostics');
     assert.equal(imported.thrown, null, song.id + ' read');
     const score = imported.score;
-    const ourMeasures = parser.parseScore(song.lines.join('\n'), song.beats).measures.length;
+    const parsedMeasures = parser.parseScore(song.lines.join('\n'), song.beats).measures;
+    const ourMeasures = parsedMeasures.length;
     assert.equal(score.masterBars.length, ourMeasures, song.id + ' bar count');
     assert.equal(score.tracks.length, 1, song.id + ' track count');
     const staff = score.tracks[0].staves[0];
     assert.equal(staff.bars.length, ourMeasures, song.id + ' staff bar count');
-    assertBarLengths(staff, song.beats, song.id);
+    assertBarLengths(staff, song.beats, song.id, parsedMeasures);
     assert.equal(staff.capo, capo, song.id + ' capo');
     count++;
   });

@@ -102,6 +102,10 @@ function canonicalBar(line){
     const pieces = notation.splitBeatSubtokens(cell);
     pieces.forEach(function(piece, pieceIndex){
       const at = fraction(cellIndex * 12 + pieceIndex * 12 / pieces.length, cells.length * 12);
+      if (notation.isSkipToken(piece)){
+        events.push(at + ' _');
+        return;
+      }
       if (piece === '-'){
         if (!events.length) events.push(at + ' -');
         return;
@@ -148,7 +152,7 @@ function roundTripFailures(toolModule, forwardModule){
     if (back.title !== song.title) failures.push(song.id + ': 제목 ' + song.title + ' → ' + back.title);
     original.forEach(function(line, index){
       const want = canonicalBar(line);
-      const got = canonicalBar(back.measures[index]);
+      const got = canonicalBar(want.memo ? back.measures[index] : withoutConverterMemo(back.measures[index]));
       if (want.chord !== got.chord || want.memo !== got.memo || JSON.stringify(want.events) !== JSON.stringify(got.events)){
         failures.push(song.id + ' ' + (index + 1) + '마디\n      원본 ' + line + '\n      결과 ' + back.measures[index]);
       }
