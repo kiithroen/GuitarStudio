@@ -1,6 +1,6 @@
 (function(global){
   'use strict';
-  // 우리 텍스트 악보를 alphaTex로 바꾼다. alphaTab 보기 창(alphatab.html)의 대체 미리보기와 명령줄 도구가 쓴다. 규칙과 결정은 Docs/alphatab.md.
+  // 우리 텍스트 악보를 alphaTex로 바꾼다. alphaTab 보기 창(alphatab.html)의 대체 미리보기와 명령줄 도구가 쓴다. 규칙은 Docs/alphatab.md.
   // 음 길이·점·붙임줄·셋잇단·슬러/슬라이드·롤 첫 토막은 GuitarStaffLayout.layoutScore 결과 하나만 쓰고 여기서 다시 셈하지 않는다.
   // 빈칸 _ (시간 0인 칸)은 내보내지 않는다. 첫 마디의 앞쪽 빈칸은 못갖춘마디 \ac 로, 그 밖의 빈칸이 든 마디는 빈칸이 아닌 칸 수만큼의 박자표 \ts 로 쓴다.
   var isNode = typeof module !== 'undefined' && module.exports;

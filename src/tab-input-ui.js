@@ -1,6 +1,6 @@
 (function(){
   'use strict';
-  // 악보 입력 화면(score-input.html)의 그리기·입력·저장. 모델은 src/tab-input.js, 설계와 결정은 Docs/tab-input.md.
+  // 악보 입력 화면(score-input.html)의 그리기·입력·저장. 모델은 src/tab-input.js, 설계는 Docs/tab-input.md.
   var T = window.GuitarTabInput;
   var N = window.GuitarNotation;
   var Staff = window.GuitarStaffLayout;

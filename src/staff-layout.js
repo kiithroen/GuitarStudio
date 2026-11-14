@@ -1,6 +1,6 @@
 (function(global){
   'use strict';
-  // 텍스트 악보를 오선보 배치 데이터로 바꾸는 DOM 없는 계산. 규칙과 결정은 Docs/staff-notation.md.
+  // 텍스트 악보를 오선보 배치 데이터로 바꾸는 DOM 없는 계산. 규칙은 Docs/staff-notation.md.
   var isNode = typeof module !== 'undefined' && module.exports;
   var GuitarNotation = isNode ? require('./notation.js') : global.GuitarNotation;
   var GuitarRhythm = isNode ? require('./rhythm.js') : global.GuitarRhythm;

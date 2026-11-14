@@ -1,7 +1,7 @@
 (function(global){
   'use strict';
   // 타브 입력 화면의 DOM 없는 모델: 문서 모양, 편집 연산, 되돌리기 기록, 텍스트 악보 변환과 불러오기.
-  // 설계와 결정은 Docs/tab-input.md.
+  // 설계는 Docs/tab-input.md.
   var isNode = typeof module !== 'undefined' && module.exports;
   var GuitarNotation = isNode ? require('./notation.js') : global.GuitarNotation;
   var GuitarParser = isNode ? require('./parser.js') : global.GuitarParser;

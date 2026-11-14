@@ -2588,7 +2588,7 @@
   });
   $('#bodyAmountRange').addEventListener('change', saveAppState);
   $('#sympAmountRange').addEventListener('change', saveAppState);
-  // 미리 듣기: 개방현이 비어 있도록 짚은 음만 이어서 쳐서 울림통과 공명현 효과가 잘 들리게 함
+  // 미리 듣기: 개방현이 비어 있도록 짚은 음만 이어서 쳐서 울림통과 공명현 효과가 잘 들리게 한다.
   // (4번줄 2프렛 E3 → 3번줄 2프렛 A3 → 2번줄 3프렛 D4 → 2번줄 5프렛 E4)
   $('#tonePreviewBtn').addEventListener('click', function(){
     ensureAudioCtx();

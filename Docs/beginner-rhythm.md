@@ -10,9 +10,7 @@
 
 빈칸(`skip`) part는 `slotUnits`와 `durationUnits`가 0이고 이벤트를 만들지 않으며, `startUnits`는 그 자리까지 쌓인 시간이라 바로 다음 칸과 같다. 시간이 흐르지 않으니 유지 사슬은 빈칸에서 끊기지 않고 건너 이어지며 유지 길이에 빈칸은 들어가지 않는다. 쉼이 아니라서 사슬을 끊거나 소리를 정리하지 않는다. `GuitarRhythm.isSkipBeat`가 칸 하나 통째로의 빈칸을 가리고, `GuitarRhythm.countPlayableSlots`가 어느 칸부터 구간 끝 마디까지 빈칸이 아닌 칸 수를 센다. 빈칸 판별 자체는 `GuitarNotation.isSkipToken` 하나다. 이벤트와 `tieFrom`의 위치 참조에서 일반 beat의 `subIndex`는 null이고 분할 part는 0부터 시작하는 분할 인덱스를 쓴다.
 
-음과 화음은 현재 칸 또는 `/` 분할로 정해지는 part 공통 길이를 쓴다. `-`는 앞 음이나 화음 전체를 이어지는 다음 탄현이나 쉼까지 유지한다. 화음 구성음별 음가, 독립 성부 레인, 성부별 쉼, 화음 일부의 붙임줄은 지원하지 않는다.
-
-2026-10-19 결정: 음별 길이 접미사는 악보 음가와 자연 여운을 혼동시키고 자동 생성 입력을 복잡하게 해 제거했다. 기존 part 공통 길이와 자연 감쇠 경로를 쓰며, 독립 성부 scheduler나 별도 음가 입력 문법은 추가하지 않았다. 원자료 로망스의 독립 음가도 새 문법으로 옮겨 기록하지 않는다.
+음과 화음은 현재 칸 또는 `/` 분할로 정해지는 part 공통 길이를 쓴다. `-`는 앞 음이나 화음 전체를 이어지는 다음 탄현이나 쉼까지 유지한다. 화음 구성음별 음가, 음별 길이 접미사, 독립 성부 스케줄러, 성부별 쉼, 화음 일부의 붙임줄은 지원하지 않으며 기존 part 공통 길이와 자연 감쇠 경로를 쓴다.
 
 hold part의 `durationUnits`는 그 위치부터 이어지는 유지 체인의 끝까지 남은 길이다. `tieFrom`은 hold만 갖는 `{measureIndex,beatIndex,subIndex}` 원음 위치다. `resolveHold(measures,part)`는 이어지는 원음 part 또는 `null`을 반환하고, `getSoundingNotes(measures,positionUnits)`는 그 시점에 `-`로 이어져 악보상 유지 중인 원음 또는 화음 전체와 남은 길이를 반환한다.
 
@@ -24,13 +22,13 @@ hold part의 `durationUnits`는 그 위치부터 이어지는 유지 체인의 �
 
 `getBeatGuideEvents(beat, options)`와 `scheduleBeatGuide(beat, options)`는 `startTime`, `slotDuration`(초/한 칸), `measures`, `resumeHold`, `maxDurationSlots`, `capo`를 사용한다. 이벤트 `when`은 `startTime + subIndex / 분할수 * slotDuration`, 각 음 이벤트의 `duration`은 그 part의 공통 `durationUnits / 12 * slotDuration`이다. 화음 구성음은 같은 시각에 시작하고 같은 part 길이를 받는다. 롤(`~`) 조각은 예외다: 구성음을 줄 번호가 큰 것부터(6번 줄 → 1번 줄) `ROLL_STEP` 간격으로 늦춰 시작하고, 간격이 그 조각 길이 × `ROLL_MAX_SHARE` ÷ (음 수 − 1)을 넘으면 그만큼으로 줄인다. 첫 음이 박 시각이고, 늦게 시작한 음은 늦은 만큼 `duration`이 줄어 끝 시각이 같다. `resumeHold` 복원은 다시 굴리지 않고 한꺼번에 울린다(새로 치는 게 아니라 이어 울리는 소리를 되살리는 것이라서). 값은 `src/guide.js`.
 
-note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}`, rest 이벤트는 `{kind:'rest',when,duration}`이다. rest는 해당 시각의 기타 직접음을 정리한다. gain은 명시한 아포얀도(`APOYANDO_GAIN`)와 슬러·슬라이드(`SLUR_GAIN`, 오른손으로 다시 치지 않는 음이라 작게)만 바꾸고(값은 `src/guide.js`) 그 외는 1이다(티란도 표시는 2026-10-19에 문법에서 없앴다, [악보 문법](score-format.md)). 원문에 명시한 주법 설정만 전달하고 부모 분할 그룹의 주법을 자식에 전파하지 않는다. 슬라이드 음 이벤트에는 출발 음 높이 `glideFrom`이 실려, `scheduleBeatGuide`가 `playGuitarNote`에 `glide`(출발 음 높이, 미끄럼 시간 = min(`SLIDE_GLIDE_SEC`, 음 길이 × `SLIDE_MAX_SHARE`))를 넘긴다. KS는 재생 속도(`playbackRate`), classic은 오실레이터 주파수를 출발 음 높이에서 제 높이로 미끄러뜨린다. `resumeHold` 복원은 미끄러지지 않는다. 입력 화면 들어보기도 같은 `articulationGain`을 쓴다(2026-10-20, 외부 리뷰에서 발견).
+note 이벤트는 `{kind:'note',note,duration,when,gain,articulation,str}`, rest 이벤트는 `{kind:'rest',when,duration}`이다. rest는 해당 시각의 기타 직접음을 정리한다. gain은 명시한 아포얀도(`APOYANDO_GAIN`)와 슬러·슬라이드(`SLUR_GAIN`, 오른손으로 다시 치지 않는 음이라 작게)만 바꾸고(값은 `src/guide.js`) 그 외는 1이다. 원문에 명시한 주법 설정만 전달하고 부모 분할 그룹의 주법을 자식에 전파하지 않는다. 슬라이드 음 이벤트에는 출발 음 높이 `glideFrom`이 실려, `scheduleBeatGuide`가 `playGuitarNote`에 `glide`(출발 음 높이, 미끄럼 시간 = min(`SLIDE_GLIDE_SEC`, 음 길이 × `SLIDE_MAX_SHARE`))를 넘긴다. KS는 재생 속도(`playbackRate`), classic은 오실레이터 주파수를 출발 음 높이에서 제 높이로 미끄러뜨린다. `resumeHold` 복원은 미끄러지지 않는다. 입력 화면 들어보기도 같은 `articulationGain`을 쓴다.
 
 일반 진행에서 hold는 새 note-on을 만들지 않는다. `resumeHold:true`는 `-`가 이어지는 위치에서 원음 또는 화음 전체를 남은 공통 길이로 한 번 복원한다. 이 동작은 정지 상태 칸 미리듣기, 중간 시작, 루프 시작과 재생 도중 가이드음을 다시 켠 뒤의 다음 박에서 사용된다. 이전 재생의 자연 여운이나 리버브는 복원 대상이 아니고, 지속음 위치의 전체 반주를 과거부터 다시 합성하지 않는다. 복원된 악보상 길이는 곡·loop 끝에서 잘리고, 그 뒤 내부 hold는 다시 치지 않는다. 기존 스케줄러를 사용하며 중간 시각에 새 이벤트를 추가 예약하지 않는다.
 
 `getBeatGuideEvents`와 `scheduleBeatGuide`는 빈칸 beat에 빈 이벤트 목록을 돌려주고(`resumeHold`여도 같다), 아무것도 예약하지 않는다.
 
-재생 스케줄러(`schedulerTick`)는 칸마다 메트로놈 클릭, 가이드음, 화면 동기화를 예약하고 `nextBeatTime`에 칸 길이를 더한 뒤 다음 칸으로 간다. 칸이 빈칸이면 이 세 가지를 예약하지 않고 `nextBeatTime`도 더하지 않고 다음 칸으로 넘어간다. 마디 첫 칸이 빈칸이면 강박 표시 클릭도 없다(그 칸을 건너뛰니 다음 실제 칸은 강박 칸이 아니다). 카운트인은 그대로다. 빈칸에서 시작하는 재생·정지 상태 미리듣기는 소리 없이 다음 칸으로 가고, `resumeHold`는 소리가 나는 첫 칸에서 한 번 복원한다(`getSoundingNotes`가 그 칸의 실제 시간 위치로 찾는다). 재생을 시작할 칸이 빈칸이면 `startPractice`가 `seekPastSkipBeats`로 구간 안의 다음 소리 나는 칸으로 옮기고, 구간 끝까지 없으면 구간 시작 마디의 첫 칸으로 간다. 2026-10-21 결정: 마지막 마디의 뒤쪽 빈칸을 눌러 재생하면 남은 칸이 모두 빈칸이라 소리 없이 끝나거나 완주 횟수만 올라갔다.
+재생 스케줄러(`schedulerTick`)는 칸마다 메트로놈 클릭, 가이드음, 화면 동기화를 예약하고 `nextBeatTime`에 칸 길이를 더한 뒤 다음 칸으로 간다. 칸이 빈칸이면 이 세 가지를 예약하지 않고 `nextBeatTime`도 더하지 않고 다음 칸으로 넘어간다. 마디 첫 칸이 빈칸이면 강박 표시 클릭도 없다(그 칸을 건너뛰니 다음 실제 칸은 강박 칸이 아니다). 카운트인은 그대로다. 빈칸에서 시작하는 재생·정지 상태 미리듣기는 소리 없이 다음 칸으로 가고, `resumeHold`는 소리가 나는 첫 칸에서 한 번 복원한다(`getSoundingNotes`가 그 칸의 실제 시간 위치로 찾는다). 재생을 시작할 칸이 빈칸이면 `startPractice`가 `seekPastSkipBeats`로 구간 안의 다음 소리 나는 칸으로 옮기고, 구간 끝까지 소리 나는 칸이 없으면 구간 시작 마디의 첫 칸으로 간다.
 
 `maxDurationSlots`는 현재 칸 시작부터 재생·루프 끝까지 남은 칸 수이고 빈칸은 세지 않는다(`GuitarRhythm.countPlayableSlots`). 분할 위치를 고려해 이벤트를 루프 경계에서 자른다. `getSubdividedGuideEvents`와 `scheduleSubdividedGuide`는 `subStep`을 `slotDuration = subStep * subNotes.length`로 바꿔 공통 경로를 사용한다. `getSubdividedGuideEvents` 반환값은 기존대로 note 이벤트만 포함한다.
 

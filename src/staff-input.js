@@ -1,7 +1,7 @@
 (function(global){
   'use strict';
   // 오선 입력 화면의 DOM 없는 계산: 음표 길이, 한 사건 넣기, 줄 정하기, 음높이 읽기, 반음 옮기기.
-  // 설계와 결정은 Docs/staff-input.md. 문서 모양과 기본 편집 연산은 src/tab-input.js의 공개 API만 쓴다.
+  // 설계는 Docs/staff-input.md. 문서 모양과 기본 편집 연산은 src/tab-input.js의 공개 API만 쓴다.
   var isNode = typeof module !== 'undefined' && module.exports;
   var GuitarNotation = isNode ? require('./notation.js') : global.GuitarNotation;
   var GuitarRhythm = isNode ? require('./rhythm.js') : global.GuitarRhythm;

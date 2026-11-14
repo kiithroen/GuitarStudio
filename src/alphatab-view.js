@@ -1,6 +1,6 @@
 (function(){
   'use strict';
-  // alphaTab 보기 창(alphatab.html). 연습 화면이 localStorage에 넣은 곡을 alphaTex로 바꿔 alphaTab 플레이어로 띄운다. 규칙과 결정은 Docs/alphatab.md.
+  // alphaTab 보기 창(alphatab.html). 연습 화면이 localStorage에 넣은 곡을 alphaTex로 바꿔 alphaTab 플레이어로 띄운다. 규칙은 Docs/alphatab.md.
   var STORAGE_KEY = 'gs.alphaTab.view';
   var ASSET_ROOT = 'vendor/alphatab/dist/';
   var SOUND_FONT_URL = 'vendor/musescore-general/MuseScore_General.sf3'; // 약 38MB라 창을 열 때가 아니라 처음 재생할 때 불러온다

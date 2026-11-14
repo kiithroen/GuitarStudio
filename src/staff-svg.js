@@ -1,6 +1,6 @@
 (function(global){
   'use strict';
-  // 오선 배치(src/staff-layout.js의 layoutScore 결과 마디 하나)를 SVG 문자열로 그린다. DOM 없음. 규칙과 결정은 Docs/staff-notation.md.
+  // 오선 배치(src/staff-layout.js의 layoutScore 결과 마디 하나)를 SVG 문자열로 그린다. DOM 없음. 규칙은 Docs/staff-notation.md.
   var LINE_GAP = 8;                 // 줄 간격(px)
   var STEP = LINE_GAP / 2;          // 오선 위치 한 칸(px)
   var BASE_Y = 88;                  // E4(step 0) 아래 줄의 y

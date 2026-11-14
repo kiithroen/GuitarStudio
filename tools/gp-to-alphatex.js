@@ -3,7 +3,7 @@
 // Guitar Pro 파일(.gp .gp3 .gp4 .gp5 .gpx)에서 기타 트랙 하나를 골라 alphaTex 원본(.tex)으로 쓰는 도구.
 // 사용: node tools/gp-to-alphatex.js <입력 파일> [--track n(1부터)] [-o 출력.tex]
 // 읽기와 트랙 고르기는 tools/alphatab-to-score.js 의 것을 그대로 쓰고, 쓰기는 vendor alphaTab 의 AlphaTexExporter 다.
-// 출력 파일이 이미 있으면 덮지 않는다(손본 원본을 지키려고). 흐름과 결정은 Docs/alphatab.md 의 "원본은 alphaTex" 절.
+// 출력 파일이 이미 있으면 덮지 않는다(손본 원본을 지키려고). 흐름은 Docs/alphatab.md 의 "원본은 alphaTex" 절.
 const fs = require('node:fs');
 const path = require('node:path');
 const alphaTab = require('../vendor/alphatab/dist/alphaTab.min.js');

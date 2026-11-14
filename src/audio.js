@@ -1,10 +1,10 @@
 'use strict';
   // ---------- WebAudio 신디사이저 (클래식 기타 바디 공명 + 콘서트홀 리버브 + 권선현/나일론현 배음 합성)
-  // 콘서트홀 잔향 IR: 대역별 지수 감쇠(저음 1.9초 · 중음 1.6초 · 고음 1.0초)로 고음 잔향이 먼저 사라지고,
-  // 확산 잔향은 30ms 시상수로 차오르며, 초기 반사음은 양 채널 같은 극성(모노 합산 시 빗살 필터 착색 없음)
-  var REVERB_RT = { low: 1.9, mid: 1.6, high: 1.0 }; // <500Hz, 500Hz~3.5kHz, >3.5kHz
+  // 콘서트홀 잔향 IR: 대역별 지수 감쇠(저음 -> 중음 -> 고음 순으로 먼저 사라짐)로 감쇠하고,
+  // 확산 잔향은 지수 곡선으로 차오르며, 초기 반사음은 양 채널 같은 극성(모노 합산 시 빗살 필터 착색 방지)을 쓴다.
+  var REVERB_RT = { low: 1.9, mid: 1.6, high: 1.0 };
   var CONCERT_HALL_WET_GAIN = 0.35;
-  // 기존 합성음의 저음 고배음이 지나치게 깎이지 않도록 cutoff 하한을 둠
+  // 기존 합성음의 저음 고배음이 지나치게 깎이지 않도록 cutoff 하한을 둔다.
   var CLASSIC_BASS_ATTACK_CUTOFF = 1200;
   var CLASSIC_BASS_DECAY_CUTOFF = 600;
   var NATURAL_TAIL_FADE = 0.04;
@@ -57,7 +57,7 @@
           + air * Math.exp(-6.91 * tt / REVERB_RT.high);
         data[i] = env * (1 - Math.exp(-tt / 0.03)) * 0.35;
       }
-      // 초기 반사음: 2ms 폭으로 살짝 퍼뜨려 딱딱한 클릭 없이 벽면 반사의 입체감만 남김
+      // 초기 반사음: 짧은 폭으로 퍼뜨려 딱딱한 클릭 없이 벽면 반사의 입체감만 남긴다.
       var spread = Math.floor(rate * 0.002);
       REVERB_EARLY[ch].forEach(function(er){
         var c = Math.floor(er[0] * rate);
@@ -97,7 +97,7 @@
     return typeof v === 'number' && isFinite(v) && v >= 0 && v <= 1 ? v : 1.0;
   }
 
-  // 연주음 슬라이더 값을 기타 버스 gain 에 짧은 램프로 반영 (콘서트홀 전환과 같은 40ms)
+  // 연주음 슬라이더 값을 기타 버스 gain 에 짧은 램프로 반영한다.
   function updateGuitarVolume(){
     if (!actx || !guitarBus || !guitarBus.gain) return;
     var now = actx.currentTime;
@@ -117,8 +117,8 @@
       outGain = actx.createGain();
       outGain.gain.value = GUITAR_MASTER_GAIN;
 
-      // 마스터 리미터는 -3dB에서 여유를 확보해 여러 현의 순간 합산 피크를 누름
-      // (DynamicsCompressorNode는 약 6ms 룩어헤드 지연이 있으므로 기타와 클릭이 이 노드를 거쳐 타이밍을 맞춤)
+      // 마스터 리미터: 여러 현의 순간 합산 피크를 누른다.
+      // (DynamicsCompressorNode 룩어헤드 지연이 있으므로 기타와 클릭이 모두 이 노드를 거쳐 타이밍을 맞춘다.)
       var comp = actx.createDynamicsCompressor();
       comp.threshold.value = -3.0;
       comp.knee.value = 0;
@@ -130,7 +130,7 @@
       clickBus = actx.createGain();
       clickBus.gain.value = 1.0;
 
-      // 기타 소리 전부가 지나는 버스: 연주음 슬라이더(appState.guitarVol)가 이 gain 에 곱해진다. 클릭 버스는 영향받지 않음
+      // 기타 소리 전부가 지나는 버스: 연주음 슬라이더(appState.guitarVol)가 이 gain 에 곱해진다. 클릭 버스는 영향받지 않는다.
       guitarBus = actx.createGain();
       guitarBus.gain.value = guitarVolumeGain();
 
@@ -143,8 +143,8 @@
       reverbNode = actx.createConvolver();
       reverbNode.buffer = buildConcertHallReverbBuffer(actx);
 
-      // 클래식 기타 울림통 공명: 원음 + 공명 모드별 대역 통과 필터를 병렬로 더함
-      // 각 모드가 짧게(0.04~0.27초) 울리고 모드 사이에는 자연스러운 골이 생겨, 넓게 부풀리는 EQ보다 덜 답답한 나무 울림통 소리
+      // 클래식 기타 울림통 공명: 원음에 공명 모드별 대역 통과 필터를 병렬로 더한다.
+      // 각 모드가 짧게 울리고 모드 사이에 골이 생겨, 넓게 부풀리는 EQ보다 덜 답답한 나무 울림통 소리를 낸다.
       var bodyOut = actx.createGain();
       guitarBus.connect(bodyOut);
       var bodyScale = appState.synthEngine === 'classic' ? 0 : (appState.acousticFx ? 1.0 : DRY_BODY_RATIO);
@@ -220,8 +220,8 @@
     o.stop(t + clickDur + 0.005);
   }
 
-  // 같은 줄을 다시 튕기면 이전 진동은 새 탄현에 막혀 바로 멈춤: 이전 보이스를 12ms 시상수로 빠르게 감쇠시켜 음 겹침·탁함 제거
-  // (30ms 이내 거의 동시 탄현은 롤·화음 표현이므로 함께 울리도록 둠)
+  // 같은 줄을 다시 튕기면 이전 진동은 새 탄현에 막혀 바로 멈춘다: 이전 보이스를 빠르게 감쇠시켜 음 겹침과 탁함을 제거한다.
+  // (거의 동시 탄현은 롤·화음 표현이므로 함께 울리도록 둔다.)
   function dampSameStringVoices(strNo, t){
     var list = stringVoices[strNo];
     if (!list) return;
@@ -240,12 +240,10 @@
   }
 
   // ---------- Karplus-Strong 확장형 나일론 현 물리 모델
-  // 한 주기 길이의 지연선에 탄현 파형을 넣고 손실 필터로 되먹임: 고배음이 먼저 사라지는 실제 현의 감쇠와 배음 구조가 저절로 생김
-  // 음·주법마다 처음 한 번만 AudioBuffer로 렌더링해 캐시하고, 연주할 때는 버퍼만 재생 (노드 수·CPU 부담 최소)
+  // 한 주기 길이의 지연선에 탄현 파형을 넣고 손실 필터로 되먹임한다: 고배음이 먼저 사라지는 실제 현의 감쇠와 배음 구조가 생긴다.
+  // 음·주법마다 처음 한 번만 AudioBuffer로 렌더링해 캐시하고, 연주할 때는 버퍼만 재생한다.
   var ksCache = new Map();
   var KS_CACHE_MAX = 64;
-  // 내장곡 실측: 기존 합성음 대비 RMS가 대부분 곡에서 +0~1dB, 긴 저음이 많은 느린 곡(푸른 옷소매·로망스)은 -1~-2.6dB, 피크는 -4dBFS 이하
-  // (두 방향 진동 도입으로 어택 직후가 빨리 줄어든 만큼 0.45에서 +0.6dB 보정)
   var KS_VOICE_GAIN = 0.48;
 
   function seededRandom(seed){ // 현 음색·잔향이 매번 똑같이 나오도록 시드 고정 난수 (mulberry32)
@@ -395,7 +393,7 @@
     return dl;
   }
 
-  // 한 방향 진동을 렌더링해 out에 w 비율로 더함
+  // 한 방향 진동을 렌더링해 out에 w 비율로 더한다.
   function ksRunString(D, dl, out, w){
     var N = D.N, gb = D.g * (1 - D.a), a = D.a, C = D.C, dispD = D.D || 0;
     var idx = 0, lp = 0, apX = 0, apY = 0;
@@ -418,12 +416,11 @@
     }
   }
 
-  // strNo: 실제로 튕기는 줄(1~6). 같은 음높이라도 줄과 프렛에 따라 음색이 달라짐
-  // - 높은 프렛일수록 진동 길이가 짧아져 오른손 탄현 위치가 상대적으로 줄 가운데로 감 → 둥글고 어두움
-  //   (연주자는 고음에서 오른손을 브리지 쪽으로 옮겨 보정하므로 물리적 이동량 2^(프렛/12)의 20%만 반영:
-  //    100% 반영하면 로망스 12프렛 E5 아포얀도의 2배음이 -27dB까지 떨어져 음이 흐릿해짐)
-  // - 손가락으로 짚은 줄은 손끝이 고음을 흡수해 개방현보다 고음 배음과 여운이 조금 짧음
-  // - 4·5·6번줄은 금속 권선현이라 고음 배음이 더 오래 남음
+  // strNo: 실제로 튕기는 줄(1~6). 같은 음높이라도 줄과 프렛에 따라 음색이 달라진다.
+  // - 높은 프렛일수록 진동 길이가 짧아져 오른손 탄현 위치가 상대적으로 줄 가운데로 가므로 둥글고 어두워진다.
+  //   (연주자가 고음에서 오른손을 브리지 쪽으로 옮겨 보정하는 점을 반영해 이동량 일부만 적용한다.)
+  // - 손가락으로 짚은 줄은 손끝이 고음을 흡수해 개방현보다 고음 배음과 여운이 조금 짧다.
+  // - 4·5·6번줄은 금속 권선현이라 고음 배음이 더 오래 남는다.
   function renderKsString(ctx, midi, artOrApo, strNo){
     var sr = ctx.sampleRate;
     var art = ksArticulationKey(artOrApo);
@@ -852,9 +849,9 @@
     });
   }
 
-  // ---------- 공명현: 연주한 음의 배음이 쉬고 있는 개방현의 배음과 겹치면 그 개방현이 저절로 살짝 울림
-  // (예: 4번줄 2프렛 E3를 치면 6번줄 E2의 2배음과 1번줄 E4가 함께 울림) · 콘서트홀 모드에서만, 음색 설정의 공명현 세기로 조절
-  var SYMP_LEVEL = 0.011; // 기본(100%)에서 연주 음 대비 약 -24dB
+  // ---------- 공명현: 연주한 음의 배음이 쉬고 있는 개방현의 배음과 겹치면 그 개방현이 함께 울린다.
+  // (예: 4번줄 2프렛 E3를 치면 6번줄 E2의 2배음과 1번줄 E4가 함께 울린다) · 콘서트홀 모드에서만, 음색 설정의 공명현 세기로 조절한다.
+  var SYMP_LEVEL = 0.011;
 
   // 개방현 p번째 배음의 감쇠 시상수(초): 저음 줄일수록, 낮은 배음일수록 길게 (물리음원 현 모델의 기음 T60 기준)
   function sympTau(openMidi, p){
@@ -869,15 +866,14 @@
     var cands = [];
     STRINGS.forEach(function(st){
       if (st.str === playedStr) return;
-      // 이미 울리고 있거나 짚고 있는 줄은 따로 공명하지 않음
+      // 이미 울리고 있거나 짚고 있는 줄은 따로 공명하지 않는다.
       if ((stringVoices[st.str] || []).some(function(v){ return !v.symp && v.end > t; })) return;
       var openMidi = soundingMidi(st.midi, capo);
       var fOpen = 440 * Math.pow(2, (openMidi - 69) / 12);
       for (var p = 1; p <= 6; p++){        // 개방현의 p번째 배음
         var fp = p * fOpen;
         if (fp >= 4000) break;
-        // 개방현 배음은 대역폭 1/(π·시상수)인 공진기: 연주 음 배음과의 주파수 차이에 따른 로렌츠 응답으로 공명 세기를 정함
-        // (옥타브·유니즌은 그대로, 평균율 5도는 약 -4dB, 순정음과 13.7센트 어긋나는 평균율 장3도는 약 -18dB로 자연스럽게 약해짐)
+        // 개방현 배음은 대역폭 1/(π·시상수)인 공진기: 연주 음 배음과의 주파수 차이에 따른 로렌츠 응답으로 공명 세기를 정한다.
         var bw = 1 / (Math.PI * sympTau(openMidi, p));
         for (var q = 1; q <= 5; q++){      // 연주 음의 q번째 배음
           var resp = 1 / Math.sqrt(1 + Math.pow(2 * Math.abs(fp - q * f) / bw, 2));
@@ -890,7 +886,7 @@
     cands.sort(function(a, b){ return b.w - a.w; });
     cands.slice(0, 3).forEach(function(c){
       var list = stringVoices[c.st.str] || [];
-      // 같은 개방현이 이미 공명 중이면 새 울림으로 자연스럽게 이어받음 (이전 울림은 80ms 시상수로 페이드)
+      // 같은 개방현이 이미 공명 중이면 새 울림으로 자연스럽게 이어받는다.
       stringVoices[c.st.str] = list.filter(function(v){
         if (!v.symp || v.end <= t) return !v.symp && v.end > t;
         if (v.start >= t - 0.001) return true; // 같은 음이 같은 줄의 여러 배음을 울리는 경우는 함께 유지

@@ -232,7 +232,7 @@
           weights[activePc] += w;
           totalWeight += w;
         } else if (activePc != null){
-          // 유지 박자(-)는 직전 음의 화성 중요도를 높임
+          // 유지 박자(-)는 직전 음의 화성 중요도를 높인다.
           weights[activePc] += 0.85;
           totalWeight += 0.85;
         }
