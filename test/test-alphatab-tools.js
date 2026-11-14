@@ -94,9 +94,16 @@ function normalizedPiece(piece){
 // 칸 수가 달라도(4/4를 8칸으로 쓴 곡 ↔ 4칸) 같은 소리면 같은 목록이 된다.
 function canonicalBar(line){
   const decoded = notation.decodeMeasureLine(line);
-  let chord = parser.cleanChordToken(decoded.chordRaw || '');
-  if (chord === '' || chord === '?') chord = '-';
   const cells = notation.tokenizeMeasureBeats(decoded.notation);
+  let chord = parser.cleanChordToken(decoded.chordRaw || '');
+  const firstActive = cells.findIndex(function(cell){ return !notation.isSkipToken(cell); });
+  if (firstActive > 0){
+    const prefix = '-, ' + (firstActive + 1) + ':';
+    if (chord.indexOf(prefix) === 0 && chord.indexOf(',', prefix.length) < 0){
+      chord = chord.slice(prefix.length).trim();
+    }
+  }
+  if (chord === '' || chord === '?') chord = '-';
   const events = [];
   cells.forEach(function(cell, cellIndex){
     const pieces = notation.splitBeatSubtokens(cell);
@@ -152,7 +159,8 @@ function roundTripFailures(toolModule, forwardModule){
     if (back.title !== song.title) failures.push(song.id + ': 제목 ' + song.title + ' → ' + back.title);
     original.forEach(function(line, index){
       const want = canonicalBar(line);
-      const got = canonicalBar(want.memo ? back.measures[index] : withoutConverterMemo(back.measures[index]));
+      const gotLine = want.memo && want.memo.indexOf('못갖춘마디') >= 0 ? back.measures[index] : withoutConverterMemo(back.measures[index]);
+      const got = canonicalBar(gotLine);
       if (want.chord !== got.chord || want.memo !== got.memo || JSON.stringify(want.events) !== JSON.stringify(got.events)){
         failures.push(song.id + ' ' + (index + 1) + '마디\n      원본 ' + line + '\n      결과 ' + back.measures[index]);
       }
@@ -1329,7 +1337,7 @@ test('same note in two voices: one token, empty fingers are taken from the dropp
 
 // 변환기가 만드는 마디 메모 중 왕복에서 원래 악보에 없던 것(못갖춘마디, 박자표가 바뀐 마디)을 뗀다.
 function withoutConverterMemo(line){
-  return line.replace(/ \| "(?:못갖춘마디|원본 \d+\/\d+ 마디)"$/, '');
+  return line.replace(/ \| "(?:못갖춘마디|원본 \d+\/\d+ 마디)"$/, '').replace(/ · 못갖춘마디"$/, '"');
 }
 
 // 빈칸 악보의 기대 마디와 어긋난 곳의 목록. 변환기(toolModule)와 우리 악보 -> alphaTex 변환기(forwardModule)를 바꿔 끼워 일부러 어긋난 사본을 넣을 수 있다.

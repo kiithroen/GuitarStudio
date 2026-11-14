@@ -440,7 +440,9 @@
       "fixStrings": false
     },
     "edits": [],
-    "lineOverrides": []
+    "lineOverrides": [
+      { "measure": 1, "cell": 1, "from": "r", "to": "_" }
+    ]
   },
   {
     "id": "builtin-bobby-shafto",
@@ -524,7 +526,11 @@
       "fixStrings": false
     },
     "edits": [],
-    "lineOverrides": []
+    "lineOverrides": [
+      { "measure": 1, "cell": 1, "from": "r", "to": "_" },
+      { "measure": 1, "cell": 2, "from": "r", "to": "_" },
+      { "measure": 1, "cell": 3, "from": "r", "to": "_" }
+    ]
   },
   {
     "id": "builtin-ai-vist-lo-lop",
@@ -552,7 +558,10 @@
       "fixStrings": false
     },
     "edits": [],
-    "lineOverrides": []
+    "lineOverrides": [
+      { "measure": 1, "cell": 1, "from": "r", "to": "_" },
+      { "measure": 1, "cell": 2, "from": "r", "to": "_" }
+    ]
   },
   {
     "id": "builtin-oranges-and-lemons",
@@ -580,7 +589,10 @@
       "fixStrings": false
     },
     "edits": [],
-    "lineOverrides": []
+    "lineOverrides": [
+      { "measure": 1, "cell": 1, "from": "r", "to": "_" },
+      { "measure": 1, "cell": 2, "from": "r", "to": "_" }
+    ]
   },
   {
     "id": "builtin-bahay-kubo",
@@ -594,7 +606,10 @@
       "fixStrings": false
     },
     "edits": [],
-    "lineOverrides": []
+    "lineOverrides": [
+      { "measure": 1, "cell": 1, "from": "r", "to": "_" },
+      { "measure": 1, "cell": 2, "from": "r", "to": "_" }
+    ]
   },
   {
     "id": "builtin-yankee-doodle",
