@@ -45,7 +45,7 @@
 
 ## vendor로 둔 이유
 
-alphaTab은 `codex/alphatab-player` 실험 브랜치에서 가져온 1.8.4다. 번들러가 없는 정적 앱이라 CDN 대신 저장소에 두었고(GitHub Pages에서 같은 출처로 서빙), vendor 파일은 고치지 않는다. 플레이어는 이 보기 창에서만 불러온다. 앱 기본 화면(`index.html`, `score-input.html`)은 alphaTab을 로드하지 않고 시작 속도와 소리가 그대로다.
+alphaTab 1.8.4를 사용한다. 번들러가 없는 정적 앱이라 CDN 대신 저장소에 두었고(GitHub Pages에서 같은 출처로 서빙), vendor 파일은 고치지 않는다. 플레이어는 이 보기 창에서만 불러온다. 앱 기본 화면(`index.html`, `score-input.html`)은 alphaTab을 로드하지 않고 시작 속도와 소리가 그대로다.
 
 ## 쓰는 법
 
@@ -138,7 +138,7 @@ BPM 값 글은 `BPM 값 · 비율%`(예: `48 · 75%`)이고 클릭음·연주음
 
 ## 설계 기준과 함정
 
-- **역할 분리**: 연습 기능(구간 반복, 메트로놈, 가이드음, 지판)과 소리는 우리 앱이 맡고, 보기 창은 곡 전체 통주 연습과 눈으로 비교하는 미리보기로 둔다. 구간 반복·마디 편집은 보기 창에 넣지 않으며, `codex/alphatab-player` 브랜치의 연주 엔진 실험과 달리 `main`은 기존 합성 엔진을 유지한다.
+- **역할 분리**: 연습 기능(구간 반복, 메트로놈, 가이드음, 지판)과 소리는 우리 앱이 맡고, 보기 창은 곡 전체 통주 연습과 눈으로 비교하는 미리보기로 둔다. 구간 반복·마디 편집은 보기 창에 넣지 않으며, 앱은 기존 합성 엔진을 유지한다.
 - **배치 SSOT**: 변환은 `layoutScore` 결과 하나만 쓴다. 음 길이·점·붙임줄·셋잇단·슬러/슬라이드·롤 첫 토막을 따로 계산하지 않는다.
 - **롤 방향(`ad`)**: alphaTab의 `ad`(ArpeggioDown)가 낮은 줄(낮은 소리)부터 높은 줄로 굴리고 화면 화살표도 위를 가리킨다.
 - **좁은 화면 배율**: 폭 500px 미만에서는 alphaTab 배율을 `NARROW_SCALE`로 낮춰 그린다.
@@ -214,11 +214,7 @@ node tools/gp-to-alphatex.js <입력.gp|.gp3|.gp4|.gp5|.gpx> [--track n(1부터)
 `node test/test-alphatab-tools.js`가 보장하는 것은 이렇다.
 
 - 왕복: `songs.json`의 모든 구조화 내장곡을 `GuitarAlphaTex.toAlphaTex` → `AlphaTexImporter` → `convertScore`로 돌려 원래 악보와 견준다. 아포얀도 `!`, 확인 표시 `?`, 왼손 `0`은 alphaTex를 거치면 버려지니 양쪽에서 지우고, 구성음 순서를 줄 번호 내림차순으로 맞춘다. 마디 메모와 설명(곡 `badge`)은 `txt`·`\notices`로 가므로 그대로 같아야 한다. 그 밖의 토큰은 같아야 한다. 칸 구성이 달라도(4/4를 8분음표 8칸으로 쓴 곡 ↔ 4칸, `E4/-` ↔ `E4`) 같은 소리면 같게 보도록, 마디를 "마디 안 위치와 내용"의 사건 목록으로 바꿔 견주고 4분음표 템포로 BPM을 견준다. 코드 이름과 카포도 견준다.
-- 브랜치 alphaTex: `codex/alphatab-player` 브랜치 `songs.json`의 alphaTex 16곡(`test/fixtures/alphatab/branch-builtins.json`, id와 alphaTex만 담은 배열)이 오류 없이 변환되고 마디 수가 alphaTab 마디 수와 같은지. 지원 박자표가 아닌 곡(4/8)은 이유와 함께 거절돼야 한다. 파일을 다시 만드는 명령:
-
-  ```powershell
-  node -e "var s=JSON.parse(require('child_process').execFileSync('git',['show','codex/alphatab-player:songs.json'],{encoding:'utf8',maxBuffer:100000000})); require('fs').writeFileSync('test/fixtures/alphatab/branch-builtins.json', JSON.stringify(s.map(function(x){ return {id:x.id,alphaTex:x.alphaTex}; }),null,2)+'\n')"
-  ```
+- 예제 alphaTex(`test/fixtures/alphatab/branch-builtins.json`): alphaTex 16곡(id와 alphaTex만 담은 배열)이 오류 없이 변환되고 마디 수가 alphaTab 마디 수와 같은지, 지원 박자표가 아닌 곡(4/8)은 이유와 함께 거절되는지 확인한다.
 
 - 손으로 짠 예제(`test/fixtures/alphatab/*.tex`): 두 성부, 셋잇단, 도돌이와 1·2번 괄호, 해머링·슬라이드·하모닉스·arpeggio·brush·꾸밈음·데드 노트, 6/8, 12/8, 못갖춘마디, 카포, 음이름으로만 적은 곡(`named-notes.tex`: 운지·화음·붙임줄·쉼), 섹션과 페르마타(`section-fermata.tex`), D.S. al Coda(`ds-al-coda.tex`)와 D.C. al Fine(`dc-al-fine.tex`), 36마디 뼈대의 D.S. al Coda with Repeat(`ds-with-repeat.tex`. 같은 파일에서 글만 뺀 것은 반복 없이 펼치고 괄호 메모가 맞는지 함께 본다), 곡 중간의 짧은 마디(`short-bar.tex` 뒤쪽 빈칸, `short-bar-rest.tex` 끝이 쉼이어도 뒤쪽 빈칸, `short-bar-repeat.tex` 도돌이 안이면 펼친 사본마다 같은 빈칸과 메모), 4/4·템포 60·32분음표의 8칸 전환(`thirty-second.tex`), 두 성부가 같은 음을 치는 곡(`same-note-voices.tex`: 토큰 하나, 박 글 한 번)을 기대하는 악보 줄(음 이름은 `GuitarParser.STRINGS`에서 셈한다)과 견주고, 모두 alphaTab 진단 0으로 읽히는지 확인한다. 5/4와 비표준 조율은 거절 이유를 확인한다. 곡 중간 박자 변경은 격자보다 긴 마디(5/4)와 칸 길이의 정수배가 아닌 마디(3/8)의 거절 이유(마디 번호와 박자)와 3/4 마디의 뒤쪽 빈칸을, 빈칸 검사(`skipCellFailures`)는 한 박 못갖춘마디(`_ _ _ 음`), 칸보다 작은 못갖춘마디(`_ r/r/음/음`), 곡 중간 2/4 마디, 짧은 끝마디(칸보다 짧은 것 포함), 빈칸을 뺀 전체 길이, 변환 결과의 검사 오류 0, 빈칸 악보의 왕복(변환기가 다는 `못갖춘마디`·`원본 2/4 마디` 메모만 떼면 같다)을, 8칸 전환은 템포 130(×2가 상한 초과)·16분음표만 있는 곡·2/4 곡·5잇단이 4칸을 유지하는 것과 템포 120(×2가 상한과 같음)이 8칸이 되는 것을, 중복은 운지를 버린 음에서 가져오는 것과 줄이 다르면 둘 다 남는 것을 확인한다. 같은 예제를 `Gp7Exporter`가 쓴 `.gp`로 한 번 돌려 Guitar Pro 경로도 같은 결과인지 본다(Guitar Pro 3~5와 `.gpx` 파일은 저장소에 없어 안 돌려 봤다). MusicXML은 `guitar.musicxml`(조율 있음)의 줄이 유지되는지, 브랜치에서 가져온 `simple.musicxml`(조율 없음, 기대 줄은 파일의 음에서 셈)과 `no-strings.musicxml`(오선만 있는 파트: 음역 밖 음 C2·C6, 슬러, 화음)이 `@줄` 없이 변환되고 `?`·메모가 맞는지 본다. 쉼 시작 자리는 음 뒤 쉼(`E4/r`)이 분할을 만드는지, 오래 울리는 저음이 있으면 만들지 않는지 본다. `--track`은 1부터 센다. 6줄 트랙 안에서 음 몇 개만 줄이 없는 곡(`mixed-strings.tex`)은 alphaTex로 만들 수 없어서(위 함정), 읽은 모델에서 그 음의 `string`·`fret`을 -1로 하고 옥타브·음 이름만 남겨 만든다. 줄 없는 음만 `@줄`이 빠지고 같은 화음의 다른 음은 `@줄`이 남는지, 줄 없는 슬러 출발 음이 슬러를 빼고 메모를 남기는지, 음역 밖(C2)이 옥타브를 옮기는지 본다. 이 예제는 Guitar Pro 경로에서 뺀다.
 - 경계 사례(`reviewFixFailures`): 꾸밈음이 출발점인 해머링·슬라이드(`3.2{h}.16 {gr} 5.2.4`, 앞에 같은 줄 음이 있을 때와 없을 때)가 `s`·`g` 없이 `꾸밈음 생략`만 남기는 것, 쉼 뒤 해머링·슬라이드(`0.1{h}.4 r.4 2.1.4`)가 `슬러 생략`·`슬라이드 생략`으로 검사 오류 없이 나오는 것, 붙임줄 첫 토막의 `{h}`·`{sl}`이 메모를 남기고 마지막 토막의 `{t h}`는 `s`가 되는 것, 4/4 곡 가운데의 3/8·5/8·7/8 마디가 8칸으로 변환되고(칸 수·설명 문구·뒤쪽 빈칸 수) 4/4가 아니거나 템포가 높으면 거절되는 것, 우리 악보(8칸, 7/8 마디) → alphaTex → 우리 악보 왕복, 4/4·2/4 끝마디의 칸보다 작은 나머지가 쉼이 되는 것, `MAX_FRET`을 넘는 프렛이 `@줄` 없이 `?`와 메모로 나오는 것(기대 음은 파서의 개방현 표에서 셈한다)과 그 음의 해머링이 빠지는 것을 확인한다.
