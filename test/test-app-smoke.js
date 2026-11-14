@@ -531,7 +531,8 @@ async function main(){
     context.renderSong();
   }
 
-  // 구간 반복: 구간 시작으로 돌아갈 때 처음 시작처럼 카운트인 한 마디를 센다(클릭 off 면 처음처럼 세지 않는다)
+  // 카운트인: 처음 시작할 때는 COUNT_IN_MIN_SECONDS 를 넘기는 가장 적은 마디 수, 구간 반복으로 돌아갈 때는 한 마디를 센다.
+  // 끝 마디의 뒤쪽 빈칸과 시작 마디의 앞쪽 빈칸만큼 박을 더 친다. 클릭 off 면 카운트인이 없다.
   const savedLoop = {
     song: context.curSong, measure: context.curMeasureIdx, beat: context.curBeatIdx, actx: context.actx,
     playing: context.isPlaying, session: context.playSession, setTimeout: context.setTimeout,
@@ -541,10 +542,6 @@ async function main(){
       loopEnable: context.appState.loopEnable, speedTrainer: context.appState.speedTrainer, guideSound: context.appState.guideSound, clickMode: context.appState.clickMode }
   };
   try {
-    const loopParsed = context.parseScore('[-] _ _ C4 D4\n[C] E4 F4 G4 A4', 4);
-    assert.equal(loopParsed.errors.length, 0, 'the loop count-in score parses without errors');
-    const firstMidi = context.parseNoteToken('C4', 0).midi;
-    const lastMidi = context.parseNoteToken('A4', 0).midi;
     const clicks = [];
     const notes = [];
     const timers = [];
@@ -555,9 +552,18 @@ async function main(){
     context.highlightFretboard = function(){};
     context.ensureAudioCtx = function(){};
     context.setTimeout = function(fn){ timers.push(fn); return 0; };
-    context.curSong = { id: 'loop-count-in', title: '구간 반복 카운트인', type: 'structured', builtin: false, bpm: 120, beats: 4, capo: 0, measures: loopParsed.measures, notationVersion: 2 };
-    const runTwoLoops = function(clickMode){
-      Object.assign(context.appState, { bpm: 120, beats: 4, loopStart: 1, loopEnd: 2, loopEnable: true, speedTrainer: false, guideSound: true, clickMode });
+    const useSong = function(text, beats, bpm){
+      const parsed = context.parseScore(text, beats);
+      assert.equal(parsed.errors.length, 0, 'the count-in score parses without errors: ' + text);
+      context.curSong = { id: 'count-in-test', title: '카운트인 시험', type: 'structured', builtin: false, bpm, beats, capo: 0, measures: parsed.measures, notationVersion: 2 };
+      const measures = parsed.measures;
+      const lead = measures[0].beats.findIndex(beat => !context.GuitarRhythm.isSkipBeat(beat));
+      let trail = 0;
+      for (let b = measures[measures.length - 1].beats.length - 1; b >= 0 && context.GuitarRhythm.isSkipBeat(measures[measures.length - 1].beats[b]); b--) trail++;
+      return { lead, trail, loopEnd: measures.length };
+    };
+    const start = function(beats, bpm, clickMode, loopEnd){
+      Object.assign(context.appState, { bpm, beats, loopStart: 1, loopEnd, loopEnable: true, speedTrainer: false, guideSound: true, clickMode });
       clicks.length = 0; notes.length = 0; timers.length = 0;
       context.actx = { currentTime: 0, outputLatency: 0, baseLatency: 0 };
       context.isPlaying = false;
@@ -565,7 +571,33 @@ async function main(){
       context.curMeasureIdx = 0;
       context.curBeatIdx = 0;
       context.startPractice();
-      const session = context.playSession;
+      return context.playSession;
+    };
+    const startBars = (beats, bpm) => Math.max(1, Math.ceil(context.COUNT_IN_MIN_SECONDS / (beats * 60 / bpm) - 1e-9));
+
+    // 처음 카운트인 마디 수: 한 마디 길이로 COUNT_IN_MIN_SECONDS 를 넘기는 가장 적은 마디 수
+    const barCases = [[4, 120], [4, 150], [2, 120], [3, 80]];
+    const seenBars = new Set();
+    for (const [beats, bpm] of barCases){
+      const cells = ['C4', 'D4', 'E4', 'F4'].slice(0, beats).join(' ');
+      const song = useSong('[C] ' + cells, beats, bpm);
+      const session = start(beats, bpm, 'countin', song.loopEnd);
+      const bars = startBars(beats, bpm);
+      seenBars.add(bars);
+      assert.equal(session.countInPositions.length, bars * beats, beats + ' cells at ' + bpm + ' BPM: the start count-in is ' + bars + ' bar(s)');
+      assert.ok(bars * beats * 60 / bpm >= context.COUNT_IN_MIN_SECONDS - 1e-9, beats + ' cells at ' + bpm + ' BPM: the start count-in reaches the minimum length');
+      assert.ok(bars === 1 || (bars - 1) * beats * 60 / bpm < context.COUNT_IN_MIN_SECONDS - 1e-9, beats + ' cells at ' + bpm + ' BPM: one bar fewer would be too short');
+      assert.deepEqual(session.countInPositions.filter(pos => pos === 0).length, bars, beats + ' cells at ' + bpm + ' BPM: each count-in bar starts on an accent');
+      context.isPlaying = false;
+      context.playSession = null;
+    }
+    assert.ok(seenBars.has(1) && seenBars.size > 1, 'the bar cases cover both a one-bar and a longer start count-in');
+
+    const firstMidi = context.parseNoteToken('C4', 0).midi;
+    const runTwoLoops = function(text, beats, bpm, lastToken, clickMode){
+      const song = useSong(text, beats, bpm);
+      const lastMidi = context.parseNoteToken(lastToken, 0).midi;
+      const session = start(beats, bpm, clickMode, song.loopEnd);
       for (let guard = 0; guard < 200 && session.loopCompleted < 2; guard++){
         context.actx.currentTime = session.nextBeatTime - 0.01;
         context.schedulerTick();
@@ -574,26 +606,39 @@ async function main(){
       const firsts = notes.filter(note => note.midi === firstMidi).map(note => note.when);
       const lasts = notes.filter(note => note.midi === lastMidi).map(note => note.when);
       const gapClicks = clicks.filter(click => click.time > lasts[0] && click.time < firsts[1]);
-      const result = { spb: session.spb, bpb: session.bpb, startTime: session.startTime, firsts, lasts, gapClicks, cursor: [context.curMeasureIdx, context.curBeatIdx], inCountIn: session.inCountIn };
+      const result = { song, spb: session.spb, bpb: session.bpb, bars: startBars(beats, bpm), startTime: session.startTime, firsts, lasts, gapClicks, cursor: [context.curMeasureIdx, context.curBeatIdx], inCountIn: session.inCountIn };
       context.isPlaying = false;
       context.playSession = null;
       return result;
     };
-    for (const mode of ['all', 'countin']){
-      const r = runTwoLoops(mode);
-      assert.equal(r.firsts.length, 2, mode + ': the loop start note plays once per pass');
-      assert.ok(Math.abs(r.firsts[0] - (r.startTime + r.bpb * r.spb)) < 1e-9, mode + ': the first pass starts after one count-in measure');
-      assert.ok(Math.abs(r.firsts[1] - (r.lasts[0] + (1 + r.bpb) * r.spb)) < 1e-9, mode + ': going back to the loop start waits one count-in measure after the last cell');
-      assert.equal(r.gapClicks.length, r.bpb, mode + ': the loop restart clicks a full count-in measure');
-      assert.equal(r.gapClicks[0].accent, true, mode + ': the restart count-in starts on an accent');
-      assert.equal(r.inCountIn, true, mode + ': the second loop end starts another count-in');
-      assert.deepEqual(r.cursor, [0, 2], mode + ': the restart count-in moves the cursor to the first sounding cell of the loop');
+    // 못갖춘마디(앞 빈칸 2)로 시작하는 곡과, 못갖춘마디(앞 빈칸 1)와 짧은 끝 마디(뒤 빈칸 1)가 짝을 이루는 곡
+    const loopCases = [
+      { text: '[-] _ _ C4 D4\n[C] E4 F4 G4 A4', last: 'A4' },
+      { text: '[-] _ C4 D4 E4\n[C] F4 G4 A4 _', last: 'A4' }
+    ];
+    for (const loopCase of loopCases){
+      for (const mode of ['all', 'countin']){
+        const r = runTwoLoops(loopCase.text, 4, 120, loopCase.last, mode);
+        const label = mode + ' ' + JSON.stringify(loopCase.text) + ': ';
+        const restartBeats = r.song.trail + r.bpb + r.song.lead;
+        assert.equal(r.firsts.length, 2, label + 'the loop start note plays once per pass');
+        assert.ok(Math.abs(r.firsts[0] - (r.startTime + (r.bars * r.bpb + r.song.lead) * r.spb)) < 1e-9, label + 'the first note comes after the start count-in and the leading skip beats');
+        assert.ok(Math.abs(r.firsts[1] - (r.lasts[0] + (1 + restartBeats) * r.spb)) < 1e-9, label + 'the restart waits for the trailing skip beats, one count-in bar, and the leading skip beats');
+        assert.equal(r.gapClicks.length, restartBeats, label + 'every restart beat clicks');
+        const wantAccents = [];
+        for (let i = 0; i < r.song.trail; i++) wantAccents.push(false);
+        for (let i = 0; i < r.bpb; i++) wantAccents.push(i === 0);
+        for (let i = 0; i < r.song.lead; i++) wantAccents.push(i === 0);
+        assert.deepEqual(r.gapClicks.map(click => click.accent), wantAccents, label + 'restart accents fall on bar starts of the beat grid');
+        assert.equal(r.inCountIn, true, label + 'the second loop end starts another count-in');
+        assert.deepEqual(r.cursor, [0, r.song.lead], label + 'the restart count-in moves the cursor to the first sounding cell of the loop');
+      }
+      const off = runTwoLoops(loopCase.text, 4, 120, loopCase.last, 'off');
+      assert.ok(Math.abs(off.firsts[0] - off.startTime) < 1e-9, 'off: the first pass starts without a count-in');
+      assert.ok(Math.abs(off.firsts[1] - (off.lasts[0] + off.spb)) < 1e-9, 'off: going back to the loop start continues on the next cell without a count-in');
+      assert.equal(off.gapClicks.length, 0, 'off: no clicks between passes');
+      assert.equal(off.inCountIn, false, 'off: the loop restart does not enter a count-in');
     }
-    const off = runTwoLoops('off');
-    assert.ok(Math.abs(off.firsts[0] - off.startTime) < 1e-9, 'off: the first pass starts without a count-in');
-    assert.ok(Math.abs(off.firsts[1] - (off.lasts[0] + off.spb)) < 1e-9, 'off: going back to the loop start continues on the next cell without a count-in');
-    assert.equal(off.gapClicks.length, 0, 'off: no clicks between passes');
-    assert.equal(off.inCountIn, false, 'off: the loop restart does not enter a count-in');
   } finally {
     context.curSong = savedLoop.song;
     context.curMeasureIdx = savedLoop.measure;

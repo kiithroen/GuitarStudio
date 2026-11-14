@@ -1507,6 +1507,41 @@
   }
 
   // ---------- 메트로놈 재생 루프 (카운트인 + 마디 진행 + 구간 반복 + 자동 가속)
+  var COUNT_IN_MIN_SECONDS = 2; // 처음 시작할 때 카운트인이 넘겨야 하는 길이(초). 이 길이를 넘기는 가장 적은 마디 수만큼 센다
+
+  // 처음 시작할 때의 카운트인 마디 수: 시작 템포의 한 마디 길이로 COUNT_IN_MIN_SECONDS 를 넘기는 가장 적은 마디 수(적어도 1).
+  function countInBarsAtStart(bpb, bpm){
+    var barSeconds = bpb * 60 / bpm;
+    return Math.max(1, Math.ceil(COUNT_IN_MIN_SECONDS / barSeconds - 1e-9));
+  }
+
+  // 마디 mIdx 에서 bIdx 앞이 모두 빈칸이면 그 칸 수(못갖춘마디의 비어 있는 앞 박), 아니면 0.
+  function leadingSkipBeats(mIdx, bIdx){
+    var measure = curSong && curSong.type === 'structured' ? curSong.measures[mIdx] : null;
+    if (!measure) return 0;
+    for (var b = 0; b < bIdx; b++){ if (!GuitarRhythm.isSkipBeat(measure.beats[b])) return 0; }
+    return bIdx;
+  }
+
+  // 마디 mIdx 끝에 이어진 빈칸 수(짧은 마디의 비어 있는 뒤 박).
+  function trailingSkipBeats(mIdx){
+    var measure = curSong && curSong.type === 'structured' ? curSong.measures[mIdx] : null;
+    if (!measure) return 0;
+    var count = 0;
+    for (var b = measure.beats.length - 1; b >= 0 && GuitarRhythm.isSkipBeat(measure.beats[b]); b--) count++;
+    return count;
+  }
+
+  // 카운트인으로 칠 박들의 마디 안 위치(0 = 강박). 끝 마디의 비어 있는 뒤 박, 카운트인 마디들, 시작 마디의 비어 있는 앞 박 순서다.
+  // 앞뒤 빈칸만큼 박을 더 쳐서 끝 마디가 제 길이를 갖고 못갖춘마디의 첫 음이 마디 안 제자리 박에 온다.
+  function countInBeatPositions(bpb, bars, trailingPad, leadingPad){
+    var positions = [];
+    for (var p = bpb - trailingPad; p < bpb; p++) positions.push(p);
+    for (var bar = 0; bar < bars; bar++) for (var q = 0; q < bpb; q++) positions.push(q);
+    for (var r = 0; r < leadingPad; r++) positions.push(r);
+    return positions;
+  }
+
   function startPractice(){
     if (isPlaying) return;
     if (curSong && curSong.type === 'structured'){
@@ -1535,14 +1570,16 @@
     seekPastSkipBeats(startM, endM);
 
     var countIn = appState.clickMode !== 'off';
+    var countInPositions = countIn ? countInBeatPositions(bpb, countInBarsAtStart(bpb, appState.bpm), 0, leadingSkipBeats(curMeasureIdx, curBeatIdx)) : [];
     playSession = {
       startTime: actx.currentTime + 0.15,
-      measureStartTime: actx.currentTime + 0.15 + (countIn ? bpb * spb : 0),
+      measureStartTime: actx.currentTime + 0.15 + countInPositions.length * spb,
       nextBeatTime: actx.currentTime + 0.15,
       spb: spb,
       bpb: bpb,
       inCountIn: countIn,
       countInBeat: 0,
+      countInPositions: countInPositions,
       mIdx: curMeasureIdx,
       bIdx: curBeatIdx,
       loopCompleted: 0,
@@ -1655,12 +1692,13 @@
     while (!s.endScheduled && s.nextBeatTime < now + 0.08){
       var t = s.nextBeatTime;
       if (s.inCountIn){
+        var countInPos = s.countInPositions[s.countInBeat];
         if (appState.clickMode !== 'off'){
-          scheduleMetronomeClick(t, s.countInBeat === 0, s.bpb === 9 && s.countInBeat % 3 !== 0);
+          scheduleMetronomeClick(t, countInPos === 0, s.bpb === 9 && countInPos % 3 !== 0);
         }
         s.countInBeat++;
         s.nextBeatTime += s.spb;
-        if (s.countInBeat >= s.bpb){
+        if (s.countInBeat >= s.countInPositions.length){
           s.inCountIn = false;
           s.measureStartTime = s.nextBeatTime;
         }
@@ -1760,12 +1798,14 @@
                 s.spb = 60 / appState.bpm;
                 syncConsoleUI();
               }
-              // 처음 시작할 때처럼 클릭 모드가 off 가 아니면 카운트인 한 마디를 센 뒤 구간 시작부터 다시 친다.
-              // 카운트인이 시작될 때 커서를 구간의 첫 소리 나는 칸으로 옮긴다.
+              // 클릭 모드가 off 가 아니면 카운트인 한 마디를 센 뒤 구간 시작부터 다시 친다. 끝 마디의 뒤쪽 빈칸과
+              // 시작 마디의 앞쪽 빈칸만큼 박을 더 친다. 카운트인이 시작될 때 커서를 구간의 첫 소리 나는 칸으로 옮긴다.
               if (appState.clickMode !== 'off'){
+                var restartAt = nextSoundingBeat(startM, 0, endM) || { m: startM, b: 0 };
                 s.inCountIn = true;
                 s.countInBeat = 0;
-                scheduleLoopRestartCursor(s, nextSoundingBeat(startM, 0, endM) || { m: startM, b: 0 }, s.nextBeatTime);
+                s.countInPositions = countInBeatPositions(s.bpb, 1, trailingSkipBeats(endM), leadingSkipBeats(restartAt.m, restartAt.b));
+                scheduleLoopRestartCursor(s, restartAt, s.nextBeatTime);
               }
             } else {
               s.endScheduled = true;

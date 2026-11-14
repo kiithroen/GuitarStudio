@@ -1427,7 +1427,7 @@ async function testPracticeSessionLifecycle(client) {
         startPractice();
         var session = window.playSession;
         check(session && session.inCountIn === (mode !== 'off'), 'click mode ' + mode + ': count-in is ' + (mode !== 'off' ? 'scheduled' : 'skipped'));
-        var countInTicks = mode === 'off' ? 0 : session.bpb;
+        var countInTicks = mode === 'off' ? 0 : session.countInPositions.length;
         var startTime = session.startTime;
         if (mode === 'off') check(Math.abs(session.nextBeatTime - startTime) < 1e-9, 'click mode off: first playback beat is scheduled at the start time');
         var executedTicks = 0;
@@ -1815,7 +1815,7 @@ async function testSubdividedGuide(client) {
       var resumedSession = window.playSession;
       check(resumedSession && resumedSession.resumeNextHold === true && resumedSession.mIdx === 1 && resumedSession.bIdx === 1, 'middle-slot practice start arms one hold resume outside loop start (' + JSON.stringify(resumedSession && {resume:resumedSession.resumeNextHold,m:resumedSession.mIdx,b:resumedSession.bIdx}) + ')');
       check(stopped.length === 1 && stopped[0] === 70, 'practice start cuts the prior preview before count-in');
-      for (var countInIndex = 0; countInIndex < 4; countInIndex++){
+      for (var countInIndex = 0; countInIndex < resumedSession.countInPositions.length; countInIndex++){
         window.actx.currentTime = resumedSession.nextBeatTime - 0.01;
         schedulerTick();
       }

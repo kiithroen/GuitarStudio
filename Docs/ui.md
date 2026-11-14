@@ -25,8 +25,11 @@
 
 ## 메트로놈 클릭
 
-`appState.clickMode`(`all`/`countin`/`off`, 기본 `all`)로 고르고 localStorage 앱 설정에 저장한다. `off`는 카운트인 마디도 건너뛴다. 구간 반복으로 구간 시작에 돌아갈 때도 처음 시작할 때처럼 카운트인 한 마디를 센 뒤 다시 치고(`off`면 세지 않고 바로 잇는다), 카운트인이 시작될 때 커서를 구간의 첫 소리 나는 칸으로 옮긴다(`scheduleLoopRestartCursor`). 자동 가속이 BPM을 올리면 카운트인도 새 BPM으로 센다.
+`appState.clickMode`(`all`/`countin`/`off`, 기본 `all`)로 고르고 localStorage 앱 설정에 저장한다. `off`는 카운트인 없이 처음에도 반복 때도 바로 친다.
 
+- 처음 시작할 때의 카운트인은 시작 템포의 한 마디 길이(칸 수 × 60 / BPM)로 `COUNT_IN_MIN_SECONDS`를 넘기는 가장 적은 마디 수다(적어도 한 마디, `countInBarsAtStart`). 구간 반복으로 구간 시작에 돌아갈 때는 한 마디를 센다.
+- 시작 마디가 빈칸으로 시작하는 못갖춘마디면 카운트인 뒤에 앞쪽 빈칸 수만큼, 반복으로 돌아갈 때 끝 마디가 빈칸으로 끝나면 카운트인 앞에 뒤쪽 빈칸 수만큼 박을 더 친다(`countInBeatPositions`). 첫 음이 마디 안 제자리 박에 오고 끝 마디가 제 길이를 갖는다. 강박 클릭은 이 박 격자의 마디 첫 박이다.
+- 반복으로 돌아갈 때는 카운트인이 시작될 때 커서를 구간의 첫 소리 나는 칸으로 옮긴다(`scheduleLoopRestartCursor`). 자동 가속이 BPM을 올리면 카운트인도 새 BPM으로 센다.
 - 콘솔 박자 칸은 두 줄이다. 첫 줄은 `박자`·`클릭 모드`, 둘째 줄은 `클릭음`·`연주음`이다. 구조화 악보(`curSong.type === 'structured'`)일 때 `박자`(`#beatsSelect`)는 마디 칸 수가 고정되어 있어 `disabled`로 잠그고 툴팁(`곡 악보에 고정된 박자 (악보 편집 화면에서 변경 가능)`)을 둔다. 이미지 악보(`curSong.type === 'image'`)에서만 선택할 수 있다.
 - `클릭음`(`#volRange`)은 `appState.vol`(0~2, 화면 0~200%)이고 클릭 gain은 `vol` × 클릭별 진폭이다.
 - `연주음`(`#guitarVolRange`)은 `appState.guitarVol`(0~1, 화면 0~100%, 기본 100%)이고 기타 소리 전부가 지나는 `guitarBus`의 gain으로 `updateGuitarVolume`이 짧은 램프로 반영한다. 클릭 버스(`clickBus`)는 영향받지 않는다. 악보 입력 화면도 같은 `audio.js`를 쓰므로 같이 적용된다.

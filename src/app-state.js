@@ -8,7 +8,7 @@
     delete clean.micDeviceId;
     return clean;
   }
-  var CLICK_MODES = ['all', 'countin', 'off']; // 메트로놈 클릭: 'all' 카운트인+재생 내내 / 'countin' 카운트인 한 마디만(시작과 구간 반복으로 돌아갈 때) / 'off' 카운트인 없이 바로 시작
+  var CLICK_MODES = ['all', 'countin', 'off']; // 메트로놈 클릭: 'all' 카운트인+재생 내내 / 'countin' 카운트인만(시작할 때와 구간 반복으로 돌아갈 때, 규칙은 app.js 의 countInBeatPositions) / 'off' 카운트인 없이 바로 시작
   var appState = stripRemovedAudioSettings(ls.get('gs.state', {
     lastSongId: 'builtin-lv1-butterfly',
     bpm: 64,
