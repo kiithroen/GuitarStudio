@@ -331,7 +331,7 @@ async function main(){
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/gdrive.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=tempo-ramp-1')), 'every app script uses the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=sub-cursor-1')), 'every app script uses the shared revision');
   for (const id of ['editInInputBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
     assert.match(html, new RegExp('id="' + id + '"'), 'draft UI includes #' + id);
   }
@@ -1143,6 +1143,29 @@ async function main(){
       assert.equal(frLabels.length, 0, chordName + ': no start-fret label within 4 frets');
     }
   }
+  // Subdivided TAB pill tagging and active-sub behavior (TAB vs Card)
+  context.changeSongById('builtin-lv6-romance-full');
+  context.setScoreView('tab');
+  const gridEl = elements.get('measuresGrid');
+  const m0TabPills = gridEl.children[0].querySelectorAll('.tab-fret-pill');
+  assert.ok(m0TabPills.some(p => p.dataset.sub === '0') && m0TabPills.some(p => p.dataset.sub === '1') && m0TabPills.some(p => p.dataset.sub === '2'),
+    'subdivided TAB pills are tagged with their subdivision index');
+  const heldHoldBeatSong = context.GuitarParser.parseScore('E3/- E3 - r', 4);
+  const testHeldSong = {
+    id: 'test-sub-held', title: 'Sub Held Test', type: 'structured',
+    beats: 4, bpm: 60, measures: heldHoldBeatSong.measures
+  };
+  context.allSongs.push(testHeldSong);
+  context.changeSongById('test-sub-held');
+  const heldPills = elements.get('measuresGrid').querySelectorAll('.tab-held-fret');
+  assert.ok(heldPills.length >= 2, 'subdivided and full-beat holds create .tab-held-fret pills');
+  assert.ok(heldPills.some(p => p.dataset.sub === '1'), 'a subdivided hold pill keeps its subdivision index');
+  assert.ok(heldPills.some(p => p.dataset.sub === '0'), 'a full-beat hold pill defaults to subdivision 0');
+  context.setScoreView('card');
+  assert.equal(elements.get('measuresGrid').querySelectorAll('.tab-fret-pill').length, 0, 'card view creates no TAB pills');
+  assert.equal(elements.get('measuresGrid').querySelectorAll('.active-sub').length, 0, 'card view marks no .active-sub');
+  context.allSongs.pop();
+
   process.stdout.write('Result: app VM smoke passed (versioned scripts, hand-off to score input and back, image-only persistence, fallback boot)\n');
 }
 

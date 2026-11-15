@@ -89,6 +89,7 @@
   var curSong = null;
   var curMeasureIdx = 0;
   var curBeatIdx = 0;
+  var curSubIdx = 0;
   var songSessionStates = Object.create(null);
 
   appState.isCompactPractice = false;
@@ -417,6 +418,7 @@
     if (!staffView.layout) return;
     var layers = $$('#measuresGrid .tab-staff-layer');
     var widths = layers.map(function(layer){ return layer.getBoundingClientRect().width; });
+    var redrawn = false;
     layers.forEach(function(layer, index){
       var width = widths[index];
       if (!(width > 0) || layer.__drawnWidth === width) return;
@@ -434,7 +436,9 @@
       }
       layer.innerHTML = svg;
       layer.__drawnWidth = width;
+      redrawn = true;
     });
+    if (redrawn) applyActiveSubdivision(curMeasureIdx, curBeatIdx, curSubIdx);
   }
 
   // ---------- 마디 폭: 규칙은 Docs/ui.md 의 마디 폭 절
@@ -653,13 +657,14 @@
     return dash;
   }
 
-  function appendHeldFretPills(gridEl, startUnits, leftPct){
+  function appendHeldFretPills(gridEl, startUnits, leftPct, subIdx){
     if (typeof GuitarRhythm === 'undefined') return;
     GuitarRhythm.getSoundingNotes(curSong.measures, startUnits).forEach(function(record){
       var heldNote = record.note;
       if (!heldNote.str) return;
       var heldPill = document.createElement('span');
       heldPill.className = 'tab-fret-pill note-fret tab-held-fret';
+      heldPill.dataset.sub = String(subIdx != null ? subIdx : 0);
       heldPill.style.top = ((heldNote.str - 1) * 20) + '%';
       if (leftPct){
         heldPill.style.position = 'absolute';
@@ -674,6 +679,7 @@
   function createTabPill(note, token, componentIndex, opts){
     var pill = document.createElement('span');
     pill.className = 'tab-fret-pill note-fret';
+    pill.dataset.sub = String(opts && opts.subIdx != null ? opts.subIdx : 0);
     pill.style.top = ((note.str - 1) * 20) + '%';
     if (opts && opts.leftPct){
       pill.style.position = 'absolute';
@@ -706,10 +712,10 @@
       var isHold = sn.kind === 'hold' || sn.tok === '-';
       if (isHold || sn.kind === 'rest' || GuitarNotation.isRestToken(sn.tok)){
         gridEl.appendChild(createRestOrHoldDash(isHold, leftPct, true));
-        if (isHold) appendHeldFretPills(gridEl, sn.startUnits, leftPct);
+        if (isHold) appendHeldFretPills(gridEl, sn.startUnits, leftPct, sIdx);
       } else if (sn.chordNotes && sn.chordNotes.length > 2){
         sn.chordNotes.forEach(function(cn, componentIndex){
-          if (cn && cn.str) gridEl.appendChild(createTabPill(cn, subToken, componentIndex, { leftPct: leftPct }));
+          if (cn && cn.str) gridEl.appendChild(createTabPill(cn, subToken, componentIndex, { leftPct: leftPct, subIdx: sIdx }));
         });
         if (sn.rolled) appendRollMark(gridEl, chordNoteStrs(sn.chordNotes), leftPct);
       } else if (sn.chordNotes && sn.chordNotes.length === 2){
@@ -718,11 +724,11 @@
         var pairSameFret = pairSameStr && subBass.fret === sn.fret;
         var pairBassTransform = pairSameStr && !pairSameFret ? 'translate(-85%, -50%)' : null;
         var pairMelTransform = pairSameStr && !pairSameFret ? 'translate(-15%, -50%)' : null;
-        if (subBass && subBass.midi && subBass.str) gridEl.appendChild(createTabPill(subBass, subToken, 0, { leftPct: leftPct, transform: pairBassTransform }));
-        if (sn.midi && !pairSameFret && sn.str) gridEl.appendChild(createTabPill(sn, subToken, 1, { leftPct: leftPct, transform: pairMelTransform }));
+        if (subBass && subBass.midi && subBass.str) gridEl.appendChild(createTabPill(subBass, subToken, 0, { leftPct: leftPct, transform: pairBassTransform, subIdx: sIdx }));
+        if (sn.midi && !pairSameFret && sn.str) gridEl.appendChild(createTabPill(sn, subToken, 1, { leftPct: leftPct, transform: pairMelTransform, subIdx: sIdx }));
         if (sn.rolled) appendRollMark(gridEl, chordNoteStrs(sn.chordNotes), leftPct);
       } else if (sn.midi && sn.str){
-        gridEl.appendChild(createTabPill(sn, subToken, 0, { leftPct: leftPct }));
+        gridEl.appendChild(createTabPill(sn, subToken, 0, { leftPct: leftPct, subIdx: sIdx }));
       }
     });
   }
@@ -1444,9 +1450,58 @@
     }
   }
 
+  function highlightSubFretboard(m, bIdx, part){
+    var target = part;
+    if (target && target.kind === 'hold' && typeof GuitarRhythm !== 'undefined'){
+      target = GuitarRhythm.resolveHold(curSong.measures, target);
+    } else if (target && (target.kind === 'rest' || target.kind === 'skip')){
+      target = null;
+    }
+    var effChord = effectiveChordAtBeat(m, bIdx);
+    highlightFretboard(effChord, target, false, m ? m.autoChord : false, bIdx);
+    return effChord;
+  }
+
+  // 타브 알약과 오선 음표의 현재 분할 조각 강조를 갱신한다(카드 보기 제외).
+  function applyActiveSubdivision(mIdx, bIdx, subIdx){
+    curSubIdx = Math.max(0, Number(subIdx) || 0);
+    $$('.active-sub').forEach(function(el){ el.classList.remove('active-sub'); });
+    if (!curSong || curSong.type !== 'structured' || appState.scoreView === 'card') return;
+
+    var subStr = String(curSubIdx);
+    var cell = $('#measuresGrid .beat-cell.tab-cell[data-m="' + mIdx + '"][data-b="' + bIdx + '"]');
+    if (cell){
+      Array.prototype.forEach.call(cell.querySelectorAll('.tab-fret-pill'), function(pill){
+        if (pill.classList.contains('note-fret') && pill.dataset && pill.dataset.sub === subStr){
+          pill.classList.add('active-sub');
+        }
+      });
+    }
+
+    var m = curSong.measures && curSong.measures[mIdx];
+    var mLayout = staffView.layout && staffView.layout.measures ? staffView.layout.measures[mIdx] : null;
+    var staffLayer = m && mLayout ? $('#measuresGrid .measure-card[data-m="' + mIdx + '"] .tab-staff-layer') : null;
+    if (staffLayer && Array.isArray(mLayout.items)){
+      var beatObj = m.beats ? m.beats[bIdx] : null;
+      var numSubs = (beatObj && beatObj.isSubdivided && beatObj.subNotes && beatObj.subNotes.length > 1) ? beatObj.subNotes.length : 1;
+      var posUnits = bIdx * 12 + Math.round(curSubIdx * (12 / numSubs));
+      var markActiveStaff = function(el){
+        var itemIdx = Number(el.getAttribute('data-item'));
+        var item = mLayout.items[itemIdx];
+        if (!item) return;
+        var startU = item.cell * 12 + item.unit;
+        var endU = startU + (item.lengthUnits || 12);
+        if (posUnits >= startU && posUnits < endU) el.classList.add('active-sub');
+      };
+      Array.prototype.forEach.call(staffLayer.querySelectorAll('.st-chord'), markActiveStaff);
+      Array.prototype.forEach.call(staffLayer.querySelectorAll('.st-rest'), markActiveStaff);
+    }
+  }
+
   function updateActiveCursor(mIdx, bIdx, playPreviewSound, beatFraction){
     $$('.active-bar').forEach(function(el){ el.classList.remove('active-bar'); });
     $$('.active-beat').forEach(function(el){ el.classList.remove('active-beat'); });
+    $$('.active-sub').forEach(function(el){ el.classList.remove('active-sub'); });
     $$('.img-playhead').forEach(function(el){ el.remove(); });
 
     if (!curSong) return;
@@ -1464,19 +1519,14 @@
       }
       var cell = $('#measuresGrid .beat-cell[data-m="' + mIdx + '"][data-b="' + bIdx + '"]');
       if (cell) cell.classList.add('active-beat');
-      var effChord = effectiveChordAtBeat(m, bIdx);
-      updateCompactStatusBadge(mIdx, bIdx, effChord);
+      applyActiveSubdivision(mIdx, bIdx, 0);
 
       var beatObj = m.beats[bIdx];
       var targetForFb = (beatObj && beatObj.isSubdivided && beatObj.subNotes)
         ? beatObj.subNotes[0]
         : beatObj;
-      if (targetForFb && targetForFb.kind === 'hold' && typeof GuitarRhythm !== 'undefined'){
-        targetForFb = GuitarRhythm.resolveHold(curSong.measures, targetForFb);
-      } else if (targetForFb && (targetForFb.kind === 'rest' || targetForFb.kind === 'skip')){
-        targetForFb = null;
-      }
-      highlightFretboard(effChord, targetForFb, false, m.autoChord, bIdx);
+      var effChord = highlightSubFretboard(m, bIdx, targetForFb);
+      updateCompactStatusBadge(mIdx, bIdx, effChord);
       if (playPreviewSound){
         ensureAudioCtx();
         var nowT = actx.currentTime;
@@ -1680,7 +1730,10 @@
     var stopChord = '';
     if (curSong){
       if (curSong.type === 'structured' && curSong.measures && curSong.measures[curMeasureIdx]){
-        stopChord = effectiveChordAtBeat(curSong.measures[curMeasureIdx], curBeatIdx);
+        var stopM = curSong.measures[curMeasureIdx];
+        var stopBeat = stopM.beats && stopM.beats[curBeatIdx];
+        applyActiveSubdivision(curMeasureIdx, curBeatIdx, 0);
+        stopChord = highlightSubFretboard(stopM, curBeatIdx, (stopBeat && stopBeat.isSubdivided && stopBeat.subNotes) ? stopBeat.subNotes[0] : stopBeat);
       } else if (curSong.type === 'image'){
         var stopBar = getFlatImageBar(curMeasureIdx);
         stopChord = stopBar && stopBar.chord ? stopBar.chord : '';
@@ -1857,11 +1910,8 @@
                   setTimeout(function(){
                     if (playSession !== s) return;
                     if (curMeasureIdx === mI && curBeatIdx === bI){
-                      var subTarget = sn;
-                      if (sn.kind === 'rest') subTarget = null;
-                      else if (sn.kind === 'hold' && typeof GuitarRhythm !== 'undefined') subTarget = GuitarRhythm.resolveHold(curSong.measures, sn);
-                      var effSubChord = effectiveChordAtBeat(curM, bI);
-                      highlightFretboard(effSubChord, subTarget, false, curM ? curM.autoChord : false, bI);
+                      applyActiveSubdivision(mI, bI, sIdx);
+                      highlightSubFretboard(curM, bI, sn);
                     }
                   }, subDelay);
                 }

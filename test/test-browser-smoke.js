@@ -2417,8 +2417,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=tempo-ramp-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=tempo-ramp-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=sub-cursor-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=sub-cursor-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -4000,20 +4000,22 @@ async function testFretLabel(client, httpPort) {
   assert.equal(practice.apoyandoColor, practice.near, 'an apoyando fret label is drawn in the --near color');
   assert.equal(practice.apoyandoWeight, '700', 'an apoyando fret label is bold');
 
-  // (2) 재생 중 활성 박: 알약 안 글자가 알약 글자색을 따른다
+  // (2) 재생 중 활성 박: 활성 분할 알약 안 글자가 알약 글자색을 따른다
   const playing = await client.evaluate(`(async function(){
     document.getElementById('compactPlayBtn').click();
     var started = Date.now();
     while (Date.now() - started < 6000 && !(curBeatIdx >= 1 || curMeasureIdx >= 1)) await new Promise(function(resolve){ setTimeout(resolve, 30); });
-    var pills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell.tab-cell.active-beat .tab-fret-pill'));
+    var pills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell.tab-cell.active-beat .tab-fret-pill.active-sub'));
+    var allBeatPills = Array.prototype.slice.call(document.querySelectorAll('#measuresGrid .beat-cell.tab-cell.active-beat .tab-fret-pill'));
     var result = pills.map(function(pill){
       var pillColor = getComputedStyle(pill).color;
       return Array.prototype.slice.call(pill.querySelectorAll('.fret-label, .fret-lh, .fret-rh')).map(function(node){ return getComputedStyle(node).color === pillColor; });
     });
-    return { pillCount: pills.length, allFollow: result.every(function(list){ return list.length > 0 && list.every(Boolean); }), withArt: pills.filter(function(pill){ return !!pill.querySelector('.is-apoyando'); }).length };
+    return { pillCount: pills.length, beatPillCount: allBeatPills.length, allFollow: result.every(function(list){ return list.length > 0 && list.every(Boolean); }), withArt: pills.filter(function(pill){ return !!pill.querySelector('.is-apoyando'); }).length };
   })()`);
-  assert.ok(playing.pillCount > 0 && playing.withArt > 0, 'a playing beat has pills with written articulation');
-  assert.equal(playing.allFollow, true, 'inside the active beat the fret label and its figures follow the pill text color');
+  assert.ok(playing.pillCount > 0 && playing.withArt > 0, 'a playing beat highlights its active subdivision pill with written articulation');
+  assert.ok(playing.beatPillCount > playing.pillCount, 'inactive subdivision pills inside the same active beat stay unhighlighted');
+  assert.equal(playing.allFollow, true, 'inside the active subdivision pill the fret label and its figures follow the pill text color');
   await client.evaluate(`document.getElementById('scoreToolbar').scrollIntoView({ block: 'start', inline: 'nearest' }); true`);
   await saveShot('practice-fret-label.png', 1280, 900);
   await client.evaluate(`(function(){ if (isPlaying) document.getElementById('compactPlayBtn').click(); appState.clickMode = 'all'; return true; })()`);
@@ -7190,6 +7192,193 @@ async function testTempoRamp(client, httpPort) {
   process.stdout.write('Browser checkpoint: TempoRamp step persistence, per-song target BPM, 320px layout, and reset passed\n');
 }
 
+// 분할 박 커서(TAB 알약 · 유지 음 · 오선 음표, 카드 제외, 재생 중에만 분할 이동)
+async function testSubdivisionCursor(client, httpPort) {
+  const errorsBefore = client.consoleErrors.length;
+  const appUrl = `http://127.0.0.1:${httpPort}/index.html`;
+  await client.evaluate("if (typeof isPlaying !== 'undefined' && isPlaying) stopPractice(); true");
+  const navBefore = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+  await client.send('Page.navigate', { url: appUrl });
+  await waitForPageLoadAfter(client, navBefore);
+  await waitForCondition(client, 'document.readyState === "complete" && typeof curSong === "object" && curSong !== null && typeof startPractice === "function"', 8000);
+
+  // 1) 정지 중에는 첫 분할(sub 0)만 칠해지고, 박 클릭 후에도 자동 진행하지 않는다
+  const stoppedCheck = await client.evaluate(`(async function(){
+    changeSongById('builtin-lv6-romance-full');
+    setScoreView('tab');
+    appState.clickMode = 'off';
+    appState.bpm = 48;
+    syncConsoleUI();
+    var cell0 = document.querySelector('#measuresGrid .beat-cell.tab-cell[data-m="0"][data-b="0"]');
+    var sub0Pills = Array.prototype.slice.call(cell0.querySelectorAll('.tab-fret-pill[data-sub="0"]'));
+    var sub1Pills = Array.prototype.slice.call(cell0.querySelectorAll('.tab-fret-pill[data-sub="1"]'));
+    var sub2Pills = Array.prototype.slice.call(cell0.querySelectorAll('.tab-fret-pill[data-sub="2"]'));
+    var initial = {
+      sub0Active: sub0Pills.every(function(p){ return p.classList.contains('active-sub'); }),
+      sub1Inactive: sub1Pills.every(function(p){ return !p.classList.contains('active-sub'); }),
+      sub2Inactive: sub2Pills.every(function(p){ return !p.classList.contains('active-sub'); }),
+      bg0: getComputedStyle(sub0Pills[0]).backgroundColor,
+      bg1: getComputedStyle(sub1Pills[0]).backgroundColor
+    };
+    var cell1 = document.querySelector('#measuresGrid .beat-cell.tab-cell[data-m="0"][data-b="1"]');
+    cell1.click();
+    await new Promise(function(resolve){ setTimeout(resolve, 450); });
+    var afterClickSub = Array.prototype.map.call(cell1.querySelectorAll('.tab-fret-pill.active-sub'), function(p){ return p.dataset.sub; });
+    return { initial: initial, afterClickSub: afterClickSub };
+  })()`);
+  assert.equal(stoppedCheck.initial.sub0Active, true, 'while stopped at beat 0, only sub 0 pills are active');
+  assert.equal(stoppedCheck.initial.sub1Inactive && stoppedCheck.initial.sub2Inactive, true, 'sub 1 and sub 2 pills are inactive while stopped');
+  assert.notEqual(stoppedCheck.initial.bg0, stoppedCheck.initial.bg1, 'active sub 0 pill fill differs from inactive sub 1 pill');
+  assert.ok(stoppedCheck.afterClickSub.every(s => s === '0') && stoppedCheck.afterClickSub.length > 0, 'clicking a beat while stopped keeps cursor on sub 0 without animating');
+
+  // 2) 타브 모드 재생: 한 박(48 BPM, 분할당 ~417ms) 안에서 sub 0 -> 1 -> 2 순서대로 이동한다
+  await client.evaluate("curMeasureIdx = 0; curBeatIdx = 0; updateActiveCursor(0, 0, false); startPractice(); true");
+  const tabSamples = await client.evaluate(`(async function(){
+    var seen = [];
+    var capturedMid = false;
+    var started = Date.now();
+    while (Date.now() - started < 2200) {
+      var cell = document.querySelector('#measuresGrid .beat-cell.tab-cell.active-beat[data-m="0"][data-b="0"]');
+      if (cell) {
+        var activeSubs = Array.prototype.map.call(cell.querySelectorAll('.tab-fret-pill.active-sub'), function(p){ return Number(p.dataset.sub); });
+        if (activeSubs.length && seen[seen.length - 1] !== activeSubs[0]) seen.push(activeSubs[0]);
+        if (activeSubs.indexOf(1) >= 0) {
+          window.__subCursorMidTab = {
+            sub0Bg: getComputedStyle(cell.querySelector('.tab-fret-pill[data-sub="0"]')).backgroundColor,
+            sub1Bg: getComputedStyle(cell.querySelector('.tab-fret-pill[data-sub="1"]')).backgroundColor,
+            sub2Bg: getComputedStyle(cell.querySelector('.tab-fret-pill[data-sub="2"]')).backgroundColor
+          };
+          capturedMid = true;
+          break;
+        }
+      }
+      await new Promise(function(resolve){ setTimeout(resolve, 40); });
+    }
+    return { seen: seen, capturedMid: capturedMid, styles: window.__subCursorMidTab || null };
+  })()`);
+  assert.ok(tabSamples.capturedMid, 'during TAB playback, subdivision moves to index 1');
+  assert.ok(tabSamples.seen.indexOf(0) >= 0 && tabSamples.seen.indexOf(1) >= 0, 'TAB active-sub advances 0 -> 1');
+  assert.notEqual(tabSamples.styles.sub1Bg, tabSamples.styles.sub0Bg, 'at sub 1, sub 1 fill is accent while sub 0 is normal');
+  assert.equal(tabSamples.styles.sub0Bg, tabSamples.styles.sub2Bg, 'at sub 1, sub 0 and sub 2 share resting fill');
+  await client.evaluate("document.getElementById('measuresGrid').scrollIntoView({ block: 'start', inline: 'nearest' }); true");
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false });
+  const shotTab = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  fs.writeFileSync(path.join(root, 'test-artifacts', 'sub-cursor-tab-sub1.png'), Buffer.from(shotTab.data, 'base64'));
+  await client.evaluate(`(async function(){
+    var started = Date.now();
+    var saw2 = false;
+    while (Date.now() - started < 1200) {
+      var cell = document.querySelector('#measuresGrid .beat-cell.tab-cell.active-beat[data-m="0"][data-b="0"]');
+      if (cell && cell.querySelector('.tab-fret-pill[data-sub="2"].active-sub')) { saw2 = true; break; }
+      await new Promise(function(resolve){ setTimeout(resolve, 35); });
+    }
+    stopPractice();
+    window.__sawSub2InTab = saw2;
+  })()`);
+  assert.equal(await client.evaluate('window.__sawSub2InTab'), true, 'TAB active-sub advances to sub 2');
+
+  // 3) 둘 다 / 오선 모드: 오선 음표(.st-chord.active-sub)도 분할에 맞춰 강조색으로 이동하고 카드 보기는 제외한다
+  await client.evaluate("setScoreView('both'); curMeasureIdx = 0; curBeatIdx = 0; updateActiveCursor(0, 0, false); true");
+  await waitForCondition(client, 'document.querySelectorAll("#measuresGrid .tab-staff-layer .st-chord").length > 0', 4000);
+  await client.evaluate("startPractice(); true");
+  const bothCheck = await client.evaluate(`(async function(){
+    var started = Date.now();
+    var res = null;
+    while (Date.now() - started < 2200) {
+      var layer = document.querySelector('#measuresGrid .measure-card[data-m="0"] .tab-staff-layer');
+      var cell = document.querySelector('#measuresGrid .beat-cell.tab-cell.active-beat[data-m="0"][data-b="0"]');
+      var chord1 = layer && layer.querySelector('.st-chord[data-cell="0"][data-unit="4"]');
+      var chord0 = layer && layer.querySelector('.st-chord[data-cell="0"][data-unit="0"]');
+      if (cell && chord1 && chord1.classList.contains('active-sub')) {
+        res = {
+          tabSub1Active: cell.querySelector('.tab-fret-pill[data-sub="1"]').classList.contains('active-sub'),
+          chord0Active: chord0 ? chord0.classList.contains('active-sub') : null,
+          chord1Color: getComputedStyle(chord1).color,
+          chord0Color: chord0 ? getComputedStyle(chord0).color : null
+        };
+        break;
+      }
+      await new Promise(function(resolve){ setTimeout(resolve, 40); });
+    }
+    return res;
+  })()`);
+  assert.ok(bothCheck && bothCheck.tabSub1Active, 'in both view, staff note at unit 4 turns active in sync with TAB sub 1');
+  assert.equal(bothCheck.chord0Active, false, 'previous staff note unit 0 is no longer active at sub 1');
+  assert.notEqual(bothCheck.chord1Color, bothCheck.chord0Color, 'active staff note color differs from inactive staff note color');
+  await client.evaluate("document.getElementById('measuresGrid').scrollIntoView({ block: 'start', inline: 'nearest' }); true");
+  const shotBoth = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  fs.writeFileSync(path.join(root, 'test-artifacts', 'sub-cursor-both-sub1.png'), Buffer.from(shotBoth.data, 'base64'));
+  await client.evaluate("stopPractice(); true");
+  await client.send('Emulation.clearDeviceMetricsOverride');
+
+  // 오선 전용 보기 확인 및 카드 보기 제외 확인
+  await client.evaluate("setScoreView('staff'); curMeasureIdx = 0; curBeatIdx = 0; updateActiveCursor(0, 0, false); true");
+  await waitForCondition(client, 'document.querySelectorAll("#measuresGrid .tab-staff-layer .st-chord.active-sub").length === 1', 4000);
+  await client.evaluate("setScoreView('card'); curMeasureIdx = 0; curBeatIdx = 0; updateActiveCursor(0, 0, false); true");
+  const cardExcluded = await client.evaluate(`({
+    activeSubCount: document.querySelectorAll('#measuresGrid .active-sub').length,
+    activeBeatCount: document.querySelectorAll('#measuresGrid .beat-cell.active-beat').length
+  })`);
+  assert.deepEqual(cardExcluded, { activeSubCount: 0, activeBeatCount: 1 }, 'card view keeps beat-level cursor and excludes .active-sub');
+
+  // 4) 유지(-) 음과 분할 유지 음: 파란 알약(.tab-held-fret.active-sub)과 오선 지속 음표가 같이 칠해진다
+  const heldPlayback = await client.evaluate(`(async function(){
+    var parsed = GuitarParser.parseScore('E3/- E3 - r', 4);
+    var tempSong = { id: '__sub-held-test__', title: 'Held Test', type: 'structured', beats: 4, bpm: 60, measures: parsed.measures };
+    allSongs.push(tempSong);
+    changeSongById('__sub-held-test__');
+    setScoreView('both');
+    await new Promise(function(resolve){ setTimeout(resolve, 60); });
+    curMeasureIdx = 0; curBeatIdx = 0;
+    updateActiveCursor(0, 0, false);
+    startPractice();
+    var started = Date.now();
+    var subHold = null, beatHold = null;
+    while (Date.now() - started < 4500 && (!subHold || !beatHold)) {
+      var c0 = document.querySelector('#measuresGrid .beat-cell.tab-cell.active-beat[data-m="0"][data-b="0"]');
+      var c2 = document.querySelector('#measuresGrid .beat-cell.tab-cell.active-beat[data-m="0"][data-b="2"]');
+      var layer = document.querySelector('#measuresGrid .measure-card[data-m="0"] .tab-staff-layer');
+      if (!subHold && c0) {
+        var hp0 = c0.querySelector('.tab-held-fret.active-sub');
+        var ch0 = layer && layer.querySelector('.st-chord[data-cell="0"]');
+        if (hp0) {
+          subHold = {
+            sub: hp0.dataset.sub,
+            opacity: getComputedStyle(hp0).opacity,
+            bgDiff: getComputedStyle(hp0).backgroundColor !== getComputedStyle(c0.querySelector('.tab-fret-pill[data-sub="0"]')).backgroundColor,
+            staffChord0Active: ch0 ? ch0.classList.contains('active-sub') : false
+          };
+        }
+      }
+      if (!beatHold && c2) {
+        var hp2 = c2.querySelector('.tab-held-fret.active-sub');
+        var ch1 = layer && layer.querySelector('.st-chord[data-cell="1"]');
+        if (hp2) {
+          beatHold = {
+            bgActive: getComputedStyle(hp2).backgroundColor,
+            staffHalfActive: ch1 ? ch1.classList.contains('active-sub') : false
+          };
+        }
+      }
+      await new Promise(function(resolve){ setTimeout(resolve, 35); });
+    }
+    stopPractice();
+    allSongs = allSongs.filter(function(s){ return s.id !== '__sub-held-test__'; });
+    changeSongById(allSongs[0].id);
+    setScoreView('tab');
+    appState.clickMode = 'all';
+    return { subHold: subHold, beatHold: beatHold };
+  })()`);
+  assert.ok(heldPlayback.subHold && heldPlayback.subHold.sub === '1' && heldPlayback.subHold.opacity === '1' && heldPlayback.subHold.bgDiff && heldPlayback.subHold.staffChord0Active,
+    'subdivided hold pill lights up blue together with sustaining staff note: ' + JSON.stringify(heldPlayback.subHold));
+  assert.ok(heldPlayback.beatHold && heldPlayback.beatHold.staffHalfActive,
+    'full-beat hold lights up held pill and sustaining half note on staff: ' + JSON.stringify(heldPlayback.beatHold));
+
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'no console errors in testSubdivisionCursor');
+  process.stdout.write('Browser checkpoint: subdivision cursor (TAB pills, held notes, staff notes, card exclusion, playback-only motion) passed\n');
+}
+
 const TEMP_PROFILE_PREFIX = 'gs-browser-smoke-';
 
 function removeTempProfile(dir) {
@@ -7234,7 +7423,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/gdrive.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=tempo-ramp-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=sub-cursor-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -7824,6 +8013,7 @@ async function main() {
     await testPlaybackLoudness(cdp, httpPort);
     await testAlphaTexSongs(cdp, httpPort);
     await testTempoRamp(cdp, httpPort);
+    await testSubdivisionCursor(cdp, httpPort);
 
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');
