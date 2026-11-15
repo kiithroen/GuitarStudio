@@ -302,15 +302,36 @@ function testVolumeNormalization(){
   assert.deepEqual(loadedVolumes({ vol: '1', guitarVol: null }), [0.55, 1], 'non-numbers fall back to the defaults');
 }
 
+function testTempoRampNormalization(){
+  function loadState(saved){
+    const store = { 'gs.state': JSON.stringify(saved) };
+    const sb = {
+      console, document: {}, Math, JSON, Date, Promise, Object, Array, Number, String, Map, Set,
+      localStorage: { getItem(key){ return key in store ? store[key] : null; }, setItem(){}, removeItem(){} }
+    };
+    sb.window = sb;
+    const ctx = vm.createContext(sb);
+    for (const script of ['src/storage.js', 'src/app-state.js']) vm.runInContext(fs.readFileSync(path.join(root, script), 'utf8'), ctx, { filename: script });
+    return JSON.parse(vm.runInContext('JSON.stringify({ step: appState.tempoRampStep, targets: appState.tempoTargets, legacy: Object.prototype.hasOwnProperty.call(appState, "speedTrainer") })', ctx));
+  }
+  assert.deepEqual(loadState({}), { step: 0, targets: {}, legacy: false }, 'tempoRampStep defaults to 0 and tempoTargets to empty');
+  for (const step of [0, 3, 5, 10]) assert.equal(loadState({ tempoRampStep: step }).step, step, 'valid tempoRampStep ' + step + ' survives reload');
+  assert.equal(loadState({ tempoRampStep: 7 }).step, 0, 'invalid tempoRampStep falls back to 0');
+  assert.equal(loadState({ speedTrainer: true }).step, 3, 'legacy speedTrainer true migrates to +3');
+  assert.equal(loadState({ speedTrainer: true }).legacy, false, 'legacy speedTrainer property is removed');
+  assert.deepEqual(loadState({ tempoTargets: { a: 90, b: 10, c: 999, d: 'bad', '': 80 } }).targets, { a: 90, b: 30, c: 240 }, 'tempoTargets clamps valid entries and drops invalid ones');
+}
+
 async function main(){
   testScoreViewNormalization();
   testVolumeNormalization();
+  testTempoRampNormalization();
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   document.querySelector('#storageStatus');
   const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   const scripts = scriptTags.map(src => src.split('?')[0]);
   assert.deepEqual(scripts, ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/gdrive.js', 'src/app.js']);
-  assert.ok(scriptTags.every(src => src.endsWith('?v=limiter-1')), 'every app script uses the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=tempo-ramp-1')), 'every app script uses the shared revision');
   for (const id of ['editInInputBtn', 'resetScoreDraftBtn', 'scoreDraftStatus', 'copyCurSongTsvBtn']){
     assert.match(html, new RegExp('id="' + id + '"'), 'draft UI includes #' + id);
   }
@@ -539,7 +560,7 @@ async function main(){
     scheduleMetronomeClick: context.scheduleMetronomeClick, playGuitarNote: context.playGuitarNote,
     stopGuitarNotes: context.stopGuitarNotes, highlightFretboard: context.highlightFretboard, ensureAudioCtx: context.ensureAudioCtx, warmKsCache: context.warmKsCache,
     appState: { bpm: context.appState.bpm, beats: context.appState.beats, loopStart: context.appState.loopStart, loopEnd: context.appState.loopEnd,
-      loopEnable: context.appState.loopEnable, speedTrainer: context.appState.speedTrainer, guideSound: context.appState.guideSound, clickMode: context.appState.clickMode }
+      loopEnable: context.appState.loopEnable, tempoRampStep: context.appState.tempoRampStep, guideSound: context.appState.guideSound, clickMode: context.appState.clickMode }
   };
   try {
     const clicks = [];
@@ -566,7 +587,7 @@ async function main(){
       return { lead, trail, loopEnd: measures.length };
     };
     const start = function(beats, bpm, clickMode, loopEnd){
-      Object.assign(context.appState, { bpm, beats, loopStart: 1, loopEnd, loopEnable: true, speedTrainer: false, guideSound: true, clickMode });
+      Object.assign(context.appState, { bpm, beats, loopStart: 1, loopEnd, loopEnable: true, tempoRampStep: 0, guideSound: true, clickMode });
       clicks.length = 0; notes.length = 0; timers.length = 0; countdowns.length = 0;
       context.actx = { currentTime: 0, outputLatency: 0, baseLatency: 0 };
       context.isPlaying = false;
@@ -664,6 +685,184 @@ async function main(){
     context.warmKsCache = savedLoop.warmKsCache;
     Object.assign(context.appState, savedLoop.appState);
     context.renderSong();
+  }
+
+  // TempoRamp: 올림 폭 선택/저장, 곡별 목표 BPM 저장·복원·제거, 정지 중 조절 제한, 매 1바퀴 상승(준비 박 포함), 수동 변경 이어가기, 화면 표시
+  {
+    const savedRamp = {
+      song: context.curSong, measure: context.curMeasureIdx, beat: context.curBeatIdx, actx: context.actx,
+      playing: context.isPlaying, session: context.playSession, setTimeout: context.setTimeout,
+      scheduleMetronomeClick: context.scheduleMetronomeClick, playGuitarNote: context.playGuitarNote,
+      stopGuitarNotes: context.stopGuitarNotes, highlightFretboard: context.highlightFretboard, ensureAudioCtx: context.ensureAudioCtx, warmKsCache: context.warmKsCache,
+      appState: {
+        bpm: context.appState.bpm, beats: context.appState.beats, loopStart: context.appState.loopStart, loopEnd: context.appState.loopEnd,
+        loopEnable: context.appState.loopEnable, tempoRampStep: context.appState.tempoRampStep,
+        tempoTargets: Object.assign({}, context.appState.tempoTargets), guideSound: context.appState.guideSound, clickMode: context.appState.clickMode
+      }
+    };
+    try {
+      const rampTimers = [];
+      const rampClicks = [];
+      context.warmKsCache = function(){};
+      context.scheduleMetronomeClick = function(time, accent){ rampClicks.push({ time, accent }); };
+      context.playGuitarNote = function(){};
+      context.stopGuitarNotes = function(){};
+      context.highlightFretboard = function(){};
+      context.ensureAudioCtx = function(){};
+      context.setTimeout = function(fn){ rampTimers.push(fn); return 0; };
+
+      // 1. 올림 폭 선택 및 전역 설정 저장
+      await elements.get('tempoRampStep5').click();
+      assert.equal(context.appState.tempoRampStep, 5, 'clicking +5 updates tempoRampStep');
+      assert.equal(JSON.parse(localValues.get('gs.state')).tempoRampStep, 5, 'tempoRampStep is saved in gs.state');
+      assert.equal(elements.get('tempoRampStep5').getAttribute('data-active'), 'true', '+5 button is active');
+      assert.equal(elements.get('tempoRampStep0').getAttribute('data-active'), 'false', '0 button is inactive');
+
+      // 2. 곡별 목표 BPM 저장·복원·원래 BPM 복원 시 저장값 제거
+      context.changeSongById('builtin-lv1-butterfly');
+      const songA = context.curSong;
+      const songADefault = context.clampBpm(songA.bpm, 64);
+      assert.equal(elements.get('targetBpmNum').textContent, String(songADefault), 'default target BPM equals song BPM');
+      assert.equal(elements.get('tempoRampStatus').textContent, '목표가 시작 BPM 이하', 'warns when target <= start BPM');
+      await elements.get('targetBpmUp5').click();
+      await elements.get('targetBpmUp1').click();
+      assert.equal(elements.get('targetBpmNum').textContent, String(songADefault + 6), 'target BPM adjusts by +5 and +1');
+      assert.equal(JSON.parse(localValues.get('gs.state')).tempoTargets[songA.id], songADefault + 6, 'non-default target BPM is saved per song');
+      assert.equal(elements.get('tempoRampStatus').textContent, '바퀴마다 +5 → 목표 ' + (songADefault + 6) + ' BPM', 'shows ramp plan when target > start BPM');
+
+      // 다른 곡은 자기 원래 BPM을 유지하고 따로 목표를 저장한다
+      context.changeSongById('builtin-lv2-jinglebells');
+      const songB = context.curSong;
+      const songBDefault = context.clampBpm(songB.bpm, 64);
+      assert.equal(elements.get('targetBpmNum').textContent, String(songBDefault), 'other song uses its own default BPM');
+      await elements.get('targetBpmDown5').click();
+      assert.equal(JSON.parse(localValues.get('gs.state')).tempoTargets[songB.id], songBDefault - 5, 'other song stores its own target BPM');
+
+      // 원래 곡으로 돌아와 원래 BPM으로 되돌리면 저장값이 제거된다
+      context.changeSongById(songA.id);
+      assert.equal(elements.get('targetBpmNum').textContent, String(songADefault + 6), 'switching back restores song A target BPM');
+      await elements.get('targetBpmDown5').click();
+      await elements.get('targetBpmDown1').click();
+      assert.equal(Object.prototype.hasOwnProperty.call(context.appState.tempoTargets, songA.id), false, 'stepping back to original BPM removes stored target');
+      assert.equal(Object.prototype.hasOwnProperty.call(JSON.parse(localValues.get('gs.state')).tempoTargets, songA.id), false, 'persisted tempoTargets removes key matching original BPM');
+      await elements.get('targetBpmUp5').click();
+      assert.equal(context.appState.tempoTargets[songA.id], songADefault + 5);
+      await elements.get('targetBpmResetBtn').click();
+      assert.equal(elements.get('targetBpmNum').textContent, String(songADefault), 'center reset button restores original BPM');
+      assert.equal(Object.prototype.hasOwnProperty.call(context.appState.tempoTargets, songA.id), false, 'center reset removes stored target');
+
+      // 3. 연주 중 동작: 목표 이하일 때 안 오름, 매 1바퀴마다 상승 + 카운트인 적용 + 목표 도달 유지 + 수동 변경 이어가기
+      const parsedRamp = context.parseScore('[C] C4 D4 E4 F4', 4);
+      context.curSong = { id: 'ramp-test-song', title: '템포 올림 시험', type: 'structured', builtin: false, bpm: 80, beats: 4, capo: 0, measures: parsedRamp.measures, notationVersion: 2 };
+      delete context.appState.tempoTargets['ramp-test-song'];
+      Object.assign(context.appState, { bpm: 80, beats: 4, loopStart: 1, loopEnd: 1, loopEnable: true, clickMode: 'all' });
+      await elements.get('tempoRampStep5').click();
+      context.syncConsoleUI();
+      assert.equal(elements.get('tempoRampStatus').textContent, '목표가 시작 BPM 이하', 'when start == target, warns before play');
+      context.actx = { currentTime: 0, outputLatency: 0, baseLatency: 0 };
+      context.isPlaying = false;
+      context.playSession = null;
+      context.curMeasureIdx = 0;
+      context.curBeatIdx = 0;
+      context.startPractice();
+      assert.equal(elements.get('targetBpmUp5').disabled, true, 'target BPM adjustment is disabled while playing');
+      assert.equal(elements.get('targetBpmResetBtn').disabled, true, 'target BPM reset button is disabled while playing');
+      await elements.get('targetBpmUp5').click();
+      assert.equal(elements.get('targetBpmNum').textContent, '80', 'target BPM click is ignored while playing');
+      for (let guard = 0; guard < 100 && context.playSession.loopCompleted < 2; guard++){
+        context.actx.currentTime = context.playSession.nextBeatTime - 0.01;
+        context.schedulerTick();
+      }
+      assert.equal(context.appState.bpm, 80, 'BPM does not increase when target <= start BPM');
+      context.stopPractice();
+      assert.equal(elements.get('targetBpmUp5').disabled, false, 'target BPM adjustment re-enables after stop');
+      assert.equal(elements.get('loopCountBadge').textContent, '0바퀴', 'badge resets to 0바퀴 on stop');
+
+      // 목표 75, 시작 60, +10 단계: 1바퀴(60) -> 2바퀴(70, 카운트인 포함) -> 3바퀴(75 도달) -> 4바퀴(75 유지)
+      context.curSong = { id: 'ramp-test-song', title: '템포 올림 시험', type: 'structured', builtin: false, bpm: 75, beats: 4, capo: 0, measures: parsedRamp.measures, notationVersion: 2 };
+      delete context.appState.tempoTargets['ramp-test-song'];
+      Object.assign(context.appState, { bpm: 60, beats: 4, loopStart: 1, loopEnd: 1, loopEnable: true, clickMode: 'all' });
+      await elements.get('tempoRampStep10').click();
+      rampClicks.length = 0;
+      rampTimers.length = 0;
+      context.actx = { currentTime: 0, outputLatency: 0, baseLatency: 0 };
+      context.isPlaying = false;
+      context.playSession = null;
+      context.curMeasureIdx = 0;
+      context.curBeatIdx = 0;
+      context.startPractice();
+      assert.equal(elements.get('loopCountBadge').textContent, '1바퀴', 'start shows 1바퀴');
+      assert.equal(elements.get('tempoRampStatus').textContent, '바퀴마다 +10 → 목표 75 BPM', 'shows ramping progress during lap 1');
+
+      // 1바퀴 완료 직후 (restart count-in 시작 시점)
+      for (let guard = 0; guard < 100 && context.playSession.loopCompleted < 1; guard++){
+        context.actx.currentTime = context.playSession.nextBeatTime - 0.01;
+        context.schedulerTick();
+      }
+      assert.equal(context.appState.bpm, 70, 'after lap 1, BPM increases from 60 to 70');
+      assert.ok(Math.abs(context.playSession.spb - 60 / 70) < 1e-9, 'session spb updates to 70 BPM for restart count-in and lap 2');
+      // 카운트인 2박 이상 진행시켜 카운트인 간격이 60/70인지 확인
+      const countInClicksBefore = rampClicks.length;
+      for (let k = 0; k < 3; k++){
+        context.actx.currentTime = context.playSession.nextBeatTime - 0.01;
+        context.schedulerTick();
+      }
+      assert.ok(rampClicks.length >= countInClicksBefore + 2, 'restart count-in schedules clicks');
+      assert.ok(Math.abs((rampClicks[countInClicksBefore + 1].time - rampClicks[countInClicksBefore].time) - 60 / 70) < 1e-9, 'restart count-in beat spacing uses the new 70 BPM');
+      while (rampTimers.length) rampTimers.shift()();
+      assert.equal(elements.get('loopCountBadge').textContent, '2바퀴', 'lap 2 count-in updates badge to 2바퀴');
+
+      // 수동으로 템포를 68로 바꿔도 멈추지 않고 다음 바퀴에 68 + 10 -> min(75, 78) = 75 적용
+      context.setBpm(68);
+      assert.equal(context.isPlaying, true, 'manual BPM change keeps playback running');
+      assert.equal(elements.get('tempoRampStatus').textContent, '바퀴마다 +10 → 목표 75 BPM', 'manual change below target keeps ramping status');
+      for (let guard = 0; guard < 100 && context.playSession.loopCompleted < 2; guard++){
+        context.actx.currentTime = context.playSession.nextBeatTime - 0.01;
+        context.schedulerTick();
+      }
+      assert.equal(context.appState.bpm, 75, 'after lap 2 from manual 68 BPM, clamps at min(75, 68 + 10) = 75');
+      assert.equal(elements.get('tempoRampStatus').textContent, '목표 75 BPM 도달', 'reaching target displays goal reached message');
+      context.actx.currentTime = context.playSession.nextBeatTime - 0.01;
+      context.schedulerTick();
+      while (rampTimers.length) rampTimers.shift()();
+      assert.equal(elements.get('loopCountBadge').textContent, '3바퀴', 'lap 3 displays 3바퀴');
+
+      // 목표 도달 후 추가 완주 시 75 유지
+      for (let guard = 0; guard < 100 && context.playSession.loopCompleted < 3; guard++){
+        context.actx.currentTime = context.playSession.nextBeatTime - 0.01;
+        context.schedulerTick();
+      }
+      assert.equal(context.appState.bpm, 75, 'after reaching target, BPM holds at 75');
+
+      // 끔(0) 선택 시 올리지 않음
+      await elements.get('tempoRampStep0').click();
+      context.setBpm(60);
+      assert.equal(elements.get('tempoRampStatus').textContent, '올림 꺼짐', 'step 0 shows off status');
+      for (let guard = 0; guard < 100 && context.playSession.loopCompleted < 4; guard++){
+        context.actx.currentTime = context.playSession.nextBeatTime - 0.01;
+        context.schedulerTick();
+      }
+      assert.equal(context.appState.bpm, 60, 'step 0 does not change BPM on loop completion');
+      context.stopPractice();
+    } finally {
+      context.curSong = savedRamp.song;
+      context.curMeasureIdx = savedRamp.measure;
+      context.curBeatIdx = savedRamp.beat;
+      context.actx = savedRamp.actx;
+      context.isPlaying = savedRamp.playing;
+      context.playSession = savedRamp.session;
+      context.setTimeout = savedRamp.setTimeout;
+      context.scheduleMetronomeClick = savedRamp.scheduleMetronomeClick;
+      context.playGuitarNote = savedRamp.playGuitarNote;
+      context.stopGuitarNotes = savedRamp.stopGuitarNotes;
+      context.highlightFretboard = savedRamp.highlightFretboard;
+      context.ensureAudioCtx = savedRamp.ensureAudioCtx;
+      context.warmKsCache = savedRamp.warmKsCache;
+      Object.assign(context.appState, savedRamp.appState);
+      context.appState.tempoTargets = Object.assign({}, savedRamp.appState.tempoTargets);
+      context.renderSong();
+      context.saveAppState();
+    }
   }
 
   const scoreMode = elements.get('scoreViewSelect');

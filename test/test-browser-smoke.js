@@ -2417,8 +2417,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=limiter-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=limiter-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=tempo-ramp-1')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=tempo-ramp-1">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -7105,6 +7105,91 @@ async function testPlaybackLoudness(client, httpPort) {
   process.stdout.write('Browser checkpoint: playback loudness (practice screen vs alphaTab view, gated RMS over 400ms blocks, ' + LOUDNESS_WINDOW_SECONDS + ' seconds, two built-in songs) passed\n');
 }
 
+async function testTempoRamp(client, httpPort) {
+  const errorsBefore = client.consoleErrors.length;
+  const appUrl = `http://127.0.0.1:${httpPort}/index.html`;
+  async function loadHome() {
+    const before = client.events.filter(event => event.method === 'Page.loadEventFired').length;
+    await client.send('Page.navigate', { url: appUrl });
+    await waitForPageLoadAfter(client, before);
+    await waitForCondition(client, 'document.readyState === "complete" && window.allSongs && window.allSongs.length >= 1 && window.curSong != null', 8000);
+  }
+  await loadHome();
+
+  // 1. 올림 폭 선택 및 새로고침 유지
+  await client.evaluate("document.getElementById('tempoRampStep5').click(); true");
+  const afterStep = await client.evaluate(`({
+    step: appState.tempoRampStep,
+    active5: document.getElementById('tempoRampStep5').getAttribute('data-active'),
+    active0: document.getElementById('tempoRampStep0').getAttribute('data-active'),
+    stored: JSON.parse(localStorage.getItem('gs.state') || '{}').tempoRampStep
+  })`);
+  assert.deepEqual(afterStep, { step: 5, active5: 'true', active0: 'false', stored: 5 }, 'TempoRamp step +5 is selected and stored');
+
+  await loadHome();
+  const afterReload = await client.evaluate(`({
+    step: appState.tempoRampStep,
+    active5: document.getElementById('tempoRampStep5').getAttribute('data-active')
+  })`);
+  assert.deepEqual(afterReload, { step: 5, active5: 'true' }, 'TempoRamp step +5 survives reload');
+
+  // 2. 곡별 목표 BPM 조절, 다른 곡과 분리, 원래 BPM 복원 시 저장값 제거
+  await client.evaluate(`(function(){
+    changeSongById('builtin-lv1-butterfly');
+    document.getElementById('targetBpmUp5').click();
+    document.getElementById('targetBpmUp1').click();
+    return true;
+  })()`);
+  const songATarget = await client.evaluate(`({
+    def: clampBpm(curSong.bpm, 64),
+    num: document.getElementById('targetBpmNum').textContent,
+    status: document.getElementById('tempoRampStatus').textContent,
+    targets: JSON.parse(localStorage.getItem('gs.state') || '{}').tempoTargets
+  })`);
+  assert.equal(songATarget.num, String(songATarget.def + 6), 'target BPM increases by +5 and +1');
+  assert.equal(songATarget.status, '바퀴마다 +5 → 목표 ' + (songATarget.def + 6) + ' BPM', 'status shows ramp target');
+  assert.equal(songATarget.targets['builtin-lv1-butterfly'], songATarget.def + 6, 'song A target is saved');
+
+  await client.evaluate("changeSongById('builtin-lv2-jinglebells'); true");
+  const songBDefault = await client.evaluate(`({
+    def: clampBpm(curSong.bpm, 64),
+    num: document.getElementById('targetBpmNum').textContent,
+    status: document.getElementById('tempoRampStatus').textContent
+  })`);
+  assert.equal(songBDefault.num, String(songBDefault.def), 'song B keeps its own default target BPM');
+  assert.equal(songBDefault.status, '목표가 시작 BPM 이하', 'when start == target, status warns');
+
+  // 스크린샷 캡처 (데스크톱 & 320px 모바일 폭)
+  fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
+  await client.evaluate("changeSongById('builtin-lv1-butterfly'); true");
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 980, height: 900, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate("document.querySelector('.stage').scrollIntoView({ block: 'start', inline: 'nearest' }); true");
+  await new Promise(resolve => setTimeout(resolve, 120));
+  const shotDesktop = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  fs.writeFileSync(path.join(root, 'test-artifacts', 'tempo-ramp-console.png'), Buffer.from(shotDesktop.data, 'base64'));
+
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
+  await client.evaluate("document.querySelector('.stage').scrollIntoView({ block: 'start', inline: 'nearest' }); true");
+  await new Promise(resolve => setTimeout(resolve, 120));
+  const overflow320 = await client.evaluate("document.documentElement.scrollWidth > window.innerWidth");
+  assert.equal(overflow320, false, 'TempoRamp console causes no horizontal overflow at 320px');
+  const shotMobile = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  fs.writeFileSync(path.join(root, 'test-artifacts', 'tempo-ramp-console-320.png'), Buffer.from(shotMobile.data, 'base64'));
+  await client.send('Emulation.clearDeviceMetricsOverride');
+
+  // 복원: 원래 BPM 복원 시 저장값 제거 및 끔 상태로 초기화
+  await client.evaluate("document.getElementById('targetBpmResetBtn').click(); document.getElementById('tempoRampStep0').click(); true");
+  const resetDone = await client.evaluate(`({
+    step: appState.tempoRampStep,
+    hasKey: Object.prototype.hasOwnProperty.call(JSON.parse(localStorage.getItem('gs.state') || '{}').tempoTargets || {}, 'builtin-lv1-butterfly'),
+    status: document.getElementById('tempoRampStatus').textContent,
+    badge: document.getElementById('loopCountBadge').textContent
+  })`);
+  assert.deepEqual(resetDone, { step: 0, hasKey: false, status: '올림 꺼짐', badge: '0바퀴' }, 'reset removes stored target and returns to off state');
+  assert.deepEqual(client.consoleErrors.slice(errorsBefore), [], 'no console errors in testTempoRamp');
+  process.stdout.write('Browser checkpoint: TempoRamp step persistence, per-song target BPM, 320px layout, and reset passed\n');
+}
+
 const TEMP_PROFILE_PREFIX = 'gs-browser-smoke-';
 
 function removeTempProfile(dir) {
@@ -7149,7 +7234,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/gdrive.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=limiter-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=tempo-ramp-1')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});
@@ -7738,6 +7823,7 @@ async function main() {
     await testAlphaTabTwoPage(cdp, httpPort);
     await testPlaybackLoudness(cdp, httpPort);
     await testAlphaTexSongs(cdp, httpPort);
+    await testTempoRamp(cdp, httpPort);
 
     // Verify no unhandled console errors occurred
     assert.deepEqual(cdp.consoleErrors, [], 'no unhandled console errors in real browser execution');

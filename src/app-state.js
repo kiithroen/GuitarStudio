@@ -9,6 +9,11 @@
     return clean;
   }
   var CLICK_MODES = ['all', 'countin', 'off']; // 메트로놈 클릭: 'all' 카운트인+재생 내내 / 'countin' 카운트인만(시작할 때와 구간 반복으로 돌아갈 때, 규칙은 app.js 의 countInBeatPositions) / 'off' 카운트인 없이 바로 시작
+  var TEMPO_RAMP_STEPS = [0, 3, 5, 10]; // 템포 올림 폭: 0(끔), +3, +5, +10 BPM (매 1바퀴 완주마다 상승)
+  var BPM_MIN = 30, BPM_MAX = 240, DEFAULT_BPM = 64;
+  function clampBpm(v, fallback){
+    return Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(Number(v) || fallback || DEFAULT_BPM)));
+  }
   var appState = stripRemovedAudioSettings(ls.get('gs.state', {
     lastSongId: 'builtin-lv1-butterfly',
     bpm: 64,
@@ -20,15 +25,26 @@
     loopEnable: true,
     loopStart: 1,
     loopEnd: 8,
-    speedTrainer: false,
+    tempoRampStep: 0,
+    tempoTargets: {},
     audioOffsetMs: 0
   }));
   if (typeof appState.acousticFx !== 'boolean') appState.acousticFx = true;
+  if (appState.tempoRampStep == null && appState.speedTrainer === true) appState.tempoRampStep = 3;
+  delete appState.speedTrainer;
+  appState.tempoRampStep = TEMPO_RAMP_STEPS.indexOf(Number(appState.tempoRampStep)) >= 0 ? Number(appState.tempoRampStep) : 0;
+  (function normalizeTempoTargets(){
+    var raw = appState.tempoTargets;
+    var clean = {};
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)){
+      Object.keys(raw).forEach(function(id){
+        var v = Number(raw[id]);
+        if (id && isFinite(v) && v > 0) clean[id] = clampBpm(v, DEFAULT_BPM);
+      });
+    }
+    appState.tempoTargets = clean;
+  })();
   // 클릭음 vol 은 0~2(100%를 넘기면 기본보다 크게), 기타 연주음 guitarVol 은 0~1. 숫자가 아니거나 범위 밖이면 기본값
-  var BPM_MIN = 30, BPM_MAX = 240, DEFAULT_BPM = 64;
-  function clampBpm(v, fallback){
-    return Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(Number(v) || fallback || DEFAULT_BPM)));
-  }
   function normalizeVolume(v, def, max){ return typeof v === 'number' && isFinite(v) && v >= 0 && v <= max ? v : def; }
   appState.vol = normalizeVolume(appState.vol, 0.55, 2);
   appState.guitarVol = normalizeVolume(appState.guitarVol, 1, 1);

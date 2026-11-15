@@ -122,8 +122,42 @@
     return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
   }
 
+  function getSongDefaultBpm(song){
+    return clampBpm(song && song.bpm, DEFAULT_BPM);
+  }
+  function getSongTargetBpm(song){
+    var defBpm = getSongDefaultBpm(song);
+    if (!song || !song.id || !appState.tempoTargets) return defBpm;
+    if (!Object.prototype.hasOwnProperty.call(appState.tempoTargets, song.id)) return defBpm;
+    return clampBpm(appState.tempoTargets[song.id], defBpm);
+  }
+  function setSongTargetBpm(song, nextBpm){
+    if (!song || !song.id) return;
+    var defBpm = getSongDefaultBpm(song);
+    var clamped = clampBpm(nextBpm, defBpm);
+    if (!appState.tempoTargets || typeof appState.tempoTargets !== 'object') appState.tempoTargets = {};
+    if (clamped === defBpm) delete appState.tempoTargets[song.id];
+    else appState.tempoTargets[song.id] = clamped;
+    syncTempoRampUI();
+    saveAppState();
+  }
+  function setTempoRampStep(step){
+    var val = Number(step);
+    appState.tempoRampStep = TEMPO_RAMP_STEPS.indexOf(val) >= 0 ? val : 0;
+    syncTempoRampUI();
+    saveAppState();
+  }
+
   function safeAppStateForPersistence(){
     var stored = Object.assign({}, appState);
+    var cleanTargets = {};
+    if (appState.tempoTargets && typeof appState.tempoTargets === 'object'){
+      Object.keys(appState.tempoTargets).forEach(function(id){
+        if (scoreDrafts && scoreDrafts.status(id).temporary) return;
+        cleanTargets[id] = appState.tempoTargets[id];
+      });
+    }
+    stored.tempoTargets = cleanTargets;
     var draftStatus = curSong && curSong.type === 'structured' && scoreDrafts
       ? scoreDrafts.status(curSong.id)
       : {dirty:false,temporary:false};
@@ -1505,7 +1539,7 @@
     return null;
   }
 
-  // ---------- 메트로놈 재생 루프 (카운트인 + 마디 진행 + 구간 반복 + 자동 가속)
+  // ---------- 메트로놈 재생 루프 (카운트인 + 마디 진행 + 구간 반복 + 템포 점진적 올리기)
   var COUNT_IN_MIN_SECONDS = 2; // 처음 시작할 때 카운트인이 넘겨야 하는 길이(초). 이 길이를 넘기는 가장 적은 마디 수만큼 센다
 
   // 처음 시작할 때의 카운트인 마디 수: 시작 템포의 한 마디 길이로 COUNT_IN_MIN_SECONDS 를 넘기는 가장 적은 마디 수(적어도 1).
@@ -1583,12 +1617,15 @@
       mIdx: curMeasureIdx,
       bIdx: curBeatIdx,
       loopCompleted: 0,
+      wasBelowTarget: appState.bpm < getSongTargetBpm(curSong),
+      reachedTarget: false,
       resumeNextHold: true
     };
 
     isPlaying = true;
     syncCompactPlayButtons();
-    $('#loopCountBadge').textContent = '0회 완주';
+    $('#loopCountBadge').textContent = '1바퀴';
+    syncTempoRampUI();
   }
 
   function syncCompactPlayButtons(){
@@ -1637,6 +1674,7 @@
       return;
     }
     isPlaying = false;
+    playSession = null;
     syncCompactPlayButtons();
     showCountInRemaining(0);
     var stopChord = '';
@@ -1649,10 +1687,11 @@
       }
     }
     updateCompactStatusBadge(curMeasureIdx, curBeatIdx, stopChord);
+    if ($('#loopCountBadge')) $('#loopCountBadge').textContent = '0바퀴';
+    syncTempoRampUI();
     $('#phaseTxt').textContent = '정지됨 · 마디를 클릭하여 계속 연습';
     setLeds(-1);
     saveAppState();
-    playSession = null;
   }
 
   function updateCompactStatusBadge(mIdx, bIdx, chord){
@@ -1693,13 +1732,14 @@
   // 카운트인 동안 첫 음까지 남은 박 수(마지막 카운트인 박이 1)를 상태 줄, 콤팩트 상태 배지, 첫 음이 있는 마디 카드의 배지에 보인다.
   // remaining 이 0 이하면 카드 배지를 지운다(상태 줄은 재생 화면 동기화가 덮어쓴다).
   var countInBadge = null, countInBadgeNumber = null;
-  function showCountInRemaining(remaining, target){
+  function showCountInRemaining(remaining, target, bpmVal){
     if (!(remaining > 0)){
       if (countInBadge) countInBadge.remove();
       return;
     }
-    $('#phaseTxt').textContent = '카운트인 · 첫 음까지 ' + remaining + '박 (' + appState.bpm + ' BPM)';
-    if ($('#compactStatusBadge')) $('#compactStatusBadge').textContent = appState.bpm + ' BPM · 첫 음까지 ' + remaining;
+    var displayBpm = bpmVal || appState.bpm;
+    $('#phaseTxt').textContent = '카운트인 · 첫 음까지 ' + remaining + '박 (' + displayBpm + ' BPM)';
+    if ($('#compactStatusBadge')) $('#compactStatusBadge').textContent = displayBpm + ' BPM · 첫 음까지 ' + remaining;
     var card = target && curSong && curSong.type === 'structured' ? $('#measuresGrid .measure-card[data-m="' + target.m + '"]') : null;
     if (!card){
       if (countInBadge) countInBadge.remove();
@@ -1720,7 +1760,7 @@
   }
 
   // 카운트인 박 하나의 화면 동기화(오디오 출력 지연 보정): 첫 박에서 커서를 첫 음 칸으로 옮기고, LED는 박 위치를, 배지는 남은 박 수를 보인다.
-  function scheduleCountInBeatUi(session, beatTime, position, remaining, target, moveCursor){
+  function scheduleCountInBeatUi(session, beatTime, position, remaining, target, moveCursor, bpmVal, loopNum){
     var delay = Math.max(0, (beatTime + getAudioHardwareLatencySec() - actx.currentTime) * 1000);
     setTimeout(function(){
       if (playSession !== session) return;
@@ -1730,7 +1770,8 @@
         updateActiveCursor(target.m, target.b, false, 0);
       }
       setLeds(position);
-      showCountInRemaining(remaining, target);
+      if ($('#loopCountBadge') && loopNum) $('#loopCountBadge').textContent = loopNum + '바퀴';
+      showCountInRemaining(remaining, target, bpmVal);
     }, delay);
   }
 
@@ -1746,7 +1787,7 @@
         if (appState.clickMode !== 'off'){
           scheduleMetronomeClick(t, countInPos === 0, s.bpb === 9 && countInPos % 3 !== 0);
         }
-        scheduleCountInBeatUi(s, t, countInPos, s.countInPositions.length - s.countInBeat, s.countInTarget, s.countInBeat === 0);
+        scheduleCountInBeatUi(s, t, countInPos, s.countInPositions.length - s.countInBeat, s.countInTarget, s.countInBeat === 0, appState.bpm, s.loopCompleted + 1);
         s.countInBeat++;
         s.nextBeatTime += s.spb;
         if (s.countInBeat >= s.countInPositions.length){
@@ -1793,7 +1834,7 @@
           }
 
           // UI 동기화 예약 (WebAudio 하드웨어 버퍼 출력 지연 baseLatency + outputLatency + 블루투스 오프셋 보정)
-          (function(mI, bI, loopCnt, beatTime, spbVal, curBObj, curM){
+          (function(mI, bI, loopCnt, beatTime, spbVal, bpmVal, curBObj, curM){
             var hwLat = getAudioHardwareLatencySec();
             var delay = Math.max(0, (beatTime + hwLat - actx.currentTime) * 1000);
             setTimeout(function(){
@@ -1802,9 +1843,9 @@
               curMeasureIdx = mI;
               curBeatIdx = bI;
               setLeds(bI);
-              $('#phaseTxt').textContent = (mI + 1) + '마디 · ' + (bI + 1) + '/' + appState.beats + '박 진행 중 (' + appState.bpm + ' BPM)';
+              $('#phaseTxt').textContent = (mI + 1) + '마디 · ' + (bI + 1) + '/' + appState.beats + '박 진행 중 (' + bpmVal + ' BPM)';
               updateActiveCursor(mI, bI, false, bI / appState.beats);
-              $('#loopCountBadge').textContent = loopCnt + '회 완주';
+              $('#loopCountBadge').textContent = (loopCnt + 1) + '바퀴';
             }, delay);
 
             if (curBObj && curBObj.isSubdivided && curBObj.subNotes && curBObj.subNotes.length > 1){
@@ -1826,7 +1867,7 @@
                 }
               });
             }
-          })(s.mIdx, s.bIdx, s.loopCompleted, t, s.spb, m && m.beats ? m.beats[s.bIdx] : null, m);
+          })(s.mIdx, s.bIdx, s.loopCompleted, t, s.spb, appState.bpm, m && m.beats ? m.beats[s.bIdx] : null, m);
         }
 
         // 다음 박자/마디 이동
@@ -1844,10 +1885,14 @@
             s.loopCompleted++;
             if (appState.loopEnable){
               s.mIdx = startM;
-              // Speed Trainer: 2회 완주마다 +3 BPM 가속
-              if (appState.speedTrainer && s.loopCompleted % 2 === 0 && appState.bpm < 180){
-                appState.bpm = Math.min(180, appState.bpm + 3);
-                s.spb = 60 / appState.bpm;
+              // TempoRamp: 매 1바퀴 완주마다 현재 BPM이 목표보다 낮으면 올림 폭만큼 상승해 다음 바퀴(준비 박 포함)에 적용
+              var rampStep = TEMPO_RAMP_STEPS.indexOf(appState.tempoRampStep) >= 0 ? appState.tempoRampStep : 0;
+              var targetBpm = getSongTargetBpm(curSong);
+              if (rampStep > 0 && appState.bpm < targetBpm){
+                var nextBpm = clampBpm(Math.min(targetBpm, appState.bpm + rampStep), targetBpm);
+                appState.bpm = nextBpm;
+                s.spb = 60 / nextBpm;
+                if (nextBpm >= targetBpm) s.reachedTarget = true;
                 syncConsoleUI();
               }
               // 클릭 모드가 off 가 아니면 카운트인 한 마디를 센 뒤 구간 시작부터 다시 친다. 끝 마디의 뒤쪽 빈칸과
@@ -1904,6 +1949,49 @@
     }
   }
 
+  function getTempoRampStatusInfo(){
+    var step = TEMPO_RAMP_STEPS.indexOf(appState.tempoRampStep) >= 0 ? appState.tempoRampStep : 0;
+    var target = getSongTargetBpm(curSong);
+    if (step <= 0) return { text: '올림 꺼짐', state: 'off' };
+    if (isPlaying){
+      if (appState.bpm < target) return { text: '바퀴마다 +' + step + ' → 목표 ' + target + ' BPM', state: 'ramping' };
+      if (playSession && playSession.reachedTarget) return { text: '목표 ' + target + ' BPM 도달', state: 'reached' };
+      return { text: '목표가 시작 BPM 이하', state: 'warn' };
+    }
+    if (target <= appState.bpm) return { text: '목표가 시작 BPM 이하', state: 'warn' };
+    return { text: '바퀴마다 +' + step + ' → 목표 ' + target + ' BPM', state: 'ramping' };
+  }
+
+  var TARGET_BPM_BUTTON_IDS = ['targetBpmDown5', 'targetBpmDown1', 'targetBpmResetBtn', 'targetBpmUp1', 'targetBpmUp5'];
+  function syncTempoRampUI(){
+    var step = TEMPO_RAMP_STEPS.indexOf(appState.tempoRampStep) >= 0 ? appState.tempoRampStep : 0;
+    TEMPO_RAMP_STEPS.forEach(function(s){
+      var btn = $('#tempoRampStep' + s);
+      if (!btn) return;
+      var active = (step === s);
+      btn.setAttribute('data-active', String(active));
+      btn.setAttribute('aria-pressed', String(active));
+    });
+    var defBpm = getSongDefaultBpm(curSong);
+    var targetBpm = getSongTargetBpm(curSong);
+    if ($('#targetBpmNum')) $('#targetBpmNum').textContent = String(targetBpm);
+    if ($('#targetBpmResetBtn')){
+      var isDiff = targetBpm !== defBpm;
+      $('#targetBpmResetBtn').classList.toggle('active', isDiff);
+      $('#targetBpmResetBtn').title = '곡 원래 BPM(' + defBpm + ')으로 복원합니다' + (isDiff ? ' (현재 목표: ' + targetBpm + ')' : '');
+    }
+    TARGET_BPM_BUTTON_IDS.forEach(function(id){
+      var el = $('#' + id);
+      if (el) el.disabled = isPlaying;
+    });
+    if ($('#tempoRampStatus')){
+      var info = getTempoRampStatusInfo();
+      $('#tempoRampStatus').textContent = info.text;
+      $('#tempoRampStatus').classList.toggle('is-warn', info.state === 'warn');
+      $('#tempoRampStatus').classList.toggle('is-reached', info.state === 'reached');
+    }
+  }
+
   function syncConsoleUI(){
     $('#bpmNum').textContent = appState.bpm;
     $('#bpmRange').value = appState.bpm;
@@ -1921,7 +2009,7 @@
     $('#guitarVolRange').value = Math.round(appState.guitarVol * 100);
     $('#clickModeSelect').value = appState.clickMode;
     $('#loopEnable').checked = appState.loopEnable;
-    $('#speedTrainerChk').checked = appState.speedTrainer;
+    syncTempoRampUI();
     $('#guideSoundBtn').setAttribute('aria-pressed', String(appState.guideSound));
     $('#guideSoundBtn').setAttribute('data-active', String(appState.guideSound));
     $('#guideSoundBtn').textContent = appState.guideSound ? '가이드음' : '가이드음 끔';
@@ -1948,12 +2036,21 @@
       $('#bpmResetBtn').textContent = '기본 BPM (' + defBpm + ')';
       $('#bpmResetBtn').title = '이 악보의 기본 권장 BPM(' + defBpm + ')으로 초기화합니다' + (isDiff ? ' (현재: ' + appState.bpm + ')' : '');
     }
-    buildLeds();
+    if ($('#leds').children.length !== appState.beats) buildLeds();
   }
 
   function setBpm(v){
     appState.bpm = clampBpm(v, 64);
-    if (playSession) playSession.spb = 60 / appState.bpm;
+    if (playSession){
+      playSession.spb = 60 / appState.bpm;
+      var targetBpm = getSongTargetBpm(curSong);
+      if (appState.bpm < targetBpm){
+        playSession.wasBelowTarget = true;
+        playSession.reachedTarget = false;
+      } else if (playSession.wasBelowTarget){
+        playSession.reachedTarget = true;
+      }
+    }
     syncConsoleUI();
     saveAppState();
   }
@@ -2054,10 +2151,28 @@
     saveAppState();
   });
 
-  $('#speedTrainerChk').addEventListener('change', function(e){
-    appState.speedTrainer = e.target.checked;
-    saveAppState();
+  TEMPO_RAMP_STEPS.forEach(function(step){
+    var btn = $('#tempoRampStep' + step);
+    if (btn) btn.addEventListener('click', function(){ setTempoRampStep(step); });
   });
+  [
+    ['targetBpmDown5', -5],
+    ['targetBpmDown1', -1],
+    ['targetBpmUp1', 1],
+    ['targetBpmUp5', 5]
+  ].forEach(function(pair){
+    var btn = $('#' + pair[0]);
+    if (btn) btn.addEventListener('click', function(){
+      if (isPlaying || !curSong) return;
+      setSongTargetBpm(curSong, getSongTargetBpm(curSong) + pair[1]);
+    });
+  });
+  if ($('#targetBpmResetBtn')){
+    $('#targetBpmResetBtn').addEventListener('click', function(){
+      if (isPlaying || !curSong) return;
+      setSongTargetBpm(curSong, getSongDefaultBpm(curSong));
+    });
+  }
 
   $('#guideSoundBtn').addEventListener('click', function(){
     appState.guideSound = !appState.guideSound;
