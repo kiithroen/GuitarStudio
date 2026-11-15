@@ -392,7 +392,7 @@ test('removed legacy notations are rejected and modern equivalents pass', functi
   assert.notEqual(parser.lookupChord('Am'), null);
 });
 
-test('every chord dictionary entry is a valid header with six strings, and its lowest note is the root or the slash bass', function(){
+test('every chord dictionary entry is a valid header with six strings, no separate name, and its lowest note is the root or the slash bass', function(){
   for (const key of Object.keys(parser.CHORD_DB)){
     const entry = parser.CHORD_DB[key];
     const result = parser.validateScore('[' + key + '] C4 - - -', 4);
@@ -407,7 +407,7 @@ test('every chord dictionary entry is a valid header with six strings, and its l
       assert.ok(Number.isInteger(finger) && finger >= 0 && finger <= 4, key + ' finger ' + i + ' is an integer in 0..4');
       if (fret <= 0) assert.equal(finger, 0, key + ' string ' + i + ' has no finger when open or muted');
     }
-    assert.ok(typeof entry.name === 'string' && entry.name.trim() !== '', key + ' has a name');
+    assert.deepEqual(Object.keys(entry).sort(), ['desc', 'fingers', 'frets'], key + ' keeps no separate name; the key is the chord name');
     assert.ok(typeof entry.desc === 'string' && entry.desc.trim() !== '', key + ' has a desc');
     const bassName = key.includes('/') ? key.split('/')[1] : key.match(/^[A-G][#b]?/)[0];
     const expected = parser.parseNoteToken(bassName + '3', 0).midi % 12;

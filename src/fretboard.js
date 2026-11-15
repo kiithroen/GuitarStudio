@@ -209,12 +209,7 @@ function initFretboard(){
         }
       });
     } else if (ch){
-      var isSolfege = (appState && appState.notationMode === 'solfege');
-      if (isSolfege){
-        $('#guideNoteTxt').textContent = ch.name;
-      } else {
-        $('#guideNoteTxt').textContent = cleanChordToken(chordName) + ' 코드';
-      }
+      $('#guideNoteTxt').textContent = cleanChordToken(chordName) + ' 코드';
       $('#guideLhTxt').textContent = ch.desc;
       $('#guideRhTxt').textContent = '-';
     } else {
