@@ -192,7 +192,7 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .measure-card.is-dense .tab-fret-pill{min-width:13px;height:14px;padding:0 1.5px;font-size:10px}
 .tab-fret-pill.tab-held-fret{opacity:.68;border-style:dashed;box-shadow:none}
 .beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.past-sub{opacity:.38}
-.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.active-sub{background:#facc15;color:#1c2320;border-color:#ca8a04;opacity:1;box-shadow:0 0 0 1px rgba(202,138,4,.35),0 1px 4px rgba(202,138,4,.35)}
+.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.active-sub{background:#facc15;color:#1c2320;border-color:#ca8a04;opacity:1}
 .beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.active-sub .fret-label,.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.active-sub .fret-lh,.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.active-sub .fret-rh{color:inherit}
 .tab-rest-dash{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:var(--font-num);font-size:13px;color:var(--muted);font-weight:700}
 .tab-staff-layer,.tab-staff-head{display:none}
@@ -206,14 +206,11 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .measure-card.staff-on .beat-cell.tab-cell{padding-top:calc(4px + var(--staff-h))}
 .measure-card.staff-on .beat-cell.tab-cell.active-beat{background:linear-gradient(to bottom,var(--accent-soft) var(--staff-h),rgba(45,76,155,.18) var(--staff-h))}
 .measure-card.staff-on .tab-staff-layer .st-chord.past-sub,.measure-card.staff-on .tab-staff-layer .st-rest.past-sub{opacity:.36}
-.measure-card.staff-on .tab-staff-layer .st-chord.active-sub,.measure-card.staff-on .tab-staff-layer .st-rest.active-sub{color:#fbbf24;filter:drop-shadow(0 0 .9px rgba(120,65,0,.95)) drop-shadow(0 0 3.5px rgba(250,204,21,.7))}
-.measure-card.staff-on .tab-staff-layer .st-chord.active-sub .st-head:not(.is-open){stroke:currentColor;stroke-width:1.4px}
-.measure-card.staff-on .tab-staff-layer .st-chord.active-sub .st-head.is-open{stroke-width:2.4px}
-.measure-card.staff-on .tab-staff-layer .st-chord.active-sub .st-stem{stroke-width:2px}
+.measure-card.staff-on .tab-staff-layer .st-chord.active-sub,.measure-card.staff-on .tab-staff-layer .st-rest.active-sub{color:#eab308}
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]) .beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.active-sub{background:#facc15;color:#111827;border-color:#fde047}
   :root:not([data-theme="light"]) .measure-card.staff-on .tab-staff-layer .st-chord.active-sub,
-  :root:not([data-theme="light"]) .measure-card.staff-on .tab-staff-layer .st-rest.active-sub{color:#fde047;filter:drop-shadow(0 0 4px rgba(253,224,71,.7))}
+  :root:not([data-theme="light"]) .measure-card.staff-on .tab-staff-layer .st-rest.active-sub{color:#fde047}
 }
 .measure-card.tab-off .tab-lines-bg,.measure-card.tab-off .tab-cell-top,.measure-card.tab-off .tab-cell-grid,.measure-card.tab-off .tab-badge-title,.measure-card.tab-off .tab-str-names{display:none}
 .measure-card.tab-off .tab-stave-side{padding:0}
