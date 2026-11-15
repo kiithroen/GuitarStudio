@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=Noto+Music&display=swap">
-<link rel="stylesheet" href="src/base.css?v=sub-cursor-1">
+<link rel="stylesheet" href="src/base.css?v=sub-cursor-2">
 <style>
 #sheetLoadStatus{margin-top:8px;padding:7px 11px;border-radius:8px;border:1px solid var(--off);background:var(--off-soft);color:var(--off);font-weight:600}
 
@@ -191,7 +191,8 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .measure-card.is-dense .tab-cell-en{font-size:9.5px;letter-spacing:-0.4px}
 .measure-card.is-dense .tab-fret-pill{min-width:13px;height:14px;padding:0 1.5px;font-size:10px}
 .tab-fret-pill.tab-held-fret{opacity:.68;border-style:dashed;box-shadow:none}
-.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.active-sub{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);opacity:1}
+.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.past-sub{opacity:.38}
+.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.active-sub{background:#facc15;color:#1c2320;border-color:#ca8a04;opacity:1;box-shadow:0 0 0 1px rgba(202,138,4,.35),0 1px 4px rgba(202,138,4,.35)}
 .beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.active-sub .fret-label,.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.active-sub .fret-lh,.beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.active-sub .fret-rh{color:inherit}
 .tab-rest-dash{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:var(--font-num);font-size:13px;color:var(--muted);font-weight:700}
 .tab-staff-layer,.tab-staff-head{display:none}
@@ -204,13 +205,15 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .measure-card.staff-on .beats-row.tab-mode{height:calc(134px + var(--staff-h))}
 .measure-card.staff-on .beat-cell.tab-cell{padding-top:calc(4px + var(--staff-h))}
 .measure-card.staff-on .beat-cell.tab-cell.active-beat{background:linear-gradient(to bottom,var(--accent-soft) var(--staff-h),rgba(45,76,155,.18) var(--staff-h))}
-.measure-card.staff-on .tab-staff-layer .st-chord.active-sub,.measure-card.staff-on .tab-staff-layer .st-rest.active-sub{color:#1464ff;filter:drop-shadow(0 0 3px rgba(20,100,255,.55))}
+.measure-card.staff-on .tab-staff-layer .st-chord.past-sub,.measure-card.staff-on .tab-staff-layer .st-rest.past-sub{opacity:.36}
+.measure-card.staff-on .tab-staff-layer .st-chord.active-sub,.measure-card.staff-on .tab-staff-layer .st-rest.active-sub{color:#fbbf24;filter:drop-shadow(0 0 .9px rgba(120,65,0,.95)) drop-shadow(0 0 3.5px rgba(250,204,21,.7))}
 .measure-card.staff-on .tab-staff-layer .st-chord.active-sub .st-head:not(.is-open){stroke:currentColor;stroke-width:1.4px}
 .measure-card.staff-on .tab-staff-layer .st-chord.active-sub .st-head.is-open{stroke-width:2.4px}
 .measure-card.staff-on .tab-staff-layer .st-chord.active-sub .st-stem{stroke-width:2px}
 @media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .beat-cell.tab-cell.active-beat .tab-fret-pill.note-fret.active-sub{background:#facc15;color:#111827;border-color:#fde047}
   :root:not([data-theme="light"]) .measure-card.staff-on .tab-staff-layer .st-chord.active-sub,
-  :root:not([data-theme="light"]) .measure-card.staff-on .tab-staff-layer .st-rest.active-sub{color:#7cb3ff;filter:drop-shadow(0 0 4px rgba(124,179,255,.65))}
+  :root:not([data-theme="light"]) .measure-card.staff-on .tab-staff-layer .st-rest.active-sub{color:#fde047;filter:drop-shadow(0 0 4px rgba(253,224,71,.7))}
 }
 .measure-card.tab-off .tab-lines-bg,.measure-card.tab-off .tab-cell-top,.measure-card.tab-off .tab-cell-grid,.measure-card.tab-off .tab-badge-title,.measure-card.tab-off .tab-str-names{display:none}
 .measure-card.tab-off .tab-stave-side{padding:0}
@@ -958,25 +961,25 @@ body.practice-compact .fretboard{
   </div>
 </div>
 
-<script src="src/storage.js?v=sub-cursor-1"></script>
-<script src="src/app-state.js?v=sub-cursor-1"></script>
-<script src="src/notation.js?v=sub-cursor-1"></script>
-<script src="src/rhythm.js?v=sub-cursor-1"></script>
-<script src="src/parser.js?v=sub-cursor-1"></script>
-<script src="src/staff-layout.js?v=sub-cursor-1"></script>
-<script src="src/staff-svg.js?v=sub-cursor-1"></script>
-<script src="src/score-drafts.js?v=sub-cursor-1"></script>
-<script src="src/score.js?v=sub-cursor-1"></script>
-<script src="src/audio.js?v=sub-cursor-1"></script>
-<script src="src/guide.js?v=sub-cursor-1"></script>
-<script src="src/image-analysis.js?v=sub-cursor-1"></script>
-<script src="src/fretboard.js?v=sub-cursor-1"></script>
-<script src="src/score-ui.js?v=sub-cursor-1"></script>
-<script src="src/sheets.js?v=sub-cursor-1"></script>
-<script src="src/score-prompt.js?v=sub-cursor-1"></script>
+<script src="src/storage.js?v=sub-cursor-2"></script>
+<script src="src/app-state.js?v=sub-cursor-2"></script>
+<script src="src/notation.js?v=sub-cursor-2"></script>
+<script src="src/rhythm.js?v=sub-cursor-2"></script>
+<script src="src/parser.js?v=sub-cursor-2"></script>
+<script src="src/staff-layout.js?v=sub-cursor-2"></script>
+<script src="src/staff-svg.js?v=sub-cursor-2"></script>
+<script src="src/score-drafts.js?v=sub-cursor-2"></script>
+<script src="src/score.js?v=sub-cursor-2"></script>
+<script src="src/audio.js?v=sub-cursor-2"></script>
+<script src="src/guide.js?v=sub-cursor-2"></script>
+<script src="src/image-analysis.js?v=sub-cursor-2"></script>
+<script src="src/fretboard.js?v=sub-cursor-2"></script>
+<script src="src/score-ui.js?v=sub-cursor-2"></script>
+<script src="src/sheets.js?v=sub-cursor-2"></script>
+<script src="src/score-prompt.js?v=sub-cursor-2"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="src/score-editor.js?v=sub-cursor-1"></script>
-<script src="src/gdrive.js?v=sub-cursor-1"></script>
-<script src="src/app.js?v=sub-cursor-1"></script>
+<script src="src/score-editor.js?v=sub-cursor-2"></script>
+<script src="src/gdrive.js?v=sub-cursor-2"></script>
+<script src="src/app.js?v=sub-cursor-2"></script>
 </body>
 </html>

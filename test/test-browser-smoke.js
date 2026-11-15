@@ -2417,8 +2417,8 @@ async function testScoreInputScreen(client, httpPort) {
   const inputHtml = fs.readFileSync(path.join(root, 'score-input.html'), 'utf8');
   const inputScripts = [...inputHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(inputScripts.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/score-ui.js', 'src/score-prompt.js', 'src/audio.js', 'src/guide.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/tab-input.js', 'src/staff-input.js', 'src/tab-input-ui.js'], 'score-input.html classic scripts keep the required order');
-  assert.ok(inputScripts.every(src => src.endsWith('?v=sub-cursor-1')), 'score-input.html scripts use the page revision');
-  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=sub-cursor-1">/, 'score-input.html loads the shared base stylesheet');
+  assert.ok(inputScripts.every(src => src.endsWith('?v=sub-cursor-2')), 'score-input.html scripts use the page revision');
+  assert.match(inputHtml, /<link rel="stylesheet" href="src\/base\.css\?v=sub-cursor-2">/, 'score-input.html loads the shared base stylesheet');
   assert.match(inputHtml, /family=Noto\+Music/, 'score-input.html loads the Noto Music font for the staff');
   ['tiTitle', 'tiBeats', 'tiBpm', 'tiDescription', 'tiCapoSelect', 'tiKeySelect', 'tiNewBtn', 'tiImportBtn', 'tiUndoBtn', 'tiRedoBtn', 'tiSaveStatus', 'tiStatus',
     'tiSelectionBar', 'tiSelectionLabel', 'tiCopyBtn', 'tiPasteBtn', 'tiDuplicateBtn', 'tiClearBtn', 'tiDeleteBtn', 'tiInsertBtn', 'tiDeselectBtn', 'tiMeasures', 'tiAddMeasureBtn',
@@ -7243,10 +7243,15 @@ async function testSubdivisionCursor(client, httpPort) {
         var activeSubs = Array.prototype.map.call(cell.querySelectorAll('.tab-fret-pill.active-sub'), function(p){ return Number(p.dataset.sub); });
         if (activeSubs.length && seen[seen.length - 1] !== activeSubs[0]) seen.push(activeSubs[0]);
         if (activeSubs.indexOf(1) >= 0) {
+          var sub0Pill = cell.querySelector('.tab-fret-pill[data-sub="0"]');
+          var sub2Pill = cell.querySelector('.tab-fret-pill[data-sub="2"]');
           window.__subCursorMidTab = {
-            sub0Bg: getComputedStyle(cell.querySelector('.tab-fret-pill[data-sub="0"]')).backgroundColor,
+            sub0Bg: getComputedStyle(sub0Pill).backgroundColor,
             sub1Bg: getComputedStyle(cell.querySelector('.tab-fret-pill[data-sub="1"]')).backgroundColor,
-            sub2Bg: getComputedStyle(cell.querySelector('.tab-fret-pill[data-sub="2"]')).backgroundColor
+            sub2Bg: getComputedStyle(sub2Pill).backgroundColor,
+            sub0Past: sub0Pill.classList.contains('past-sub'),
+            sub0Opacity: Number(getComputedStyle(sub0Pill).opacity),
+            sub2Opacity: Number(getComputedStyle(sub2Pill).opacity)
           };
           capturedMid = true;
           break;
@@ -7258,8 +7263,10 @@ async function testSubdivisionCursor(client, httpPort) {
   })()`);
   assert.ok(tabSamples.capturedMid, 'during TAB playback, subdivision moves to index 1');
   assert.ok(tabSamples.seen.indexOf(0) >= 0 && tabSamples.seen.indexOf(1) >= 0, 'TAB active-sub advances 0 -> 1');
-  assert.notEqual(tabSamples.styles.sub1Bg, tabSamples.styles.sub0Bg, 'at sub 1, sub 1 fill is accent while sub 0 is normal');
+  assert.notEqual(tabSamples.styles.sub1Bg, tabSamples.styles.sub0Bg, 'at sub 1, sub 1 fill is accent yellow while sub 0 is normal');
   assert.equal(tabSamples.styles.sub0Bg, tabSamples.styles.sub2Bg, 'at sub 1, sub 0 and sub 2 share resting fill');
+  assert.equal(tabSamples.styles.sub0Past, true, 'at sub 1, already-played sub 0 carries .past-sub');
+  assert.ok(tabSamples.styles.sub0Opacity < 0.8 && tabSamples.styles.sub2Opacity === 1, 'at sub 1, sub 0 is dimmed and upcoming sub 2 is full opacity');
   await client.evaluate("document.getElementById('measuresGrid').scrollIntoView({ block: 'start', inline: 'nearest' }); true");
   fs.mkdirSync(path.join(root, 'test-artifacts'), { recursive: true });
   await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false });
@@ -7290,10 +7297,15 @@ async function testSubdivisionCursor(client, httpPort) {
       var cell = document.querySelector('#measuresGrid .beat-cell.tab-cell.active-beat[data-m="0"][data-b="0"]');
       var chord1 = layer && layer.querySelector('.st-chord[data-cell="0"][data-unit="4"]');
       var chord0 = layer && layer.querySelector('.st-chord[data-cell="0"][data-unit="0"]');
+      var chord2 = layer && layer.querySelector('.st-chord[data-cell="0"][data-unit="8"]');
       if (cell && chord1 && chord1.classList.contains('active-sub')) {
         res = {
           tabSub1Active: cell.querySelector('.tab-fret-pill[data-sub="1"]').classList.contains('active-sub'),
+          tabSub0Past: cell.querySelector('.tab-fret-pill[data-sub="0"]').classList.contains('past-sub'),
           chord0Active: chord0 ? chord0.classList.contains('active-sub') : null,
+          chord0Past: chord0 ? chord0.classList.contains('past-sub') : null,
+          chord0Opacity: chord0 ? Number(getComputedStyle(chord0).opacity) : null,
+          chord2Opacity: chord2 ? Number(getComputedStyle(chord2).opacity) : null,
           chord1Color: getComputedStyle(chord1).color,
           chord0Color: chord0 ? getComputedStyle(chord0).color : null
         };
@@ -7303,8 +7315,10 @@ async function testSubdivisionCursor(client, httpPort) {
     }
     return res;
   })()`);
-  assert.ok(bothCheck && bothCheck.tabSub1Active, 'in both view, staff note at unit 4 turns active in sync with TAB sub 1');
+  assert.ok(bothCheck && bothCheck.tabSub1Active && bothCheck.tabSub0Past, 'in both view, staff note at unit 4 turns active in sync with TAB sub 1 and dims unit 0');
   assert.equal(bothCheck.chord0Active, false, 'previous staff note unit 0 is no longer active at sub 1');
+  assert.equal(bothCheck.chord0Past, true, 'previous staff note unit 0 in the active beat carries .past-sub');
+  assert.ok(bothCheck.chord0Opacity < 0.8 && bothCheck.chord2Opacity === 1, 'previous staff note is dimmed while upcoming unit 8 stays full opacity');
   assert.notEqual(bothCheck.chord1Color, bothCheck.chord0Color, 'active staff note color differs from inactive staff note color');
   await client.evaluate("document.getElementById('measuresGrid').scrollIntoView({ block: 'start', inline: 'nearest' }); true");
   const shotBoth = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
@@ -7423,7 +7437,7 @@ async function main() {
   const appHtml =fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const scriptTags = [...appHtml.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
   assert.deepEqual(scriptTags.map(src => src.split('?')[0]), ['src/storage.js', 'src/app-state.js', 'src/notation.js', 'src/rhythm.js', 'src/parser.js', 'src/staff-layout.js', 'src/staff-svg.js', 'src/score-drafts.js', 'src/score.js', 'src/audio.js', 'src/guide.js', 'src/image-analysis.js', 'src/fretboard.js', 'src/score-ui.js', 'src/sheets.js', 'src/score-prompt.js', 'src/score-editor.js', 'src/gdrive.js', 'src/app.js'], 'app classic scripts keep the required order');
-  assert.ok(scriptTags.every(src => src.endsWith('?v=sub-cursor-1')), 'all app scripts use the shared revision');
+  assert.ok(scriptTags.every(src => src.endsWith('?v=sub-cursor-2')), 'all app scripts use the shared revision');
   const htmlIds = ['editInInputBtn','resetScoreDraftBtn','scoreDraftStatus','copyCurSongTsvBtn','copyScorePromptBtn','copyProjectPromptBtn','scorePromptStatus','sheetLoadStatus','uncertainBadge'];
   htmlIds.forEach(function(id){assert.match(appHtml,new RegExp('id="'+id+'"'),'draft UI includes #'+id);});
   ['addBlankScoreBtn','blankScoreModal','undoScoreEditBtn'].forEach(function(id){assert.doesNotMatch(appHtml,new RegExp('id="'+id+'"'),'removed in-page editing UI has no #'+id);});

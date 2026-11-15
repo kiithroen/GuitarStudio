@@ -1462,19 +1462,20 @@
     return effChord;
   }
 
-  // 타브 알약과 오선 음표의 현재 분할 조각 강조를 갱신한다(카드 보기 제외).
+  // 타브 알약과 오선 음표의 현재 분할 조각 강조 및 이미 친 분할 딤드 처리를 갱신한다(카드 보기 제외).
   function applyActiveSubdivision(mIdx, bIdx, subIdx){
     curSubIdx = Math.max(0, Number(subIdx) || 0);
     $$('.active-sub').forEach(function(el){ el.classList.remove('active-sub'); });
+    $$('.past-sub').forEach(function(el){ el.classList.remove('past-sub'); });
     if (!curSong || curSong.type !== 'structured' || appState.scoreView === 'card') return;
 
-    var subStr = String(curSubIdx);
     var cell = $('#measuresGrid .beat-cell.tab-cell[data-m="' + mIdx + '"][data-b="' + bIdx + '"]');
     if (cell){
       Array.prototype.forEach.call(cell.querySelectorAll('.tab-fret-pill'), function(pill){
-        if (pill.classList.contains('note-fret') && pill.dataset && pill.dataset.sub === subStr){
-          pill.classList.add('active-sub');
-        }
+        if (!pill.classList.contains('note-fret') || !pill.dataset || pill.dataset.sub == null) return;
+        var pillSub = Number(pill.dataset.sub);
+        if (pillSub === curSubIdx) pill.classList.add('active-sub');
+        else if (pillSub < curSubIdx) pill.classList.add('past-sub');
       });
     }
 
@@ -1484,7 +1485,8 @@
     if (staffLayer && Array.isArray(mLayout.items)){
       var beatObj = m.beats ? m.beats[bIdx] : null;
       var numSubs = (beatObj && beatObj.isSubdivided && beatObj.subNotes && beatObj.subNotes.length > 1) ? beatObj.subNotes.length : 1;
-      var posUnits = bIdx * 12 + Math.round(curSubIdx * (12 / numSubs));
+      var beatStartU = bIdx * 12;
+      var posUnits = beatStartU + Math.round(curSubIdx * (12 / numSubs));
       var markActiveStaff = function(el){
         var itemIdx = Number(el.getAttribute('data-item'));
         var item = mLayout.items[itemIdx];
@@ -1492,6 +1494,7 @@
         var startU = item.cell * 12 + item.unit;
         var endU = startU + (item.lengthUnits || 12);
         if (posUnits >= startU && posUnits < endU) el.classList.add('active-sub');
+        else if (startU >= beatStartU && endU <= posUnits) el.classList.add('past-sub');
       };
       Array.prototype.forEach.call(staffLayer.querySelectorAll('.st-chord'), markActiveStaff);
       Array.prototype.forEach.call(staffLayer.querySelectorAll('.st-rest'), markActiveStaff);
@@ -1502,6 +1505,7 @@
     $$('.active-bar').forEach(function(el){ el.classList.remove('active-bar'); });
     $$('.active-beat').forEach(function(el){ el.classList.remove('active-beat'); });
     $$('.active-sub').forEach(function(el){ el.classList.remove('active-sub'); });
+    $$('.past-sub').forEach(function(el){ el.classList.remove('past-sub'); });
     $$('.img-playhead').forEach(function(el){ el.remove(); });
 
     if (!curSong) return;
