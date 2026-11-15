@@ -33,7 +33,7 @@
 
 ## 검증 (명령은 `Docs/development.md` 검증 절)
 - 커밋 전 모든 `src/*.js`, `test/*.js`, `tools/*.js`가 `node --check`를 통과해야 한다.
-- 파서 정규식·악보 구조·카포: `test-parser`. 음가·쉼·유지·재생: `test-rhythm`, `test-guide`, `test-audio`. 부팅·상태 저장: `test-app-smoke`. DOM·인터랙션·콘솔 에러: `test-browser-smoke`. 타브 입력 모델·변환: `test-tab-input`. 오선 배치·그리기: `test-staff-layout`, `test-staff-svg`. 오선 입력 계산: `test-staff-input`. 시트 자동 가져오기 스크립트: `test-sheet-import-script`.
+- 파서 정규식·악보 구조·카포: `test-parser`. 음가·쉼·유지·재생: `test-rhythm`, `test-guide`, `test-audio`, `test-browser-audio`. 부팅·상태 저장: `test-app-smoke`. 연습 화면 DOM·인터랙션: `test-browser-smoke`. 악보 입력 화면: `test-tab-input`, `test-staff-input`, `test-browser-input`. alphaTab 보기·변환: `test-score-to-alphatex`, `test-alphatab-tools`, `test-browser-alphatab`. 오선 배치·그리기: `test-staff-layout`, `test-staff-svg`. 시트 자동 가져오기 스크립트: `test-sheet-import-script`. 변경 영역과 관련 없는 무거운 브라우저 스위트(`test-browser-alphatab` 등)는 억지로 같이 돌리지 않는다.
 - 오선 미리보기의 음 길이는 `GuitarRhythm.annotate` 결과만 쓴다. 따로 길이를 계산하거나 성부를 나누지 않는다.
 
 ## 커밋

@@ -221,5 +221,5 @@ note = { fret: 0~19, lh: null|0~4, rh: null|'p'|'i'|'m'|'a', art: null|'!'|'h'|'
 ## 검증
 
 - `node test/test-tab-input.js`: 변환 규칙, 빈칸(불러오기·내보내기 왕복, 켜기·끄기, 음을 넣으면 꺼짐, `-`·`r` 판정, 예전 문서), 편집 연산, 되돌리기, 불러오기 오류, `songs.json` 내장곡 전부의 왕복(불러와 내보내도 소리·코드·메모가 같고 검사 오류·경고 0).
-- `node test/test-browser-smoke.js`의 악보 입력 단계(`testScoreInputScreen`): 지판·숫자키·쉼표·나누기·운지·되돌리기·마디 연산·자동 이동·새로고침 뒤 복원·불러오기·연습 화면 넘기기, 375px 폭 가로 넘침, 입력판·곡 정보 높이. 스크린샷은 `test-artifacts/score-input-desktop.png`, `score-input-mobile.png`. 빈칸 단계(`testSkipInput`)는 `-` 키·Shift+`-`·단추, 카드 빗금과 카드 오선 음 위치, 오선 모드 거절·이동을 확인하고 `score-input-skip-tab.png`, `score-input-skip-staff.png`를 남긴다.
+- `node test/test-browser-input.js`의 악보 입력 단계(`testScoreInputScreen`): 지판·숫자키·쉼표·나누기·운지·되돌리기·마디 연산·자동 이동·새로고침 뒤 복원·불러오기·연습 화면 넘기기, 375px 폭 가로 넘침, 입력판·곡 정보 높이. 스크린샷은 `test-artifacts/score-input-desktop.png`, `score-input-mobile.png`. 빈칸 단계(`testSkipInput`)는 `-` 키·Shift+`-`·단추, 카드 빗금과 카드 오선 음 위치, 오선 모드 거절·이동을 확인하고 `score-input-skip-tab.png`, `score-input-skip-staff.png`를 남긴다.
 - 안 돌려 본 것: 다크 모드 화면 캡처, 실제 기기의 소리, 휴대폰 터치 입력, 선택 막대가 긴 악보에서 스크롤할 때 붙어 있는지.

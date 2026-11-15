@@ -122,9 +122,12 @@ node test/test-sheets.js
 node test/test-sheet-import-script.js
 node test/test-app-smoke.js
 node test/test-browser-smoke.js
+node test/test-browser-input.js
+node test/test-browser-alphatab.js
+node test/test-browser-audio.js
 Get-ChildItem src\*.js, test\*.js, tools\*.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
 ```
 
-브라우저 스모크는 Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 실행 파일을 지정할 수 있다. 임시 HTTP 서버와 임시 브라우저 프로필을 쓰며 Web Audio API 경로를 실제로 실행한다. Node 내장 `fetch`와 `WebSocket` 전역이 필요하고 `node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`로 확인할 수 있다. 실제 기기에서의 청취 품질은 확인하지 않는다. 스크린샷 검증은 `test-artifacts/`에 새 파일을 만들 수 있으니 기존 개인 자료를 보존한다.
+브라우저 테스트는 공통 하네스(`test/browser-harness.js`) 위에서 영역별로 나뉜다: `test-browser-smoke`(연습 화면), `test-browser-input`(`score-input.html`), `test-browser-alphatab`(`alphatab.html`·음량 비교), `test-browser-audio`(브라우저 `OfflineAudioContext`). 고친 영역에 해당하는 스위트만 돌리고, 스크린샷 검증은 `test-artifacts/` 안의 고정 이름 파일만 덮어써서 타임스탬프 파일이 누적되지 않게 한다(기존 개인 자료 보존). Chrome 또는 Edge를 자동 탐색하고 `CHROME_BIN`으로 지정할 수 있으며, Node 내장 `fetch`와 `WebSocket` 전역(`node -p "process.version + ' fetch=' + typeof fetch + ' WebSocket=' + typeof WebSocket"`)이 필요하다. 실제 기기에서의 청취 품질은 확인하지 않는다.
 
 브라우저 스모크는 크롬 임시 프로필(`gs-browser-smoke-*`)을 프로세스 트리가 끝난 뒤 재시도하며 지우고(실패 시 경고), 시작할 때 `os.tmpdir()` 아래의 한 시간 넘은 것을 치운다.
