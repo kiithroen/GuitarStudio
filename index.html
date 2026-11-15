@@ -174,7 +174,7 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .beat-cell.tab-cell{border:none;border-right:1px dashed rgba(128,128,128,.2);border-radius:0;background:transparent;padding:4px 1px 12px;display:flex;flex-direction:column;align-items:center;gap:0;position:relative;cursor:pointer;transition:background-color .08s,box-shadow .08s}
 .beat-cell.tab-cell:last-child{border-right:none}
 .beat-cell.tab-cell:hover{background:rgba(45,76,155,.07)}
-.beat-cell.tab-cell.active-beat{background:rgba(45,76,155,.18);transform:none;box-shadow:inset 0 0 0 2px rgba(250,204,21,.85);color:inherit}
+.beat-cell.tab-cell.active-beat{background:rgba(250,204,21,.18);transform:none;box-shadow:inset 0 0 0 2px rgba(250,204,21,.85);color:inherit}
 .beat-cell.tab-cell.arp-group-start{border-left:2px solid var(--line)}
 .beat-cell.is-uncertain:not(.active-beat){background:var(--off-soft);box-shadow:inset 0 0 0 2px var(--off)}
 .beat-cell.arp-group-start.is-uncertain:not(.active-beat){box-shadow:-3px 0 0 -1px var(--line),inset 0 0 0 2px var(--off)}
@@ -204,7 +204,7 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .measure-card.staff-on .tab-lines-bg{top:calc(32px + var(--staff-h))}
 .measure-card.staff-on .beats-row.tab-mode{height:calc(134px + var(--staff-h))}
 .measure-card.staff-on .beat-cell.tab-cell{padding-top:calc(4px + var(--staff-h))}
-.measure-card.staff-on .beat-cell.tab-cell.active-beat{background:linear-gradient(to bottom,var(--accent-soft) var(--staff-h),rgba(45,76,155,.18) var(--staff-h))}
+.measure-card.staff-on .beat-cell.tab-cell.active-beat{background:linear-gradient(to bottom,rgba(250,204,21,.09) var(--staff-h),rgba(250,204,21,.18) var(--staff-h))}
 .measure-card.staff-on .tab-staff-layer .st-chord.past-sub,.measure-card.staff-on .tab-staff-layer .st-rest.past-sub{opacity:.36}
 .measure-card.staff-on .tab-staff-layer .st-chord.active-sub,.measure-card.staff-on .tab-staff-layer .st-rest.active-sub{color:#eab308}
 @media (prefers-color-scheme: dark){
@@ -216,7 +216,7 @@ input[type=range]{width:100%;margin:0;accent-color:var(--accent);height:20px}
 .measure-card.tab-off .tab-stave-side{padding:0}
 .measure-card.tab-off .beats-row.tab-mode{height:calc(var(--staff-h) + 8px)}
 .measure-card.tab-off .beat-cell.tab-cell{padding-bottom:0}
-.measure-card.tab-off .beat-cell.tab-cell.active-beat{background:var(--accent-soft)}
+.measure-card.tab-off .beat-cell.tab-cell.active-beat{background:rgba(250,204,21,.09)}
 
 /* 이미지 / PDF 악보 뷰어 및 마디 그리드 매퍼 */
 .img-score-wrap{display:flex;flex-direction:column;gap:10px}
